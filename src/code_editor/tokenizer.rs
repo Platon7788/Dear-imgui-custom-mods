@@ -406,9 +406,12 @@ fn tokenize_rust(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             continue;
         }
 
-        // ── Fallback (unknown byte) ──────────────────────────────────────
-        tokens.push(Token { kind: TokenKind::Identifier, start: i, len: 1 });
-        i += 1;
+        // ── Fallback: consume one full Unicode scalar (handles multi-byte UTF-8) ──
+        // A single `i += 1` would split a multi-byte character across two tokens,
+        // causing a panic when the renderer slices `&line_str[tok.start..end]`.
+        let ch_len = line[i..].chars().next().map_or(1, |c| c.len_utf8());
+        tokens.push(Token { kind: TokenKind::Identifier, start: i, len: ch_len });
+        i += ch_len;
     }
 
     (tokens, in_block_comment)
@@ -499,8 +502,10 @@ fn tokenize_toml(line: &str) -> Vec<Token> {
             continue;
         }
 
-        tokens.push(Token { kind: TokenKind::Identifier, start: i, len: 1 });
-        i += 1;
+        // Consume full Unicode scalar to avoid splitting multi-byte characters.
+        let ch_len = line[i..].chars().next().map_or(1, |c| c.len_utf8());
+        tokens.push(Token { kind: TokenKind::Identifier, start: i, len: ch_len });
+        i += ch_len;
     }
 
     tokens

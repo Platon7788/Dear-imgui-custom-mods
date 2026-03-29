@@ -1475,7 +1475,17 @@ impl CodeEditor {
         let mut x = text_start_x;
 
         for tok in tokens {
-            let text = &line_str[tok.start..tok.start + tok.len];
+            let byte_end = (tok.start + tok.len).min(line_str.len());
+            // Guard: skip any token whose byte range doesn't sit on UTF-8 char
+            // boundaries (can happen with multi-byte chars in the fallback path).
+            if !line_str.is_char_boundary(tok.start)
+                || !line_str.is_char_boundary(byte_end)
+            {
+                // Advance x approximately so subsequent tokens stay aligned.
+                x += tok.len as f32 * self.char_advance;
+                continue;
+            }
+            let text = &line_str[tok.start..byte_end];
             let color = self.token_color(tok.kind);
 
             if tok.kind == TokenKind::Whitespace {
