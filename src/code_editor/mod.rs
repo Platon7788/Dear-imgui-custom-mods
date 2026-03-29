@@ -161,6 +161,8 @@ fn hash_line(s: &str) -> u64 {
 pub struct FindReplaceState {
     /// Whether the find panel is open.
     pub open: bool,
+    /// Set to true the frame the panel is opened — used to auto-focus the input.
+    pub just_opened: bool,
     /// Search query.
     pub query: String,
     /// Replacement text.
@@ -345,6 +347,10 @@ pub struct CodeEditor {
     last_click_time: f64,
     last_click_pos: CursorPos,
     click_count: u8,
+
+    // ── Font scale (Ctrl+Scroll zoom) ────────────────────────────────
+    /// Current text zoom factor (1.0 = default, 0.4–4.0 range).
+    text_scale: f32,
 }
 
 impl CodeEditor {
@@ -382,6 +388,8 @@ impl CodeEditor {
             last_click_time: 0.0,
             last_click_pos: CursorPos::default(),
             click_count: 0,
+
+            text_scale: 1.0,
         }
     }
 
@@ -535,12 +543,24 @@ impl CodeEditor {
     pub fn open_find(&mut self) {
         self.find_replace.open = true;
         self.find_replace.show_replace = false;
+        self.find_replace.just_opened = true;
     }
 
     /// Open the find & replace panel.
     pub fn open_find_replace(&mut self) {
         self.find_replace.open = true;
         self.find_replace.show_replace = true;
+        self.find_replace.just_opened = true;
+    }
+
+    /// Current text zoom factor (1.0 = default).
+    pub fn text_scale(&self) -> f32 {
+        self.text_scale
+    }
+
+    /// Set text zoom factor (clamped to 0.4–4.0).
+    pub fn set_text_scale(&mut self, scale: f32) {
+        self.text_scale = scale.clamp(0.4, 4.0);
     }
 
     /// Close the find panel.
@@ -564,7 +584,19 @@ impl CodeEditor {
     ///
     /// The editor fills the available content region.
     pub fn render(&mut self, ui: &Ui) {
-        // Measure monospace character size
+        // ── Font scale ───────────────────────────────────────────────
+        // Push a scaled version of the current font so that char_advance,
+        // line_height, and all text rendering use the correct size.
+        // SAFETY: igPushFont / igPopFont are paired and always balanced.
+        let base_font_size = unsafe { dear_imgui_rs::sys::igGetFontSize() };
+        unsafe {
+            dear_imgui_rs::sys::igPushFont(
+                std::ptr::null_mut(),
+                base_font_size * self.text_scale,
+            );
+        }
+
+        // Measure monospace character size (uses the now-active scaled font)
         let [cw, ch] = calc_text_size("X");
         self.char_advance = cw;
         self.line_height = ch + 2.0;
@@ -582,6 +614,11 @@ impl CodeEditor {
             self.char_advance * 2.0 // minimal gutter for fold arrows
         };
 
+        // ── Find/Replace bar at the TOP (before the editor child window) ──
+        if self.find_replace.open {
+            self.render_find_replace_bar(ui);
+        }
+
         let avail = ui.content_region_avail();
         let child_id = format!("##ce_{}", self.id);
 
@@ -598,6 +635,10 @@ impl CodeEditor {
             self.focused = ui.is_window_focused();
             self.visible_height = ui.window_size()[1];
 
+            // Capture the inner content area (excludes scrollbar regions) for
+            // accurate cursor hit-testing inside handle_mouse.
+            let content_avail = ui.content_region_avail();
+
             // Update cursor blink
             let dt = ui.io().delta_time();
             self.update_blink(dt);
@@ -613,7 +654,7 @@ impl CodeEditor {
             // the frame on which the window *gains* focus via a click, so the very
             // first click both focuses the editor AND positions the cursor correctly
             // instead of leaving it at (0, 0).
-            self.handle_mouse(ui, gutter_width);
+            self.handle_mouse(ui, gutter_width, content_avail);
 
             let draw_list = ui.get_window_draw_list();
             let [win_x, win_y] = ui.cursor_screen_pos();
@@ -888,10 +929,9 @@ impl CodeEditor {
             self.render_context_menu(ui);
         });
 
-        // ── Find/Replace bar (rendered outside the child window) ────
-        if self.find_replace.open {
-            self.render_find_replace_bar(ui);
-        }
+        // ── Pop the font pushed at the start of render() ─────────────
+        // SAFETY: balances the igPushFont call at the top of this function.
+        unsafe { dear_imgui_rs::sys::igPopFont(); }
     }
 
     // ── Input handling ───────────────────────────────────────────────
@@ -1017,6 +1057,7 @@ impl CodeEditor {
             }
             self.find_replace.open = true;
             self.find_replace.show_replace = false;
+            self.find_replace.just_opened = true;
             self.update_find_matches();
             return;
         }
@@ -1028,6 +1069,7 @@ impl CodeEditor {
             }
             self.find_replace.open = true;
             self.find_replace.show_replace = true;
+            self.find_replace.just_opened = true;
             self.update_find_matches();
             return;
         }
@@ -1038,7 +1080,11 @@ impl CodeEditor {
             return;
         }
 
-        // F3 or Ctrl+G: next match
+        // F3 / Ctrl+G: next match;  Shift+F3: previous match
+        if shift && ui.is_key_pressed(Key::F3) {
+            self.find_prev();
+            return;
+        }
         if ui.is_key_pressed(Key::F3) || (ctrl && ui.is_key_pressed(Key::G)) {
             self.find_next();
             return;
@@ -1271,15 +1317,25 @@ impl CodeEditor {
         }
     }
 
-    fn handle_mouse(&mut self, ui: &Ui, gutter_width: f32) {
+    fn handle_mouse(&mut self, ui: &Ui, gutter_width: f32, content_avail: [f32; 2]) {
         if !ui.is_window_hovered() { return; }
 
-        let [mx, my] = ui.io().mouse_pos();
+        let io = ui.io();
+        let [mx, my] = io.mouse_pos();
         let [win_x, win_y] = ui.cursor_screen_pos();
         let text_x = win_x + gutter_width;
 
-        // ── I-beam cursor over the text area, arrow over the gutter ─────────
-        if mx >= text_x {
+        // ── Ctrl+Scroll zoom ──────────────────────────────────────────────
+        if io.key_ctrl() && io.mouse_wheel() != 0.0 {
+            self.text_scale = (self.text_scale + io.mouse_wheel() * 0.1).clamp(0.4, 4.0);
+        }
+
+        // ── I-beam cursor ONLY inside the text content area ───────────────
+        // content_avail excludes scrollbar width/height, so this won't fire
+        // when the pointer is hovering the vertical or horizontal scrollbar.
+        let content_max_x = win_x + content_avail[0];
+        let content_max_y = win_y + content_avail[1];
+        if mx >= text_x && mx < content_max_x && my >= win_y && my < content_max_y {
             // SAFETY: igSetMouseCursor is a standard ImGui call.
             unsafe {
                 dear_imgui_rs::sys::igSetMouseCursor(
@@ -1288,11 +1344,13 @@ impl CodeEditor {
             }
         }
 
-        // Convert mouse position to text position
+        // Convert mouse position to text position.
+        // Use floor() (no +0.5 rounding) so clicking anywhere on character N
+        // places the cursor BEFORE character N — the standard "between chars" feel.
         let line = ((my - win_y + self.scroll_y) / self.line_height)
             .max(0.0) as usize;
         let line = line.min(self.buffer.line_count().saturating_sub(1));
-        let col = ((mx - text_x + self.scroll_x) / self.char_advance + 0.5)
+        let col = ((mx - text_x + self.scroll_x) / self.char_advance)
             .max(0.0) as usize;
         let max_col = self.buffer.line(line).chars().count();
         let col = col.min(max_col);
@@ -1379,9 +1437,9 @@ impl CodeEditor {
             ui.open_popup("##editor_ctx");
         }
 
-        // Scroll with mouse wheel (smooth)
+        // Scroll with mouse wheel (smooth) — suppressed when Ctrl is held (zoom mode)
         let wheel = ui.io().mouse_wheel();
-        if wheel != 0.0 {
+        if wheel != 0.0 && !io.key_ctrl() {
             let delta = -wheel * self.config.scroll_speed * self.line_height;
             let max_scroll =
                 (self.buffer.line_count() as f32 * self.line_height).max(0.0);
@@ -1806,46 +1864,149 @@ impl CodeEditor {
 
     fn render_find_replace_bar(&mut self, ui: &Ui) {
         let avail_w = ui.content_region_avail()[0];
-        let bar_h = if self.find_replace.show_replace { 56.0 } else { 28.0 };
+        // Row height: search row + optional replace row + 2px separator
+        let row_h  = self.line_height + 8.0;
+        let bar_h  = if self.find_replace.show_replace && !self.config.read_only {
+            row_h * 2.0 + 4.0
+        } else {
+            row_h
+        };
+
+        // Dark toolbar background
+        let _bg = ui.push_style_color(StyleColor::ChildBg, [0.11, 0.13, 0.17, 1.0]);
 
         ui.child_window("##find_bar")
             .size([avail_w, bar_h])
             .build(ui, || {
-            // Find row
-            ui.set_next_item_width(avail_w * 0.5);
+            // ── Row 1: Find ──────────────────────────────────────────
+            ui.spacing();
 
-            ui.text(&format!(
-                "Find: {} ({}/{})",
-                self.find_replace.query,
-                if self.find_replace.matches.is_empty() {
-                    0
-                } else {
-                    self.find_replace.current_match + 1
-                },
-                self.find_replace.matches.len(),
-            ));
+            // Auto-focus the input field the frame the bar opens
+            if self.find_replace.just_opened {
+                // SAFETY: igSetKeyboardFocusHere sets focus on the next item.
+                unsafe { dear_imgui_rs::sys::igSetKeyboardFocusHere(0); }
+                self.find_replace.just_opened = false;
+            }
+
+            // Search input
+            let query_w = (avail_w * 0.38).max(140.0).min(360.0);
+            ui.set_next_item_width(query_w);
+            let changed = ui
+                .input_text("##find_query", &mut self.find_replace.query)
+                .hint("Find…")
+                .build();
+            if changed {
+                self.update_find_matches();
+                self.find_replace.current_match = 0;
+            }
+
+            // Navigate with Enter / Shift+Enter in the search field
+            if ui.is_item_focused() {
+                let io = ui.io();
+                if ui.is_key_pressed(Key::Enter) || ui.is_key_pressed(Key::DownArrow) {
+                    self.find_next();
+                }
+                if (io.key_shift() && ui.is_key_pressed(Key::Enter))
+                    || ui.is_key_pressed(Key::UpArrow)
+                {
+                    self.find_prev();
+                }
+            }
 
             ui.same_line();
-            if ui.small_button("Prev") {
+
+            // Match counter  "3 / 17"  or "No matches" in red
+            if self.find_replace.query.is_empty() {
+                ui.text_disabled("…");
+            } else if self.find_replace.matches.is_empty() {
+                ui.text_colored([0.9, 0.35, 0.35, 1.0], "No matches");
+            } else {
+                ui.text_colored(
+                    [0.55, 0.85, 0.55, 1.0],
+                    &format!(
+                        "{} / {}",
+                        self.find_replace.current_match + 1,
+                        self.find_replace.matches.len()
+                    ),
+                );
+            }
+
+            ui.same_line();
+
+            // Prev / Next buttons
+            if ui.small_button("◀##fp") {
                 self.find_prev();
             }
+            if ui.is_item_hovered() { ui.tooltip_text("Previous match  Shift+F3"); }
             ui.same_line();
-            if ui.small_button("Next") {
+            if ui.small_button("▶##fn") {
                 self.find_next();
             }
+            if ui.is_item_hovered() { ui.tooltip_text("Next match  F3"); }
+
             ui.same_line();
-            if ui.small_button("Close") {
-                self.find_replace.open = false;
+
+            // ── Toggle: case-sensitive ───────────────────────────────
+            let cs_col = if self.find_replace.case_sensitive {
+                [0.24, 0.52, 0.88, 0.90]
+            } else {
+                [0.28, 0.30, 0.36, 0.70]
+            };
+            let _c = ui.push_style_color(StyleColor::Button, cs_col);
+            if ui.small_button("Aa") {
+                self.find_replace.case_sensitive = !self.find_replace.case_sensitive;
+                self.update_find_matches();
+            }
+            drop(_c);
+            if ui.is_item_hovered() { ui.tooltip_text("Case sensitive"); }
+
+            ui.same_line();
+
+            // ── Toggle: whole word ───────────────────────────────────
+            let ww_col = if self.find_replace.whole_word {
+                [0.24, 0.52, 0.88, 0.90]
+            } else {
+                [0.28, 0.30, 0.36, 0.70]
+            };
+            let _w = ui.push_style_color(StyleColor::Button, ww_col);
+            if ui.small_button("W") {
+                self.find_replace.whole_word = !self.find_replace.whole_word;
+                self.update_find_matches();
+            }
+            drop(_w);
+            if ui.is_item_hovered() { ui.tooltip_text("Whole word"); }
+
+            if !self.config.read_only {
+                ui.same_line();
+                // Toggle replace row
+                let rep_lbl = if self.find_replace.show_replace { "▲ Rep" } else { "▼ Rep" };
+                if ui.small_button(rep_lbl) {
+                    self.find_replace.show_replace = !self.find_replace.show_replace;
+                }
+                if ui.is_item_hovered() { ui.tooltip_text("Toggle replace  Ctrl+H"); }
             }
 
-            if self.find_replace.show_replace {
-                ui.text(&format!("Replace: {}", self.find_replace.replacement));
+            ui.same_line();
+
+            // Close button
+            if ui.small_button("✕##fc") {
+                self.find_replace.open = false;
+            }
+            if ui.is_item_hovered() { ui.tooltip_text("Close  Esc"); }
+
+            // ── Row 2: Replace (only in writable editors) ────────────
+            if self.find_replace.show_replace && !self.config.read_only {
+                let rep_w = (avail_w * 0.38).max(140.0).min(360.0);
+                ui.set_next_item_width(rep_w);
+                ui.input_text("##find_rep", &mut self.find_replace.replacement)
+                    .hint("Replace with…")
+                    .build();
                 ui.same_line();
-                if ui.small_button("Replace") {
+                if ui.small_button("Replace##r1") {
                     self.replace_current();
                 }
                 ui.same_line();
-                if ui.small_button("All") {
+                if ui.small_button("All##ra") {
                     self.replace_all();
                 }
             }
