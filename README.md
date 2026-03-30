@@ -14,14 +14,14 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`virtual_tree`** | Virtualized tree-table for up to 1M nodes — slab/arena with generational `NodeId`, flat view cache, multi-column, inline editing, sibling-scoped sorting, drag-and-drop, filter/search, tree lines, striped rows, icons, badges, configurable capacity with optional FIFO eviction | [docs/virtual_tree.md](docs/virtual_tree.md) |
 | **`page_control`** | Generic tabbed container — Dashboard (tile grid) and Tabs (4 styles: Pill, Underline, Card, Square) views. Close confirmation, badges, status indicators, keyboard navigation | [docs/page_control.md](docs/page_control.md) |
 | **`node_graph`** | Visual node graph editor — pan/zoom, bezier/straight/orthogonal wires, 4 pin shapes, multi-select, rectangle selection, mini-map, snap-to-grid, wire yanking, frustum culling, stats overlay, context menus, node shadow, wire flow animation, LOD, smooth zoom | [docs/node_graph.md](docs/node_graph.md) |
-| **`hex_viewer`** | Binary hex dump viewer — offset/hex/ASCII columns, color regions, data inspector, goto address, pattern search, selection, diff highlighting, hover byte tooltips with binary/octal/decimal display, configurable bytes-per-row, endianness control | |
-| **`timeline`** | Zoomable profiler timeline — nested spans, multi-track with collapse, flame graph view, markers, tooltips, pan/zoom with Shift+scroll, adaptive time ruler, color-by-duration/category/name modes, configurable track height | |
-| **`diff_viewer`** | Side-by-side and unified diff viewer — Myers diff algorithm (O((N+M)D)), synchronized scrolling, fold unchanged regions, hunk navigation, hover row highlights, hunk accent bars, +/- prefixes in unified mode, context line control | |
-| **`property_inspector`** | Hierarchical property editor — 15+ value types (bool, i32/i64, f32/f64, String, Color3/4, Vec2/3/4, Enum, Flags, Object, Array), categories with collapse, search/filter, diff highlighting, nested objects with expand/collapse, type badges, hover highlights | |
-| **`toolbar`** | Configurable horizontal toolbar — buttons, toggles, separators, dropdowns, spacers, builder API, icon support, hover underline accent, window-hovered guard, flexible spacer layout | |
-| **`status_bar`** | Composable bottom status bar — left/center/right sections, status indicators (Success/Warning/Error/Info), progress bars, clickable items with events, tooltips, icon support, hover highlights | |
+| **`hex_viewer`** | Binary hex dump viewer — offset/hex/ASCII columns, color regions, data inspector, goto address, pattern search, selection, diff highlighting, hover byte tooltips with binary/octal/decimal display, configurable bytes-per-row, endianness control | [docs/hex_viewer.md](docs/hex_viewer.md) |
+| **`timeline`** | Zoomable profiler timeline — nested spans, multi-track with collapse, flame graph view, markers, tooltips, pan/zoom with Shift+scroll, adaptive time ruler, color-by-duration/category/name modes, configurable track height | [docs/timeline.md](docs/timeline.md) |
+| **`diff_viewer`** | Side-by-side and unified diff viewer — Myers diff algorithm (O((N+M)D)), synchronized scrolling, fold unchanged regions, hunk navigation, hover row highlights, hunk accent bars, +/- prefixes in unified mode, context line control | [docs/diff_viewer.md](docs/diff_viewer.md) |
+| **`property_inspector`** | Hierarchical property editor — 15+ value types (bool, i32/i64, f32/f64, String, Color3/4, Vec2/3/4, Enum, Flags, Object, Array), categories with collapse, search/filter, diff highlighting, nested objects with expand/collapse, type badges, hover highlights | [docs/property_inspector.md](docs/property_inspector.md) |
+| **`toolbar`** | Configurable horizontal toolbar — buttons, toggles, separators, dropdowns, spacers, builder API, icon support, hover underline accent, window-hovered guard, flexible spacer layout | [docs/toolbar.md](docs/toolbar.md) |
+| **`status_bar`** | Composable bottom status bar — left/center/right sections, status indicators (Success/Warning/Error/Info), progress bars, clickable items with events, tooltips, icon support, hover highlights | [docs/status_bar.md](docs/status_bar.md) |
 | **`icons`** | Material Design Icons v7.4 codepoint constants (7400+ icons) | |
-| **`theme`** | Shared dark color palette with semantic color tokens | |
+| **`theme`** | Shared dark color palette with semantic color tokens | [docs/theme.md](docs/theme.md) |
 | **`utils`** | Color packing (RGB/RGBA to u32), `calc_text_size` wrapper | |
 
 ## Stack
@@ -85,7 +85,14 @@ src/
     viewer.rs                       NodeGraphViewer<T> trait
     config.rs                       NodeGraphConfig, NgColors
     state.rs                        InteractionState, Viewport, selection
-    render.rs                       ImDrawList rendering + input handling
+    render/                         Rendering sub-modules (7 files, ~2400 lines total)
+      mod.rs                        Main render entry point
+      grid.rs                       Canvas grid
+      nodes.rs                      Node frame, pin, body rendering
+      wires.rs                      Wire routing and flow animation
+      math.rs                       Geometry, obstacle avoidance, hit testing
+      input.rs                      Mouse/keyboard input
+      overlays.rs                   Stats overlay and minimap
     types.rs                        NodeId, PinInfo, PinShape, GraphAction
   hex_viewer/
     mod.rs                          HexViewer widget — render, navigation, search

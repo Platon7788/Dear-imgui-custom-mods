@@ -168,6 +168,20 @@ file_manager/
   history.rs    Back/forward navigation stack
 ```
 
+## Public API
+
+| Method | Description |
+|--------|-------------|
+| `new()` | Create a new file manager |
+| `open_file(start_dir, filters)` | Open file picker with filters |
+| `save_file(start_dir, filename, filters)` | Open save dialog |
+| `open_folder(start_dir)` | Open folder picker |
+| `render(ui) -> bool` | Render dialog; returns `true` when completed |
+| `selected_path` | `Option<PathBuf>` — selected file/folder path |
+| `selected_paths` | `Vec<PathBuf>` — multiple selected paths (multi-select mode) |
+| `is_open() -> bool` | Whether the dialog is currently open |
+| `close()` | Close the dialog programmatically |
+
 ## Key Types
 
 | Type | Description |
@@ -176,7 +190,7 @@ file_manager/
 | `DialogMode` | Enum: `SelectFolder`, `OpenFile`, `SaveFile` |
 | `FileFilter` | Filter by extension. `FileFilter::new("Images", &["png", "jpg"])` |
 | `FsEntry` | Internal: one directory entry with pre-formatted size/date/type strings |
-| `IconOverrideFn` | Type alias for custom icon callback: `fn(&str) -> Option<(&'static str, [f32; 4])>` |
+| `IconOverrideFn` | Type alias for custom icon callback: `fn(&str) -> Option<(&'static str, [f32; 4])>` — return tuple is `(icon_glyph, rgba_color)` |
 
 ## Keyboard Shortcuts
 

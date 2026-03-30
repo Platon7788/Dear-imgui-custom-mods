@@ -10,7 +10,7 @@ Visual node graph editor for Dear ImGui, inspired by Blender and Unreal Blueprin
 
 - **Pan and zoom** (middle/right mouse + scroll wheel, zoom to cursor)
 - **Smooth zoom** animation with exponential ease-out interpolation
-- **3 wire styles**: Bezier, Straight, Orthogonal (smart 3/5-segment routing with obstacle avoidance)
+- **3 wire styles**: Bezier, Straight, Orthogonal — all with **obstacle-aware routing** that detects overlapping node AABBs in the wire corridor and routes around them
 - **Wire flow animation**: optional animated dots along wires showing data direction
 - **Per-pin color and style overrides** via `PinInfo`
 - **4 pin shapes**: Circle, Triangle, Square, Diamond
@@ -249,7 +249,14 @@ node_graph/
   viewer.rs   NodeGraphViewer<T> trait — user-implemented callbacks
   config.rs   NodeGraphConfig, NgColors — all tunables
   state.rs    InteractionState — viewport, selection, drag, pin positions
-  render.rs   All ImDrawList rendering + input handling
+  render/
+    mod.rs      Main render entry point, orchestrates sub-modules
+    grid.rs     Canvas grid rendering with rotation support
+    nodes.rs    Node frame, pin, and body rendering
+    wires.rs    Wire routing, rendering, and flow animation
+    math.rs     Geometry: bezier, orthogonal routing, obstacle avoidance, hit testing
+    input.rs    Mouse/keyboard input handling with wire hit testing
+    overlays.rs Stats overlay and interactive mini-map
   types.rs    NodeId, InPinId, OutPinId, Wire, PinInfo, PinShape, GraphAction
 ```
 
@@ -261,3 +268,5 @@ node_graph/
 - **Draw order**: `Vec<NodeId>` + `HashSet<NodeId>` for O(1) membership check
 - **Selection**: `HashSet<NodeId>` for O(1) select/deselect/query
 - **Frustum culling**: viewport bounds computed in graph space each frame; off-screen nodes skipped entirely
+- **Obstacle-aware wire routing**: per-frame AABB collection (`collect_node_aabbs`) shared by rendering and hit testing — wire paths match their hit zones exactly
+- **Shared wire geometry**: `ortho_wire_points()` and `obstacle_aware_bezier_cps()` are used by both `draw_wire_smart()` and `wire_hit_test()` — single source of truth

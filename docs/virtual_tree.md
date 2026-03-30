@@ -27,7 +27,7 @@ Inspired by DevExpress VirtualTreeList and Delphi VirtualStringTree.
 - **Per-node icons**: glyph, colored glyph, color swatch, or custom-rendered
 - **Badges** — optional text after node label (e.g. children count, status)
 - **Clip tooltips** — automatic tooltip when cell text is wider than column
-- **Lazy children loading** via callback
+- **Lazy children loading** — enable `config.lazy_load = true`; the tree calls `has_children()` to show the expand arrow, then loads children on first expand
 - **Keyboard navigation**: Up/Down (flat), Left (collapse/parent), Right (expand/child)
 - **Per-row and per-cell styling** (background color, text color)
 - **Context menus** — right-click with node tracking

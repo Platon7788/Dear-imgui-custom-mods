@@ -34,6 +34,7 @@ Built entirely on ImGui's DrawList API (no `InputTextMultiline`), giving full co
 - **Whitespace visualization** (toggle via context menu)
 - **Error/warning markers** with underlines and gutter icons
 - **Breakpoints** with gutter indicators
+- **I-beam cursor** — text-area I-beam cursor when hovering the editor
 - **Right-click context menu** with fine-grained section control
 - **Read-only mode**
 - **Auto English keyboard layout** on focus (Windows, opt-in)
@@ -192,6 +193,15 @@ install_custom_code_editor_font(&mut ctx, my_ttf_bytes, 16.0, "My Font");
 | Method | Description |
 |--------|-------------|
 | `render(ui)` | Render the editor widget (call once per frame) |
+
+### Find Bar (v1.69+)
+
+The find bar features:
+- **Match count display** — shows "N of M matches" with live update
+- **Case-sensitive toggle** button
+- **Match navigation** — F3/Shift+F3 or Enter to cycle through matches
+- **Replace and Replace All** — when opened with Ctrl+H
+- **Auto-close on Escape**
 
 ## EditorConfig
 

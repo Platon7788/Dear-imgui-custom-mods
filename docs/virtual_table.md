@@ -202,8 +202,12 @@ The RingBuffer always evicts the oldest row when full — this is inherent to th
 
 - **Raw pointer for sort specs** — `handle_sort()` avoids `Vec::clone()` of sort specifications per sort operation.
 - **Raw pointer for CellEditor** — `render_editor_inline()` avoids cloning `Vec<String>` (ComboBox items) per frame.
-- **`take_cell_value()`** — moves String out of edit buffer via `mem::replace` instead of cloning (zero-copy commit).
+- **`take_cell_value()`** — moves String out of edit buffer via `mem::replace` instead of cloning (zero-copy commit). This is the key optimization for inline editing — no allocation when committing an edit.
 - **Safe error handling** — all `unwrap()` calls in render paths replaced with `if let Some` / `let Some else continue` patterns.
+
+### RingBuffer Capacity
+
+`RingBuffer::new(capacity)` clamps capacity to `MAX_TABLE_ROWS` (1,000,000). When the buffer is full, `push()` overwrites the oldest entry (FIFO) — this is always active by design. There is no way to disable eviction on the ring buffer; use a `Vec<T>` if you need unbounded storage.
 
 ## Architecture
 
