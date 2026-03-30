@@ -1,0 +1,44 @@
+# ─── Build artifacts ──────────────────────────────────────────────────────────
+/target/
+**/*.rs.bk
+*.pdb
+*.exe
+*.dll
+*.dylib
+*.so
+*.d
+
+# ─── Cargo ────────────────────────────────────────────────────────────────────
+# Keep Cargo.lock for applications (binary crate); uncomment for libraries:
+# Cargo.lock
+
+# ─── IDE / Editor ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Claude Code / AI tooling ────────────────────────────────────────────────
+.claude/
+.claude-flow/
+.mcp.json
+
+# ─── Environment / Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+
+# ─── OS generated ─────────────────────────────────────────────────────────────
+*.tmp
+*.bak
+*.log
+
+# ─── Stray / temp files in root ───────────────────────────────────────────────
+/0
+/1.png

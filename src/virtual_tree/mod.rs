@@ -29,7 +29,7 @@
 //! ├── flat_view.rs  FlatView — cached linearization for ListClipper
 //! ├── sort.rs       Sibling-scoped sort state
 //! ├── filter.rs     FilterState — search with auto-expand
-//! └── drag.rs       DragDropState for node reparenting
+//! └── drag.rs       Drag-and-drop constants for node reparenting
 //! ```
 
 pub mod arena;
@@ -60,7 +60,6 @@ use dear_imgui_rs::{
 use std::collections::HashSet;
 
 use arena::TreeArena;
-use drag::DragDropState;
 use sort::{SortSpec, SortState};
 
 /// Fast hash set for NodeId. Uses `foldhash` for O(1) operations.
@@ -189,7 +188,6 @@ pub struct VirtualTree<T: VirtualTreeNode> {
     // Internal state
     edit_state: EditState,
     sort_state: SortState,
-    drag_state: DragDropState,
     filter_state: FilterState,
     cell_buf: String,
 
@@ -234,7 +232,6 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             button_clicked: None,
             edit_state: EditState::default(),
             sort_state: SortState::default(),
-            drag_state: DragDropState::new(),
             filter_state: FilterState::new(),
             cell_buf: String::with_capacity(256),
             pending_toggle: None,
@@ -745,17 +742,15 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         }
 
         // Tooltip
-        if ui.is_item_hovered() {
-            if let Some(data) = self.arena.get_data(node_id) {
-                if !data.render_tooltip(ui) {
+        if ui.is_item_hovered()
+            && let Some(data) = self.arena.get_data(node_id)
+                && !data.render_tooltip(ui) {
                     self.cell_buf.clear();
                     data.row_tooltip(&mut self.cell_buf);
                     if !self.cell_buf.is_empty() {
                         ui.tooltip_text(&self.cell_buf);
                     }
                 }
-            }
-        }
 
         // Context menu
         if ui.is_item_hovered() && ui.is_mouse_clicked(MouseButton::Right) {
@@ -769,12 +764,11 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // ── Drag-and-drop ───────────────────────────────────────────
         if self.config.drag_drop_enabled {
             // Drag source
-            let is_draggable = self.arena.get_data(node_id).map_or(false, |d| d.is_draggable());
-            if is_draggable {
-                if let Some(tooltip) = ui.drag_drop_source_config(drag::DRAG_DROP_TYPE)
+            let is_draggable = self.arena.get_data(node_id).is_some_and(|d| d.is_draggable());
+            if is_draggable
+                && let Some(tooltip) = ui.drag_drop_source_config(drag::DRAG_DROP_TYPE)
                     .begin_payload(node_id)
                 {
-                    self.drag_state.dragging = Some(node_id);
                     // Show node name as drag tooltip
                     if let Some(data) = self.arena.get_data(node_id) {
                         self.cell_buf.clear();
@@ -783,15 +777,14 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     }
                     tooltip.end();
                 }
-            }
 
             // Drop target
             if let Some(target) = ui.drag_drop_target() {
                 if let Some(Ok(payload)) = target.accept_payload::<NodeId, _>(
                     drag::DRAG_DROP_TYPE,
                     dear_imgui_rs::DragDropFlags::NONE,
-                ) {
-                    if payload.delivery {
+                )
+                    && payload.delivery {
                         let dragged_id = payload.data;
                         // Check if target accepts this drop
                         let accepted = self.arena.get_data(node_id)
@@ -811,7 +804,6 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                             self.last_reparent = Some((dragged_id, Some(node_id), pos));
                         }
                     }
-                }
                 target.pop();
             }
         }
@@ -999,9 +991,9 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                         .default_open(flat_row.is_expanded);
                     let token = node.push();
                     // NO_TREE_PUSH_ON_OPEN means TreePush was NOT called,
-                    // so we must NOT TreePop.
+                    // so we must NOT run Drop (which calls TreePop).
                     if let Some(t) = token {
-                        std::mem::forget(t);
+                        let _ = std::mem::ManuallyDrop::new(t);
                     }
 
                     if ui.is_item_toggled_open() {
@@ -1108,29 +1100,24 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     let val = data.cell_value(col_idx);
                     if let CellValue::Bool(mut b) = val
                         && ui.checkbox("##cb", &mut b)
-                    {
-                        if let Some(data) = self.arena.get_data_mut(node_id) {
+                        && let Some(data) = self.arena.get_data_mut(node_id) {
                             data.set_cell_value(col_idx, &CellValue::Bool(b));
                         }
-                    }
                 }
             }
             EditorKind::ComboBox => {
-                // SAFETY: pointer avoids borrow conflict — self.columns is not mutated
-                // while self.arena is borrowed mutably below.
                 let items = match &self.columns[col_idx].editor {
-                    CellEditor::ComboBox { items } => unsafe { &*(items as *const Vec<String>) },
+                    CellEditor::ComboBox { items } => items.clone(),
                     _ => { self.edit_state.deactivate(); return; }
                 };
                 if let Some(data) = self.arena.get_data(node_id) {
                     let val = data.cell_value(col_idx);
                     if let CellValue::Choice(mut choice) = val {
                         ui.set_next_item_width(-1.0);
-                        if ui.combo_simple_string("##combo", &mut choice, items) {
-                            if let Some(data) = self.arena.get_data_mut(node_id) {
+                        if ui.combo_simple_string("##combo", &mut choice, &items)
+                            && let Some(data) = self.arena.get_data_mut(node_id) {
                                 data.set_cell_value(col_idx, &CellValue::Choice(choice));
                             }
-                        }
                     }
                 }
             }
@@ -1142,21 +1129,18 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                         if ui.color_edit4_config("##color", &mut c)
                             .flags(dear_imgui_rs::ColorEditFlags::NO_INPUTS)
                             .build()
-                        {
-                            if let Some(data) = self.arena.get_data_mut(node_id) {
+                            && let Some(data) = self.arena.get_data_mut(node_id) {
                                 data.set_cell_value(col_idx, &CellValue::Color(c));
                             }
-                        }
                     }
                 }
             }
             EditorKind::Button => {
-                // SAFETY: same as ComboBox above — pointer avoids borrow conflict.
                 let label = match &self.columns[col_idx].editor {
-                    CellEditor::Button { label } => unsafe { &*(label as *const String) },
+                    CellEditor::Button { label } => label.clone(),
                     _ => { self.edit_state.deactivate(); return; }
                 };
-                if ui.button(label) {
+                if ui.button(&label) {
                     self.button_clicked = Some((node_id, col_idx));
                 }
             }
@@ -1271,18 +1255,15 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
         ui.set_next_item_width(-1.0);
 
-        // SAFETY: We take a pointer to avoid cloning CellEditor (which may contain Vec<String>).
-        // The pointer is valid for the duration of this function because self.columns is not
-        // mutated during editor rendering.
-        let editor_ptr = &self.columns[col_idx].editor as *const CellEditor;
-        let editor_snapshot = unsafe { &*editor_ptr };
+        // Clone the editor config to avoid borrow conflict with self.edit_state/self.arena.
+        let editor_snapshot = self.columns[col_idx].editor.clone();
         let first_frame = self.edit_state.just_activated;
         if first_frame {
             self.edit_state.just_activated = false;
         }
         self.edit_state.frames_active += 1;
 
-        match editor_snapshot {
+        match &editor_snapshot {
             CellEditor::TextInput => {
                 if first_frame {
                     unsafe { dear_imgui_rs::sys::igSetKeyboardFocusHere(0) };
@@ -1391,7 +1372,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         if cancel {
             self.edit_state.deactivate();
         } else if commit {
-            let value = self.edit_state.take_cell_value(editor_snapshot);
+            let value = self.edit_state.take_cell_value(&editor_snapshot);
             if let Some(data) = self.arena.get_data_mut(node_id) {
                 data.set_cell_value(col_idx, &value);
             }
@@ -1471,9 +1452,9 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             }
         }
 
-        if ui.is_key_pressed(Key::RightArrow) {
-            if let Some(anchor) = self.selection_anchor {
-                if let Some(row) = self.flat_view.rows.get(anchor) {
+        if ui.is_key_pressed(Key::RightArrow)
+            && let Some(anchor) = self.selection_anchor
+                && let Some(row) = self.flat_view.rows.get(anchor) {
                     let node_id = row.node_id;
                     if !row.is_leaf && !row.is_expanded {
                         self.pending_toggle = Some(node_id);
@@ -1481,23 +1462,18 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                         self.select_flat_row(anchor + 1);
                     }
                 }
-            }
-        }
 
-        if ui.is_key_pressed(Key::LeftArrow) {
-            if let Some(anchor) = self.selection_anchor {
-                if let Some(row) = self.flat_view.rows.get(anchor) {
+        if ui.is_key_pressed(Key::LeftArrow)
+            && let Some(anchor) = self.selection_anchor
+                && let Some(row) = self.flat_view.rows.get(anchor) {
                     let node_id = row.node_id;
                     if !row.is_leaf && row.is_expanded {
                         self.pending_toggle = Some(node_id);
-                    } else if let Some(parent_id) = self.arena.parent(node_id) {
-                        if let Some(parent_flat) = self.flat_view.index_of(parent_id) {
+                    } else if let Some(parent_id) = self.arena.parent(node_id)
+                        && let Some(parent_flat) = self.flat_view.index_of(parent_id) {
                             self.select_flat_row(parent_flat);
                         }
-                    }
                 }
-            }
-        }
 
         // Delete
         if ui.is_key_pressed(Key::Delete) && !self.selected_nodes.is_empty() {
@@ -1522,8 +1498,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // F2
         if ui.is_key_pressed(Key::F2)
             && self.config.table.edit_trigger == EditTrigger::F2Key
-        {
-            if let Some(anchor) = self.selection_anchor {
+            && let Some(anchor) = self.selection_anchor {
                 for c in 0..self.columns.len() {
                     if !matches!(
                         editor_kind(&self.columns[c].editor),
@@ -1540,7 +1515,6 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     }
                 }
             }
-        }
     }
 
     fn select_flat_row(&mut self, flat_idx: usize) {

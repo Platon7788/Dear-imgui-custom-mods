@@ -1,0 +1,36 @@
+[package]
+name = "dear-imgui-custom-mod"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+description = "Custom UI components for dear-imgui-rs"
+
+[dependencies]
+dear-imgui-rs = "0.10.4"
+foldhash = "0.2"
+
+[dev-dependencies]
+dear-imgui-wgpu = "0.10.4"
+dear-imgui-winit = "0.10.4"
+wgpu = "28"
+winit = "0.30"
+pollster = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+
+[[example]]
+name = "demo_table"
+path = "examples/demo_table.rs"
+
+[[example]]
+name = "demo_node_graph"
+path = "examples/demo_node_graph.rs"
+
+[[example]]
+name = "demo_tree"
+path = "examples/demo_tree.rs"
+
+[[example]]
+name = "demo_code_editor"
+path = "examples/demo_code_editor.rs"
