@@ -1,5 +1,6 @@
 //! Shared utility helpers for custom ImGui components.
 
+pub(crate) mod clipboard;
 pub mod color;
 pub mod text;
 

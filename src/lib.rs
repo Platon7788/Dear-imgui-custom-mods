@@ -37,6 +37,7 @@
 
 pub mod code_editor;
 pub mod diff_viewer;
+pub mod disasm_view;
 pub mod file_manager;
 pub mod hex_viewer;
 pub mod icons;

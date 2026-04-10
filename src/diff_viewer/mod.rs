@@ -90,6 +90,8 @@ pub struct DiffViewer {
     line_height: f32,
     /// Char advance (cached).
     char_advance: f32,
+    /// Last known scroll Y for sync (SideBySide mode).
+    sync_scroll_y: f32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -115,6 +117,7 @@ impl DiffViewer {
             config: DiffViewerConfig::default(),
             line_height: 0.0,
             char_advance: 0.0,
+            sync_scroll_y: 0.0,
         }
     }
 
@@ -364,10 +367,25 @@ impl DiffViewer {
                 let char_advance = self.char_advance;
                 let line_height = self.line_height;
 
+                let sync = cfg.sync_scroll;
+                let mut left_scroll_y = 0.0f32;
+                let mut right_scroll_y = 0.0f32;
+                let saved_sync_y = self.sync_scroll_y;
+
                 // Left panel
                 ui.child_window("##diff_left")
                     .size([panel_w, avail[1]])
                     .build(ui, || {
+                        if sync {
+                            let current = ui.scroll_y();
+                            if (current - saved_sync_y).abs() > 0.5 {
+                                // User scrolled the left panel — it's the source.
+                                left_scroll_y = current;
+                            } else {
+                                ui.set_scroll_y(saved_sync_y);
+                                left_scroll_y = saved_sync_y;
+                            }
+                        }
                         Self::render_panel_static(ui, &cfg, left_slice, true, char_advance, line_height);
                     });
 
@@ -390,8 +408,27 @@ impl DiffViewer {
                 ui.child_window("##diff_right")
                     .size([panel_w, avail[1]])
                     .build(ui, || {
+                        if sync {
+                            let current = ui.scroll_y();
+                            if (current - saved_sync_y).abs() > 0.5 {
+                                // User scrolled the right panel.
+                                right_scroll_y = current;
+                            } else {
+                                ui.set_scroll_y(saved_sync_y);
+                                right_scroll_y = saved_sync_y;
+                            }
+                        }
                         Self::render_panel_static(ui, &cfg, right_slice, false, char_advance, line_height);
                     });
+
+                // Update sync scroll position: whichever panel the user scrolled.
+                if sync {
+                    if (left_scroll_y - saved_sync_y).abs() > 0.5 {
+                        self.sync_scroll_y = left_scroll_y;
+                    } else if (right_scroll_y - saved_sync_y).abs() > 0.5 {
+                        self.sync_scroll_y = right_scroll_y;
+                    }
+                }
             }
             DiffMode::Unified => {
                 ui.child_window("##diff_unified")

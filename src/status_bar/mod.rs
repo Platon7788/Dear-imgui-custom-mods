@@ -222,7 +222,8 @@ impl StatusBar {
             col32(cfg.color_separator),
         ).build();
 
-        let text_y = cursor[1] + (bar_h - calc_text_size("A")[1]) * 0.5;
+        // Use "Mg" for representative glyph height (covers ascenders + descenders).
+        let text_y = cursor[1] + (bar_h - calc_text_size("Mg")[1]) * 0.5;
 
         // ── Left items ──────────────────────────────────────────────
         let mut x = cursor[0] + cfg.item_padding;

@@ -186,7 +186,7 @@ impl PropertyInspector {
         }
 
         let avail = ui.content_region_avail();
-        let key_w = avail[0] * cfg.key_width_ratio;
+        let key_w = avail[0].max(1.0) * cfg.key_width_ratio.clamp(0.1, 0.9);
 
         ui.child_window("##inspector_scroll")
             .size(avail)
@@ -446,9 +446,8 @@ impl PropertyInspector {
         // Recursively render children if expanded
         if prop.expanded && !prop.children.is_empty() {
             for child_idx in 0..prop.children.len() {
-                prop.children[child_idx].depth = prop.depth + 1;
-                // We need to split the borrow: take child out temporarily
-                // to satisfy the borrow checker with mutable recursion.
+                // Take child out temporarily to satisfy the borrow checker
+                // with mutable recursion.
                 let mut child = std::mem::take(&mut prop.children[child_idx]);
                 child.depth = prop.depth + 1;
                 Self::render_property(

@@ -154,18 +154,22 @@ pub enum ToolbarEvent {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /// Build the display string by combining icon and label.
-fn display_text(item: &ToolbarItem) -> String {
+///
+/// Returns a `Cow<str>` to avoid allocation when only one part is present.
+fn display_text(item: &ToolbarItem) -> std::borrow::Cow<'_, str> {
     display_text_ref(&item.icon, &item.label)
 }
 
 /// Build the display string from icon and label references.
-fn display_text_ref(icon: &str, label: &str) -> String {
+///
+/// Zero-alloc when only icon or label is present.
+fn display_text_ref<'a>(icon: &'a str, label: &'a str) -> std::borrow::Cow<'a, str> {
     if icon.is_empty() {
-        label.to_owned()
+        std::borrow::Cow::Borrowed(label)
     } else if label.is_empty() {
-        icon.to_owned()
+        std::borrow::Cow::Borrowed(icon)
     } else {
-        format!("{} {}", icon, label)
+        std::borrow::Cow::Owned(format!("{} {}", icon, label))
     }
 }
 
@@ -201,6 +205,27 @@ impl Toolbar {
     pub fn items(&self) -> &[ToolbarItem] {
         &self.items
     }
+
+    /// Get a specific item by index.
+    pub fn get(&self, index: usize) -> Option<&ToolbarItem> {
+        self.items.get(index)
+    }
+
+    /// Get a specific item mutably by index.
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut ToolbarItem> {
+        self.items.get_mut(index)
+    }
+
+    /// Remove an item by index. Returns the removed item.
+    pub fn remove(&mut self, index: usize) -> ToolbarItem {
+        self.items.remove(index)
+    }
+
+    /// Number of items.
+    pub fn len(&self) -> usize { self.items.len() }
+
+    /// Whether the toolbar has no items.
+    pub fn is_empty(&self) -> bool { self.items.is_empty() }
 
     /// Clear all items.
     pub fn clear(&mut self) {
@@ -252,7 +277,7 @@ impl Toolbar {
                     let label = if *selected < options.len() {
                         format!("{} [{}]", base, options[*selected])
                     } else {
-                        base
+                        base.into_owned()
                     };
                     fixed_w += calc_text_size(&label)[0] + cfg.button_padding * 2.0
                         + cfg.item_spacing;
@@ -296,10 +321,10 @@ impl Toolbar {
 
             // Shared pre-computation for Button / Toggle / Dropdown
             let base_display = display_text_ref(&item.icon, &item.label);
-            let full_display = match &item.kind {
+            let full_display: std::borrow::Cow<'_, str> = match &item.kind {
                 ToolbarItemKind::Dropdown { options, selected } => {
                     if *selected < options.len() {
-                        format!("{} [{}]", base_display, options[*selected])
+                        std::borrow::Cow::Owned(format!("{} [{}]", base_display, options[*selected]))
                     } else {
                         base_display.clone()
                     }
@@ -348,7 +373,7 @@ impl Toolbar {
                         if ui.is_mouse_clicked(MouseButton::Left) {
                             events.push(ToolbarEvent::ButtonClicked {
                                 index: idx,
-                                label: item.label.clone(),
+                                label: item.label.clone(), // clone only on event (not per-frame)
                             });
                         }
 
@@ -392,7 +417,7 @@ impl Toolbar {
                             *on = !*on;
                             events.push(ToolbarEvent::Toggled {
                                 index: idx,
-                                label: item.label.clone(),
+                                label: item.label.clone(), // clone only on event (not per-frame)
                                 on: *on,
                             });
                         }
@@ -428,7 +453,7 @@ impl Toolbar {
                             *selected = (*selected + 1) % options.len();
                             events.push(ToolbarEvent::DropdownChanged {
                                 index: idx,
-                                label: item.label.clone(),
+                                label: item.label.clone(), // clone only on event (not per-frame)
                                 selected: *selected,
                             });
                         }

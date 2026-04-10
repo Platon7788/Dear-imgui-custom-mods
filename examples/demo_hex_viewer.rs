@@ -1,12 +1,14 @@
 //! Demo: HexViewer — binary hex dump viewer showcase.
 //!
-//! Demonstrates color regions, data inspector, search, goto,
-//! diff highlighting, editing mode, and all configuration options.
+//! Demonstrates color regions, data inspector, wildcard search, goto,
+//! diff highlighting, editing with undo/redo, navigation history,
+//! semantic byte-category coloring, copy formats, and all configuration options.
 //!
 //! Run: cargo run --example demo_hex_viewer
 
 use dear_imgui_custom_mod::hex_viewer::{
-    ByteGrouping, BytesPerRow, ColorRegion, Endianness, HexViewer,
+    ByteGrouping, BytesPerRow, ColorRegion, CopyFormat,
+    Endianness, HexSearchMode, HexViewer,
 };
 use dear_imgui_rs::{Condition, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
@@ -91,6 +93,8 @@ struct DemoState {
     group_idx: usize,
     show_regions: bool,
     diff_mode: bool,
+    copy_fmt_idx: usize,
+    search_mode_idx: usize,
     /// Snapshot for diff highlighting.
     reference: Vec<u8>,
 }
@@ -107,10 +111,12 @@ impl DemoState {
         Self {
             viewer,
             show_config: true,
-            bpr_idx: 1, // 16
+            bpr_idx: 2, // 16 (index into [8,12,16,20,24,28,32])
             group_idx: 2, // DWord
             show_regions: true,
             diff_mode: false,
+            copy_fmt_idx: 0,
+            search_mode_idx: 0,
             reference,
         }
     }
@@ -125,7 +131,7 @@ impl DemoState {
 
                 // ── Layout: viewer + config ──────────────────────────
                 let avail = ui.content_region_avail();
-                let config_w = if self.show_config { 240.0 } else { 0.0 };
+                let config_w = if self.show_config { 260.0 } else { 0.0 };
                 let viewer_w = avail[0] - config_w - if self.show_config { 8.0 } else { 0.0 };
 
                 ui.child_window("##viewer_col")
@@ -164,15 +170,20 @@ impl DemoState {
             );
         }
 
+        // Undo/redo status
+        let undo_stack = self.viewer.undo_stack();
+        if undo_stack.can_undo() || undo_stack.can_redo() {
+            ui.same_line();
+            ui.text_colored(
+                [0.7, 0.7, 0.5, 1.0],
+                format!("  Undo:{} Redo:{}", undo_stack.undo_count(), undo_stack.redo_count()),
+            );
+        }
+
         ui.same_line_with_pos(ui.content_region_avail()[0] - 120.0);
         ui.checkbox("Config", &mut self.show_config);
 
-        // Action buttons
-        if ui.button("Goto (Ctrl+G)") {
-            // Trigger goto popup via keyboard sim — or just set cursor directly
-            self.viewer.goto(0x80); // jump to PE signature
-        }
-        ui.same_line();
+        // Navigation buttons
         if ui.button("Top") {
             self.viewer.goto(0);
         }
@@ -185,8 +196,24 @@ impl DemoState {
             self.viewer.goto(0x100);
         }
         ui.same_line();
+
+        // Nav back/forward
+        let can_back = self.viewer.nav_history().can_go_back();
+        let can_fwd = self.viewer.nav_history().can_go_forward();
+        if can_back {
+            if ui.button("<< Back") { self.viewer.nav_back(); }
+        } else {
+            ui.text_disabled("<< Back");
+        }
+        ui.same_line();
+        if can_fwd {
+            if ui.button("Fwd >>") { self.viewer.nav_forward(); }
+        } else {
+            ui.text_disabled("Fwd >>");
+        }
+        ui.same_line();
+
         if ui.button("Randomize 8 bytes") {
-            // Modify some bytes to demo diff highlighting.
             let data = self.viewer.data_mut();
             let offset = 0x90;
             for i in 0..8 {
@@ -195,14 +222,18 @@ impl DemoState {
                 }
             }
         }
+        ui.same_line();
+        if ui.button("Undo") { self.viewer.undo(); }
+        ui.same_line();
+        if ui.button("Redo") { self.viewer.redo(); }
     }
 
     fn render_config(&mut self, ui: &Ui) {
         ui.text("Configuration");
         ui.separator();
 
-        // Bytes per row
-        let bpr_names = ["8", "16", "32"];
+        // Bytes per row (8,12,16,20,24,28,32)
+        let bpr_names = ["8", "12", "16", "20", "24", "28", "32"];
         ui.set_next_item_width(-1.0);
         if ui.combo_simple_string("Bytes/Row", &mut self.bpr_idx, &bpr_names) {
             self.viewer.config_mut().bytes_per_row = BytesPerRow::ALL[self.bpr_idx];
@@ -231,6 +262,32 @@ impl DemoState {
             };
         }
 
+        // Copy format
+        let copy_names = ["Hex Spaced", "Hex Compact", "C Array", "Rust Array", "Base64", "ASCII"];
+        ui.set_next_item_width(-1.0);
+        if ui.combo_simple_string("Copy Format", &mut self.copy_fmt_idx, &copy_names) {
+            self.viewer.config_mut().copy_format = match self.copy_fmt_idx {
+                0 => CopyFormat::HexSpaced,
+                1 => CopyFormat::HexCompact,
+                2 => CopyFormat::CArray,
+                3 => CopyFormat::RustArray,
+                4 => CopyFormat::Base64,
+                5 => CopyFormat::Ascii,
+                _ => CopyFormat::HexSpaced,
+            };
+        }
+
+        // Search mode
+        let search_names = ["Hex (with ??)", "ASCII"];
+        ui.set_next_item_width(-1.0);
+        if ui.combo_simple_string("Search Mode", &mut self.search_mode_idx, &search_names) {
+            self.viewer.config_mut().search_mode = match self.search_mode_idx {
+                0 => HexSearchMode::Hex,
+                1 => HexSearchMode::Ascii,
+                _ => HexSearchMode::Hex,
+            };
+        }
+
         ui.spacing();
         ui.separator();
         ui.text("Display");
@@ -241,6 +298,7 @@ impl DemoState {
         ui.checkbox("Column Headers", &mut self.viewer.config.show_column_headers);
         ui.checkbox("Uppercase Hex", &mut self.viewer.config.uppercase);
         ui.checkbox("Dim Zeros", &mut self.viewer.config.dim_zeros);
+        ui.checkbox("Category Colors", &mut self.viewer.config.category_colors);
 
         ui.spacing();
         ui.separator();
@@ -278,6 +336,18 @@ impl DemoState {
         ui.spacing();
         ui.separator();
 
+        // Byte category legend
+        if self.viewer.config.category_colors {
+            ui.text("Byte Categories");
+            let cfg = &self.viewer.config;
+            ui.text_colored(cfg.color_cat_zero, "00 = Zero");
+            ui.text_colored(cfg.color_cat_control, "01..1F = Control");
+            ui.text_colored(cfg.color_cat_printable, "20..7E = Printable");
+            ui.text_colored(cfg.color_cat_high, "80..FE = High");
+            ui.text_colored(cfg.color_cat_full, "FF = Full");
+            ui.spacing();
+        }
+
         // Region legend
         if self.show_regions {
             ui.text("Regions");
@@ -293,9 +363,12 @@ impl DemoState {
 
         ui.spacing();
         ui.separator();
-        ui.text_disabled("Ctrl+G: Goto  Ctrl+F: Search");
-        ui.text_disabled("Ctrl+C: Copy  F3: Next match");
+        ui.text_disabled("Ctrl+G: Goto   Ctrl+F: Search");
+        ui.text_disabled("Ctrl+C: Copy   F3: Next match");
+        ui.text_disabled("Ctrl+Z: Undo   Ctrl+Y: Redo");
+        ui.text_disabled("Alt+</>: Nav back/forward");
         ui.text_disabled("Arrows: Navigate  Shift: Select");
+        ui.text_disabled("Search supports ?? wildcards");
     }
 }
 
@@ -373,7 +446,6 @@ impl ApplicationHandler for App {
         let font_size = 15.0 * hidpi;
         context.io_mut().set_font_global_scale(1.0 / hidpi);
 
-        // Load a monospace font for the hex viewer.
         use dear_imgui_custom_mod::code_editor::BuiltinFont;
         let cfg = dear_imgui_rs::FontConfig::new()
             .size_pixels(font_size)
