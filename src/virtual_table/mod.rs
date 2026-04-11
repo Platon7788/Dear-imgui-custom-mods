@@ -137,7 +137,9 @@ pub use config::{BorderStyle, EditTrigger, RowDensity, SelectionMode, SizingPoli
 pub use ring_buffer::{RingBuffer, MAX_TABLE_ROWS};
 pub use row::{CellStyle, CellValue, RowStyle, VirtualTableRow};
 
+use crate::utils::clipboard::{c_key_down_physical, set_clipboard};
 use crate::utils::text::calc_text_size;
+use column::{alignment_pad, editor_kind, EditorKind};
 use dear_imgui_rs::{
     Key, ListClipper, MouseButton, SelectableFlags, TableBgTarget, TableRowFlags, Ui,
 };
@@ -187,6 +189,17 @@ pub struct VirtualTable<T: VirtualTableRow> {
     /// Set to `Some((row, col))` when a `CellEditor::Button` is clicked. Reset each frame.
     pub button_clicked: Option<(usize, usize)>,
 
+    /// Set to `Some(text)` when **Ctrl+C** copies selected rows this frame
+    /// (requires [`TableConfig::copy_to_clipboard`] = `true`). Reset each frame.
+    pub copied_text: Option<String>,
+
+    /// Tracks whether the physical C key was held last frame (for edge detection).
+    /// Needed for layout-independent Ctrl+C: we read the Windows scancode directly.
+    c_key_prev: bool,
+
+    /// Row index to scroll to on the next frame. Set via `scroll_to_row()`.
+    pending_scroll_to: Option<usize>,
+
     edit_state: EditState,
     sort_state: SortState,
     cell_buf: String,
@@ -217,6 +230,9 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             context_col: None,
             open_context_menu: false,
             button_clicked: None,
+            copied_text: None,
+            c_key_prev: false,
+            pending_scroll_to: None,
             edit_state: EditState::default(),
             sort_state: SortState::default(),
             cell_buf: String::with_capacity(256),
@@ -267,11 +283,11 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // In-place: collect indices that need decrement, then rebuild.
         // This avoids allocating a second IndexSet.
         self.selected_rows.remove(&index);
-        let mut shifted = IndexSet::default();
-        for &r in &self.selected_rows {
-            shifted.insert(if r > index { r - 1 } else { r });
+        // Drain + reinsert reuses the HashSet's allocated capacity (no reallocation).
+        let indices: Vec<usize> = self.selected_rows.drain().collect();
+        for r in indices {
+            self.selected_rows.insert(if r > index { r - 1 } else { r });
         }
-        self.selected_rows = shifted;
         // Adjust anchor
         if let Some(a) = self.selection_anchor {
             if a == index {
@@ -331,6 +347,20 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.selection_anchor = None;
     }
 
+    /// Programmatically select a single row (clears previous selection) and
+    /// scroll to it on the next frame.
+    pub fn select_row(&mut self, idx: usize) {
+        self.selected_rows.clear();
+        self.selected_rows.insert(idx);
+        self.selection_anchor = Some(idx);
+        self.pending_scroll_to = Some(idx);
+    }
+
+    /// Request scroll to the given row index on the next frame.
+    pub fn scroll_to_row(&mut self, idx: usize) {
+        self.pending_scroll_to = Some(idx);
+    }
+
     // ─── Editing ────────────────────────────────────────────────────
 
     pub fn is_editing(&self) -> bool {
@@ -339,6 +369,97 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
     pub fn cancel_edit(&mut self) {
         self.edit_state.deactivate();
+    }
+
+    // ─── Export / Import ────────────────────────────────────────────
+
+    /// Export selected rows (or all if none selected) to a `FlatExportData`.
+    ///
+    /// Requires `T: Exportable`. Only available when export is conceptually enabled.
+    pub fn export_data(
+        &self,
+        scope: crate::utils::export::ExportScope,
+    ) -> crate::utils::export::FlatExportData
+    where
+        T: crate::utils::export::Exportable,
+    {
+        let names = T::field_names();
+        let columns: Vec<String> = names.iter().map(|s| s.to_string()).collect();
+        let mut data = crate::utils::export::FlatExportData::new(columns);
+
+        match scope {
+            crate::utils::export::ExportScope::Selected => {
+                for idx in self.selected_rows() {
+                    if let Some(row) = self.data.get(idx) {
+                        let vals: Vec<crate::utils::export::FieldValue> = (0..T::field_count())
+                            .map(|c| row.field_value(c))
+                            .collect();
+                        data.add_row(vals);
+                    }
+                }
+            }
+            crate::utils::export::ExportScope::All => {
+                for row in self.data.iter() {
+                    let vals: Vec<crate::utils::export::FieldValue> = (0..T::field_count())
+                        .map(|c| row.field_value(c))
+                        .collect();
+                    data.add_row(vals);
+                }
+            }
+        }
+
+        // If scope was Selected but nothing was selected, export all.
+        if data.rows.is_empty() && scope == crate::utils::export::ExportScope::Selected {
+            return self.export_data(crate::utils::export::ExportScope::All);
+        }
+
+        data
+    }
+
+    /// Export to string in the given format.
+    pub fn export_string(
+        &self,
+        scope: crate::utils::export::ExportScope,
+        format: crate::utils::export::ExportFormat,
+    ) -> String
+    where
+        T: crate::utils::export::Exportable,
+    {
+        let data = self.export_data(scope);
+        crate::utils::export::format_flat(&data, format)
+    }
+
+    /// Export to file. Format auto-detected from extension.
+    pub fn export_to_file(
+        &self,
+        scope: crate::utils::export::ExportScope,
+        path: &std::path::Path,
+    ) -> std::io::Result<()>
+    where
+        T: crate::utils::export::Exportable,
+    {
+        let data = self.export_data(scope);
+        crate::utils::export::export_flat_to_file(&data, path, None)
+    }
+
+    /// Import rows from file, appending to the table.
+    pub fn import_from_file(&mut self, path: &std::path::Path) -> Option<usize>
+    where
+        T: crate::utils::export::Importable,
+    {
+        let data = crate::utils::export::import_flat_from_file(path)?;
+        let mut count = 0;
+        for row_vals in &data.rows {
+            let fields: Vec<(&str, crate::utils::export::FieldValue)> = data.columns.iter()
+                .zip(row_vals.iter())
+                .map(|(k, v)| (k.as_str(), v.clone()))
+                .collect();
+            if let Some(item) = T::from_fields(&fields) {
+                self.push(item);
+                count += 1;
+            }
+        }
+        Some(count)
     }
 
     // ─── Render (ring buffer) ───────────────────────────────────────
@@ -351,6 +472,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
     pub fn render(&mut self, ui: &Ui) {
         self.double_clicked_row = None;
         self.button_clicked = None;
+        self.copied_text = None;
 
         let col_count = self.columns.len();
         if col_count == 0 {
@@ -386,24 +508,38 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Sort
         self.handle_sort(ui);
 
-        // Rows
+        // Rows — explicit row height for accurate ListClipper virtualization.
         let row_count = self.data.len();
-        let clip = ListClipper::new(row_count as i32);
+        let row_h = self.effective_row_height(&None);
+        let clip = ListClipper::new(row_count as i32).items_height(row_h);
         let tok = clip.begin(ui);
 
         for row_idx in tok.iter() {
             self.render_row(ui, row_idx as usize);
         }
 
-        // Auto-scroll
-        if self.config.auto_scroll {
-            let wheel = ui.io().mouse_wheel();
-            if wheel > 0.0 && ui.is_window_hovered() {
-                self.config.auto_scroll = false;
-            }
-            if self.config.auto_scroll && row_count > 0 {
-                ui.set_scroll_here_y(1.0);
-            }
+        self.handle_keyboard_nav(ui, row_count);
+        self.handle_scroll(ui, row_count);
+
+        // Ctrl+C — copy selected rows.
+        // Uses physical key detection (layout-independent): on Windows we read
+        // VK_C (0x43) directly via GetAsyncKeyState so Russian/any layout works.
+        let c_now = c_key_down_physical();
+        let c_just = c_now && !self.c_key_prev;
+        self.c_key_prev = c_now;
+        if self.config.copy_to_clipboard
+            && !self.selected_rows.is_empty()
+            && ui.is_window_hovered()
+            && ui.io().key_ctrl()
+            && (c_just || (!c_now && ui.is_key_pressed(Key::C)))
+        {
+            let text = build_copy_text(&self.selected_rows, self.columns.len(), |ri, ci, buf| {
+                if let Some(row) = self.data.get(ri) {
+                    row.cell_display_text(ci, buf);
+                }
+            });
+            set_clipboard(&text);
+            self.copied_text = Some(text);
         }
     }
 
@@ -457,6 +593,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
     {
         self.double_clicked_row = None;
         self.button_clicked = None;
+        self.copied_text = None;
 
         let col_count = self.columns.len();
         if col_count == 0 {
@@ -492,7 +629,8 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // No sorting — data order is caller-managed.
 
         // Rows (read-only path: no inline editing)
-        let clip = ListClipper::new(row_count as i32);
+        let row_h = self.effective_row_height(&None);
+        let clip = ListClipper::new(row_count as i32).items_height(row_h);
         let tok = clip.begin(ui);
 
         for row_idx in tok.iter() {
@@ -505,15 +643,23 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             self.render_row_readonly(ui, idx, row);
         }
 
-        // Auto-scroll
-        if self.config.auto_scroll {
-            let wheel = ui.io().mouse_wheel();
-            if wheel > 0.0 && ui.is_window_hovered() {
-                self.config.auto_scroll = false;
-            }
-            if self.config.auto_scroll && row_count > 0 {
-                ui.set_scroll_here_y(1.0);
-            }
+        self.handle_keyboard_nav(ui, row_count);
+        self.handle_scroll(ui, row_count);
+
+        // Ctrl+C — copy selected rows (layout-independent: physical key position)
+        if self.config.copy_to_clipboard
+            && !self.selected_rows.is_empty()
+            && ui.is_window_hovered()
+            && ui.io().key_ctrl()
+            && ui.is_key_pressed(Key::C)
+        {
+            let text = build_copy_text(&self.selected_rows, self.columns.len(), |ri, ci, buf| {
+                if let Some(row) = get_row(ri) {
+                    row.cell_display_text(ci, buf);
+                }
+            });
+            set_clipboard(&text);
+            self.copied_text = Some(text);
         }
     }
 
@@ -539,6 +685,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         // Selection state — O(1) via foldhash-backed HashSet
         let is_selected = self.selected_rows.contains(&idx);
+
+        if is_selected && self.config.selection_color[3] > 0.0 {
+            ui.table_set_bg_color(TableBgTarget::RowBg1, self.config.selection_color, -1);
+        }
 
         let _row_id = ui.push_id(idx);
 
@@ -584,7 +734,12 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         }
 
         // ── Render cells (read-only: text + custom only) ───────────
-        let row_text_color = row_style.as_ref().and_then(|s| s.text_color);
+        let row_text_color = if is_selected {
+            self.config.selection_text_color
+                .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
+        } else {
+            row_style.as_ref().and_then(|s| s.text_color)
+        };
         let col_count = self.columns.len();
 
         // Vertical centering
@@ -736,7 +891,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         ui.table_next_row_with_flags(TableRowFlags::NONE, row_height);
 
-        // Row background
+        // Row background (custom row_style has lower priority than selection color)
         if let Some(ref style) = row_style
             && let Some(bg) = style.bg_color
         {
@@ -745,6 +900,13 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         // Selection state — O(1) via foldhash-backed HashSet
         let is_selected = self.selected_rows.contains(&idx);
+
+        // Paint the whole row with the selection color so it is clearly visible
+        // even when many rows are selected. Applied after row_style so selection
+        // always wins over custom row backgrounds.
+        if is_selected && self.config.selection_color[3] > 0.0 {
+            ui.table_set_bg_color(TableBgTarget::RowBg1, self.config.selection_color, -1);
+        }
 
         // Push row-level ID scope (covers selectable + ALL cells)
         let _row_id = ui.push_id(idx);
@@ -827,7 +989,13 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         }
 
         // ── Render cells ────────────────────────────────────────────
-        let row_text_color = row_style.as_ref().and_then(|s| s.text_color);
+        // Selection text color takes precedence over row_style text color
+        let row_text_color = if is_selected {
+            self.config.selection_text_color
+                .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
+        } else {
+            row_style.as_ref().and_then(|s| s.text_color)
+        };
         let col_count = self.columns.len();
 
         // Vertical centering offset: (row_height - widget_height) / 2
@@ -868,18 +1036,22 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                             }
                 }
                 EditorKind::ComboBox => {
-                    let items = match &self.columns[col_idx].editor {
-                        CellEditor::ComboBox { items } => items.clone(),
-                        _ => { self.edit_state.deactivate(); return; }
-                    };
-                    if let Some(val) = self.data.get(idx).map(|r| r.cell_value(col_idx))
-                        && let CellValue::Choice(mut choice) = val {
+                    let val = self.data.get(idx).map(|r| r.cell_value(col_idx));
+                    if let Some(CellValue::Choice(mut choice)) = val {
+                        let changed = {
+                            let items = match &self.columns[col_idx].editor {
+                                CellEditor::ComboBox { items } => items,
+                                _ => { self.edit_state.deactivate(); return; }
+                            };
                             ui.set_next_item_width(-1.0);
-                            if ui.combo_simple_string("##combo", &mut choice, &items)
-                                && let Some(row) = self.data.get_mut(idx) {
-                                    row.set_cell_value(col_idx, &CellValue::Choice(choice));
-                                }
+                            ui.combo_simple_string("##combo", &mut choice, items)
+                        };
+                        if changed {
+                            if let Some(row) = self.data.get_mut(idx) {
+                                row.set_cell_value(col_idx, &CellValue::Choice(choice));
+                            }
                         }
+                    }
                 }
                 EditorKind::ColorEdit => {
                     if let Some(val) = self.data.get(idx).map(|r| r.cell_value(col_idx))
@@ -894,11 +1066,14 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                         }
                 }
                 EditorKind::Button => {
-                    let label = match &self.columns[col_idx].editor {
-                        CellEditor::Button { label } => label.clone(),
-                        _ => { self.edit_state.deactivate(); return; }
+                    let clicked = {
+                        let label = match &self.columns[col_idx].editor {
+                            CellEditor::Button { label } => label.as_str(),
+                            _ => { self.edit_state.deactivate(); return; }
+                        };
+                        ui.button(label)
                     };
-                    if ui.button(&label) {
+                    if clicked {
                         self.button_clicked = Some((idx, col_idx));
                     }
                 }
@@ -1151,6 +1326,63 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             .unwrap_or(auto_h)
     }
 
+    // ─── Internal: keyboard navigation ─────────────────────────────
+
+    fn handle_keyboard_nav(&mut self, ui: &Ui, row_count: usize) {
+        if !ui.is_window_focused()
+            || self.edit_state.active
+            || self.config.selection_mode == SelectionMode::None
+            || row_count == 0
+        {
+            return;
+        }
+        let current = self.selection_anchor.unwrap_or(0);
+        let new_idx = if ui.is_key_pressed(Key::UpArrow) {
+            Some(current.saturating_sub(1))
+        } else if ui.is_key_pressed(Key::DownArrow) {
+            Some((current + 1).min(row_count - 1))
+        } else if ui.is_key_pressed(Key::Home) {
+            Some(0)
+        } else if ui.is_key_pressed(Key::End) {
+            Some(row_count - 1)
+        } else if ui.is_key_pressed(Key::PageUp) {
+            Some(current.saturating_sub(20))
+        } else if ui.is_key_pressed(Key::PageDown) {
+            Some((current + 20).min(row_count - 1))
+        } else {
+            None
+        };
+
+        if let Some(idx) = new_idx
+            && (idx != current || !self.selected_rows.contains(&idx))
+        {
+            self.selected_rows.clear();
+            self.selected_rows.insert(idx);
+            self.selection_anchor = Some(idx);
+            self.pending_scroll_to = Some(idx);
+        }
+    }
+
+    // ─── Internal: scroll ──────────────────────────────────────────
+
+    fn handle_scroll(&mut self, ui: &Ui, row_count: usize) {
+        if let Some(target) = self.pending_scroll_to.take()
+            && row_count > 0
+        {
+            let frac = target as f32 / (row_count - 1).max(1) as f32;
+            ui.set_scroll_y(frac * ui.scroll_max_y());
+        }
+        if self.config.auto_scroll {
+            let wheel = ui.io().mouse_wheel();
+            if wheel > 0.0 && ui.is_window_hovered() {
+                self.config.auto_scroll = false;
+            }
+            if self.config.auto_scroll && row_count > 0 {
+                ui.set_scroll_here_y(1.0);
+            }
+        }
+    }
+
     // ─── Internal: selection ────────────────────────────────────────
 
     fn handle_selection(&mut self, ui: &Ui, idx: usize) {
@@ -1195,38 +1427,28 @@ impl<T: VirtualTableRow> VirtualTable<T> {
     }
 }
 
-// ─── Helpers (free functions to avoid borrow issues) ────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────────
 
-fn alignment_pad(alignment: CellAlignment, col_w: f32, text_w: f32) -> f32 {
-    match alignment {
-        CellAlignment::Left => 0.0,
-        CellAlignment::Center => ((col_w - text_w) * 0.5).max(0.0),
-        CellAlignment::Right => (col_w - text_w - 4.0).max(0.0),
+/// Build tab-separated text from the given selection.
+/// `fill(row, col, buf)` writes display text for each cell into `buf`.
+fn build_copy_text<F>(selected: &IndexSet, col_count: usize, fill: F) -> String
+where
+    F: Fn(usize, usize, &mut String),
+{
+    let mut sorted: Vec<usize> = selected.iter().copied().collect();
+    sorted.sort_unstable();
+    let mut out = String::new();
+    let mut cell_buf = String::new();
+    for row_idx in sorted {
+        for col_idx in 0..col_count {
+            if col_idx > 0 {
+                out.push('\t');
+            }
+            cell_buf.clear();
+            fill(row_idx, col_idx, &mut cell_buf);
+            out.push_str(&cell_buf);
+        }
+        out.push('\n');
     }
-}
-
-/// Quick categorization of editor types to avoid matching the full enum in hot paths.
-#[derive(Clone, Copy, PartialEq)]
-enum EditorKind {
-    None,
-    Checkbox,
-    ComboBox,
-    Button,
-    ProgressBar,
-    ColorEdit,
-    Custom,
-    Other,
-}
-
-fn editor_kind(e: &CellEditor) -> EditorKind {
-    match e {
-        CellEditor::None => EditorKind::None,
-        CellEditor::Checkbox => EditorKind::Checkbox,
-        CellEditor::ComboBox { .. } => EditorKind::ComboBox,
-        CellEditor::Button { .. } => EditorKind::Button,
-        CellEditor::ProgressBar => EditorKind::ProgressBar,
-        CellEditor::ColorEdit => EditorKind::ColorEdit,
-        CellEditor::Custom => EditorKind::Custom,
-        _ => EditorKind::Other,
-    }
+    out
 }

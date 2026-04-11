@@ -51,7 +51,9 @@ pub use crate::virtual_table::column::{CellAlignment, CellEditor, ColumnDef, Col
 pub use crate::virtual_table::config::{EditTrigger, RowDensity, SelectionMode};
 pub use crate::virtual_table::row::{CellStyle, CellValue, RowStyle};
 
+use crate::utils::clipboard::{c_key_down_physical, set_clipboard};
 use crate::utils::text::calc_text_size;
+use crate::virtual_table::column::{alignment_pad, editor_kind, EditorKind};
 use dear_imgui_rs::{
     Key, ListClipper, MouseButton, SelectableFlags, TableBgTarget,
     TableRowFlags, Ui,
@@ -127,34 +129,6 @@ impl EditState {
     }
 }
 
-// ─── EditorKind ─────────────────────────────────────────────────────────────
-
-#[derive(Clone, Copy, PartialEq)]
-enum EditorKind {
-    None, Checkbox, ComboBox, Button, ProgressBar, ColorEdit, Custom, Other,
-}
-
-fn editor_kind(e: &CellEditor) -> EditorKind {
-    match e {
-        CellEditor::None => EditorKind::None,
-        CellEditor::Checkbox => EditorKind::Checkbox,
-        CellEditor::ComboBox { .. } => EditorKind::ComboBox,
-        CellEditor::Button { .. } => EditorKind::Button,
-        CellEditor::ProgressBar => EditorKind::ProgressBar,
-        CellEditor::ColorEdit => EditorKind::ColorEdit,
-        CellEditor::Custom => EditorKind::Custom,
-        _ => EditorKind::Other,
-    }
-}
-
-fn alignment_pad(alignment: CellAlignment, col_w: f32, text_w: f32) -> f32 {
-    match alignment {
-        CellAlignment::Left => 0.0,
-        CellAlignment::Center => ((col_w - text_w) * 0.5).max(0.0),
-        CellAlignment::Right => (col_w - text_w - 4.0).max(0.0),
-    }
-}
-
 // ─── VirtualTree ────────────────────────────────────────────────────────────
 
 /// Hierarchical tree-table widget with virtualization, inline editing,
@@ -202,6 +176,13 @@ pub struct VirtualTree<T: VirtualTreeNode> {
     /// Set when a drag-drop completes successfully during `render()`.
     /// The consumer should `take()` this after each render frame.
     pub last_reparent: Option<(NodeId, Option<NodeId>, usize)>,
+
+    /// Set to `Some(text)` when **Ctrl+C** copies selected nodes this frame.
+    /// Requires [`TreeConfig::table::copy_to_clipboard`] = `true`. Reset each frame.
+    pub copied_text: Option<String>,
+
+    /// Tracks physical C key state for layout-independent Ctrl+C edge detection.
+    c_key_prev: bool,
 }
 
 impl<T: VirtualTreeNode> VirtualTree<T> {
@@ -237,6 +218,8 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             pending_toggle: None,
             scroll_to_node: None,
             last_reparent: None,
+            copied_text: None,
+            c_key_prev: false,
         }
     }
 
@@ -538,13 +521,130 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         }
     }
 
+    // ─── Export / Import ────────────────────────────────────────────
+
+    /// Export selected nodes (or all if none selected) to tree export format.
+    ///
+    /// When exporting selected nodes, each selected node exports with its
+    /// full subtree (all descendants included).
+    pub fn export_data(
+        &self,
+        scope: crate::utils::export::ExportScope,
+    ) -> Vec<crate::utils::export::TreeExportNode>
+    where
+        T: crate::utils::export::Exportable,
+    {
+        match scope {
+            crate::utils::export::ExportScope::Selected => {
+                let selected: Vec<_> = self.selected_nodes().collect();
+                if selected.is_empty() {
+                    // Nothing selected — export all roots.
+                    return self.export_data(crate::utils::export::ExportScope::All);
+                }
+                // Export each selected node with subtree, but skip nodes
+                // whose ancestors are already selected (avoid duplicates).
+                let mut result = Vec::new();
+                for &id in &selected {
+                    let already_covered = self.is_ancestor_selected(id, &selected);
+                    if !already_covered {
+                        if let Some(node) = self.export_subtree(id) {
+                            result.push(node);
+                        }
+                    }
+                }
+                result
+            }
+            crate::utils::export::ExportScope::All => {
+                self.arena.roots().iter()
+                    .filter_map(|&id| self.export_subtree(id))
+                    .collect()
+            }
+        }
+    }
+
+    /// Export a single node with its subtree.
+    fn export_subtree(&self, id: crate::virtual_tree::arena::NodeId) -> Option<crate::utils::export::TreeExportNode>
+    where
+        T: crate::utils::export::Exportable,
+    {
+        let data = self.arena.get_data(id)?;
+        let names = T::field_names();
+        let fields: Vec<(String, crate::utils::export::FieldValue)> = (0..T::field_count())
+            .map(|c| (names[c].to_string(), data.field_value(c)))
+            .collect();
+
+        let children: Vec<crate::utils::export::TreeExportNode> = self.arena.children(id)
+            .iter()
+            .filter_map(|&child_id| self.export_subtree(child_id))
+            .collect();
+
+        Some(crate::utils::export::TreeExportNode { fields, children })
+    }
+
+    /// Check if any ancestor of `id` is in the selected set.
+    fn is_ancestor_selected(
+        &self,
+        id: crate::virtual_tree::arena::NodeId,
+        selected: &[crate::virtual_tree::arena::NodeId],
+    ) -> bool {
+        let mut current = self.arena.parent(id);
+        while let Some(pid) = current {
+            if selected.contains(&pid) { return true; }
+            current = self.arena.parent(pid);
+        }
+        false
+    }
+
+    /// Export to string in the given format.
+    pub fn export_string(
+        &self,
+        scope: crate::utils::export::ExportScope,
+        format: crate::utils::export::ExportFormat,
+    ) -> String
+    where
+        T: crate::utils::export::Exportable,
+    {
+        let nodes = self.export_data(scope);
+        crate::utils::export::format_tree(&nodes, format)
+    }
+
+    /// Export to file. Format auto-detected from extension.
+    pub fn export_to_file(
+        &self,
+        scope: crate::utils::export::ExportScope,
+        path: &std::path::Path,
+    ) -> std::io::Result<()>
+    where
+        T: crate::utils::export::Exportable,
+    {
+        let nodes = self.export_data(scope);
+        crate::utils::export::export_tree_to_file(&nodes, path, None)
+    }
+
     // ─── Render ─────────────────────────────────────────────────────
+
+    /// Render the tree, stretching to fill available height.
+    /// Use this instead of `render()` when the tree is inside a fixed-size window
+    /// and you want it to use all remaining vertical space (scrollable).
+    pub fn render_fill(&mut self, ui: &Ui) {
+        self.render_inner(ui, true);
+    }
 
     /// Render the tree. Call once per frame inside an ImGui window.
     pub fn render(&mut self, ui: &Ui) {
-        // Apply pending toggle from previous frame
+        self.render_inner(ui, false);
+    }
+
+    fn render_inner(&mut self, ui: &Ui, fill_height: bool) {
+        // Apply pending toggle from previous frame.
+        // After expanding a node, scroll to it so children are immediately visible.
         if let Some(id) = self.pending_toggle.take() {
+            let was_expanded = self.arena.get(id).is_some_and(|s| s.expanded);
             self.toggle(id);
+            if !was_expanded {
+                // Node was collapsed and is now expanded → scroll to show it
+                self.scroll_to_node = Some(id);
+            }
         }
 
         // Reset per-frame outputs
@@ -562,10 +662,25 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             return;
         }
 
-        let flags = self.config.table.to_table_flags();
-        let _table = match ui.begin_table_with_flags(&self.id, col_count, flags) {
-            Some(t) => t,
-            None => return,
+        let mut flags = self.config.table.to_table_flags();
+        // Always enable ScrollY for fill_height — required for outer_size to work.
+        if fill_height {
+            flags |= dear_imgui_rs::TableFlags::SCROLL_Y;
+        }
+        let _table = if fill_height {
+            // Stretch table to fill remaining window height.
+            // outer_size.y > 0 = fixed height; ImGui creates an internal child window
+            // with scrollbar when content exceeds this height.
+            let avail_h = ui.content_region_avail()[1].max(100.0);
+            match ui.begin_table_with_sizing(&self.id, col_count, flags, [0.0, avail_h], 0.0) {
+                Some(t) => t,
+                None => return,
+            }
+        } else {
+            match ui.begin_table_with_flags(&self.id, col_count, flags) {
+                Some(t) => t,
+                None => return,
+            }
         };
 
         // Column setup
@@ -593,9 +708,18 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // Sort
         self.handle_sort(ui);
 
-        // Rows via ListClipper
+        // Rows via ListClipper — explicit row height for accurate virtualization.
+        // Without this, ListClipper auto-measures the first row which can be wrong
+        // (header padding, variable density) → renders too few rows → empty gap.
         let row_count = self.flat_view.len();
-        let clip = ListClipper::new(row_count as i32);
+        let row_h = self.config.table.default_row_height.unwrap_or_else(|| unsafe {
+            match self.config.table.row_density {
+                RowDensity::Normal  => dear_imgui_rs::sys::igGetFrameHeightWithSpacing(),
+                RowDensity::Compact => dear_imgui_rs::sys::igGetFrameHeight() + 2.0,
+                RowDensity::Dense   => dear_imgui_rs::sys::igGetFontSize() + 2.0,
+            }
+        });
+        let clip = ListClipper::new(row_count as i32).items_height(row_h);
         let tok = clip.begin(ui);
 
         let scroll_target = self.scroll_to_node.take()
@@ -613,6 +737,25 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
         // Keyboard navigation
         self.handle_keyboard(ui);
+
+        // Ctrl+C — copy selected nodes to clipboard
+        self.copied_text = None;
+        if self.config.table.copy_to_clipboard && !self.selected_nodes.is_empty() {
+            let c_now = c_key_down_physical();
+            let c_just = c_now && !self.c_key_prev;
+            self.c_key_prev = c_now;
+
+            if ui.is_window_hovered()
+                && ui.io().key_ctrl()
+                && (c_just || (!c_now && ui.is_key_pressed(Key::C)))
+            {
+                let text = self.build_copy_text();
+                set_clipboard(&text);
+                self.copied_text = Some(text);
+            }
+        } else {
+            self.c_key_prev = c_key_down_physical();
+        }
     }
 
     // ─── Internal: header ───────────────────────────────────────────
@@ -688,20 +831,23 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
         ui.table_next_row_with_flags(TableRowFlags::NONE, row_height);
 
-        // Row background (striped + custom)
-        if let Some(ref style) = row_style
-            && let Some(bg) = style.bg_color
-        {
-            ui.table_set_bg_color(TableBgTarget::RowBg1, bg, -1);
-        } else if self.config.striped && flat_idx % 2 == 1 {
-            ui.table_set_bg_color(
-                TableBgTarget::RowBg1,
-                [1.0, 1.0, 1.0, 0.02],
-                -1,
-            );
-        }
-
         let is_selected = self.selected_nodes.contains(&node_id);
+
+        // Row background (striped + custom) — skip for selected rows to avoid
+        // double-highlight (Selectable already draws its own selection bg).
+        if !is_selected {
+            if let Some(ref style) = row_style
+                && let Some(bg) = style.bg_color
+            {
+                ui.table_set_bg_color(TableBgTarget::RowBg1, bg, -1);
+            } else if self.config.striped && flat_idx % 2 == 1 {
+                ui.table_set_bg_color(
+                    TableBgTarget::RowBg1,
+                    [1.0, 1.0, 1.0, 0.02],
+                    -1,
+                );
+            }
+        }
 
         let _row_id = ui.push_id(flat_idx);
 
@@ -819,13 +965,13 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         for col_idx in 0..col_count {
             if col_idx == 0 {
                 ui.same_line_with_spacing(0.0, 0.0);
+                // Apply vertical centering offset once (first column only).
+                if vert_offset > 0.0 {
+                    let cursor = ui.cursor_pos();
+                    ui.set_cursor_pos([cursor[0], cursor[1] + vert_offset]);
+                }
             } else {
                 ui.table_next_column();
-            }
-
-            if vert_offset > 0.0 {
-                let cursor = ui.cursor_pos();
-                ui.set_cursor_pos([cursor[0], cursor[1] + vert_offset]);
             }
 
             let _cell_id = ui.push_id(col_idx);
@@ -972,35 +1118,54 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     ui.same_line_with_spacing(0.0, 4.0);
                 }
                 config::ExpandStyle::Arrow => {
-                    // Standard ImGui TreeNode arrow
+                    // Custom arrow via invisible_button + draw_list triangle.
+                    // Using ImGui TreeNode here would create a second hover-highlight
+                    // inside our Selectable, causing a "double focus" artifact.
                     if indent > 0.0 {
                         let cursor = ui.cursor_pos();
                         ui.set_cursor_pos([cursor[0] + indent, cursor[1]]);
                     }
 
+                    let font_size = unsafe { dear_imgui_rs::sys::igGetFontSize() };
+                    let btn_sz = font_size;
+
                     self.cell_buf.clear();
                     let _ = std::fmt::Write::write_fmt(
                         &mut self.cell_buf,
-                        format_args!("##tn{}", flat_idx),
+                        format_args!("##ar{}", flat_idx),
                     );
-                    let node = ui.tree_node_config(&self.cell_buf)
-                        .open_on_arrow(true)
-                        .span_full_width(true)
-                        .no_tree_push_on_open(true)
-                        .frame_padding(true)
-                        .default_open(flat_row.is_expanded);
-                    let token = node.push();
-                    // NO_TREE_PUSH_ON_OPEN means TreePush was NOT called,
-                    // so we must NOT run Drop (which calls TreePop).
-                    if let Some(t) = token {
-                        let _ = std::mem::ManuallyDrop::new(t);
-                    }
 
-                    if ui.is_item_toggled_open() {
+                    if ui.invisible_button(&self.cell_buf, [btn_sz, btn_sz]) {
                         self.pending_toggle = Some(node_id);
                     }
 
-                    ui.same_line_with_spacing(0.0, 0.0);
+                    // Draw triangle arrow over the invisible button
+                    let btn_min = ui.item_rect_min();
+                    let draw_list = ui.get_window_draw_list();
+                    let arrow_color = crate::utils::color::rgba_f32(0.65, 0.68, 0.72, 1.0);
+                    let cx = btn_min[0] + btn_sz * 0.5;
+                    let cy = btn_min[1] + btn_sz * 0.5;
+                    let r = btn_sz * 0.25;
+
+                    if flat_row.is_expanded {
+                        // ▾ Down-pointing triangle
+                        draw_list.add_triangle(
+                            [cx - r, cy - r * 0.5],
+                            [cx + r, cy - r * 0.5],
+                            [cx, cy + r],
+                            arrow_color,
+                        ).filled(true).build();
+                    } else {
+                        // ▸ Right-pointing triangle
+                        draw_list.add_triangle(
+                            [cx - r * 0.5, cy - r],
+                            [cx + r, cy],
+                            [cx - r * 0.5, cy + r],
+                            arrow_color,
+                        ).filled(true).build();
+                    }
+
+                    ui.same_line_with_spacing(0.0, 2.0);
                 }
             }
         }
@@ -1106,18 +1271,20 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 }
             }
             EditorKind::ComboBox => {
-                let items = match &self.columns[col_idx].editor {
-                    CellEditor::ComboBox { items } => items.clone(),
-                    _ => { self.edit_state.deactivate(); return; }
-                };
-                if let Some(data) = self.arena.get_data(node_id) {
-                    let val = data.cell_value(col_idx);
-                    if let CellValue::Choice(mut choice) = val {
+                let val = self.arena.get_data(node_id).map(|d| d.cell_value(col_idx));
+                if let Some(CellValue::Choice(mut choice)) = val {
+                    let changed = {
+                        let items = match &self.columns[col_idx].editor {
+                            CellEditor::ComboBox { items } => items,
+                            _ => { self.edit_state.deactivate(); return; }
+                        };
                         ui.set_next_item_width(-1.0);
-                        if ui.combo_simple_string("##combo", &mut choice, &items)
-                            && let Some(data) = self.arena.get_data_mut(node_id) {
-                                data.set_cell_value(col_idx, &CellValue::Choice(choice));
-                            }
+                        ui.combo_simple_string("##combo", &mut choice, items)
+                    };
+                    if changed {
+                        if let Some(data) = self.arena.get_data_mut(node_id) {
+                            data.set_cell_value(col_idx, &CellValue::Choice(choice));
+                        }
                     }
                 }
             }
@@ -1136,11 +1303,14 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 }
             }
             EditorKind::Button => {
-                let label = match &self.columns[col_idx].editor {
-                    CellEditor::Button { label } => label.clone(),
-                    _ => { self.edit_state.deactivate(); return; }
+                let clicked = {
+                    let label = match &self.columns[col_idx].editor {
+                        CellEditor::Button { label } => label.as_str(),
+                        _ => { self.edit_state.deactivate(); return; }
+                    };
+                    ui.button(label)
                 };
-                if ui.button(&label) {
+                if clicked {
                     self.button_clicked = Some((node_id, col_idx));
                 }
             }
@@ -1524,4 +1694,108 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             self.selection_anchor = Some(flat_idx);
         }
     }
+
+    /// Build tab-separated text from selected nodes for clipboard copy.
+    ///
+    /// **Copy rules:**
+    /// - If a parent node is selected, its entire subtree is copied (parent + all children)
+    ///   with depth indentation.
+    /// - If only leaf/child nodes are selected, only those rows are copied.
+    /// - Mixed selection: each selected root of a subtree pulls in its children.
+    fn build_copy_text(&self) -> String {
+        let col_count = self.columns.len();
+        let mut out = String::new();
+        let mut cell_buf = String::new();
+
+        // Collect selected node IDs, then walk flat view in order.
+        // For parent nodes: also include all descendants.
+        let mut emit_set = NodeIdSet::default();
+        for &nid in self.selected_nodes.iter() {
+            emit_set.insert(nid);
+            // If this is a parent, include all descendants
+            if let Some(slot) = self.arena.get(nid) {
+                if !slot.children.is_empty() {
+                    self.collect_descendants(nid, &mut emit_set);
+                }
+            }
+        }
+
+        // Walk flat view in display order, emit matching nodes
+        for row in &self.flat_view.rows {
+            if !emit_set.contains(&row.node_id) {
+                continue;
+            }
+            let Some(slot) = self.arena.get(row.node_id) else { continue };
+
+            // Indent: 2 spaces per depth level
+            for _ in 0..row.depth {
+                out.push_str("  ");
+            }
+
+            for ci in 0..col_count {
+                if ci > 0 {
+                    out.push('\t');
+                }
+                cell_buf.clear();
+                slot.data.cell_value(ci).format_into(&mut cell_buf);
+                out.push_str(&cell_buf);
+            }
+            out.push('\n');
+        }
+
+        // If nothing from flat view (nodes might be collapsed), walk arena directly
+        if out.is_empty() {
+            for &nid in self.selected_nodes.iter() {
+                self.copy_subtree(nid, 0, col_count, &mut out, &mut cell_buf);
+            }
+        }
+
+        out
+    }
+
+    /// Collect all descendant node IDs (iterative DFS — safe at any depth).
+    fn collect_descendants(&self, nid: NodeId, set: &mut NodeIdSet) {
+        let mut stack = vec![nid];
+        while let Some(current) = stack.pop() {
+            for &child_id in self.arena.children(current) {
+                set.insert(child_id);
+                stack.push(child_id);
+            }
+        }
+    }
+
+    /// Copy a subtree (iterative DFS — safe at any depth).
+    /// Used when nodes are collapsed / not in flat view.
+    fn copy_subtree(
+        &self,
+        nid: NodeId,
+        depth: usize,
+        col_count: usize,
+        out: &mut String,
+        cell_buf: &mut String,
+    ) {
+        let mut stack: Vec<(NodeId, usize)> = vec![(nid, depth)];
+        while let Some((current, d)) = stack.pop() {
+            let Some(slot) = self.arena.get(current) else { continue };
+
+            for _ in 0..d {
+                out.push_str("  ");
+            }
+            for ci in 0..col_count {
+                if ci > 0 {
+                    out.push('\t');
+                }
+                cell_buf.clear();
+                slot.data.cell_value(ci).format_into(cell_buf);
+                out.push_str(cell_buf);
+            }
+            out.push('\n');
+
+            // Push children in reverse so first child is processed first.
+            for &child_id in slot.children.iter().rev() {
+                stack.push((child_id, d + 1));
+            }
+        }
+    }
 }
+
