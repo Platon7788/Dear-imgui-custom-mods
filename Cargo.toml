@@ -6,18 +6,18 @@ rust-version = "1.94"
 description = "Custom UI components for dear-imgui-rs"
 
 [dependencies]
-dear-imgui-rs = "0.10.4"
+dear-imgui-rs = "0.11"
 foldhash = "0.2"
 
 [dev-dependencies]
-dear-imgui-wgpu = "0.10.4"
-dear-imgui-winit = "0.10.4"
-wgpu = "28"
+dear-imgui-wgpu = "0.11"
+dear-imgui-winit = "0.11"
+wgpu = "29"
 winit = "0.30"
 pollster = "0.4"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 
 [[example]]
 name = "demo_table"
@@ -34,3 +34,35 @@ path = "examples/demo_tree.rs"
 [[example]]
 name = "demo_code_editor"
 path = "examples/demo_code_editor.rs"
+
+[[example]]
+name = "demo_hex_viewer"
+path = "examples/demo_hex_viewer.rs"
+
+[[example]]
+name = "demo_disasm_view"
+path = "examples/demo_disasm_view.rs"
+
+[[example]]
+name = "demo_file_manager"
+path = "examples/demo_file_manager.rs"
+
+[[example]]
+name = "demo_page_control"
+path = "examples/demo_page_control.rs"
+
+[[example]]
+name = "demo_timeline"
+path = "examples/demo_timeline.rs"
+
+[[example]]
+name = "demo_diff_viewer"
+path = "examples/demo_diff_viewer.rs"
+
+[[example]]
+name = "demo_property_inspector"
+path = "examples/demo_property_inspector.rs"
+
+[[example]]
+name = "demo_status_toolbar"
+path = "examples/demo_status_toolbar.rs"

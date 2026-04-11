@@ -193,8 +193,8 @@ impl ApplicationHandler for App {
                 .with_inner_size(LogicalSize::new(700.0, 650.0))
                 .with_title("PropertyInspector Demo"),
         ).expect("window"));
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY, ..Default::default()
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY, ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -236,7 +236,7 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(s) => { gpu.surface_cfg.width = s.width.max(1); gpu.surface_cfg.height = s.height.max(1); gpu.surface.configure(&gpu.device, &gpu.surface_cfg); gpu.window.request_redraw(); }
             WindowEvent::RedrawRequested => {
-                let frame = match gpu.surface.get_current_texture() { Ok(f) => f, Err(wgpu::SurfaceError::Outdated) => { gpu.surface.configure(&gpu.device, &gpu.surface_cfg); return; } Err(e) => { eprintln!("{e:?}"); return; } };
+                let frame = match gpu.surface.get_current_texture() { wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f, wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => { gpu.surface.configure(&gpu.device, &gpu.surface_cfg); return; } other => { eprintln!("{other:?}"); return; } };
                 let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
                 let ui = gpu.context.frame(); gpu.demo.render(ui);

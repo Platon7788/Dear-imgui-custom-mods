@@ -240,8 +240,8 @@ impl ApplicationHandler for App {
                 .with_title("DiffViewer Demo"),
         ).expect("window"));
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY, ..Default::default()
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY, ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -306,9 +306,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame = match gpu.surface.get_current_texture() {
-                    Ok(f) => f,
-                    Err(wgpu::SurfaceError::Outdated) => { gpu.surface.configure(&gpu.device, &gpu.surface_cfg); return; }
-                    Err(e) => { eprintln!("Surface error: {e:?}"); return; }
+                    wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => { gpu.surface.configure(&gpu.device, &gpu.surface_cfg); return; }
+                    other => { eprintln!("Surface unavailable: {other:?}"); return; }
                 };
                 let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
