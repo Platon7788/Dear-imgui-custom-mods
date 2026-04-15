@@ -23,6 +23,7 @@ Thumbs.db
 desktop.ini
 
 # ─── Claude Code / AI tooling ────────────────────────────────────────────────
+CLAUDE.md
 .claude/
 .claude-flow/
 .mcp.json
