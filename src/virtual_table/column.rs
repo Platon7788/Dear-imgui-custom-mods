@@ -233,3 +233,45 @@ impl ColumnDef {
         }
     }
 }
+
+// ─── Shared cell helpers ───────────────────────────────────────────────────
+// Used by both virtual_table and virtual_tree to avoid code duplication.
+
+/// Quick categorization of [`CellEditor`] variants (avoids full enum matching in hot paths).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum EditorKind {
+    None,
+    Checkbox,
+    ComboBox,
+    Button,
+    ProgressBar,
+    ColorEdit,
+    Custom,
+    /// TextInput, SliderInt/Float, SpinInt/Float.
+    Other,
+}
+
+/// Classify a [`CellEditor`] into its [`EditorKind`].
+#[inline]
+pub(crate) fn editor_kind(e: &CellEditor) -> EditorKind {
+    match e {
+        CellEditor::None => EditorKind::None,
+        CellEditor::Checkbox => EditorKind::Checkbox,
+        CellEditor::ComboBox { .. } => EditorKind::ComboBox,
+        CellEditor::Button { .. } => EditorKind::Button,
+        CellEditor::ProgressBar => EditorKind::ProgressBar,
+        CellEditor::ColorEdit => EditorKind::ColorEdit,
+        CellEditor::Custom => EditorKind::Custom,
+        _ => EditorKind::Other,
+    }
+}
+
+/// Compute horizontal padding for cell text alignment.
+#[inline]
+pub(crate) fn alignment_pad(alignment: CellAlignment, col_w: f32, text_w: f32) -> f32 {
+    match alignment {
+        CellAlignment::Left => 0.0,
+        CellAlignment::Center => ((col_w - text_w) * 0.5).max(0.0),
+        CellAlignment::Right => (col_w - text_w - 4.0).max(0.0),
+    }
+}

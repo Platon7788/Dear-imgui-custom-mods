@@ -124,7 +124,23 @@ pub struct TableConfig {
     pub sizing: SizingPolicy,
 
     // Extensions
+    /// Row selection mode. `SelectionMode::Multi` enables **Ctrl+Click** (toggle)
+    /// and **Shift+Click** (range) — works regardless of keyboard layout.
     pub selection_mode: SelectionMode,
+    /// Background color painted over every selected row.
+    ///
+    /// Applied via `table_set_bg_color(RowBg1)` so it is clearly visible even
+    /// when many rows are selected. Set alpha to 0 to disable the override and
+    /// rely solely on Dear ImGui's default `Header` highlight.
+    ///
+    /// Default: `[0.20, 0.45, 0.85, 0.75]` — a vivid blue at 75% opacity.
+    pub selection_color: [f32; 4],
+    /// Text color override for selected rows. `None` uses default text color.
+    /// Default: `Some([1.0, 1.0, 1.0, 1.0])` — white text on selection.
+    pub selection_text_color: Option<[f32; 4]>,
+    /// Ctrl+C copies selected rows as tab-separated text to the clipboard.
+    /// Works regardless of keyboard layout. Default: `false`.
+    pub copy_to_clipboard: bool,
     pub edit_trigger: EditTrigger,
     /// When `true`, losing focus on an editor commits the value.
     /// When `false`, losing focus cancels the edit (only Enter/widget commit applies).
@@ -158,6 +174,9 @@ impl Default for TableConfig {
             sizing: SizingPolicy::FixedFit,
 
             selection_mode: SelectionMode::Single,
+            selection_color: [0.20, 0.45, 0.85, 0.75],
+            selection_text_color: Some([1.0, 1.0, 1.0, 1.0]),
+            copy_to_clipboard: false,
             edit_trigger: EditTrigger::DoubleClick,
             commit_on_focus_loss: true,
             auto_scroll: false,

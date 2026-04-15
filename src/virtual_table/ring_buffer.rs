@@ -25,9 +25,9 @@ use std::cmp::Ordering;
 use std::mem::MaybeUninit;
 
 /// Maximum number of rows a single table can hold.
-/// At 1M rows: push 1.9 ms, sort 1.2 ms — well within interactive budgets.
+/// At 10M rows the ring buffer consumes ~80 MB overhead + sizeof(T) per slot.
 /// ListClipper renders only visible rows regardless of total count.
-pub const MAX_TABLE_ROWS: usize = 1_000_000;
+pub const MAX_TABLE_ROWS: usize = 10_000_000;
 
 pub struct RingBuffer<T> {
     buf: Box<[MaybeUninit<T>]>,

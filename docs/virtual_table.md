@@ -1,8 +1,8 @@
 # VirtualTable
 
-Virtualized table component for Dear ImGui, capable of rendering up to 1,000,000 rows at 60 FPS.
+Virtualized table component for Dear ImGui, capable of rendering up to 10,000,000 rows at 60 FPS.
 
-**Capacity**: Hard limit of `MAX_TABLE_ROWS` (1,000,000). `RingBuffer::new()` clamps capacity to this value. When full, oldest rows are automatically evicted (FIFO).
+**Capacity**: Hard limit of `MAX_TABLE_ROWS` (10,000,000). `RingBuffer::new()` clamps capacity to this value. When full, oldest rows are automatically evicted (FIFO).
 
 ## Overview
 
@@ -14,14 +14,16 @@ Virtualized table component for Dear ImGui, capable of rendering up to 1,000,000
 - **Column management**: resize, reorder, hide/show, freeze, alignment
 - **Sorting**: single or multi-column, ascending/descending
 - **Inline editing**: 10+ editor widgets (text, checkbox, combo, slider, spinner, color, progress bar, button, custom)
-- **Selection**: None, Single, Multi (Ctrl+Click toggle, Shift+Click range)
+- **Selection**: None, Single, Multi (Ctrl+Click toggle, Shift+Click range) with vivid highlight and white text
+- **Keyboard navigation**: Up/Down, Home/End, PageUp/PageDown with auto-scroll to selection
+- **Scroll-to-row**: programmatic `scroll_to_row(idx)` and `select_row(idx)`
 - **Row density**: Normal, Compact, Dense
 - **Per-row and per-cell styling** (background color, text color, alignment)
 - **Auto-scroll** (follow newest data, auto-disable on scroll-up)
 - **Context menus** with row/column tracking
 - **RingBuffer\<T\>** for fixed-capacity FIFO storage (O(1) push, automatic oldest-row eviction)
-- **Capacity limit**: `MAX_TABLE_ROWS` (1,000,000) — clamped on `RingBuffer::new()`
-- **Zero per-frame allocations** (scratch buffers reused, raw pointers for sort specs and editor access)
+- **Capacity limit**: `MAX_TABLE_ROWS` (10,000,000) — clamped on `RingBuffer::new()`
+- **Zero per-frame allocations** (scratch buffers reused, scoped borrows for ComboBox items and Button labels)
 
 ## Quick Start
 
@@ -172,6 +174,8 @@ TableConfig {
     hideable: true,            // right-click header to hide columns
     sortable: true,            // click header to sort
     selection_mode: SelectionMode::Multi,
+    selection_color: [0.20, 0.45, 0.85, 0.75],       // vivid blue at 75% opacity
+    selection_text_color: Some([1.0, 1.0, 1.0, 1.0]), // white text on selection
     edit_trigger: EditTrigger::DoubleClick,
     row_density: RowDensity::Normal,
     show_row_lines: true,
@@ -181,9 +185,38 @@ TableConfig {
 }
 ```
 
-## Performance (1M rows)
+### Selection Highlight
 
-VirtualTable is optimized to handle up to 1,000,000 rows at 60 FPS.
+Selected rows are painted with `selection_color` (default: vivid blue, 75% opacity) and text is overridden with `selection_text_color` (default: white). Both are configurable:
+
+```rust
+config.selection_color = [0.20, 0.45, 0.85, 0.75];        // RGBA background
+config.selection_text_color = Some([1.0, 1.0, 1.0, 1.0]); // white text
+config.selection_text_color = None;                         // keep default text color
+```
+
+### Keyboard Navigation
+
+When the table is focused and no editor is active:
+
+| Key | Action |
+|-----|--------|
+| **Up/Down** | Move selection by one row |
+| **Home/End** | Jump to first/last row |
+| **PageUp/PageDown** | Jump 20 rows up/down |
+
+All keyboard actions auto-scroll the view to keep the selected row visible.
+
+### Programmatic Scroll
+
+```rust
+table.scroll_to_row(42);    // scroll row 42 into view
+table.select_row(42);       // select row 42 + scroll to it
+```
+
+## Performance (10M rows)
+
+VirtualTable is optimized to handle up to 10,000,000 rows at 60 FPS.
 
 ### Per-frame rendering: O(visible rows)
 
@@ -194,20 +227,21 @@ VirtualTable is optimized to handle up to 1,000,000 rows at 60 FPS.
 
 | Constant | Value | Enforced at |
 |----------|-------|-------------|
-| `MAX_TABLE_ROWS` | 1,000,000 | `RingBuffer::new()` — capacity is clamped |
+| `MAX_TABLE_ROWS` | 10,000,000 | `RingBuffer::new()` — capacity is clamped |
 
 The RingBuffer always evicts the oldest row when full — this is inherent to the ring buffer design and always active.
 
 ### Zero per-frame allocations
 
-- **Raw pointer for sort specs** — `handle_sort()` avoids `Vec::clone()` of sort specifications per sort operation.
-- **Raw pointer for CellEditor** — `render_editor_inline()` avoids cloning `Vec<String>` (ComboBox items) per frame.
-- **`take_cell_value()`** — moves String out of edit buffer via `mem::replace` instead of cloning (zero-copy commit). This is the key optimization for inline editing — no allocation when committing an edit.
-- **Safe error handling** — all `unwrap()` calls in render paths replaced with `if let Some` / `let Some else continue` patterns.
+- **Scoped borrows for ComboBox/Button** — `items` and `label` references are scoped so the borrow ends before mutable data access, eliminating `Vec<String>` clone per frame.
+- **`take_cell_value()`** — moves String out of edit buffer via `mem::replace` instead of cloning (zero-copy commit).
+- **ListClipper with explicit `items_height`** — accurate row height avoids per-frame auto-measurement and empty gaps.
+- **Safe error handling** — zero `unwrap()` calls in render paths; all use `if let Some` / `let Some else continue` patterns.
+- **Shared utilities** — `EditorKind`, `alignment_pad`, clipboard helpers extracted to avoid duplication between virtual_table and virtual_tree.
 
 ### RingBuffer Capacity
 
-`RingBuffer::new(capacity)` clamps capacity to `MAX_TABLE_ROWS` (1,000,000). When the buffer is full, `push()` overwrites the oldest entry (FIFO) — this is always active by design. There is no way to disable eviction on the ring buffer; use a `Vec<T>` if you need unbounded storage.
+`RingBuffer::new(capacity)` clamps capacity to `MAX_TABLE_ROWS` (10,000,000). When the buffer is full, `push()` overwrites the oldest entry (FIFO) — this is always active by design. There is no way to disable eviction on the ring buffer; use a `Vec<T>` if you need unbounded storage.
 
 ## Architecture
 
@@ -215,9 +249,15 @@ The RingBuffer always evicts the oldest row when full — this is inherent to th
 virtual_table/
   mod.rs          VirtualTable<T> struct, rendering, selection, scrolling
   config.rs       TableConfig, SelectionMode, EditTrigger, BorderStyle, RowDensity
-  column.rs       ColumnDef with builder pattern, CellEditor variants
+  column.rs       ColumnDef, CellEditor, EditorKind, alignment_pad (shared with virtual_tree)
   row.rs          VirtualTableRow trait, CellValue, CellStyle, RowStyle
-  edit.rs         Inline editing state machine
+  edit.rs         Inline editing state machine (16 unit tests)
   sort.rs         Sort state (multi-column)
   ring_buffer.rs  Fixed-capacity O(1) ring buffer with iterators
 ```
+
+## Unit Tests
+
+Run with `cargo test --lib`:
+- `edit.rs` — 16 tests: activate/deactivate, value buffers, take_cell_value for all editor types
+- `ring_buffer` — tested via `cargo test --example demo_table` (push, wrap, sort, iter, stress)

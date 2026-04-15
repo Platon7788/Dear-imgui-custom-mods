@@ -1,10 +1,10 @@
 # VirtualTree
 
-High-performance hierarchical tree-table component for Dear ImGui, capable of rendering up to 1,000,000 nodes at 60 FPS.
+High-performance hierarchical tree-table component for Dear ImGui, capable of rendering up to 10,000,000 nodes at 60 FPS.
 
 Inspired by DevExpress VirtualTreeList and Delphi VirtualStringTree.
 
-**Capacity**: Configurable per-instance limit (default: `MAX_TREE_NODES` = 1,000,000). Insert methods return `Option<NodeId>` — `None` when at capacity. Optional FIFO eviction auto-removes the oldest root subtree on overflow.
+**Capacity**: Configurable per-instance limit (default: `MAX_TREE_NODES` = 10,000,000). Insert methods return `Option<NodeId>` — `None` when at capacity. Optional FIFO eviction auto-removes the oldest root subtree on overflow.
 
 ## Overview
 
@@ -179,7 +179,7 @@ TreeConfig {
     expand_style: ExpandStyle::Arrow, // Arrow (default) or Glyph { collapsed, expanded, color }
 
     // Capacity
-    max_nodes: MAX_TREE_NODES,    // per-instance limit (1..=1,000,000)
+    max_nodes: MAX_TREE_NODES,    // per-instance limit (1..=10,000,000)
     evict_on_overflow: false,     // auto-remove oldest root subtree when full
 }
 ```
@@ -328,9 +328,9 @@ ColumnDef::new("Name")
 | `Button { label }` | Clickable button |
 | `Custom` | User-rendered via `render_cell()` / `render_editor()` |
 
-## Performance (1M nodes)
+## Performance (10M nodes)
 
-VirtualTree is optimized to handle up to 1,000,000 nodes at 60 FPS. Key techniques:
+VirtualTree is optimized to handle up to 10,000,000 nodes at 60 FPS. Key techniques:
 
 ### Per-frame rendering: O(visible rows)
 
@@ -340,7 +340,7 @@ VirtualTree is optimized to handle up to 1,000,000 nodes at 60 FPS. Key techniqu
 ### Flat view rebuild: O(visible nodes), zero allocations per node
 
 - **Two-pass children iteration** — counts visible children first, then iterates. Eliminates `Vec::collect()` that previously caused 100K–300K temporary allocations per rebuild.
-- **HashMap index** — `flat_index_of(id)` is O(1) via `HashMap<NodeId, usize>` (was O(n) linear scan). Uses `foldhash` for fast hashing of `NodeId`.
+- **Direct-index lookup** — `flat_index_of(id)` is O(1) via `Vec<u32>` indexed by `NodeId.index` (no hashing overhead). At 10M nodes: 40 MB vs 500 MB for HashMap.
 
 ### Arena operations: O(1)
 
@@ -352,20 +352,22 @@ VirtualTree is optimized to handle up to 1,000,000 nodes at 60 FPS. Key techniqu
 
 - **Reusable buffer** — `matching_buf: Vec<NodeId>` is reused across filter calls (no re-allocation).
 - **Safe early-break** — when `auto_expand` is false, ancestor walk stops at already-visited nodes, avoiding redundant work on deep trees.
+- **`Vec<bool>` visibility set** — filter uses index-based `Vec<bool>` instead of `HashSet<NodeId>`. At 10M nodes: 10 MB vs 400 MB.
 
 ### Zero per-frame allocations
 
+- **Scoped borrows for ComboBox/Button** — `items` and `label` references are scoped so the borrow ends before mutable data access, eliminating `Vec<String>` clone per frame.
 - **Scratch buffer** — `write!` into reusable `cell_buf` instead of `format!()`.
 - **Glyph expand button** — button ID written into `cell_buf` tail, glyph text reused without clone.
 - **`mem::take` for arena children** — eliminates Vec clone during `remove()` and `update_subtree_depth()`.
-- **Raw pointer for CellEditor** — avoids cloning `Vec<String>` (ComboBox items) per frame.
 - **`take_cell_value()`** — moves String out of edit buffer via `mem::replace` instead of cloning (zero-copy commit).
+- **Iterative DFS everywhere** — `collect_descendants`, `copy_subtree`, `remove`, `update_subtree_depth`, `flat_view::rebuild` all use explicit stacks instead of recursion, preventing stack overflow at any depth.
 
 ### Capacity limits
 
 | Constant | Value | Enforced at |
 |----------|-------|-------------|
-| `MAX_TREE_NODES` | 1,000,000 | Absolute upper bound — `TreeArena::alloc()` |
+| `MAX_TREE_NODES` | 10,000,000 | Absolute upper bound — `TreeArena::alloc()` |
 
 Capacity is configurable per instance via `TreeConfig::max_nodes` or `set_capacity(n)` at runtime. Both are clamped to `1..=MAX_TREE_NODES`.
 
@@ -397,16 +399,16 @@ tree.set_capacity(20_000);
 tree.set_evict_on_overflow(true);
 ```
 
-**Memory estimate at 1M nodes** (approximate):
+**Memory estimate at 10M nodes** (approximate, worst case all expanded):
 
 | Component | Size |
 |-----------|------|
-| Arena slots (80 bytes × 1M) | ~76 MB |
-| Arena generations (4 bytes × 1M) | ~4 MB |
-| Flat view rows (24 bytes × 1M) | ~23 MB |
-| Flat view index_map | ~15 MB |
-| Selection HashSet (worst case) | ~16 MB |
-| **Total** | **~118 MB** |
+| Arena slots + generations | ~600 MB |
+| Per-node children `Vec<NodeId>` | ~240 MB |
+| Flat view rows (`Vec<FlatRow>`) | ~240 MB |
+| Flat view index_map (`Vec<u32>`) | ~40 MB |
+| Filter visible_set (`Vec<bool>`) | ~10 MB |
+| **Total (metadata)** | **~1.13 GB** |
 
 Pre-allocate with `TreeConfig::max_nodes` to size the arena upfront and avoid reallocation during bulk inserts.
 
@@ -415,20 +417,42 @@ Pre-allocate with `TreeConfig::max_nodes` to size the arena upfront and avoid re
 ```
 virtual_tree/
   mod.rs          VirtualTree<T> — widget struct, render loop, public API
-  arena.rs        TreeArena<T> — generational slab storage, parent/children links
-  node.rs         VirtualTreeNode trait, NodeIcon enum
-  config.rs       TreeConfig (wraps TableConfig from virtual_table)
-  flat_view.rs    FlatView — cached linearization with continuation_mask for tree lines
+  arena.rs        TreeArena<T> — generational slab storage, parent/children links  (pub, 22 tests)
+  node.rs         VirtualTreeNode trait, NodeIcon enum                              (pub)
+  config.rs       TreeConfig (wraps TableConfig from virtual_table)                 (pub)
+  flat_view.rs    FlatView, FlatRow — cached linearization via Vec<u32> index       (pub, 8 tests)
+  filter.rs       FilterState — search with Vec<bool> visibility set                (pub, 6 tests)
   sort.rs         SortState — sibling-scoped sorting via ImGui table headers
-  filter.rs       FilterState — search with auto-expand ancestors of matches
   drag.rs         Drag-and-drop payload type identifier for node reparenting
 ```
+
+### Public Sub-Modules
+
+The following internal types are re-exported for advanced use (benchmarks, custom rendering):
+
+| Re-export | Type | Purpose |
+|-----------|------|---------|
+| `virtual_tree::arena::TreeArena<T>` | Generational slab arena | Direct arena access for benchmarks |
+| `virtual_tree::arena::NodeSlot<T>` | Arena slot | Memory size estimation |
+| `virtual_tree::arena::NodeId` | Node identifier | Generational index |
+| `virtual_tree::filter::FilterState` | Filter state | Direct filter control |
+| `virtual_tree::flat_view::FlatView` | Flat view cache | Direct flat view rebuild |
+| `virtual_tree::flat_view::FlatRow` | Single flat row | Row metadata (depth, mask) |
 
 ### Key Design Decisions
 
 - **Generational NodeId** — prevents use-after-remove bugs (stale IDs return `None`)
 - **Flat view cache** — avoids re-walking the tree every frame; only rebuilt on structure changes
+- **`Vec<u32>` index_map** — O(1) flat-index lookup by NodeId.index, no hashing overhead (40 MB at 10M vs 500 MB HashMap)
+- **`Vec<bool>` visibility set** — O(1) filter visibility check (10 MB at 10M vs 400 MB HashSet)
 - **continuation_mask: u64** — bitmask per row enables O(1) tree line rendering (supports up to 64 depth levels)
-- **ManuallyDrop on TreeNodeToken** — `NO_TREE_PUSH_ON_OPEN` flag means no `TreePush` happens, so `Drop` must be skipped to avoid ID stack corruption
-- **mem::take for arena children** — eliminates Vec clone during `remove()` and `update_subtree_depth()`
-- **Unsafe pointer for CellEditor** — avoids cloning `Vec<String>` (ComboBox items) per frame; safe because columns aren't mutated during rendering
+- **Iterative DFS** — all tree traversals (remove, flatten, copy, collect_descendants) use explicit stacks — no recursion, no stack overflow
+- **Scoped borrows** — ComboBox `items` and Button `label` are borrowed within scoped blocks to avoid cloning `Vec<String>` per frame
+- **Shared utilities** — `EditorKind`, `alignment_pad`, clipboard helpers live in `virtual_table::column` / `utils::clipboard` to avoid duplication
+
+## Unit Tests
+
+Run with `cargo test --lib`:
+- `arena.rs` — 22 tests: insert, remove, generational IDs, capacity, eviction, expand/collapse, move/reparent, sort
+- `filter.rs` — 6 tests: match, auto-expand ancestors, clear, edge cases
+- `flat_view.rs` — 8 tests: rebuild, index_of, collapse/expand, deep tree, dirty flag, is_last_child

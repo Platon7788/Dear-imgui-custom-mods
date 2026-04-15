@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.6.0] — 2026-04-15
+
+### Added
+- **borderless_window** — Fully custom borderless titlebar rendered via Dear ImGui draw lists
+  - 6 built-in themes: Dark, Light, Midnight, Nord, Solarized, Monokai + `Custom(TitlebarColors)`
+  - Minimize / Maximize / Close buttons drawn as draw-list primitives (crisp at any DPI)
+  - 8-direction edge resize detection — returns `ResizeEdge` every frame for cursor updates
+  - `CloseMode::Confirm` — deferred close; call `TitlebarState::confirm_close()` from your dialog
+  - Custom extra buttons (`ExtraButton`) rendered left of the standard window-control buttons
+  - `TitleAlign::Left` / `TitleAlign::Center` for title text
+  - Optional icon glyph before the title (`with_icon()`)
+  - Optional drag-zone hover hint (default on, `without_drag_hint()` to disable)
+  - Optional 1-px separator below titlebar (default on, `without_separator()` to disable)
+  - Optional focus-dim: `with_focus_dim()` — dims titlebar when window loses OS focus (default off)
+  - `WindowAction::IconClick` — click on the window icon area
+  - `impl Default for TitlebarResult` for ergonomic no-op initialization
+  - Full doc-comments on all `BorderlessConfig` builder methods
+- **app_window** — Zero-boilerplate application window combining wgpu + winit + Dear ImGui
+  - `AppWindow::run<H: AppHandler>(handler)` — replaces ~300 lines of setup code
+  - `AppHandler` trait: `render()`, `on_close_requested()`, `on_extra_button()`, `on_icon_click()`, `on_theme_changed()`
+  - `AppConfig` builder: `with_min_size`, `with_fps_limit`, `with_font_size`, `with_start_position`, `with_theme`, `with_titlebar`
+  - `StartPosition`: `CenterScreen` (default), `TopLeft`, `Custom(x, y)`
+  - Auto GPU backend selection: DX12 → Vulkan → GL (software fallback) on Windows
+  - Auto HiDPI: DPI scale clamped to `[1.0, 3.0]`, font scaled accordingly
+  - Auto surface-format detection: prefers sRGB, gracefully falls back
+  - FPS cap: `WaitUntil(1/fps)` sleep; `fps_limit=0` → explicit `ControlFlow::Poll`
+  - `AppState::set_theme(TitlebarTheme)` — deferred; applied after frame closes:
+    1. Updates `borderless_window` titlebar palette
+    2. Reapplies full Dear ImGui widget color palette via `apply_imgui_style_for_theme()`
+    3. Calls `AppHandler::on_theme_changed()` callback
+  - `AppState`: `exit()`, `toggle_maximized()`, `set_maximized()`, `set_theme()`
+  - `app_window/style.rs` — complete ImGui widget palette for all 6 themes
+    - Covers `StyleColor`: `WindowBg`, `ChildBg`, `PopupBg`, `Border`, `FrameBg`, `TitleBg*`, `MenuBarBg`, `ScrollbarBg`, `ScrollbarGrab*`, `CheckMark`, `SliderGrab*`, `Button*`, `Header*`, `Separator*`, `ResizeGrip*`, `Tab*`, `Text`, `TextDisabled`
+- **demo_borderless** — Standalone `borderless_window` demo
+  - All 6 built-in themes switchable at runtime
+  - Edge resize cursor feedback
+  - Close confirmation dialog
+  - Extra button demo
+- **demo_app_window** — `AppWindow` + `AppHandler` demo
+  - Click counter widget
+  - Theme picker for all 6 themes
+  - Scrollable event log (FIFO, capped at 50 entries)
+  - Maximize toggle
+  - Custom close confirmation dialog
+
+### Changed
+- **Cargo.toml** — All dependencies pinned to explicit latest stable versions:
+  - `dear-imgui-rs` / `dear-imgui-wgpu` / `dear-imgui-winit` → `0.11.0`
+  - `wgpu` → `29.0.1`
+  - `winit` → `0.30.13`
+  - `windows-sys` → `0.61.2`
+  - `pollster` → `0.4.0`
+  - `foldhash` → `0.2.0`
+- **borderless_window** — `focus_dim` default changed from `true` → `false`
+
+### Fixed
+- **borderless_window/mod.rs** — `calc_text_size` now calls `ui.current_font().calc_text_size(...)` (moved from `Ui` to `Font` in dear-imgui-rs 0.11)
+- **borderless_window/mod.rs** — Removed dead `$close` macro parameter and tautological if-branch from `btn_cell!`
+- **borderless_window/actions.rs** — Removed `#[cfg(test)]` gate from `TitlebarResult::none()`; added `impl Default`
+- **app_window/gpu.rs** — `surface_caps.formats[0]` → `.first().copied().or_else(...)` (panic-free)
+- **app_window/gpu.rs** — `render_draw_data().expect()` → `if let Err(e)` (graceful GPU error handling)
+- **app_window/gpu.rs** — Double-maximize bug: `maximize_toggle` flag now cleared after OS call
+- **app_window/style.rs** — `TabActive` → `TabSelected`; added `TabDimmed`, `TabDimmedSelected` (dear-imgui-rs 0.11)
+- **app_window/style.rs** — `clamp_add` now preserves source alpha `c[3]` instead of hardcoding `1.0`
+- **disasm_view/mod.rs** — `let mut p` → `let p` (unused-mut warning)
+
 ## [0.5.0] — 2026-03-30
 
 ### Added
@@ -138,6 +204,28 @@
 - **code_editor** — Rare HEX word-wrap overflow: last byte on a row could exceed the vertical boundary
 - **code_editor/lang/asm** — NASM preprocessor directives (`%define`, `%macro`) were misclassified as AT&T registers
 - **code_editor/lang/asm** — 12 clippy warnings about unused `line_start` variable
+
+## [0.3.2] — 2026-04-09
+
+### Added
+- **virtual_table** — Keyboard navigation: Up/Down, Home/End, PageUp/PageDown move selection and auto-scroll
+- **virtual_table** — `scroll_to_row(idx)` — programmatic scroll to any row
+- **virtual_table** — `select_row(idx)` — programmatic select + scroll
+- **virtual_table** — `selection_text_color` config option — override text color for selected rows (default: white)
+- **virtual_table** — `pending_scroll_to` internal field for deferred scroll (works from click, keyboard, and API)
+- **virtual_tree** — Public modules: `filter`, `flat_view` — `FilterState`, `FlatView`, `FlatRow`, `NodeSlot` now exported for advanced use
+
+### Improved
+- **virtual_table** — Selection highlight visibility: `selection_color` alpha increased from 0.55 to 0.75, selection text now white by default
+- **virtual_table** — Selection text color overrides both default and row_style text color (cell_style still takes precedence)
+
+### Changed
+- **virtual_tree/arena** — `NodeSlot<T>` visibility changed from `pub(crate)` to `pub`
+- **virtual_tree/filter** — `FilterState` visibility changed from `pub(crate)` to `pub`
+- **virtual_tree/flat_view** — `FlatView`, `FlatRow` visibility changed from `pub(crate)` to `pub`
+- Tests moved from `src/` to `examples/demo_table.rs` and `examples/demo_tree.rs`
+- Removed test-only methods: `set_capacity_unclamped()`, `new_unclamped()`
+- Deleted `src/virtual_tree/bench.rs` — stress tests now in `examples/demo_tree.rs`
 
 ## [0.3.1] — 2026-03-26
 

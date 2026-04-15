@@ -71,7 +71,7 @@ pub struct TreeConfig {
 
     /// Maximum number of nodes the tree can hold.
     /// Must be in range `1..=MAX_TREE_NODES` (clamped automatically).
-    /// Default: [`MAX_TREE_NODES`](super::arena::MAX_TREE_NODES) (1,000,000).
+    /// Default: [`MAX_TREE_NODES`](super::arena::MAX_TREE_NODES) (10,000,000).
     pub max_nodes: usize,
 
     /// When `true` and the tree is at capacity, inserting a new node automatically

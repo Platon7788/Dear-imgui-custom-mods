@@ -6,11 +6,20 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 ## Components
 
+### Window Infrastructure
+
+| Component | Description | Docs |
+|-----------|-------------|------|
+| **`borderless_window`** | Reusable borderless-window titlebar — 6 built-in themes (Dark, Light, Midnight, Nord, Solarized, Monokai), minimize/maximize/close buttons, 8-direction edge resize, drag-to-move, close-confirmation mode, optional focus-dim, drag-hint, separator, icon, extra buttons, `IconClick` action | [docs/borderless_window.md](docs/borderless_window.md) |
+| **`app_window`** | Zero-boilerplate application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Auto GPU backend (DX12→Vulkan→GL), auto HiDPI, FPS cap, `StartPosition`, atomic theme switching via `AppState::set_theme()` | [docs/app_window.md](docs/app_window.md) |
+
+### UI Widgets
+
 | Component | Description | Docs |
 |-----------|-------------|------|
 | **`code_editor`** | Full-featured code editor — 10 languages (Rust, TOML, RON, Rhai, JSON, YAML, XML, ASM, Hex, Custom), 6 themes, 3 built-in fonts (Hack, JetBrains Mono), code folding, word wrap, find/replace, multi-cursor, undo/redo, breakpoints, error markers, smooth scrolling | [docs/code_editor.md](docs/code_editor.md) |
 | **`file_manager`** | Universal file/folder picker dialog — SelectFolder, OpenFile, SaveFile modes. Breadcrumb navigation, favorites sidebar, back/forward history, type-to-search, file filters, overwrite confirmation | [docs/file_manager.md](docs/file_manager.md) |
-| **`virtual_table`** | Virtualized table for up to 1M rows — ListClipper integration, sortable columns, inline editing (text, checkbox, combo, slider, color, custom), selection modes, clip tooltips, auto-fit columns, `RingBuffer<T>` with FIFO eviction, `MAX_TABLE_ROWS` capacity limit | [docs/virtual_table.md](docs/virtual_table.md) |
+| **`virtual_table`** | Virtualized table for up to 1M rows — ListClipper, sortable columns, inline editing (text, checkbox, combo, slider, color, custom), selection with vivid highlight + white text, keyboard navigation (Up/Down/Home/End/PageUp/PageDown), scroll-to-row, clip tooltips, auto-fit columns, `RingBuffer<T>` FIFO eviction, `MAX_TABLE_ROWS` capacity | [docs/virtual_table.md](docs/virtual_table.md) |
 | **`virtual_tree`** | Virtualized tree-table for up to 1M nodes — slab/arena with generational `NodeId`, flat view cache, multi-column, inline editing, sibling-scoped sorting, drag-and-drop, filter/search, tree lines, striped rows, icons, badges, configurable capacity with optional FIFO eviction | [docs/virtual_tree.md](docs/virtual_tree.md) |
 | **`page_control`** | Generic tabbed container — Dashboard (tile grid) and Tabs (4 styles: Pill, Underline, Card, Square) views. Close confirmation, badges, status indicators, keyboard navigation | [docs/page_control.md](docs/page_control.md) |
 | **`node_graph`** | Visual node graph editor — pan/zoom, bezier/straight/orthogonal wires, 4 pin shapes, multi-select, rectangle selection, mini-map, snap-to-grid, wire yanking, frustum culling, stats overlay, context menus, node shadow, wire flow animation, LOD, smooth zoom | [docs/node_graph.md](docs/node_graph.md) |
@@ -27,9 +36,11 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 ## Stack
 
 - **Rust 1.94** — edition 2024, let-chains, `is_some_and`, `AtomicU32`
-- **dear-imgui-rs 0.10.3** — Dear ImGui v1.92.6 (docking branch)
-- **wgpu** backend for rendering
-- **windows-sys** for drive enumeration (Windows)
+- **dear-imgui-rs 0.11.0** — Dear ImGui v1.92.6 (docking branch)
+- **dear-imgui-wgpu 0.11.0** / **dear-imgui-winit 0.11.0** — wgpu + winit integration
+- **wgpu 29.0.1** — GPU rendering backend
+- **winit 0.30.13** — window and event loop
+- **windows-sys 0.61.2** — drive enumeration (Windows)
 - **MDI webfont** for icons (`assets/materialdesignicons-webfont.ttf`)
 
 ## Project Structure
@@ -42,6 +53,19 @@ src/
   utils/
     color.rs                        RGBA packing helpers
     text.rs                         CalcTextSize wrapper
+  borderless_window/
+    mod.rs                          render_titlebar() — draw-list titlebar, edge resize, buttons
+    config.rs                       BorderlessConfig, ButtonConfig, ExtraButton, CloseMode, TitleAlign
+    theme.rs                        TitlebarTheme, TitlebarColors (6 built-in + Custom)
+    actions.rs                      WindowAction, ResizeEdge, TitlebarResult
+    state.rs                        TitlebarState — focused, maximized, confirm_close()
+    platform.rs                     cursor_for_edge() helper
+  app_window/
+    mod.rs                          AppWindow::run(), AppHandler trait
+    config.rs                       AppConfig builder, StartPosition
+    state.rs                        AppState — set_theme(), exit(), toggle_maximized()
+    gpu.rs                          wgpu + winit event loop, frame render, GPU init
+    style.rs                        apply_imgui_style_for_theme() — full ImGui color palette
   code_editor/
     mod.rs                          CodeEditor widget — render, input, drawing
     buffer.rs                       TextBuffer — lines, cursor, selection, editing
@@ -129,9 +153,63 @@ examples/
   demo_diff_viewer.rs               DiffViewer demo — 4 sample datasets, modes
   demo_property_inspector.rs        PropertyInspector demo — 5 categories, 20+ props
   demo_status_toolbar.rs            Toolbar + StatusBar combined demo with events
+  demo_borderless.rs                BorderlessWindow standalone demo — all 6 themes, edge resize
+  demo_app_window.rs                AppWindow demo — counter, theme picker, log panel, close confirm
 ```
 
 ## Quick Start
+
+### AppWindow
+
+```rust
+use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow};
+use dear_imgui_rs::Ui;
+
+struct MyApp;
+
+impl AppHandler for MyApp {
+    fn render(&mut self, ui: &Ui, _state: &mut AppState) {
+        ui.window("Hello").build(|| {
+            ui.text("Hello from AppWindow!");
+        });
+    }
+}
+
+fn main() {
+    AppWindow::new(AppConfig::new("My App", 1024.0, 768.0))
+        .run(MyApp)
+        .expect("event loop error");
+}
+```
+
+### Borderless Window (manual)
+
+```rust
+use dear_imgui_custom_mod::borderless_window::{
+    BorderlessConfig, TitlebarState, WindowAction, render_titlebar,
+};
+
+let cfg = BorderlessConfig::new("My App")
+    .with_theme(TitlebarTheme::Nord)
+    .with_close_mode(CloseMode::Confirm);
+let mut state = TitlebarState::new();
+
+// Inside a full-screen zero-padding Dear ImGui window each frame:
+let res = render_titlebar(ui, &cfg, &mut state);
+
+if let Some(edge) = res.hover_edge {
+    window.set_cursor(cursor_for_edge(edge));
+}
+match res.action {
+    WindowAction::Close          => event_loop.exit(),
+    WindowAction::CloseRequested => { /* show confirm dialog */ }
+    WindowAction::Minimize       => window.set_minimized(true),
+    WindowAction::Maximize       => window.set_maximized(!state.maximized),
+    WindowAction::DragStart      => { window.drag_window().ok(); }
+    WindowAction::ResizeStart(e) => { window.drag_resize_window(to_winit(e)).ok(); }
+    _ => {}
+}
+```
 
 ### Node Graph
 
@@ -240,6 +318,8 @@ diff.set_texts("old text...", "new text...");
 ## Running the Demos
 
 ```bash
+cargo run --example demo_app_window --release
+cargo run --example demo_borderless --release
 cargo run --example demo_code_editor --release
 cargo run --example demo_node_graph --release
 cargo run --example demo_table --release
