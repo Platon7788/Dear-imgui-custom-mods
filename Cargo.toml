@@ -6,18 +6,22 @@ rust-version = "1.94"
 description = "Custom UI components for dear-imgui-rs"
 
 [dependencies]
-dear-imgui-rs = "0.11"
-foldhash = "0.2"
+dear-imgui-rs = "0.11.0"
+dear-imgui-wgpu = "0.11.0"
+dear-imgui-winit = "0.11.0"
+foldhash = "0.2.0"
+pollster = "0.4.0"
+wgpu = "29.0.1"
+winit = "0.30.13"
 
 [dev-dependencies]
-dear-imgui-wgpu = "0.11"
-dear-imgui-winit = "0.11"
-wgpu = "29"
-winit = "0.30"
-pollster = "0.4"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Storage_FileSystem",
+    "Win32_Graphics_Dwm",
+    "Win32_Foundation",
+] }
 
 [[example]]
 name = "demo_table"
@@ -66,3 +70,7 @@ path = "examples/demo_property_inspector.rs"
 [[example]]
 name = "demo_status_toolbar"
 path = "examples/demo_status_toolbar.rs"
+
+[[example]]
+name = "demo_borderless"
+path = "examples/demo_borderless.rs"

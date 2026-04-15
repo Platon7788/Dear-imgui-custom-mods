@@ -1362,7 +1362,7 @@ mod tests {
 
     #[test]
     fn test_vec_provider() {
-        let mut p = sample_provider();
+        let p = sample_provider();
         assert_eq!(p.instruction_count(), 8);
         assert_eq!(p.instruction(0).unwrap().mnemonic(), "push");
         assert_eq!(p.instruction(3).unwrap().mnemonic(), "call");

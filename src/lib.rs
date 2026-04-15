@@ -31,10 +31,14 @@
 //!
 //! ## Utilities
 //!
+//! - [`borderless_window`] — Borderless window titlebar with dark/light themes,
+//!   resize zones, drag, minimize/maximize/close, and custom extra buttons
 //! - [`icons`] — Material Design Icons v7.4 constants (7,400+ icons)
-//! - [`theme`] — Dark color palette with semantic tokens
+//! - [`theme`] — Dark and Light color palettes with semantic tokens
 //! - [`utils`] — Color packing (RGB/RGBA to u32), text measurement
 
+pub mod app_window;
+pub mod borderless_window;
 pub mod code_editor;
 pub mod diff_viewer;
 pub mod disasm_view;
