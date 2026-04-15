@@ -292,10 +292,10 @@ pub(super) fn render_frame<H: AppHandler>(
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        if draw_data.total_vtx_count > 0 {
-            if let Err(e) = gpu.renderer.render_draw_data(draw_data, &mut pass) {
-                eprintln!("app_window: imgui render error: {e:?}");
-            }
+        if draw_data.total_vtx_count > 0
+            && let Err(e) = gpu.renderer.render_draw_data(draw_data, &mut pass)
+        {
+            eprintln!("app_window: imgui render error: {e:?}");
         }
     }
     gpu.queue.submit(Some(enc.finish()));

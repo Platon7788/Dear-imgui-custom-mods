@@ -31,7 +31,10 @@ pub(crate) mod style;
 pub use config::{AppConfig, StartPosition};
 pub use state::AppState;
 
-use crate::borderless_window::TitlebarTheme;
+pub use crate::borderless_window::{
+    TitlebarTheme, BorderlessConfig, ButtonConfig, ExtraButton, CloseMode, TitleAlign,
+};
+
 use dear_imgui_rs::Ui;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -127,19 +130,6 @@ impl AppWindow {
     }
 }
 
-// ── Platform helpers ──────────────────────────────────────────────────────────
-
-#[cfg(windows)]
-fn hwnd_of(window: &Window) -> Option<isize> {
-    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    if let Ok(h) = window.window_handle() {
-        if let RawWindowHandle::Win32(w) = h.as_raw() {
-            return Some(w.hwnd.get() as isize);
-        }
-    }
-    None
-}
-
 // ── Internal winit application ────────────────────────────────────────────────
 
 struct WinitApp<H: AppHandler> {
@@ -180,7 +170,7 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
 
         // Apply DWM dark mode on Windows before showing the window.
         #[cfg(windows)]
-        if let Some(hwnd) = hwnd_of(&window) {
+        if let Some(hwnd) = crate::borderless_window::platform::hwnd_of(&window) {
             crate::borderless_window::platform::set_titlebar_dark_mode(hwnd, true);
         }
 

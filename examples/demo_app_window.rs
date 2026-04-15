@@ -9,26 +9,17 @@
 
 use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow, StartPosition};
 use dear_imgui_custom_mod::borderless_window::TitlebarTheme;
+use dear_imgui_custom_mod::confirm_dialog::{DialogConfig, DialogIcon, DialogResult, DialogTheme, render_confirm_dialog};
 use dear_imgui_rs::Ui;
 
 // ── Application state ─────────────────────────────────────────────────────────
 
+#[derive(Default)]
 struct DemoApp {
     counter:      i32,
     show_confirm: bool,
     log:          Vec<String>,
     current_theme: TitlebarTheme,
-}
-
-impl Default for DemoApp {
-    fn default() -> Self {
-        Self {
-            counter:       0,
-            show_confirm:  false,
-            log:           Vec::new(),
-            current_theme: TitlebarTheme::default(),
-        }
-    }
 }
 
 impl DemoApp {
@@ -140,54 +131,25 @@ impl AppHandler for DemoApp {
 
         // ── Close confirmation dialog ─────────────────────────────────────────
         if self.show_confirm {
-            let [dw, dh] = ui.io().display_size();
-            const DLG_W: f32 = 280.0;
-            const DLG_H: f32 = 110.0;
-            const PAD:   f32 = 12.0;
-            const BTN_W: f32 = 100.0;
-            const GAP:   f32 = 12.0;
+            let dlg_theme = match &self.current_theme {
+                TitlebarTheme::Dark      => DialogTheme::Dark,
+                TitlebarTheme::Light     => DialogTheme::Light,
+                TitlebarTheme::Midnight  => DialogTheme::Midnight,
+                TitlebarTheme::Nord      => DialogTheme::Nord,
+                TitlebarTheme::Solarized => DialogTheme::Solarized,
+                TitlebarTheme::Monokai   => DialogTheme::Monokai,
+                TitlebarTheme::Custom(_) => DialogTheme::Dark,
+            };
+            let cfg = DialogConfig::new("Close Application", "Are you sure you want to close?")
+                .with_icon(DialogIcon::Warning)
+                .with_confirm_label("Close")
+                .with_cancel_label("Cancel")
+                .with_theme(dlg_theme);
 
-            let _pad = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([PAD, PAD]));
-            ui.window("##close_confirm")
-                .position(
-                    [dw * 0.5 - DLG_W * 0.5, dh * 0.5 - DLG_H * 0.5],
-                    dear_imgui_rs::Condition::Always,
-                )
-                .size([DLG_W, DLG_H], dear_imgui_rs::Condition::Always)
-                .flags(
-                    dear_imgui_rs::WindowFlags::NO_TITLE_BAR
-                        | dear_imgui_rs::WindowFlags::NO_RESIZE
-                        | dear_imgui_rs::WindowFlags::NO_MOVE
-                        | dear_imgui_rs::WindowFlags::NO_SCROLLBAR,
-                )
-                .build(|| {
-                    let content_w = DLG_W - PAD * 2.0;
-                    let msg = "Close the application?";
-                    let msg_w = ui.current_font().calc_text_size(
-                        ui.current_font_size(), f32::MAX, -1.0, msg,
-                    )[0];
-                    let [_, ty] = ui.cursor_pos();
-                    ui.set_cursor_pos([(content_w - msg_w) * 0.5, ty]);
-                    ui.text(msg);
-
-                    ui.spacing();
-                    ui.separator();
-                    ui.spacing();
-
-                    let total = BTN_W * 2.0 + GAP;
-                    let btn_x = (content_w - total) * 0.5;
-                    let [_, by] = ui.cursor_pos();
-
-                    ui.set_cursor_pos([btn_x, by]);
-                    if ui.button("   Cancel   ") {
-                        self.show_confirm = false;
-                    }
-                    ui.same_line();
-                    ui.set_cursor_pos([btn_x + BTN_W + GAP, by]);
-                    if ui.button("    Close    ") {
-                        state.exit();
-                    }
-                });
+            match render_confirm_dialog(ui, &cfg, &mut self.show_confirm) {
+                DialogResult::Confirmed => state.exit(),
+                DialogResult::Cancelled | DialogResult::Open => {}
+            }
         }
     }
 

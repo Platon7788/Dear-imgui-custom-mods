@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.6.1] — 2026-04-15
+
+### Added
+- **confirm_dialog** — Reusable modal confirmation dialog component
+  - 6 built-in themes (Dark, Light, Midnight, Nord, Solarized, Monokai) + `Custom(DialogColors)`
+  - 4 icon types drawn as draw-list primitives (Warning, Error, Info, Question)
+  - Fullscreen dim overlay behind the dialog (toggleable)
+  - Keyboard shortcuts: Escape = cancel, Enter = confirm (toggleable)
+  - Color-coded buttons: green Cancel (safe), red Confirm (destructive)
+  - Compact bottom-anchored button layout with generous spacing
+  - `ConfirmStyle::Destructive` / `ConfirmStyle::Normal` button presets
+  - Builder-pattern `DialogConfig` with 13 builder methods
+  - `render_confirm_dialog(ui, cfg, open) -> DialogResult` — single-function API
+  - 5 unit tests covering config, themes, builder chain, icon variants
+- **borderless_window/platform** — `hwnd_of(window)` exported as public utility
+- **app_window** — Re-exports `TitlebarTheme`, `BorderlessConfig`, `ButtonConfig`, `ExtraButton`, `CloseMode`, `TitleAlign` from `borderless_window` — users no longer need to import both modules
+- **docs/confirm_dialog.md** — Full component documentation
+
+### Changed
+- **demo_app_window** — Close confirmation dialog replaced with `confirm_dialog` component (50 lines → 15 lines)
+- **demo_borderless** — Close confirmation dialog replaced with `confirm_dialog` component (50 lines → 14 lines)
+
+### Fixed
+- **app_window/mod.rs** — Removed duplicate `hwnd_of()` function; now uses shared `borderless_window::platform::hwnd_of()`
+
 ## [0.6.0] — 2026-04-15
 
 ### Added

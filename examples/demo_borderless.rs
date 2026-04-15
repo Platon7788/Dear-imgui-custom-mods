@@ -18,6 +18,7 @@ use dear_imgui_custom_mod::borderless_window::{
     TitleAlign, TitlebarState, TitlebarTheme, WindowAction,
     actions::ResizeEdge, render_titlebar,
 };
+use dear_imgui_custom_mod::confirm_dialog::{DialogConfig, DialogIcon, DialogResult, DialogTheme, render_confirm_dialog};
 use dear_imgui_rs::{Condition, StyleColor, StyleVar, Ui, WindowFlags};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
@@ -108,6 +109,16 @@ impl ActiveTheme {
             Self::Nord      => TitlebarTheme::Nord,
             Self::Solarized => TitlebarTheme::Solarized,
             Self::Monokai   => TitlebarTheme::Monokai,
+        }
+    }
+    fn dialog_theme(self) -> DialogTheme {
+        match self {
+            Self::Dark      => DialogTheme::Dark,
+            Self::Light     => DialogTheme::Light,
+            Self::Midnight  => DialogTheme::Midnight,
+            Self::Nord      => DialogTheme::Nord,
+            Self::Solarized => DialogTheme::Solarized,
+            Self::Monokai   => DialogTheme::Monokai,
         }
     }
 }
@@ -218,61 +229,22 @@ impl DemoState {
                     other => action = other,
                 }
 
-                // ── Close confirmation dialog (always centred) ─────────────
-                // Rendered as a floating window positioned every frame so it
-                // stays centred even if the OS window is resized.
+                // ── Close confirmation dialog ────────────────────────────────
                 if self.show_confirm {
-                    const DLG_W: f32 = 280.0;
-                    const DLG_H: f32 = 130.0;
-                    const PAD:   f32 = 10.0; // window padding
-                    const BTN_W: f32 = 108.0;
-                    const GAP:   f32 = 12.0;
-                    let [dw, dh] = ui.io().display_size();
-                    let _dlg_pad = ui.push_style_var(StyleVar::WindowPadding([PAD, PAD]));
-
-                    ui.window("##close_confirm")
-                        .position([dw * 0.5 - DLG_W * 0.5, dh * 0.5 - DLG_H * 0.5],
-                                  Condition::Always)
-                        .size([DLG_W, DLG_H], Condition::Always)
-                        .flags(
-                            WindowFlags::NO_TITLE_BAR
-                                | WindowFlags::NO_RESIZE
-                                | WindowFlags::NO_MOVE
-                                | WindowFlags::NO_SCROLLBAR,
+                    let dlg_cfg = DialogConfig::new(
+                            "Close Application",
+                            "Are you sure you want to close?",
                         )
-                        .build(|| {
-                            // ── Centred message ────────────────────────
-                            let content_w = DLG_W - PAD * 2.0;
-                            let msg = "Close the application?";
-                            let msg_w = ui.current_font().calc_text_size(
-                                ui.current_font_size(), f32::MAX, -1.0, msg
-                            )[0];
-                            let [_, ty] = ui.cursor_pos();
-                            ui.set_cursor_pos([(content_w - msg_w) * 0.5, ty]);
-                            ui.text(msg);
+                        .with_icon(DialogIcon::Warning)
+                        .with_confirm_label("Close")
+                        .with_cancel_label("Cancel")
+                        .with_theme(self.theme.dialog_theme());
 
-                            ui.spacing();
-                            ui.separator();
-                            ui.spacing();
-
-                            // ── Two centred equal-width buttons ────────
-                            // Cancel (left)  |  Close (right)
-                            let total  = BTN_W * 2.0 + GAP;
-                            let btn_x  = (content_w - total) * 0.5;
-                            let [_, by] = ui.cursor_pos();
-
-                            ui.set_cursor_pos([btn_x, by]);
-                            if ui.button("    Cancel    ") {
-                                self.state.cancel_close();
-                                self.show_confirm = false;
-                            }
-                            ui.same_line();
-                            ui.set_cursor_pos([btn_x + BTN_W + GAP, by]);
-                            if ui.button("     Close     ") {
-                                self.state.confirm_close();
-                                self.show_confirm = false;
-                            }
-                        });
+                    match render_confirm_dialog(ui, &dlg_cfg, &mut self.show_confirm) {
+                        DialogResult::Confirmed => self.state.confirm_close(),
+                        DialogResult::Cancelled => self.state.cancel_close(),
+                        DialogResult::Open      => {}
+                    }
                 }
 
                 // ── Content (cursor already past titlebar) ──────────────────

@@ -53,7 +53,7 @@ pub enum TitlebarTheme {
     /// Monokai Pro palette.
     Monokai,
     /// Fully custom colors.
-    Custom(TitlebarColors),
+    Custom(Box<TitlebarColors>),
 }
 
 impl TitlebarTheme {
@@ -66,7 +66,7 @@ impl TitlebarTheme {
             Self::Nord      => Self::nord_colors(),
             Self::Solarized => Self::solarized_colors(),
             Self::Monokai   => Self::monokai_colors(),
-            Self::Custom(c) => c.clone(),
+            Self::Custom(c) => *c.clone(),
         }
     }
 

@@ -29,10 +29,14 @@
 //! - [`property_inspector`] — Hierarchical property editor with 15+ value types,
 //!   categories, search/filter, diff highlighting, nested objects
 //!
-//! ## Utilities
+//! ## Dialogs & Utilities
 //!
-//! - [`borderless_window`] — Borderless window titlebar with dark/light themes,
-//!   resize zones, drag, minimize/maximize/close, and custom extra buttons
+//! - [`confirm_dialog`] — Reusable modal confirmation dialog with 6 themes,
+//!   4 draw-list icon types (Warning/Error/Info/Question), dim overlay, keyboard shortcuts,
+//!   green Cancel / red Confirm buttons, builder-pattern `DialogConfig`
+//! - [`borderless_window`] — Borderless window titlebar with 6 themes,
+//!   resize zones, drag, minimize/maximize/close, extra buttons, `hwnd_of()` utility
+//! - [`app_window`] — Zero-boilerplate window (wgpu+winit+ImGui); re-exports borderless types
 //! - [`icons`] — Material Design Icons v7.4 constants (7,400+ icons)
 //! - [`theme`] — Dark and Light color palettes with semantic tokens
 //! - [`utils`] — Color packing (RGB/RGBA to u32), text measurement
@@ -40,6 +44,7 @@
 pub mod app_window;
 pub mod borderless_window;
 pub mod code_editor;
+pub mod confirm_dialog;
 pub mod diff_viewer;
 pub mod disasm_view;
 pub mod file_manager;

@@ -170,3 +170,20 @@ Renders the titlebar row and returns:
 | `ResizeStart(edge)` | Mouse pressed on resize edge |
 | `Extra(id)` | Custom extra button clicked |
 | `IconClick` | Window icon clicked |
+
+## Platform Utilities
+
+### `platform::hwnd_of(window) -> Option<isize>`
+
+Extracts the Win32 HWND from a winit `Window`. Returns `None` on non-Windows platforms.
+
+### `platform::set_titlebar_dark_mode(hwnd, dark)`
+
+Applies (or removes) the DWM immersive dark mode attribute. Call **before** `window.set_visible(true)` to avoid white flash on startup.
+
+```rust
+#[cfg(windows)]
+if let Some(hwnd) = borderless_window::platform::hwnd_of(&window) {
+    borderless_window::platform::set_titlebar_dark_mode(hwnd, true);
+}
+```

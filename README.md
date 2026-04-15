@@ -12,6 +12,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 |-----------|-------------|------|
 | **`borderless_window`** | Reusable borderless-window titlebar — 6 built-in themes (Dark, Light, Midnight, Nord, Solarized, Monokai), minimize/maximize/close buttons, 8-direction edge resize, drag-to-move, close-confirmation mode, optional focus-dim, drag-hint, separator, icon, extra buttons, `IconClick` action | [docs/borderless_window.md](docs/borderless_window.md) |
 | **`app_window`** | Zero-boilerplate application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Auto GPU backend (DX12→Vulkan→GL), auto HiDPI, FPS cap, `StartPosition`, atomic theme switching via `AppState::set_theme()` | [docs/app_window.md](docs/app_window.md) |
+| **`confirm_dialog`** | Reusable modal confirmation dialog — 6 themes, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
 
 ### UI Widgets
 
@@ -59,13 +60,17 @@ src/
     theme.rs                        TitlebarTheme, TitlebarColors (6 built-in + Custom)
     actions.rs                      WindowAction, ResizeEdge, TitlebarResult
     state.rs                        TitlebarState — focused, maximized, confirm_close()
-    platform.rs                     cursor_for_edge() helper
+    platform.rs                     hwnd_of(), set_titlebar_dark_mode() — OS helpers
   app_window/
-    mod.rs                          AppWindow::run(), AppHandler trait
+    mod.rs                          AppWindow::run(), AppHandler trait, re-exports borderless types
     config.rs                       AppConfig builder, StartPosition
     state.rs                        AppState — set_theme(), exit(), toggle_maximized()
     gpu.rs                          wgpu + winit event loop, frame render, GPU init
     style.rs                        apply_imgui_style_for_theme() — full ImGui color palette
+  confirm_dialog/
+    mod.rs                          render_confirm_dialog() — themed modal dialog
+    config.rs                       DialogConfig, DialogIcon, ConfirmStyle
+    theme.rs                        DialogTheme, DialogColors (6 built-in + Custom)
   code_editor/
     mod.rs                          CodeEditor widget — render, input, drawing
     buffer.rs                       TextBuffer — lines, cursor, selection, editing

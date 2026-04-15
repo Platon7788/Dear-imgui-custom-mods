@@ -25,6 +25,25 @@
 //! }
 //! ```
 
+/// Extract the HWND from a winit window.
+///
+/// Returns `None` on non-Win32 window handles.
+#[cfg(windows)]
+pub fn hwnd_of(window: &winit::window::Window) -> Option<isize> {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    if let Ok(h) = window.window_handle()
+        && let RawWindowHandle::Win32(w) = h.as_raw()
+    {
+        return Some(w.hwnd.get());
+    }
+    None
+}
+
+/// Extract the HWND from a winit window (no-op on non-Windows).
+#[cfg(not(windows))]
+#[allow(unused_variables)]
+pub fn hwnd_of(_window: &winit::window::Window) -> Option<isize> { None }
+
 /// Apply (or remove) the DWM immersive-dark-mode attribute on the OS titlebar.
 ///
 /// Even with `with_decorations(false)`, Windows still renders a small OS-level

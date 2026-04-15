@@ -323,10 +323,10 @@ pub fn render_titlebar(
     }
 
     // ── Resize click ──────────────────────────────────────────────────────────
-    if action == WindowAction::None && clicked {
-        if let Some(edge) = hover_edge {
-            action = WindowAction::ResizeStart(edge);
-        }
+    if action == WindowAction::None && clicked
+        && let Some(edge) = hover_edge
+    {
+        action = WindowAction::ResizeStart(edge);
     }
 
     // ── Icon click ────────────────────────────────────────────────────────────
@@ -424,7 +424,7 @@ mod tests {
         ] {
             let c = theme.colors();
             // Every bg should be valid RGBA (values in [0,1])
-            assert!(c.bg.iter().all(|&v| v >= 0.0 && v <= 1.0));
+            assert!(c.bg.iter().all(|&v| (0.0..=1.0).contains(&v)));
         }
     }
 
