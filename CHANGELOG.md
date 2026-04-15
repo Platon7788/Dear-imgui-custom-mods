@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.7.0] — 2026-04-16
+
+### Added
+- **nav_panel** — Modern navigation panel (activity bar) component
+  - 3 docking positions: Left, Right, Top (Bottom reserved for StatusBar)
+  - Left/Right: vertical icon strip with active indicator bar
+  - Top: horizontal bar with `IconOnly`, `IconWithLabel`, `LabelOnly` button styles
+  - Flyout submenu on any button with icons, keyboard shortcut hints, separators
+  - Auto-hide with slide animation + auto-show on cursor edge hover
+  - Toggle arrow button (double chevron, direction-aware per dock position)
+  - Badge (notification counter / dot) anchored to button top-right corner
+  - Configurable `button_spacing` (gap between buttons, default 4px)
+  - Optional `show_button_separators` (thin lines between buttons, default on)
+  - Per-button tooltip control (`without_tooltip()`) + global `without_tooltips()`
+  - Custom icon color per button via `with_color([r,g,b,a])`
+  - 6 built-in color themes + `Custom(Box<NavColors>)` (16 color slots)
+  - `content_offset_y` / `content_offset_x` for correct edge detection with borderless titlebar
+  - Builder-pattern `NavPanelConfig` with 20+ builder methods
+  - `NavPanelState`: active button, visibility, animation progress, submenu state
+  - `NavPanelResult` with events + `occupied_size` for layout coordination
+  - Restore tab (chevron arrow) when panel is hidden via toggle
+  - 9 unit tests covering config, state, themes, buttons, submenus
+  - Renders via parent window draw list (no extra ImGui window except submenu flyout)
+  - DrawListMut scoped correctly to prevent `A DrawListMut is already in use` panic
+- **demo_nav_panel** — Full interactive NavPanel + StatusBar integration demo
+  - Config panel with all properties: position, dimensions, behavior flags, spacing, rounding
+  - Live state display: visible, animation_progress, active button
+  - Action buttons: Show/Hide, +Badge, Clear
+  - StatusBar at bottom for layout compatibility testing
+- **docs/nav_panel.md** — Full component documentation
+
+### Changed
+- **utils/color** — `pack_color_f32()` now used as shared `c32()` replacement in `nav_panel`
+  (removes 1 of 5 inline duplicates)
+
 ## [0.6.1] — 2026-04-15
 
 ### Added

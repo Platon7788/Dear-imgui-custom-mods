@@ -12,6 +12,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 |-----------|-------------|------|
 | **`borderless_window`** | Reusable borderless-window titlebar — 6 built-in themes (Dark, Light, Midnight, Nord, Solarized, Monokai), minimize/maximize/close buttons, 8-direction edge resize, drag-to-move, close-confirmation mode, optional focus-dim, drag-hint, separator, icon, extra buttons, `IconClick` action | [docs/borderless_window.md](docs/borderless_window.md) |
 | **`app_window`** | Zero-boilerplate application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Auto GPU backend (DX12→Vulkan→GL), auto HiDPI, FPS cap, `StartPosition`, atomic theme switching via `AppState::set_theme()` | [docs/app_window.md](docs/app_window.md) |
+| **`nav_panel`** | Modern navigation panel (activity bar) — 3 docking positions (Left/Right/Top), flyout submenus, auto-hide with slide animation, toggle arrow, badges, button spacing/separators, per-button tooltip control, 6 themes | [docs/nav_panel.md](docs/nav_panel.md) |
 | **`confirm_dialog`** | Reusable modal confirmation dialog — 6 themes, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
 
 ### UI Widgets
@@ -71,6 +72,11 @@ src/
     mod.rs                          render_confirm_dialog() — themed modal dialog
     config.rs                       DialogConfig, DialogIcon, ConfirmStyle
     theme.rs                        DialogTheme, DialogColors (6 built-in + Custom)
+  nav_panel/
+    mod.rs                          render_nav_panel() — draw-list navigation bar
+    config.rs                       NavPanelConfig, NavButton, SubMenuItem, DockPosition
+    state.rs                        NavPanelState — active, visible, animation, submenu
+    theme.rs                        NavTheme, NavColors (6 built-in + Custom)
   code_editor/
     mod.rs                          CodeEditor widget — render, input, drawing
     buffer.rs                       TextBuffer — lines, cursor, selection, editing
@@ -159,6 +165,7 @@ examples/
   demo_property_inspector.rs        PropertyInspector demo — 5 categories, 20+ props
   demo_status_toolbar.rs            Toolbar + StatusBar combined demo with events
   demo_borderless.rs                BorderlessWindow standalone demo — all 6 themes, edge resize
+  demo_nav_panel.rs                 NavPanel + StatusBar demo — full config panel, all positions
   demo_app_window.rs                AppWindow demo — counter, theme picker, log panel, close confirm
 ```
 
@@ -323,6 +330,7 @@ diff.set_texts("old text...", "new text...");
 ## Running the Demos
 
 ```bash
+cargo run --example demo_nav_panel --release
 cargo run --example demo_app_window --release
 cargo run --example demo_borderless --release
 cargo run --example demo_code_editor --release

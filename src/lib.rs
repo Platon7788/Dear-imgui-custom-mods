@@ -28,6 +28,8 @@
 //!   synchronized scrolling, fold unchanged, hunk navigation
 //! - [`property_inspector`] — Hierarchical property editor with 15+ value types,
 //!   categories, search/filter, diff highlighting, nested objects
+//! - [`nav_panel`] — Modern navigation panel (activity bar) with 4 dock positions,
+//!   auto-hide/show, slide animation, submenu flyouts, badges, 6 themes
 //!
 //! ## Dialogs & Utilities
 //!
@@ -51,6 +53,7 @@ pub mod file_manager;
 pub mod hex_viewer;
 pub mod icons;
 pub mod timeline;
+pub mod nav_panel;
 pub mod node_graph;
 pub mod page_control;
 pub mod property_inspector;
