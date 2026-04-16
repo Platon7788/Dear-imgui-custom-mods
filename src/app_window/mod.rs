@@ -168,10 +168,13 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
                 .expect("failed to create window"),
         );
 
-        // Apply DWM dark mode on Windows before showing the window.
+        // Apply DWM dark mode + rounded corners on Windows before showing the window.
+        // Win11 handles the rounding itself; on Win10 the SetWindowRgn fallback is
+        // re-applied after each resize (see WindowEvent::Resized below).
         #[cfg(windows)]
         if let Some(hwnd) = crate::borderless_window::platform::hwnd_of(&window) {
             crate::borderless_window::platform::set_titlebar_dark_mode(hwnd, true);
+            crate::borderless_window::platform::set_rounded_corners(hwnd, cfg.corner_radius);
         }
 
         // Position the window before showing it.
@@ -244,6 +247,13 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
                 g.surface_cfg.width = s.width.max(1);
                 g.surface_cfg.height = s.height.max(1);
                 g.surface.configure(&g.device, &g.surface_cfg);
+                #[cfg(windows)]
+                if let Some(hwnd) = crate::borderless_window::platform::hwnd_of(&g.window) {
+                    crate::borderless_window::platform::update_rounded_region(
+                        hwnd,
+                        self.config.corner_radius,
+                    );
+                }
                 g.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {

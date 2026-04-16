@@ -39,6 +39,9 @@ pub struct AppConfig {
     pub fps_limit: u32,
     /// Base font size in logical pixels. Default: `15.0`.
     pub font_size: f32,
+    /// Rounded-corner radius in pixels (Win10 fallback path; Win11 DWM ignores it).
+    /// Default: `8`.
+    pub corner_radius: i32,
     /// Titlebar configuration.
     pub titlebar: BorderlessConfig,
 }
@@ -52,6 +55,7 @@ impl Default for AppConfig {
             start_position: StartPosition::CenterScreen,
             fps_limit: 60,
             font_size: 15.0,
+            corner_radius: 8,
             titlebar: BorderlessConfig::default(),
         }
     }
@@ -80,6 +84,12 @@ impl AppConfig {
     /// Set the base font size in logical pixels.
     pub fn with_font_size(mut self, sz: f32) -> Self {
         self.font_size = sz;
+        self
+    }
+
+    /// Set the rounded-corner radius (Win10 fallback path; Win11 DWM ignores it).
+    pub fn with_corner_radius(mut self, r: i32) -> Self {
+        self.corner_radius = r;
         self
     }
 

@@ -37,8 +37,11 @@
 //!   4 draw-list icon types (Warning/Error/Info/Question), dim overlay, keyboard shortcuts,
 //!   green Cancel / red Confirm buttons, builder-pattern `DialogConfig`
 //! - [`borderless_window`] — Borderless window titlebar with 6 themes,
-//!   resize zones, drag, minimize/maximize/close, extra buttons, `hwnd_of()` utility
+//!   resize zones, drag, minimize/maximize/close, extra buttons, `hwnd_of()` utility,
+//!   DWM dark mode, Win11/Win10 rounded corners, cursor + resize-direction helpers
 //! - [`app_window`] — Zero-boilerplate window (wgpu+winit+ImGui); re-exports borderless types
+//! - [`input`] — Keyboard / IME fixes for `dear-imgui-winit`: layout-independent
+//!   `Ctrl+C` on Cyrillic/French/German layouts, numpad text injection, IME commit
 //! - [`icons`] — Material Design Icons v7.4 constants (7,400+ icons)
 //! - [`theme`] — Dark and Light color palettes with semantic tokens
 //! - [`utils`] — Color packing (RGB/RGBA to u32), text measurement
@@ -52,6 +55,7 @@ pub mod disasm_view;
 pub mod file_manager;
 pub mod hex_viewer;
 pub mod icons;
+pub mod input;
 pub mod timeline;
 pub mod nav_panel;
 pub mod node_graph;

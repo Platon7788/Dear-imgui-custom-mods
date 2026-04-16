@@ -1,16 +1,16 @@
 //! wgpu + winit + Dear ImGui initialisation and per-frame rendering helpers.
 
-use crate::borderless_window::{WindowAction, actions::ResizeEdge, render_titlebar};
+use crate::borderless_window::{
+    WindowAction, actions::ResizeEdge, platform::{cursor_icon_for_edge, resize_direction_of},
+    render_titlebar,
+};
 use dear_imgui_rs::{Condition, StyleVar, WindowFlags};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
 use pollster::block_on;
 use std::sync::Arc;
 use std::time::Duration;
-use winit::{
-    event_loop::ActiveEventLoop,
-    window::{CursorIcon, ResizeDirection, Window},
-};
+use winit::{event_loop::ActiveEventLoop, window::Window};
 
 use super::state::AppState;
 use super::AppHandler;
@@ -144,35 +144,6 @@ pub(super) fn init_imgui(
     (context, platform, renderer)
 }
 
-// ── Winit helpers ─────────────────────────────────────────────────────────────
-
-pub(super) fn resize_to_winit(edge: ResizeEdge) -> ResizeDirection {
-    match edge {
-        ResizeEdge::North     => ResizeDirection::North,
-        ResizeEdge::South     => ResizeDirection::South,
-        ResizeEdge::East      => ResizeDirection::East,
-        ResizeEdge::West      => ResizeDirection::West,
-        ResizeEdge::NorthEast => ResizeDirection::NorthEast,
-        ResizeEdge::NorthWest => ResizeDirection::NorthWest,
-        ResizeEdge::SouthEast => ResizeDirection::SouthEast,
-        ResizeEdge::SouthWest => ResizeDirection::SouthWest,
-    }
-}
-
-pub(super) fn cursor_for_edge(edge: Option<ResizeEdge>) -> CursorIcon {
-    match edge {
-        None                        => CursorIcon::Default,
-        Some(ResizeEdge::North)     => CursorIcon::NResize,
-        Some(ResizeEdge::South)     => CursorIcon::SResize,
-        Some(ResizeEdge::East)      => CursorIcon::EResize,
-        Some(ResizeEdge::West)      => CursorIcon::WResize,
-        Some(ResizeEdge::NorthEast) => CursorIcon::NeResize,
-        Some(ResizeEdge::NorthWest) => CursorIcon::NwResize,
-        Some(ResizeEdge::SouthEast) => CursorIcon::SeResize,
-        Some(ResizeEdge::SouthWest) => CursorIcon::SwResize,
-    }
-}
-
 // ── Frame rendering ───────────────────────────────────────────────────────────
 
 /// Render one frame: acquire surface texture, build UI, submit GPU commands.
@@ -259,7 +230,7 @@ pub(super) fn render_frame<H: AppHandler>(
             });
     } // _no_pad, _no_sp dropped here
 
-    gpu.window.set_cursor(cursor_for_edge(hover_edge));
+    gpu.window.set_cursor(cursor_icon_for_edge(hover_edge));
     gpu.platform.prepare_render_with_ui(ui, &gpu.window);
     let draw_data = gpu.context.render();
 
@@ -317,7 +288,7 @@ pub(super) fn render_frame<H: AppHandler>(
             gpu.window.drag_window().ok();
         }
         WindowAction::ResizeStart(e) => {
-            gpu.window.drag_resize_window(resize_to_winit(e)).ok();
+            gpu.window.drag_resize_window(resize_direction_of(e)).ok();
         }
         _ => {}
     }
