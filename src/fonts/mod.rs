@@ -109,7 +109,9 @@ pub fn install_monospace(
 ) -> *mut ImFont {
     let cfg = FontConfig::new()
         .size_pixels(size_pixels)
-        .oversample_h(2)
+        .oversample_h(1)
+        .oversample_v(1)
+        .pixel_snap_h(true)
         .name(font.display_name());
     let ptr = ctx
         .fonts()
@@ -135,7 +137,9 @@ pub fn install_ui_font(
 ) -> *mut ImFont {
     let cfg = FontConfig::new()
         .size_pixels(size_pixels)
-        .oversample_h(2)
+        .oversample_h(1)
+        .oversample_v(1)
+        .pixel_snap_h(true)
         .name(name);
     let ptr = ctx
         .fonts()
