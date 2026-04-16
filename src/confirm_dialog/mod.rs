@@ -281,7 +281,6 @@ pub fn render_confirm_dialog(
         .build(|| {
             let content_w = cfg.width - cfg.padding * 2.0;
             let content_h = cfg.height - cfg.padding * 2.0;
-            let wdl = ui.get_window_draw_list();
             let win_pos = ui.window_pos();
 
             // ── Icon + Title row ─────────────────────────────────────────────
@@ -289,26 +288,43 @@ pub fn render_confirm_dialog(
             let has_icon = cfg.icon != DialogIcon::None;
             let title_start_x = if has_icon { icon_size * 2.0 + 10.0 } else { 0.0 };
 
-            if has_icon {
-                let icon_cx = win_pos[0] + cfg.padding + icon_size;
-                let [_, cy_pos] = ui.cursor_pos();
-                let text_h = calc_text_size("Mg")[1];
-                let icon_cy = win_pos[1] + cy_pos + text_h * 0.5;
-                let icon_col = match cfg.icon {
-                    DialogIcon::Warning  => colors.icon_warning,
-                    DialogIcon::Error    => colors.icon_error,
-                    DialogIcon::Info     => colors.icon_info,
-                    DialogIcon::Question => colors.icon_question,
-                    DialogIcon::None     => unreachable!(),
-                };
-                match cfg.icon {
-                    DialogIcon::Warning  => draw_icon_warning(&wdl, icon_cx, icon_cy, icon_size * 0.6, c32(icon_col), c32(colors.bg)),
-                    DialogIcon::Error    => draw_icon_error(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
-                    DialogIcon::Info     => draw_icon_info(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
-                    DialogIcon::Question => draw_icon_question(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
-                    DialogIcon::None     => {}
+            // Scoped window draw list so it is released before `icon_button`
+            // below tries to take its own — only one DrawListMut of a given
+            // type (Window) may be live at a time.
+            {
+                let wdl = ui.get_window_draw_list();
+
+                if has_icon {
+                    let icon_cx = win_pos[0] + cfg.padding + icon_size;
+                    let [_, cy_pos] = ui.cursor_pos();
+                    let text_h = calc_text_size("Mg")[1];
+                    let icon_cy = win_pos[1] + cy_pos + text_h * 0.5;
+                    let icon_col = match cfg.icon {
+                        DialogIcon::Warning  => colors.icon_warning,
+                        DialogIcon::Error    => colors.icon_error,
+                        DialogIcon::Info     => colors.icon_info,
+                        DialogIcon::Question => colors.icon_question,
+                        DialogIcon::None     => unreachable!(),
+                    };
+                    match cfg.icon {
+                        DialogIcon::Warning  => draw_icon_warning(&wdl, icon_cx, icon_cy, icon_size * 0.6, c32(icon_col), c32(colors.bg)),
+                        DialogIcon::Error    => draw_icon_error(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
+                        DialogIcon::Info     => draw_icon_info(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
+                        DialogIcon::Question => draw_icon_question(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
+                        DialogIcon::None     => {}
+                    }
                 }
-            }
+
+                // Separator — drawn via the same wdl scope.
+                if cfg.show_separator {
+                    let sep_y_abs = win_pos[1] + content_h * 0.55;
+                    wdl.add_line(
+                        [win_pos[0] + cfg.padding, sep_y_abs],
+                        [win_pos[0] + cfg.width - cfg.padding, sep_y_abs],
+                        c32(colors.separator),
+                    ).thickness(1.0).build();
+                }
+            } // wdl drops here
 
             // Title text
             let [_, ty] = ui.cursor_pos();
@@ -333,16 +349,6 @@ pub fn render_confirm_dialog(
             let [_, my] = ui.cursor_pos();
             ui.set_cursor_pos([msg_x, my]);
             ui.text_colored(colors.message, &cfg.message);
-
-            // ── Separator (optional) ─────────────────────────────────────────
-            if cfg.show_separator {
-                let sep_y_abs = win_pos[1] + content_h * 0.55;
-                wdl.add_line(
-                    [win_pos[0] + cfg.padding, sep_y_abs],
-                    [win_pos[0] + cfg.width - cfg.padding, sep_y_abs],
-                    c32(colors.separator),
-                ).thickness(1.0).build();
-            }
 
             // ── Buttons — anchored to bottom, centred horizontally ──────────
             let btn_h = cfg.button_height;
