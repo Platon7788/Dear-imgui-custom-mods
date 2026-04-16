@@ -283,8 +283,8 @@ pub fn compute_arrows(
         let lo = arrow.from_idx.min(arrow.to_idx);
         let hi = arrow.from_idx.max(arrow.to_idx);
         let mut found_depth = 0;
-        'depth: for d in 0..MAX_ARROW_DEPTH {
-            for &(slo, shi) in &depth_slots[d] {
+        'depth: for (d, slot) in depth_slots.iter().enumerate().take(MAX_ARROW_DEPTH) {
+            for &(slo, shi) in slot {
                 if lo < shi && hi > slo {
                     // Overlaps, try next depth.
                     found_depth = d + 1;

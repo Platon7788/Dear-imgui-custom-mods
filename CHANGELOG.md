@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.7.1] — 2026-04-17
+
+### Changed
+- **confirm_dialog** — Modernised visuals matching the user's reference mock-up
+  - Border now tints to the icon color (orange for `Warning`, red for `Error`,
+    blue for `Info`, purple for `Question`) — controlled by new
+    `accent_border: bool` field (default `true`)
+  - Border thickness configurable via new `border_thickness: f32` field
+    (default `1.5`)
+  - Horizontal separator between message and buttons is now opt-in
+    (`show_separator: bool`, default `false`)
+  - Cancel and Confirm buttons now render small draw-list glyphs:
+    `×` on Cancel, `⏻` on destructive Confirm, `✓` on normal Confirm
+    (toggle via new `show_button_icons: bool`, default `true`)
+  - Buttons rendered via custom `InvisibleButton` + draw-list path so the
+    glyphs sit correctly inside the button rect with proper hover/active states
+  - Warning icon color shifted from amber-yellow to orange in the Dark and
+    Midnight themes (closer to the user's mock-up)
+  - New builder methods: `with_border_thickness`, `with_accent_border`,
+    `with_separator`, `with_button_icons`
+- **docs/confirm_dialog.md** — Updated feature list and config table
+
+### Fixed
+- **Clippy: 41 → 0 warnings** across 5 modules (Edition 2024 / Rust 1.94)
+  - `disasm_view/mod.rs` — 17 `collapsible_if` collapsed into `&& let`-chains
+    (multi-level nests merged into one chained `if`)
+  - `disasm_view/config.rs` — `needless_range_loop` → `iter().enumerate().take()`
+    (loop label `'depth:` preserved)
+  - `hex_viewer/mod.rs` — `redundant_closure`, `manual_div_ceil` (verified
+    arithmetic identity for all `len`), 2× `manual_is_multiple_of`,
+    4× `collapsible_if`; click-handler also re-indented and an inner
+    `if/else { if/else }` flattened to `if/else if/else`
+  - `utils/export.rs` — 9× `manual_strip` → `strip_prefix`,
+    1× `if_same_then_else` (NaN/Infinite branches merged via `||`)
+  - `virtual_table/mod.rs`, `virtual_tree/mod.rs` — 4× `collapsible_if`
+- All 370 unit tests still pass; no `#[allow(...)]` was added
+
 ## [0.7.0] — 2026-04-16
 
 ### Added

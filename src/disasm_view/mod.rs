@@ -185,10 +185,10 @@ impl DisasmView {
     /// Scroll to and select the instruction at `addr`.
     pub fn goto_address(&mut self, addr: u64, provider: &dyn DisasmDataProvider) {
         if let Some(idx) = provider.index_of_address(addr) {
-            if let Some(old_idx) = self.cursor_idx {
-                if let Some(old_instr) = provider.instruction(old_idx) {
-                    self.nav.push(old_instr.address());
-                }
+            if let Some(old_idx) = self.cursor_idx
+                && let Some(old_instr) = provider.instruction(old_idx)
+            {
+                self.nav.push(old_instr.address());
             }
             self.select(idx);
         }
@@ -200,10 +200,10 @@ impl DisasmView {
             .and_then(|i| provider.instruction(i))
             .map(|instr| instr.address())
             .unwrap_or(0);
-        if let Some(addr) = self.nav.go_back(current_addr) {
-            if let Some(idx) = provider.index_of_address(addr) {
-                self.select(idx);
-            }
+        if let Some(addr) = self.nav.go_back(current_addr)
+            && let Some(idx) = provider.index_of_address(addr)
+        {
+            self.select(idx);
         }
     }
 
@@ -213,10 +213,10 @@ impl DisasmView {
             .and_then(|i| provider.instruction(i))
             .map(|instr| instr.address())
             .unwrap_or(0);
-        if let Some(addr) = self.nav.go_forward(current_addr) {
-            if let Some(idx) = provider.index_of_address(addr) {
-                self.select(idx);
-            }
+        if let Some(addr) = self.nav.go_forward(current_addr)
+            && let Some(idx) = provider.index_of_address(addr)
+        {
+            self.select(idx);
         }
     }
 
@@ -252,12 +252,12 @@ impl DisasmView {
         // Auto-scroll to current execution point.
         if self.config.follow_execution && self.scroll_to.is_none() {
             for i in 0..count {
-                if let Some(instr) = provider.instruction(i) {
-                    if instr.is_current() {
-                        self.cursor_idx = Some(i);
-                        self.scroll_to = Some(i);
-                        break;
-                    }
+                if let Some(instr) = provider.instruction(i)
+                    && instr.is_current()
+                {
+                    self.cursor_idx = Some(i);
+                    self.scroll_to = Some(i);
+                    break;
                 }
             }
         }
@@ -585,11 +585,11 @@ impl DisasmView {
         x += cols.operands;
 
         // ── Comment ───────────────────────────────────────────
-        if cfg.show_comments {
-            if let Some(comment) = instr.comment() {
-                let comment_str = format!("; {}", comment);
-                draw_list.add_text([x, y], col32(colors.comment), &comment_str);
-            }
+        if cfg.show_comments
+            && let Some(comment) = instr.comment()
+        {
+            let comment_str = format!("; {}", comment);
+            draw_list.add_text([x, y], col32(colors.comment), &comment_str);
         }
 
         // ── Tooltip on hover (comprehensive) ─────────────────
@@ -824,14 +824,12 @@ impl DisasmView {
         }
 
         // Enter → follow branch target.
-        if ui.is_key_pressed(Key::Enter) {
-            if let Some(idx) = self.cursor_idx {
-                if let Some(instr) = provider.instruction(idx) {
-                    if let Some(target) = instr.branch_target() {
-                        self.goto_address(target, provider);
-                    }
-                }
-            }
+        if ui.is_key_pressed(Key::Enter)
+            && let Some(idx) = self.cursor_idx
+            && let Some(instr) = provider.instruction(idx)
+            && let Some(target) = instr.branch_target()
+        {
+            self.goto_address(target, provider);
         }
 
         // G → goto address popup.
@@ -846,12 +844,11 @@ impl DisasmView {
         }
 
         // F9 → toggle breakpoint.
-        if ui.is_key_pressed(Key::F9) {
-            if let Some(idx) = self.cursor_idx {
-                if let Some(instr) = provider.instruction(idx) {
-                    provider.toggle_breakpoint(instr.address());
-                }
-            }
+        if ui.is_key_pressed(Key::F9)
+            && let Some(idx) = self.cursor_idx
+            && let Some(instr) = provider.instruction(idx)
+        {
+            provider.toggle_breakpoint(instr.address());
         }
 
         // Alt+Left → nav back.
@@ -920,10 +917,10 @@ impl DisasmView {
         if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left) {
             if let Some(idx) = self.mouse_to_instruction(ui, provider) {
                 // Cancel edit if clicking a different row.
-                if let Some(edit) = &self.edit {
-                    if edit.idx != idx {
-                        self.edit = None;
-                    }
+                if let Some(edit) = &self.edit
+                    && edit.idx != idx
+                {
+                    self.edit = None;
                 }
 
                 if shift {
@@ -955,15 +952,13 @@ impl DisasmView {
         }
 
         // Drag to extend selection.
-        if ui.is_mouse_dragging(dear_imgui_rs::MouseButton::Left) {
-            if let Some(origin) = self.drag_origin {
-                if let Some(idx) = self.mouse_to_instruction(ui, provider) {
-                    if idx != self.cursor_idx.unwrap_or(usize::MAX) {
-                        self.select_range(origin, idx);
-                        self.cursor_idx = Some(idx);
-                    }
-                }
-            }
+        if ui.is_mouse_dragging(dear_imgui_rs::MouseButton::Left)
+            && let Some(origin) = self.drag_origin
+            && let Some(idx) = self.mouse_to_instruction(ui, provider)
+            && idx != self.cursor_idx.unwrap_or(usize::MAX)
+        {
+            self.select_range(origin, idx);
+            self.cursor_idx = Some(idx);
         }
 
         // Release drag.
@@ -972,29 +967,29 @@ impl DisasmView {
         }
 
         // Double-click to edit (if editable).
-        if ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left) && self.config.editable {
-            if let Some(idx) = self.mouse_to_instruction(ui, provider) {
-                if let Some(instr) = provider.instruction(idx) {
-                    let bytes_str: String = instr.bytes().iter()
-                        .map(|b| format!("{:02X}", b))
-                        .collect::<Vec<_>>().join(" ");
-                    self.edit = Some(EditState {
-                        idx,
-                        column: EditColumn::Bytes,
-                        buf: bytes_str,
-                        frames: 0,
-                    });
-                }
-            }
+        if ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
+            && self.config.editable
+            && let Some(idx) = self.mouse_to_instruction(ui, provider)
+            && let Some(instr) = provider.instruction(idx)
+        {
+            let bytes_str: String = instr.bytes().iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>().join(" ");
+            self.edit = Some(EditState {
+                idx,
+                column: EditColumn::Bytes,
+                buf: bytes_str,
+                frames: 0,
+            });
         }
 
         // Right-click context menu.
-        if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Right) {
-            if let Some(idx) = self.mouse_to_instruction(ui, provider) {
-                self.cursor_idx = Some(idx);
-                self.context_idx = Some(idx);
-                self.show_context_menu = true;
-            }
+        if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Right)
+            && let Some(idx) = self.mouse_to_instruction(ui, provider)
+        {
+            self.cursor_idx = Some(idx);
+            self.context_idx = Some(idx);
+            self.show_context_menu = true;
         }
     }
 
@@ -1280,10 +1275,10 @@ fn classify_operand_token(token: &str) -> TokenKind {
     if token.starts_with("0x") || token.starts_with("0X") {
         return TokenKind::Number;
     }
-    if token.ends_with('h') || token.ends_with('H') {
-        if token[..token.len() - 1].chars().all(|c| c.is_ascii_hexdigit()) {
-            return TokenKind::Number;
-        }
+    if (token.ends_with('h') || token.ends_with('H'))
+        && token[..token.len() - 1].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return TokenKind::Number;
     }
     if token.chars().all(|c| c.is_ascii_digit()) {
         return TokenKind::Number;

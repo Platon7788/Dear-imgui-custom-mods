@@ -1046,10 +1046,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                             ui.set_next_item_width(-1.0);
                             ui.combo_simple_string("##combo", &mut choice, items)
                         };
-                        if changed {
-                            if let Some(row) = self.data.get_mut(idx) {
-                                row.set_cell_value(col_idx, &CellValue::Choice(choice));
-                            }
+                        if changed
+                            && let Some(row) = self.data.get_mut(idx)
+                        {
+                            row.set_cell_value(col_idx, &CellValue::Choice(choice));
                         }
                     }
                 }

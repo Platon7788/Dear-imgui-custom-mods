@@ -53,6 +53,7 @@ pub mod confirm_dialog;
 pub mod diff_viewer;
 pub mod disasm_view;
 pub mod file_manager;
+pub mod fonts;
 pub mod hex_viewer;
 pub mod icons;
 pub mod input;

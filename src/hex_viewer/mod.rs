@@ -77,7 +77,7 @@ fn parse_hex_pattern_masked(s: &str) -> Vec<PatternByte> {
 }
 
 fn parse_ascii_pattern(s: &str) -> Vec<PatternByte> {
-    s.bytes().map(|b| PatternByte::Exact(b)).collect()
+    s.bytes().map(PatternByte::Exact).collect()
 }
 
 fn find_pattern_masked(data: &[u8], pattern: &[PatternByte]) -> Vec<usize> {
@@ -129,7 +129,7 @@ fn format_bytes(bytes: &[u8], format: CopyFormat, uppercase: bool) -> String {
 fn base64_encode(data: &[u8]) -> String {
     const ALPHABET: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
@@ -604,7 +604,7 @@ impl HexViewer {
 
             x += self.char_advance * 3.0;
             let col_idx = i - offset;
-            if group > 0 && (col_idx + 1)% group == 0 && col_idx + 1 < bpr {
+            if group > 0 && (col_idx + 1).is_multiple_of(group) && col_idx + 1 < bpr {
                 x += self.char_advance;
             }
         }
@@ -738,18 +738,14 @@ impl HexViewer {
         }
 
         // Ctrl+G — goto
-        if ctrl && (ui.is_key_pressed(Key::G) || vk_pressed(VK_G)) {
-            if !self.show_goto {
-                self.show_goto = true;
-                self.goto_buf.clear();
-            }
+        if ctrl && (ui.is_key_pressed(Key::G) || vk_pressed(VK_G)) && !self.show_goto {
+            self.show_goto = true;
+            self.goto_buf.clear();
         }
 
         // Ctrl+F — search
-        if ctrl && (ui.is_key_pressed(Key::F) || vk_pressed(VK_F)) {
-            if !self.show_search {
-                self.show_search = true;
-            }
+        if ctrl && (ui.is_key_pressed(Key::F) || vk_pressed(VK_F)) && !self.show_search {
+            self.show_search = true;
         }
 
         // Ctrl+A — select all
@@ -939,48 +935,46 @@ impl HexViewer {
         let shift = ui.io().key_shift();
 
         // Click to set cursor — detect which column was clicked.
-        if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left) {
-            if let Some((offset, column)) = self.mouse_to_offset(ui) {
-                if shift {
-                    // Shift+Click: extend selection.
-                    self.selection.end = offset + 1;
-                } else if ctrl {
-                    // Ctrl+Click: toggle byte in selection (simple multi-select).
-                    if self.selection.contains(offset) {
-                        // Deselect (simplistic — just clear).
-                        self.selection = Selection::default();
-                    } else {
-                        // If no selection, start one. Otherwise extend.
-                        if self.selection.is_empty() {
-                            self.selection = Selection { start: offset, end: offset + 1 };
-                        } else {
-                            // Extend to include this byte.
-                            let (lo, hi) = self.selection.ordered();
-                            let new_lo = lo.min(offset);
-                            let new_hi = hi.max(offset + 1);
-                            self.selection = Selection { start: new_lo, end: new_hi };
-                        }
-                    }
-                    self.cursor = offset;
+        if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left)
+            && let Some((offset, column)) = self.mouse_to_offset(ui)
+        {
+            if shift {
+                // Shift+Click: extend selection.
+                self.selection.end = offset + 1;
+            } else if ctrl {
+                // Ctrl+Click: toggle byte in selection (simple multi-select).
+                if self.selection.contains(offset) {
+                    // Deselect (simplistic — just clear).
+                    self.selection = Selection::default();
+                } else if self.selection.is_empty() {
+                    // If no selection, start one.
+                    self.selection = Selection { start: offset, end: offset + 1 };
                 } else {
-                    self.cursor = offset;
-                    self.selection = Selection { start: offset, end: offset };
+                    // Extend to include this byte.
+                    let (lo, hi) = self.selection.ordered();
+                    let new_lo = lo.min(offset);
+                    let new_hi = hi.max(offset + 1);
+                    self.selection = Selection { start: new_lo, end: new_hi };
+                }
+                self.cursor = offset;
+            } else {
+                self.cursor = offset;
+                self.selection = Selection { start: offset, end: offset };
 
-                    // Start editing if editable.
-                    if self.config.editable {
-                        self.start_editing(column);
-                    } else {
-                        self.stop_editing();
-                    }
+                // Start editing if editable.
+                if self.config.editable {
+                    self.start_editing(column);
+                } else {
+                    self.stop_editing();
                 }
             }
         }
 
         // Drag to select.
-        if ui.is_mouse_dragging(dear_imgui_rs::MouseButton::Left) {
-            if let Some((offset, _)) = self.mouse_to_offset(ui) {
-                self.selection.end = offset + 1;
-            }
+        if ui.is_mouse_dragging(dear_imgui_rs::MouseButton::Left)
+            && let Some((offset, _)) = self.mouse_to_offset(ui)
+        {
+            self.selection.end = offset + 1;
         }
     }
 
@@ -1023,7 +1017,7 @@ impl HexViewer {
             if rel_x < next_x { break; }
             x = next_x;
             col += 1;
-            if group > 0 && col% group == 0 && col < bpr {
+            if group > 0 && col.is_multiple_of(group) && col < bpr {
                 x += self.char_advance;
             }
         }

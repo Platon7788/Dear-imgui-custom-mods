@@ -546,10 +546,10 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 let mut result = Vec::new();
                 for &id in &selected {
                     let already_covered = self.is_ancestor_selected(id, &selected);
-                    if !already_covered {
-                        if let Some(node) = self.export_subtree(id) {
-                            result.push(node);
-                        }
+                    if !already_covered
+                        && let Some(node) = self.export_subtree(id)
+                    {
+                        result.push(node);
                     }
                 }
                 result
@@ -1281,10 +1281,10 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                         ui.set_next_item_width(-1.0);
                         ui.combo_simple_string("##combo", &mut choice, items)
                     };
-                    if changed {
-                        if let Some(data) = self.arena.get_data_mut(node_id) {
-                            data.set_cell_value(col_idx, &CellValue::Choice(choice));
-                        }
+                    if changed
+                        && let Some(data) = self.arena.get_data_mut(node_id)
+                    {
+                        data.set_cell_value(col_idx, &CellValue::Choice(choice));
                     }
                 }
             }
@@ -1713,10 +1713,10 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         for &nid in self.selected_nodes.iter() {
             emit_set.insert(nid);
             // If this is a parent, include all descendants
-            if let Some(slot) = self.arena.get(nid) {
-                if !slot.children.is_empty() {
-                    self.collect_descendants(nid, &mut emit_set);
-                }
+            if let Some(slot) = self.arena.get(nid)
+                && !slot.children.is_empty()
+            {
+                self.collect_descendants(nid, &mut emit_set);
             }
         }
 

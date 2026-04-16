@@ -1,5 +1,7 @@
 //! Color themes for the navigation panel.
 
+use crate::borderless_window::TitlebarTheme;
+
 /// Complete color set for the navigation panel.
 #[derive(Debug, Clone)]
 pub struct NavColors {
@@ -179,5 +181,52 @@ impl NavTheme {
             submenu_separator:[0.26, 0.26, 0.26, 0.60],
             toggle_icon:      [0.48, 0.48, 0.46, 1.0],
         }
+    }
+}
+
+// ─── Conversion from a borderless-window titlebar theme ──────────────────────
+
+/// Derive a matching [`NavColors`] from a [`TitlebarTheme`].
+///
+/// This lets applications drive every visual component from a single theme
+/// selection: if the titlebar is in `Nord`, the nav panel, status bar and
+/// confirm dialog can all pick up the same palette automatically.
+///
+/// The mapping is opinionated but consistent across all seven built-in
+/// titlebar themes:
+/// - `bg`, `btn_hover`, `btn_active`    ← titlebar `bg` / `btn_hover_bg`
+/// - `indicator`                        ← titlebar `btn_maximize` (accent)
+/// - `icon_default` / `icon_active`     ← titlebar `title_inactive` / `title`
+/// - `separator`                        ← titlebar `separator`
+/// - `badge_bg` / `badge_text`          ← close-button red / white (stable across themes)
+/// - `submenu_*`                        ← derived from the matching surface colors
+impl From<&TitlebarTheme> for NavColors {
+    fn from(theme: &TitlebarTheme) -> Self {
+        let tb = theme.colors();
+        let badge_bg = tb.btn_close;
+        Self {
+            bg: tb.bg,
+            btn_hover: tb.btn_hover_bg,
+            btn_active: tb.btn_hover_bg,
+            indicator: tb.btn_maximize,
+            icon_default: tb.title_inactive,
+            icon_active: tb.title,
+            separator: tb.separator,
+            badge_bg,
+            badge_text: [1.0, 1.0, 1.0, 1.0],
+            submenu_bg: tb.bg,
+            submenu_hover: tb.btn_hover_bg,
+            submenu_text: tb.title,
+            submenu_border: tb.separator,
+            submenu_separator: tb.separator,
+            toggle_icon: tb.title_inactive,
+        }
+    }
+}
+
+/// Convenience: `NavTheme::from(&TitlebarTheme::Nord)` → `NavTheme::Custom(Box<NavColors>)`.
+impl From<&TitlebarTheme> for NavTheme {
+    fn from(theme: &TitlebarTheme) -> Self {
+        NavTheme::Custom(Box::new(NavColors::from(theme)))
     }
 }

@@ -1,5 +1,7 @@
 //! Color themes for the confirm dialog.
 
+use crate::borderless_window::TitlebarTheme;
+
 /// Complete color set for the confirm dialog.
 #[derive(Debug, Clone)]
 pub struct DialogColors {
@@ -79,7 +81,7 @@ impl DialogTheme {
             message:            [0.72, 0.70, 0.78, 1.0],
             separator:          [0.28, 0.30, 0.38, 0.60],
 
-            icon_warning:       [1.00, 0.78, 0.00, 1.0],
+            icon_warning:       [0.95, 0.55, 0.13, 1.0],
             icon_error:         [0.94, 0.33, 0.31, 1.0],
             icon_info:          [0.31, 0.76, 0.97, 1.0],
             icon_question:      [0.70, 0.62, 0.86, 1.0],
@@ -131,7 +133,7 @@ impl DialogTheme {
             message:            [0.65, 0.65, 0.70, 1.0],
             separator:          [0.20, 0.22, 0.28, 0.60],
 
-            icon_warning:       [1.00, 0.72, 0.00, 1.0],
+            icon_warning:       [0.96, 0.52, 0.10, 1.0],
             icon_error:         [1.00, 0.35, 0.35, 1.0],
             icon_info:          [0.28, 0.69, 1.00, 1.0],
             icon_question:      [0.70, 0.62, 0.86, 1.0],
@@ -224,5 +226,60 @@ impl DialogTheme {
             btn_cancel_active:  [0.34, 0.56, 0.08, 1.0],
             btn_cancel_text:    [1.0, 1.0, 1.0, 1.0],
         }
+    }
+}
+
+// ─── Conversion from a borderless-window titlebar theme ──────────────────────
+
+#[inline]
+fn shift(c: [f32; 4], delta: f32) -> [f32; 4] {
+    [
+        (c[0] + delta).clamp(0.0, 1.0),
+        (c[1] + delta).clamp(0.0, 1.0),
+        (c[2] + delta).clamp(0.0, 1.0),
+        c[3],
+    ]
+}
+
+/// Derive matching [`DialogColors`] from a [`TitlebarTheme`].
+///
+/// Keeps the confirm dialog visually coherent with the titlebar:
+/// - `bg` / `title` / `message` / `separator` / `border` mirror the titlebar palette.
+/// - Destructive (confirm) button uses the titlebar close-button color.
+/// - Cancel button uses a derived green accent. Icon palette stays semantic
+///   (warning orange / error red / info blue / question purple) so the icon
+///   meaning is independent of the chrome color.
+impl From<&TitlebarTheme> for DialogColors {
+    fn from(theme: &TitlebarTheme) -> Self {
+        let tb = theme.colors();
+        let confirm = tb.btn_close;
+        DialogColors {
+            overlay: [0.0, 0.0, 0.0, 0.55],
+            bg: tb.bg,
+            border: tb.separator,
+            title: tb.title,
+            message: tb.title_inactive,
+            separator: tb.separator,
+            // Semantic icon palette — stable across themes.
+            icon_warning: [0.95, 0.55, 0.13, 1.0],
+            icon_error: [0.94, 0.33, 0.31, 1.0],
+            icon_info: tb.btn_maximize,
+            icon_question: [0.70, 0.62, 0.86, 1.0],
+            btn_confirm: confirm,
+            btn_confirm_hover: shift(confirm, 0.08),
+            btn_confirm_active: shift(confirm, -0.08),
+            btn_confirm_text: [1.0, 1.0, 1.0, 1.0],
+            btn_cancel: [0.22, 0.56, 0.34, 1.0],
+            btn_cancel_hover: [0.28, 0.64, 0.40, 1.0],
+            btn_cancel_active: [0.16, 0.46, 0.28, 1.0],
+            btn_cancel_text: [1.0, 1.0, 1.0, 1.0],
+        }
+    }
+}
+
+/// Convenience: `DialogTheme::from(&TitlebarTheme::Nord)` → `DialogTheme::Custom(Box<DialogColors>)`.
+impl From<&TitlebarTheme> for DialogTheme {
+    fn from(theme: &TitlebarTheme) -> Self {
+        DialogTheme::Custom(Box::new(DialogColors::from(theme)))
     }
 }

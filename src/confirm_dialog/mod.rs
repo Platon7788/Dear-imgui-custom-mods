@@ -105,6 +105,104 @@ fn draw_icon_question(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     draw.add_circle([qx, cy + r * 0.30], 1.8, col).filled(true).build();
 }
 
+// ── Button glyph drawing ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ButtonGlyph {
+    None,
+    X,
+    Power,
+    Check,
+}
+
+fn draw_glyph_x(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
+    draw.add_line([cx - r, cy - r], [cx + r, cy + r], col).thickness(1.8).build();
+    draw.add_line([cx + r, cy - r], [cx - r, cy + r], col).thickness(1.8).build();
+}
+
+fn draw_glyph_power(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
+    // Open arc (gap at top) approximated with short line segments + vertical bar.
+    let segs = 18;
+    let start = -std::f32::consts::FRAC_PI_2 + 0.55; // start below the top, sweeping clockwise
+    let end   = 2.0 * std::f32::consts::PI - std::f32::consts::FRAC_PI_2 - 0.55;
+    let step = (end - start) / segs as f32;
+    let mut prev = [
+        cx + r * start.cos(),
+        cy + r * start.sin(),
+    ];
+    for i in 1..=segs {
+        let a = start + step * i as f32;
+        let p = [cx + r * a.cos(), cy + r * a.sin()];
+        draw.add_line(prev, p, col).thickness(1.8).build();
+        prev = p;
+    }
+    // Vertical bar at top
+    draw.add_line([cx, cy - r - 1.0], [cx, cy - r * 0.15], col).thickness(1.8).build();
+}
+
+fn draw_glyph_check(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
+    let p1 = [cx - r, cy + r * 0.05];
+    let p2 = [cx - r * 0.30, cy + r * 0.55];
+    let p3 = [cx + r, cy - r * 0.55];
+    draw.add_line(p1, p2, col).thickness(2.0).build();
+    draw.add_line(p2, p3, col).thickness(2.0).build();
+}
+
+// ── Custom icon button ───────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn icon_button(
+    ui: &Ui,
+    id: &str,
+    label: &str,
+    size: [f32; 2],
+    glyph: ButtonGlyph,
+    bg: [f32; 4],
+    bg_hov: [f32; 4],
+    bg_act: [f32; 4],
+    text_col: [f32; 4],
+    rounding: f32,
+) -> bool {
+    let pos = ui.cursor_screen_pos();
+    let pressed = ui.invisible_button(id, size);
+    let hovered = ui.is_item_hovered();
+    let active  = ui.is_item_active();
+    let cur_bg  = if active { bg_act } else if hovered { bg_hov } else { bg };
+
+    let draw = ui.get_window_draw_list();
+    draw.add_rect(pos, [pos[0] + size[0], pos[1] + size[1]], c32(cur_bg))
+        .filled(true)
+        .rounding(rounding)
+        .build();
+
+    let text_size = calc_text_size(label);
+    let text_col_u32 = c32(text_col);
+
+    if matches!(glyph, ButtonGlyph::None) {
+        let tx = pos[0] + (size[0] - text_size[0]) * 0.5;
+        let ty = pos[1] + (size[1] - text_size[1]) * 0.5;
+        draw.add_text([tx, ty], text_col_u32, label);
+    } else {
+        let icon_r = size[1] * 0.22;
+        let gap    = 8.0;
+        let group_w = icon_r * 2.0 + gap + text_size[0];
+        let group_x = pos[0] + (size[0] - group_w) * 0.5;
+        let icon_cx = group_x + icon_r;
+        let icon_cy = pos[1] + size[1] * 0.5;
+        match glyph {
+            ButtonGlyph::X     => draw_glyph_x(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
+            ButtonGlyph::Power => draw_glyph_power(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
+            ButtonGlyph::Check => draw_glyph_check(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
+            ButtonGlyph::None  => {}
+        }
+        let tx = icon_cx + icon_r + gap;
+        let ty = pos[1] + (size[1] - text_size[1]) * 0.5;
+        draw.add_text([tx, ty], text_col_u32, label);
+    }
+
+    pressed
+}
+
 // ── Main public function ─────────────────────────────────────────────────────
 
 /// Render a modal confirmation dialog.
@@ -150,11 +248,25 @@ pub fn render_confirm_dialog(
     let dlg_x = (dw - cfg.width)  * 0.5;
     let dlg_y = (dh - cfg.height) * 0.5;
 
+    // Resolve the border color: derive from icon when accent_border is on,
+    // fall back to the theme's neutral border otherwise.
+    let border_color = if cfg.accent_border {
+        match cfg.icon {
+            DialogIcon::Warning  => colors.icon_warning,
+            DialogIcon::Error    => colors.icon_error,
+            DialogIcon::Info     => colors.icon_info,
+            DialogIcon::Question => colors.icon_question,
+            DialogIcon::None     => colors.border,
+        }
+    } else {
+        colors.border
+    };
+
     let _pad  = ui.push_style_var(StyleVar::WindowPadding([cfg.padding, cfg.padding]));
     let _rnd  = ui.push_style_var(StyleVar::WindowRounding(cfg.rounding));
-    let _brd  = ui.push_style_var(StyleVar::WindowBorderSize(1.0));
+    let _brd  = ui.push_style_var(StyleVar::WindowBorderSize(cfg.border_thickness));
     let _bg   = ui.push_style_color(StyleColor::WindowBg, colors.bg);
-    let _brdc = ui.push_style_color(StyleColor::Border, colors.border);
+    let _brdc = ui.push_style_color(StyleColor::Border, border_color);
 
     ui.window("##confirm_dialog")
         .position([dlg_x, dlg_y], Condition::Always)
@@ -222,69 +334,94 @@ pub fn render_confirm_dialog(
             ui.set_cursor_pos([msg_x, my]);
             ui.text_colored(colors.message, &cfg.message);
 
-            // ── Separator — drawn at a fixed relative position ───────────────
-            let sep_y_abs = win_pos[1] + content_h * 0.55;
-            wdl.add_line(
-                [win_pos[0] + cfg.padding, sep_y_abs],
-                [win_pos[0] + cfg.width - cfg.padding, sep_y_abs],
-                c32(colors.separator),
-            ).thickness(1.0).build();
+            // ── Separator (optional) ─────────────────────────────────────────
+            if cfg.show_separator {
+                let sep_y_abs = win_pos[1] + content_h * 0.55;
+                wdl.add_line(
+                    [win_pos[0] + cfg.padding, sep_y_abs],
+                    [win_pos[0] + cfg.width - cfg.padding, sep_y_abs],
+                    c32(colors.separator),
+                ).thickness(1.0).build();
+            }
 
             // ── Buttons — anchored to bottom, centred horizontally ──────────
-            let btn_h = cfg.button_height * 0.78;
+            let btn_h = cfg.button_height;
             let btn_bottom_margin = cfg.padding * 0.35;
             let btn_y = content_h - btn_h - btn_bottom_margin + cfg.padding;
 
-            let btn_w = ((content_w - cfg.button_gap) * 0.5) * 0.42;
+            // Resolve glyphs for the cancel + confirm buttons.
+            let (cancel_glyph, confirm_glyph) = if cfg.show_button_icons {
+                let cg = match cfg.confirm_style {
+                    ConfirmStyle::Destructive => ButtonGlyph::Power,
+                    ConfirmStyle::Normal      => ButtonGlyph::Check,
+                };
+                (ButtonGlyph::X, cg)
+            } else {
+                (ButtonGlyph::None, ButtonGlyph::None)
+            };
+
+            // Width = label + icon + horizontal padding; both buttons share max width.
+            let icon_extra = if cfg.show_button_icons {
+                btn_h * 0.22 * 2.0 + 8.0 // icon diameter + gap
+            } else {
+                0.0
+            };
+            let h_pad = 22.0;
+            let cancel_w  = calc_text_size(cfg.cancel_label.as_str())[0]  + icon_extra + h_pad;
+            let confirm_w = calc_text_size(cfg.confirm_label.as_str())[0] + icon_extra + h_pad;
+            let btn_w = cancel_w.max(confirm_w);
+
             let gap = cfg.button_gap * 1.6;
             let total = btn_w * 2.0 + gap;
-            // Centre within full window width (not content_w which excludes padding)
+            // Centre within full window width.
             let btn_start = (cfg.width - total) * 0.5;
 
             // Cancel button (green / safe)
-            {
-                let _c0 = ui.push_style_color(StyleColor::Button, colors.btn_cancel);
-                let _c1 = ui.push_style_color(StyleColor::ButtonHovered, colors.btn_cancel_hover);
-                let _c2 = ui.push_style_color(StyleColor::ButtonActive, colors.btn_cancel_active);
-                let _c3 = ui.push_style_color(StyleColor::Text, colors.btn_cancel_text);
-                let _r  = ui.push_style_var(StyleVar::FrameRounding(4.0));
-
-                ui.set_cursor_pos([btn_start, btn_y]);
-                if ui.button_with_size(&cfg.cancel_label, [btn_w, btn_h]) {
-                    result = DialogResult::Cancelled;
-                }
+            ui.set_cursor_pos([btn_start, btn_y]);
+            if icon_button(
+                ui,
+                "##cd_cancel",
+                &cfg.cancel_label,
+                [btn_w, btn_h],
+                cancel_glyph,
+                colors.btn_cancel,
+                colors.btn_cancel_hover,
+                colors.btn_cancel_active,
+                colors.btn_cancel_text,
+                4.0,
+            ) {
+                result = DialogResult::Cancelled;
             }
 
-            ui.same_line();
-
-            // Confirm button (red / destructive)
-            {
-                let (bg, hov, act) = match cfg.confirm_style {
-                    ConfirmStyle::Destructive => (
-                        colors.btn_confirm,
-                        colors.btn_confirm_hover,
-                        colors.btn_confirm_active,
-                    ),
-                    ConfirmStyle::Normal => (
-                        colors.btn_cancel,
-                        colors.btn_cancel_hover,
-                        colors.btn_cancel_active,
-                    ),
-                };
-                let text_col = match cfg.confirm_style {
-                    ConfirmStyle::Destructive => colors.btn_confirm_text,
-                    ConfirmStyle::Normal => colors.btn_cancel_text,
-                };
-                let _c0 = ui.push_style_color(StyleColor::Button, bg);
-                let _c1 = ui.push_style_color(StyleColor::ButtonHovered, hov);
-                let _c2 = ui.push_style_color(StyleColor::ButtonActive, act);
-                let _c3 = ui.push_style_color(StyleColor::Text, text_col);
-                let _r  = ui.push_style_var(StyleVar::FrameRounding(4.0));
-
-                ui.set_cursor_pos([btn_start + btn_w + gap, btn_y]);
-                if ui.button_with_size(&cfg.confirm_label, [btn_w, btn_h]) {
-                    result = DialogResult::Confirmed;
-                }
+            // Confirm button (red / destructive or green / normal)
+            let (bg, hov, act, text_col) = match cfg.confirm_style {
+                ConfirmStyle::Destructive => (
+                    colors.btn_confirm,
+                    colors.btn_confirm_hover,
+                    colors.btn_confirm_active,
+                    colors.btn_confirm_text,
+                ),
+                ConfirmStyle::Normal => (
+                    colors.btn_cancel,
+                    colors.btn_cancel_hover,
+                    colors.btn_cancel_active,
+                    colors.btn_cancel_text,
+                ),
+            };
+            ui.set_cursor_pos([btn_start + btn_w + gap, btn_y]);
+            if icon_button(
+                ui,
+                "##cd_confirm",
+                &cfg.confirm_label,
+                [btn_w, btn_h],
+                confirm_glyph,
+                bg,
+                hov,
+                act,
+                text_col,
+                4.0,
+            ) {
+                result = DialogResult::Confirmed;
             }
         });
 

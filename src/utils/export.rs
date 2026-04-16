@@ -257,8 +257,7 @@ fn field_value_json(v: &FieldValue) -> String {
         FieldValue::Bool(b) => b.to_string(),
         FieldValue::Int(i) => i.to_string(),
         FieldValue::Float(f) => {
-            if f.is_nan() { "null".into() }
-            else if f.is_infinite() { "null".into() }
+            if f.is_nan() || f.is_infinite() { "null".into() }
             else { format!("{}", f) }
         }
         FieldValue::Str(s) => format!("\"{}\"", json_escape(s)),
@@ -408,24 +407,24 @@ fn parse_json_object(s: &str) -> Vec<(String, FieldValue)> {
 
 fn parse_json_value(s: &str) -> (FieldValue, &str) {
     let s = s.trim();
-    if s.starts_with('"') {
+    if let Some(rest) = s.strip_prefix('"') {
         // String value.
-        let mut end = 1;
+        let mut end = 0;
         let mut escape = false;
-        for (i, b) in s[1..].bytes().enumerate() {
+        for (i, b) in rest.bytes().enumerate() {
             if escape { escape = false; continue; }
             if b == b'\\' { escape = true; continue; }
-            if b == b'"' { end = i + 1; break; }
+            if b == b'"' { end = i; break; }
         }
-        let val = s[1..end].replace("\\\"", "\"").replace("\\n", "\n")
+        let val = rest[..end].replace("\\\"", "\"").replace("\\n", "\n")
             .replace("\\t", "\t").replace("\\\\", "\\");
-        (FieldValue::Str(val), &s[end + 1..])
-    } else if s.starts_with("null") {
-        (FieldValue::Null, &s[4..])
-    } else if s.starts_with("true") {
-        (FieldValue::Bool(true), &s[4..])
-    } else if s.starts_with("false") {
-        (FieldValue::Bool(false), &s[5..])
+        (FieldValue::Str(val), &rest[end + 1..])
+    } else if let Some(rest) = s.strip_prefix("null") {
+        (FieldValue::Null, rest)
+    } else if let Some(rest) = s.strip_prefix("true") {
+        (FieldValue::Bool(true), rest)
+    } else if let Some(rest) = s.strip_prefix("false") {
+        (FieldValue::Bool(false), rest)
     } else if s.starts_with('[') {
         // Skip arrays (colors, children).
         let mut depth = 0i32;
@@ -649,13 +648,12 @@ fn parse_flat_yaml(content: &str) -> Option<FlatExportData> {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
 
-        if trimmed.starts_with("- ") {
+        if let Some(rest) = trimmed.strip_prefix("- ") {
             // New list item. Flush previous.
             if !current_fields.is_empty() {
                 rows.push(std::mem::take(&mut current_fields));
             }
             // Parse the key: value on the same line as "- ".
-            let rest = &trimmed[2..];
             if let Some((key, val)) = parse_yaml_kv(rest) {
                 if col_set.insert(key.clone()) { columns.push(key.clone()); }
                 current_fields.push((key, val));
@@ -838,23 +836,23 @@ fn parse_ron_tuple(s: &str) -> Vec<(String, FieldValue)> {
 
 fn parse_ron_value(s: &str) -> (FieldValue, &str) {
     let s = s.trim();
-    if s.starts_with('"') {
+    if let Some(rest) = s.strip_prefix('"') {
         // String.
-        let mut end = 1;
+        let mut end = 0;
         let mut escape = false;
-        for (i, b) in s[1..].bytes().enumerate() {
+        for (i, b) in rest.bytes().enumerate() {
             if escape { escape = false; continue; }
             if b == b'\\' { escape = true; continue; }
-            if b == b'"' { end = i + 1; break; }
+            if b == b'"' { end = i; break; }
         }
-        let val = s[1..end].replace("\\\"", "\"").replace("\\\\", "\\");
-        (FieldValue::Str(val), &s[end + 1..])
-    } else if s.starts_with("None") {
-        (FieldValue::Null, &s[4..])
-    } else if s.starts_with("true") {
-        (FieldValue::Bool(true), &s[4..])
-    } else if s.starts_with("false") {
-        (FieldValue::Bool(false), &s[5..])
+        let val = rest[..end].replace("\\\"", "\"").replace("\\\\", "\\");
+        (FieldValue::Str(val), &rest[end + 1..])
+    } else if let Some(rest) = s.strip_prefix("None") {
+        (FieldValue::Null, rest)
+    } else if let Some(rest) = s.strip_prefix("true") {
+        (FieldValue::Bool(true), rest)
+    } else if let Some(rest) = s.strip_prefix("false") {
+        (FieldValue::Bool(false), rest)
     } else if s.starts_with('(') {
         // Color tuple (r, g, b, a).
         let close = s.find(')').unwrap_or(s.len());

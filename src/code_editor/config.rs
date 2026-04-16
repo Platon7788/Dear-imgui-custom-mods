@@ -4,75 +4,20 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use super::token::Token;
 
-// ── Built-in fonts (embedded via include_bytes!) ─────────────────────────────
+// ── Font re-exports for backward compatibility ───────────────────────────────
+//
+// The bundled TTF blobs and `BuiltinFont` enum live in the top-level `fonts`
+// module now (centralised font registry). These re-exports keep existing
+// callers like `code_editor::{BuiltinFont, HACK_FONT_DATA, ...}` working.
 
-/// JetBrains Mono NL Regular — a premium monospace font optimized for code.
-/// No-ligature variant (NL) since Dear ImGui does not support ligatures.
-/// License: SIL Open Font License 1.1 (see `assets/fonts/OFL.txt`).
-/// ~204 KB embedded into the binary.
-pub const JETBRAINS_MONO_FONT_DATA: &[u8] =
-    include_bytes!("../../assets/fonts/JetBrainsMonoNL-Regular.ttf");
-
-/// JetBrains Mono Regular — same font **with** ligature tables.
-/// The ligature data is ignored by ImGui but the glyph metrics differ slightly.
-/// Prefer [`JETBRAINS_MONO_FONT_DATA`] (NL) for smaller binary size.
-pub const JETBRAINS_MONO_LIGATURES_FONT_DATA: &[u8] =
-    include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
-
-/// Hack Regular — a typeface designed for source code, highly legible at
-/// common sizes.  License: MIT + Bitstream Vera.
-/// ~302 KB embedded into the binary.
-pub const HACK_FONT_DATA: &[u8] =
-    include_bytes!("../../assets/fonts/Hack-Regular.ttf");
-
-/// Material Design Icons (MDI v7.4) — 7447 icons in the Private Use Area
-/// (U+F0000–U+F1FFF).  Merged into the main font atlas so that icon constants
-/// from [`crate::icons`] render correctly.
-/// ~1.3 MB embedded into the binary.
-pub const MDI_FONT_DATA: &[u8] =
-    include_bytes!("../../assets/materialdesignicons-webfont.ttf");
-
-/// MDI glyph range for ImGui font merging: `[start, end, 0]` (null-terminated).
-const MDI_GLYPH_RANGES: &[u32] = &[0xF0000, 0xF1FFF, 0];
-
-/// Built-in font choices for the code editor.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum BuiltinFont {
-    /// Hack — highly legible monospace font, excellent for code at all sizes.
-    #[default]
-    Hack,
-    /// JetBrains Mono NL (No Ligatures) — smallest binary footprint.
-    JetBrainsMonoNL,
-    /// JetBrains Mono (with ligature tables — ignored by ImGui).
-    JetBrainsMono,
-}
-
-impl BuiltinFont {
-    /// All built-in font variants.
-    pub const ALL: &'static [BuiltinFont] = &[
-        Self::Hack,
-        Self::JetBrainsMonoNL,
-        Self::JetBrainsMono,
-    ];
-
-    /// Raw TTF bytes for this font variant.
-    pub fn data(self) -> &'static [u8] {
-        match self {
-            Self::Hack            => HACK_FONT_DATA,
-            Self::JetBrainsMonoNL => JETBRAINS_MONO_FONT_DATA,
-            Self::JetBrainsMono   => JETBRAINS_MONO_LIGATURES_FONT_DATA,
-        }
-    }
-
-    /// Human-readable name.
-    pub fn display_name(self) -> &'static str {
-        match self {
-            Self::Hack            => "Hack",
-            Self::JetBrainsMonoNL => "JetBrains Mono NL",
-            Self::JetBrainsMono   => "JetBrains Mono",
-        }
-    }
-}
+pub use crate::fonts::{
+    BuiltinFont,
+    HACK_FONT_DATA,
+    JETBRAINS_MONO_FONT_DATA,
+    JETBRAINS_MONO_LIGATURES_FONT_DATA,
+    MDI_FONT_DATA,
+    merge_mdi_icons,
+};
 
 // ── Global code-editor font ───────────────────────────────────────────────────
 
@@ -133,19 +78,10 @@ pub fn install_code_editor_font_ex(
     size_pixels: f32,
     font: BuiltinFont,
 ) {
-    // 1. Add the monospace code font.
-    let cfg = dear_imgui_rs::FontConfig::new()
-        .size_pixels(size_pixels)
-        .oversample_h(2)
-        .name(font.display_name());
-    if let Some(f) = ctx.fonts().add_font_from_memory_ttf(
-        font.data(), size_pixels, Some(&cfg), None,
-    ) {
-        CODE_EDITOR_FONT_PTR.store(f.raw() as usize, Ordering::SeqCst);
+    let ptr = crate::fonts::install_monospace(ctx, font, size_pixels, true);
+    if !ptr.is_null() {
+        CODE_EDITOR_FONT_PTR.store(ptr as usize, Ordering::SeqCst);
     }
-
-    // 2. Merge MDI icons into the same font (Private Use Area U+F0000–U+F1FFF).
-    merge_mdi_icons(ctx, size_pixels);
 }
 
 /// Install a custom TTF font from raw bytes and register it as the code-editor
@@ -156,30 +92,10 @@ pub fn install_custom_code_editor_font(
     size_pixels: f32,
     name: &str,
 ) {
-    let cfg = dear_imgui_rs::FontConfig::new()
-        .size_pixels(size_pixels)
-        .oversample_h(2)
-        .name(name);
-    if let Some(f) = ctx.fonts().add_font_from_memory_ttf(
-        data, size_pixels, Some(&cfg), None,
-    ) {
-        CODE_EDITOR_FONT_PTR.store(f.raw() as usize, Ordering::SeqCst);
+    let ptr = crate::fonts::install_ui_font(ctx, data, size_pixels, name, true);
+    if !ptr.is_null() {
+        CODE_EDITOR_FONT_PTR.store(ptr as usize, Ordering::SeqCst);
     }
-    merge_mdi_icons(ctx, size_pixels);
-}
-
-/// Merge Material Design Icons into the **last** font added to the atlas.
-///
-/// Can be called independently if you already added your own font and just want
-/// the MDI icon glyphs merged in.
-pub fn merge_mdi_icons(ctx: &mut dear_imgui_rs::Context, size_pixels: f32) {
-    let mdi_cfg = dear_imgui_rs::FontConfig::new()
-        .size_pixels(size_pixels)
-        .merge_mode(true)
-        .name("MDI Icons");
-    ctx.fonts().add_font_from_memory_ttf(
-        MDI_FONT_DATA, size_pixels, Some(&mdi_cfg), Some(MDI_GLYPH_RANGES),
-    );
 }
 
 // ── SyntaxDefinition ─────────────────────────────────────────────────────────

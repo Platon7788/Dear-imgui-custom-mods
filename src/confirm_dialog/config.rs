@@ -71,6 +71,19 @@ pub struct DialogConfig {
     pub keyboard_shortcuts: bool,
     /// Border rounding radius (px). Default: `6.0`.
     pub rounding: f32,
+    /// Border thickness (px). Default: `1.5`.
+    pub border_thickness: f32,
+    /// Use the icon color as the dialog border color (orange for Warning, red for
+    /// Error, etc.). When `false`, the theme's neutral border color is used.
+    /// Default: `true`.
+    pub accent_border: bool,
+    /// Draw a horizontal separator line between the message and the buttons.
+    /// Default: `false` (cleaner modern look).
+    pub show_separator: bool,
+    /// Draw small icons inside the cancel and confirm buttons (X for cancel,
+    /// power glyph for destructive confirm, check for normal confirm).
+    /// Default: `true`.
+    pub show_button_icons: bool,
 }
 
 impl Default for DialogConfig {
@@ -91,6 +104,10 @@ impl Default for DialogConfig {
             dim_background: true,
             keyboard_shortcuts: true,
             rounding: 6.0,
+            border_thickness: 1.5,
+            accent_border: true,
+            show_separator: false,
+            show_button_icons: true,
         }
     }
 }
@@ -114,6 +131,10 @@ impl DialogConfig {
     pub fn with_padding(mut self, p: f32) -> Self { self.padding = p; self }
     pub fn with_button_height(mut self, h: f32) -> Self { self.button_height = h; self }
     pub fn with_rounding(mut self, r: f32) -> Self { self.rounding = r; self }
+    pub fn with_border_thickness(mut self, t: f32) -> Self { self.border_thickness = t; self }
+    pub fn with_accent_border(mut self, on: bool) -> Self { self.accent_border = on; self }
+    pub fn with_separator(mut self, on: bool) -> Self { self.show_separator = on; self }
+    pub fn with_button_icons(mut self, on: bool) -> Self { self.show_button_icons = on; self }
     pub fn without_dim(mut self) -> Self { self.dim_background = false; self }
     pub fn without_keyboard(mut self) -> Self { self.keyboard_shortcuts = false; self }
 }

@@ -14,6 +14,10 @@ Reusable modal confirmation dialog component for Rust + Dear ImGui.
 - **Keyboard shortcuts**: Escape = cancel, Enter = confirm (toggleable)
 - **Color-coded buttons**: green Cancel (safe), red Confirm (destructive)
 - **Compact button layout**: centred, bottom-anchored, generous spacing
+- **Accent border**: the dialog border tints to match the icon (orange for Warning,
+  red for Error, blue for Info, purple for Question) — toggleable
+- **Button glyphs**: small X / power / check glyphs drawn inside the buttons —
+  toggleable
 - **Builder-pattern configuration**: `DialogConfig::new(...).with_icon(...).with_theme(...)`
 - **Font-independent**: all icons drawn as crisp draw-list primitives
 
@@ -115,6 +119,10 @@ Returns:
 | `dim_background` | `bool` | `true` | Draw overlay behind dialog |
 | `keyboard_shortcuts` | `bool` | `true` | Esc/Enter handling |
 | `rounding` | `f32` | `6.0` | Border radius (px) |
+| `border_thickness` | `f32` | `1.5` | Border line thickness (px) |
+| `accent_border` | `bool` | `true` | Tint border with the icon color |
+| `show_separator` | `bool` | `false` | Draw line between message and buttons |
+| `show_button_icons` | `bool` | `true` | Draw X / power / check glyphs in buttons |
 
 ## Integration with app_window
 
