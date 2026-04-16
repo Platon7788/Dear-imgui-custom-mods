@@ -39,15 +39,15 @@ pub struct TitlebarColors {
 /// Theme selector for the titlebar.
 #[derive(Debug, Clone, Default)]
 pub enum TitlebarTheme {
-    /// Deep navy background, pastel accent buttons.
+    /// NxT native dark palette — lifted into the library as the default Dark.
+    /// See [`crate::theme::dark`] for the full stack.
     #[default]
     Dark,
-    /// Clean white / light-grey background.
+    /// Readable light palette with clearly visible borders.
+    /// See [`crate::theme::light`] for the full stack.
     Light,
     /// Near-black, high-contrast (VS Code dark+ inspired).
     Midnight,
-    /// Nordic palette (#2E3440 family).
-    Nord,
     /// Solarized dark palette.
     Solarized,
     /// Monokai Pro palette.
@@ -60,10 +60,9 @@ impl TitlebarTheme {
     /// Resolve to concrete [`TitlebarColors`].
     pub fn colors(&self) -> TitlebarColors {
         match self {
-            Self::Dark      => Self::dark_colors(),
-            Self::Light     => Self::light_colors(),
+            Self::Dark      => crate::theme::dark::titlebar_colors(),
+            Self::Light     => crate::theme::light::titlebar_colors(),
             Self::Midnight  => Self::midnight_colors(),
-            Self::Nord      => Self::nord_colors(),
             Self::Solarized => Self::solarized_colors(),
             Self::Monokai   => Self::monokai_colors(),
             Self::Custom(c) => *c.clone(),
@@ -71,44 +70,12 @@ impl TitlebarTheme {
     }
 
     // ── Built-in palettes ────────────────────────────────────────────────────
-
-    pub fn dark_colors() -> TitlebarColors {
-        let bg = [0.11, 0.12, 0.15, 1.0];
-        TitlebarColors {
-            bg,
-            separator:          [0.22, 0.25, 0.30, 1.0],
-            title:              [0.70, 0.62, 0.86, 1.0],
-            btn_minimize:       [0.99, 0.75, 0.00, 1.0],
-            btn_maximize:       [0.31, 0.76, 0.97, 1.0],
-            btn_close:          [0.94, 0.33, 0.31, 1.0],
-            btn_hover_bg:       [0.23, 0.25, 0.34, 0.85],
-            btn_close_hover_bg: [0.42, 0.12, 0.12, 0.90],
-            icon:               [0.70, 0.62, 0.86, 1.0],
-            bg_erase: bg,
-            drag_hint:          [0.18, 0.20, 0.28, 0.35],
-            bg_inactive:        [0.09, 0.10, 0.12, 1.0],
-            title_inactive:     [0.45, 0.42, 0.55, 1.0],
-        }
-    }
-
-    pub fn light_colors() -> TitlebarColors {
-        let bg = [0.94, 0.94, 0.96, 1.0];
-        TitlebarColors {
-            bg,
-            separator:          [0.73, 0.74, 0.78, 1.0],
-            title:              [0.15, 0.15, 0.22, 1.0],
-            btn_minimize:       [0.78, 0.50, 0.00, 1.0],
-            btn_maximize:       [0.08, 0.46, 0.78, 1.0],
-            btn_close:          [0.82, 0.16, 0.16, 1.0],
-            btn_hover_bg:       [0.78, 0.78, 0.84, 0.90],
-            btn_close_hover_bg: [0.88, 0.20, 0.20, 0.90],
-            icon:               [0.28, 0.28, 0.40, 1.0],
-            bg_erase: bg,
-            drag_hint:          [0.70, 0.72, 0.80, 0.30],
-            bg_inactive:        [0.86, 0.86, 0.90, 1.0],
-            title_inactive:     [0.55, 0.55, 0.62, 1.0],
-        }
-    }
+    //
+    // The Dark and Light palettes now live in `crate::theme::dark` /
+    // `crate::theme::light` along with their full stack (nav / dialog /
+    // statusbar / ImGui style). The remaining three palettes are inline —
+    // their nav / dialog / statusbar colors come from the
+    // `From<&TitlebarTheme>` derivations in each component's theme file.
 
     pub fn midnight_colors() -> TitlebarColors {
         let bg = [0.07, 0.07, 0.09, 1.0];
@@ -126,26 +93,6 @@ impl TitlebarTheme {
             drag_hint:          [0.14, 0.16, 0.24, 0.35],
             bg_inactive:        [0.06, 0.06, 0.08, 1.0],
             title_inactive:     [0.40, 0.40, 0.44, 1.0],
-        }
-    }
-
-    pub fn nord_colors() -> TitlebarColors {
-        // Nord palette: #2E3440 bg, #D8DEE9 text, #88C0D0 blue, #BF616A red, #B58900 yellow
-        let bg = [0.18, 0.20, 0.25, 1.0];
-        TitlebarColors {
-            bg,
-            separator:          [0.23, 0.26, 0.32, 1.0],
-            title:              [0.85, 0.87, 0.91, 1.0],
-            btn_minimize:       [0.53, 0.75, 0.82, 1.0],
-            btn_maximize:       [0.51, 0.75, 0.72, 1.0],
-            btn_close:          [0.75, 0.38, 0.42, 1.0],
-            btn_hover_bg:       [0.23, 0.26, 0.32, 0.82],
-            btn_close_hover_bg: [0.55, 0.22, 0.25, 0.90],
-            icon:               [0.85, 0.87, 0.91, 1.0],
-            bg_erase: bg,
-            drag_hint:          [0.26, 0.29, 0.36, 0.30],
-            bg_inactive:        [0.15, 0.17, 0.21, 1.0],
-            title_inactive:     [0.48, 0.52, 0.58, 1.0],
         }
     }
 

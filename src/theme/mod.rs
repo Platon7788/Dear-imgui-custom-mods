@@ -1,7 +1,25 @@
-//! Theme module — shared color palettes and style presets.
+//! Theme module — per-theme bundles + shared color tokens.
 //!
-//! All components reference colors from here for consistency.
-//! Modify this module to reskin the entire UI.
+//! Each built-in theme lives in its own file and owns the full stack for
+//! that theme: titlebar colors, nav colors, dialog colors, status-bar
+//! config, and the Dear ImGui style palette. This keeps the "one theme =
+//! one file" rule so a single change stays contained.
+//!
+//! Module layout:
+//! - [`dark`]    — NxT native dark palette (default)
+//! - [`light`]   — readable light palette with clearly visible borders
+//!
+//! Other built-in themes (Midnight, Solarized, Monokai) still live inside
+//! the component-specific theme files (`borderless_window::theme` etc.) as
+//! hard-coded palettes — their ImGui style is derived from the titlebar
+//! palette via [`crate::app_window::apply_imgui_style_for_theme`].
+//!
+//! The color tokens below are legacy constants kept for callers that tint
+//! their own widgets by the Dark palette (e.g. `code_editor`, `file_manager`).
+//! Prefer the full theme modules above for new code.
+
+pub mod dark;
+pub mod light;
 
 // ─── Dark theme palette (NxT-inspired) ──────────────────────────────────────
 

@@ -6,10 +6,27 @@ use dear_imgui_rs::StyleColor;
 /// Apply a full Dear ImGui colour palette derived from the titlebar theme.
 ///
 /// Called once at startup (or after a theme change) — not per frame.
+///
+/// For `Dark` and `Light` this delegates to the per-theme full style in
+/// `crate::theme::{dark,light}::apply_imgui_style` (hand-tuned palettes).
+/// The remaining themes are derived algorithmically from their
+/// [`TitlebarColors`](crate::borderless_window::TitlebarColors).
 pub fn apply_imgui_style_for_theme(
     theme: &TitlebarTheme,
     s: &mut dear_imgui_rs::Style,
 ) {
+    match theme {
+        TitlebarTheme::Dark => {
+            crate::theme::dark::apply_imgui_style(s);
+            return;
+        }
+        TitlebarTheme::Light => {
+            crate::theme::light::apply_imgui_style(s);
+            return;
+        }
+        _ => {}
+    }
+
     let c = theme.colors();
     let bg = c.bg;
 

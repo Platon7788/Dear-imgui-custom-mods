@@ -53,7 +53,6 @@ pub enum DialogTheme {
     Dark,
     Light,
     Midnight,
-    Nord,
     Solarized,
     Monokai,
     Custom(Box<DialogColors>),
@@ -62,67 +61,16 @@ pub enum DialogTheme {
 impl DialogTheme {
     pub fn colors(&self) -> DialogColors {
         match self {
-            Self::Dark      => Self::dark(),
-            Self::Light     => Self::light(),
+            Self::Dark      => crate::theme::dark::dialog_colors(),
+            Self::Light     => crate::theme::light::dialog_colors(),
             Self::Midnight  => Self::midnight(),
-            Self::Nord      => Self::nord(),
             Self::Solarized => Self::solarized(),
             Self::Monokai   => Self::monokai(),
             Self::Custom(c) => *c.clone(),
         }
     }
 
-    pub fn dark() -> DialogColors {
-        DialogColors {
-            overlay:            [0.0, 0.0, 0.0, 0.55],
-            bg:                 [0.14, 0.15, 0.19, 1.0],
-            border:             [0.28, 0.30, 0.38, 0.80],
-            title:              [0.92, 0.90, 0.96, 1.0],
-            message:            [0.72, 0.70, 0.78, 1.0],
-            separator:          [0.28, 0.30, 0.38, 0.60],
-
-            icon_warning:       [0.95, 0.55, 0.13, 1.0],
-            icon_error:         [0.94, 0.33, 0.31, 1.0],
-            icon_info:          [0.31, 0.76, 0.97, 1.0],
-            icon_question:      [0.70, 0.62, 0.86, 1.0],
-
-            btn_confirm:        [0.70, 0.22, 0.22, 1.0],
-            btn_confirm_hover:  [0.82, 0.30, 0.30, 1.0],
-            btn_confirm_active: [0.60, 0.18, 0.18, 1.0],
-            btn_confirm_text:   [1.0, 1.0, 1.0, 1.0],
-
-            btn_cancel:         [0.18, 0.52, 0.35, 1.0],
-            btn_cancel_hover:   [0.22, 0.62, 0.42, 1.0],
-            btn_cancel_active:  [0.14, 0.44, 0.28, 1.0],
-            btn_cancel_text:    [1.0, 1.0, 1.0, 1.0],
-        }
-    }
-
-    pub fn light() -> DialogColors {
-        DialogColors {
-            overlay:            [0.0, 0.0, 0.0, 0.35],
-            bg:                 [0.98, 0.98, 0.99, 1.0],
-            border:             [0.75, 0.76, 0.80, 0.80],
-            title:              [0.12, 0.12, 0.18, 1.0],
-            message:            [0.30, 0.30, 0.38, 1.0],
-            separator:          [0.78, 0.79, 0.84, 0.60],
-
-            icon_warning:       [0.85, 0.60, 0.00, 1.0],
-            icon_error:         [0.82, 0.16, 0.16, 1.0],
-            icon_info:          [0.08, 0.46, 0.78, 1.0],
-            icon_question:      [0.45, 0.35, 0.70, 1.0],
-
-            btn_confirm:        [0.82, 0.16, 0.16, 1.0],
-            btn_confirm_hover:  [0.90, 0.24, 0.24, 1.0],
-            btn_confirm_active: [0.70, 0.12, 0.12, 1.0],
-            btn_confirm_text:   [1.0, 1.0, 1.0, 1.0],
-
-            btn_cancel:         [0.22, 0.62, 0.38, 1.0],
-            btn_cancel_hover:   [0.28, 0.72, 0.46, 1.0],
-            btn_cancel_active:  [0.18, 0.52, 0.32, 1.0],
-            btn_cancel_text:    [1.0, 1.0, 1.0, 1.0],
-        }
-    }
+    // Dark and Light palettes live in `crate::theme::{dark,light}`.
 
     pub fn midnight() -> DialogColors {
         DialogColors {
@@ -146,32 +94,6 @@ impl DialogTheme {
             btn_cancel:         [0.15, 0.48, 0.30, 1.0],
             btn_cancel_hover:   [0.20, 0.58, 0.38, 1.0],
             btn_cancel_active:  [0.12, 0.40, 0.24, 1.0],
-            btn_cancel_text:    [1.0, 1.0, 1.0, 1.0],
-        }
-    }
-
-    pub fn nord() -> DialogColors {
-        DialogColors {
-            overlay:            [0.0, 0.0, 0.0, 0.50],
-            bg:                 [0.20, 0.22, 0.28, 1.0],
-            border:             [0.26, 0.30, 0.37, 0.80],
-            title:              [0.88, 0.90, 0.94, 1.0],
-            message:            [0.70, 0.73, 0.80, 1.0],
-            separator:          [0.26, 0.30, 0.37, 0.60],
-
-            icon_warning:       [0.92, 0.80, 0.55, 1.0],
-            icon_error:         [0.75, 0.38, 0.42, 1.0],
-            icon_info:          [0.53, 0.75, 0.82, 1.0],
-            icon_question:      [0.70, 0.62, 0.86, 1.0],
-
-            btn_confirm:        [0.75, 0.38, 0.42, 1.0],
-            btn_confirm_hover:  [0.85, 0.45, 0.50, 1.0],
-            btn_confirm_active: [0.62, 0.30, 0.34, 1.0],
-            btn_confirm_text:   [1.0, 1.0, 1.0, 1.0],
-
-            btn_cancel:         [0.36, 0.56, 0.52, 1.0],
-            btn_cancel_hover:   [0.42, 0.66, 0.60, 1.0],
-            btn_cancel_active:  [0.30, 0.48, 0.44, 1.0],
             btn_cancel_text:    [1.0, 1.0, 1.0, 1.0],
         }
     }
@@ -298,7 +220,7 @@ impl From<&TitlebarTheme> for DialogColors {
     }
 }
 
-/// Convenience: `DialogTheme::from(&TitlebarTheme::Nord)` → `DialogTheme::Custom(Box<DialogColors>)`.
+/// Convenience: `DialogTheme::from(&TitlebarTheme::Midnight)` → `DialogTheme::Custom(Box<DialogColors>)`.
 impl From<&TitlebarTheme> for DialogTheme {
     fn from(theme: &TitlebarTheme) -> Self {
         DialogTheme::Custom(Box::new(DialogColors::from(theme)))
