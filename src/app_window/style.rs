@@ -6,7 +6,7 @@ use dear_imgui_rs::StyleColor;
 /// Apply a full Dear ImGui colour palette derived from the titlebar theme.
 ///
 /// Called once at startup (or after a theme change) — not per frame.
-pub(super) fn apply_imgui_style_for_theme(
+pub fn apply_imgui_style_for_theme(
     theme: &TitlebarTheme,
     s: &mut dear_imgui_rs::Style,
 ) {

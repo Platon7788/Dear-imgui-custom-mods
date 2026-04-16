@@ -26,10 +26,11 @@
 pub mod config;
 pub mod gpu;
 pub mod state;
-pub(crate) mod style;
+pub mod style;
 
 pub use config::{AppConfig, StartPosition};
 pub use state::AppState;
+pub use style::apply_imgui_style_for_theme;
 
 pub use crate::borderless_window::{
     TitlebarTheme, BorderlessConfig, ButtonConfig, ExtraButton, CloseMode, TitleAlign,
