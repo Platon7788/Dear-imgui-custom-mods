@@ -71,11 +71,15 @@ impl SubMenuItem {
 // ── Nav button ───────────────────────────────────────────────────────────────
 
 /// A button in the navigation panel.
+///
+/// `tooltip` is an owned `String` so callers can feed it runtime-localised text
+/// (e.g. values from an i18n `Strings` struct). Accepts both `&'static str` and
+/// `String` via `impl Into<String>` on the constructors.
 #[derive(Debug, Clone)]
 pub struct NavButton {
     pub id: &'static str,
     pub icon: &'static str,
-    pub tooltip: &'static str,
+    pub tooltip: String,
     pub color: Option<[f32; 4]>,
     pub submenu: Vec<SubMenuItem>,
     pub badge: Option<String>,
@@ -84,11 +88,27 @@ pub struct NavButton {
 }
 
 impl NavButton {
-    pub fn action(id: &'static str, icon: &'static str, tooltip: &'static str) -> Self {
-        Self { id, icon, tooltip, color: None, submenu: Vec::new(), badge: None, show_tooltip: true }
+    pub fn action(id: &'static str, icon: &'static str, tooltip: impl Into<String>) -> Self {
+        Self {
+            id,
+            icon,
+            tooltip: tooltip.into(),
+            color: None,
+            submenu: Vec::new(),
+            badge: None,
+            show_tooltip: true,
+        }
     }
-    pub fn submenu(id: &'static str, icon: &'static str, tooltip: &'static str) -> Self {
-        Self { id, icon, tooltip, color: None, submenu: Vec::new(), badge: None, show_tooltip: true }
+    pub fn submenu(id: &'static str, icon: &'static str, tooltip: impl Into<String>) -> Self {
+        Self {
+            id,
+            icon,
+            tooltip: tooltip.into(),
+            color: None,
+            submenu: Vec::new(),
+            badge: None,
+            show_tooltip: true,
+        }
     }
     pub fn with_color(mut self, c: [f32; 4]) -> Self { self.color = Some(c); self }
     pub fn add_item(mut self, item: SubMenuItem) -> Self { self.submenu.push(item); self }
@@ -96,6 +116,12 @@ impl NavButton {
     pub fn without_tooltip(mut self) -> Self { self.show_tooltip = false; self }
     pub fn with_badge(mut self, text: impl Into<String>) -> Self {
         self.badge = Some(text.into()); self
+    }
+    /// Builder: update the tooltip (useful when rebuilding the config each
+    /// frame with freshly localised strings).
+    pub fn with_tooltip(mut self, tooltip: impl Into<String>) -> Self {
+        self.tooltip = tooltip.into();
+        self
     }
 }
 

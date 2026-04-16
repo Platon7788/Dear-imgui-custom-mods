@@ -340,12 +340,13 @@ pub fn render_nav_panel(
 
                 // Label for horizontal mode
                 if !is_vertical && cfg.button_style != ButtonStyle::IconOnly {
-                    let [lw, lh] = calc_text_size(btn.tooltip);
+                    let label = btn.tooltip.as_str();
+                    let [lw, lh] = calc_text_size(label);
                     match cfg.button_style {
                         ButtonStyle::LabelOnly =>
-                            draw.add_text([bcx - lw * 0.5, bcy - lh * 0.5], c32(icon_col), btn.tooltip),
+                            draw.add_text([bcx - lw * 0.5, bcy - lh * 0.5], c32(icon_col), label),
                         ButtonStyle::IconWithLabel =>
-                            draw.add_text([bcx + iw * 0.5 + 4.0, bcy - lh * 0.5], c32(icon_col), btn.tooltip),
+                            draw.add_text([bcx + iw * 0.5 + 4.0, bcy - lh * 0.5], c32(icon_col), label),
                         ButtonStyle::IconOnly => {}
                     }
                 }
@@ -368,7 +369,7 @@ pub fn render_nav_panel(
 
                 // Tooltip (respects global + per-button flag)
                 if hov && !is_submenu_open && cfg.show_tooltips && btn.show_tooltip {
-                    ui.tooltip_text(btn.tooltip);
+                    ui.tooltip_text(btn.tooltip.as_str());
                 }
 
                 // Click
