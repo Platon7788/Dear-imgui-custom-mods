@@ -249,13 +249,34 @@ fn shift(c: [f32; 4], delta: f32) -> [f32; 4] {
 /// - Cancel button uses a derived green accent. Icon palette stays semantic
 ///   (warning orange / error red / info blue / question purple) so the icon
 ///   meaning is independent of the chrome color.
+/// Perceived luminance of an RGB color (Rec. 601 weights).
+#[inline]
+fn luminance(c: [f32; 4]) -> f32 {
+    c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114
+}
+
 impl From<&TitlebarTheme> for DialogColors {
     fn from(theme: &TitlebarTheme) -> Self {
         let tb = theme.colors();
-        let confirm = tb.btn_close;
+
+        // Nudge the dialog background away from the titlebar bg so the dialog
+        // "floats" above the window: lighten it on dark themes, darken it on
+        // light themes. 0.04 is subtle but clearly readable.
+        let bg = if luminance(tb.bg) < 0.5 {
+            shift(tb.bg, 0.04)
+        } else {
+            shift(tb.bg, -0.04)
+        };
+
+        // Semantic button palette — destructive = red, safe/cancel = green.
+        // Kept constant across all seven themes so the "stop / continue"
+        // meaning never blends into the surrounding chrome.
+        let confirm_red = [0.70, 0.22, 0.22, 1.0];
+        let cancel_green = [0.18, 0.52, 0.35, 1.0];
+
         DialogColors {
             overlay: [0.0, 0.0, 0.0, 0.55],
-            bg: tb.bg,
+            bg,
             border: tb.separator,
             title: tb.title,
             message: tb.title_inactive,
@@ -265,13 +286,13 @@ impl From<&TitlebarTheme> for DialogColors {
             icon_error: [0.94, 0.33, 0.31, 1.0],
             icon_info: tb.btn_maximize,
             icon_question: [0.70, 0.62, 0.86, 1.0],
-            btn_confirm: confirm,
-            btn_confirm_hover: shift(confirm, 0.08),
-            btn_confirm_active: shift(confirm, -0.08),
+            btn_confirm: confirm_red,
+            btn_confirm_hover: shift(confirm_red, 0.08),
+            btn_confirm_active: shift(confirm_red, -0.08),
             btn_confirm_text: [1.0, 1.0, 1.0, 1.0],
-            btn_cancel: [0.22, 0.56, 0.34, 1.0],
-            btn_cancel_hover: [0.28, 0.64, 0.40, 1.0],
-            btn_cancel_active: [0.16, 0.46, 0.28, 1.0],
+            btn_cancel: cancel_green,
+            btn_cancel_hover: shift(cancel_green, 0.06),
+            btn_cancel_active: shift(cancel_green, -0.06),
             btn_cancel_text: [1.0, 1.0, 1.0, 1.0],
         }
     }
