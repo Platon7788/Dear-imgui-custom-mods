@@ -43,7 +43,11 @@ use crate::utils::color::rgba_f32;
 use crate::utils::text::calc_text_size;
 
 /// Result of rendering the confirm dialog for one frame.
+///
+/// Dropping this result means ignoring whether the user accepted or
+/// cancelled — `#[must_use]` surfaces that at compile time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "the caller must react to DialogResult — Confirmed triggers the destructive action, Cancelled dismisses"]
 pub enum DialogResult {
     /// User confirmed (clicked confirm button or pressed Enter).
     Confirmed,

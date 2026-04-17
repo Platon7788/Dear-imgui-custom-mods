@@ -73,7 +73,11 @@ pub enum NavEvent {
 }
 
 /// Result of rendering the nav panel for one frame.
+///
+/// `events` carries button / submenu / toggle clicks; silently dropping them
+/// means ignoring user input. `#[must_use]` surfaces that at compile time.
 #[derive(Debug, Clone)]
+#[must_use = "nav events (button clicks, submenu selections) are delivered via this result"]
 pub struct NavPanelResult {
     /// Events produced this frame.
     pub events: Vec<NavEvent>,
@@ -156,7 +160,7 @@ fn render_nav_panel_impl(
             ui.get_window_draw_list()
         };
         let clicked = ui.is_mouse_clicked(MouseButton::Left);
-        let colors = cfg.resolved_colors();
+        // `colors` is already resolved above — reuse, don't duplicate the work.
         let tab_w = 16.0_f32;
         let tab_h = 36.0_f32;
 

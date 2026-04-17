@@ -38,7 +38,11 @@ pub enum WindowAction {
 }
 
 /// Value returned by [`render_titlebar`](super::render_titlebar) each frame.
+///
+/// Ignoring this result drops the user's window action (drag / resize / close)
+/// on the floor — `#[must_use]` makes that a compile warning.
 #[derive(Debug, Clone, Copy)]
+#[must_use = "window actions are produced each frame — dropping the result means dropping user input"]
 pub struct TitlebarResult {
     /// Primary action to handle (drag, resize, button clicks, …).
     pub action: WindowAction,
