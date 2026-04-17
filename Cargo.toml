@@ -15,6 +15,17 @@ wgpu = "29.0.1"
 winit = "0.30.13"
 
 [dev-dependencies]
+# Microbenchmarks via Criterion — gate behind the `bench` runner so
+# regular `cargo test` stays fast.
+criterion = { version = "0.7", features = ["html_reports"] }
+
+[[bench]]
+name = "theme_dispatch"
+harness = false
+
+[[bench]]
+name = "color_packing"
+harness = false
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [

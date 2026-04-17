@@ -115,7 +115,7 @@ use dear_imgui_rs::Style;
 /// let tb = Theme::Dark.titlebar();
 /// let cols = Theme::default().nav();
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Theme {
     /// NxT native dark palette (warm grey + blue accent).
     #[default]
