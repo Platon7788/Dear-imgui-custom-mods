@@ -63,9 +63,9 @@ impl DialogTheme {
         match self {
             Self::Dark      => crate::theme::dark::dialog_colors(),
             Self::Light     => crate::theme::light::dialog_colors(),
-            Self::Midnight  => Self::midnight(),
-            Self::Solarized => Self::solarized(),
-            Self::Monokai   => Self::monokai(),
+            Self::Midnight  => crate::theme::midnight::dialog_colors(),
+            Self::Solarized => crate::theme::solarized::dialog_colors(),
+            Self::Monokai   => crate::theme::monokai::dialog_colors(),
             Self::Custom(c) => *c.clone(),
         }
     }

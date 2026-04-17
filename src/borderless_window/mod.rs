@@ -3,7 +3,7 @@
 //! Reusable borderless-window titlebar for Rust + Dear ImGui on Windows.
 //!
 //! ## Features
-//! - 6 built-in color themes (Dark, Light, Midnight, Nord, Solarized, Monokai)
+//! - 5 built-in color themes (Dark, Light, Midnight, Solarized, Monokai)
 //! - Minimize / Maximize / Close buttons with **small icon-only hover highlights**
 //! - Optional close-confirmation mode
 //! - 8-direction edge resize zone detection with hover-edge feedback
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn builder_chain() {
         let cfg = BorderlessConfig::new("Test")
-            .with_theme(TitlebarTheme::Nord)
+            .with_theme(TitlebarTheme::Solarized)
             .with_titlebar_height(32.0)
             .with_close_mode(CloseMode::Confirm)
             .with_title_align(TitleAlign::Center)
@@ -417,10 +417,10 @@ mod tests {
     }
 
     #[test]
-    fn all_six_themes_resolve() {
+    fn all_builtin_themes_resolve() {
         for theme in [
             TitlebarTheme::Dark, TitlebarTheme::Light, TitlebarTheme::Midnight,
-            TitlebarTheme::Nord, TitlebarTheme::Solarized, TitlebarTheme::Monokai,
+            TitlebarTheme::Solarized, TitlebarTheme::Monokai,
         ] {
             let c = theme.colors();
             // Every bg should be valid RGBA (values in [0,1])

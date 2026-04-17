@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn builder_chain() {
         let cfg = NavPanelConfig::new(DockPosition::Right)
-            .with_theme(NavTheme::Nord)
+            .with_theme(NavTheme::Solarized)
             .with_width(48.0)
             .with_auto_hide(true)
             .with_toggle_button(true)
@@ -618,10 +618,10 @@ mod tests {
     }
 
     #[test]
-    fn all_six_themes_resolve() {
+    fn all_builtin_themes_resolve() {
         for theme in [
             NavTheme::Dark, NavTheme::Light, NavTheme::Midnight,
-            NavTheme::Nord, NavTheme::Solarized, NavTheme::Monokai,
+            NavTheme::Solarized, NavTheme::Monokai,
         ] {
             let c = theme.colors();
             assert!(c.bg.iter().all(|&v| (0.0..=1.0).contains(&v)));

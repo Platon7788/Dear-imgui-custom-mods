@@ -5,14 +5,12 @@
 //! config, and the Dear ImGui style palette. This keeps the "one theme =
 //! one file" rule so a single change stays contained.
 //!
-//! Module layout:
-//! - [`dark`]    — NxT native dark palette (default)
-//! - [`light`]   — readable light palette with clearly visible borders
-//!
-//! Other built-in themes (Midnight, Solarized, Monokai) still live inside
-//! the component-specific theme files (`borderless_window::theme` etc.) as
-//! hard-coded palettes — their ImGui style is derived from the titlebar
-//! palette via [`crate::app_window::apply_imgui_style_for_theme`].
+//! Module layout — one theme per file, each owning a full stack:
+//! - [`dark`]      — NxT native dark palette (default)
+//! - [`light`]     — readable light palette with clearly visible borders
+//! - [`midnight`]  — near-black OLED-friendly, Tokyo Night blue accent
+//! - [`solarized`] — Solarized Dark (Ethan Schoonover), warm teal surfaces
+//! - [`monokai`]   — Monokai Pro, warm charcoal + neon accents
 //!
 //! The color tokens below are legacy constants kept for callers that tint
 //! their own widgets by the Dark palette (e.g. `code_editor`, `file_manager`).
@@ -20,6 +18,9 @@
 
 pub mod dark;
 pub mod light;
+pub mod midnight;
+pub mod monokai;
+pub mod solarized;
 
 // ─── Dark theme palette (NxT-inspired) ──────────────────────────────────────
 

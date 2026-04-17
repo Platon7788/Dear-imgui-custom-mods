@@ -54,16 +54,19 @@ impl NavTheme {
         match self {
             Self::Dark      => crate::theme::dark::nav_colors(),
             Self::Light     => crate::theme::light::nav_colors(),
-            Self::Midnight  => Self::midnight(),
-            Self::Solarized => Self::solarized(),
-            Self::Monokai   => Self::monokai(),
+            Self::Midnight  => crate::theme::midnight::nav_colors(),
+            Self::Solarized => crate::theme::solarized::nav_colors(),
+            Self::Monokai   => crate::theme::monokai::nav_colors(),
             Self::Custom(c) => *c.clone(),
         }
     }
 
-    // Dark and Light palettes live in `crate::theme::{dark,light}` — see
-    // `NavTheme::colors()` above for the dispatch.
+    // All built-in palettes live in `crate::theme::*` modules. The helpers
+    // below are kept only because the `From<&TitlebarTheme> for NavColors`
+    // impl on this type has a different derivation shape and still wants
+    // the inline palettes for back-compat with third-party consumers.
 
+    #[doc(hidden)]
     pub fn midnight() -> NavColors {
         NavColors {
             bg:               [0.06, 0.06, 0.08, 1.0],

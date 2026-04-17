@@ -58,81 +58,21 @@ pub enum TitlebarTheme {
 
 impl TitlebarTheme {
     /// Resolve to concrete [`TitlebarColors`].
+    ///
+    /// All built-in themes delegate to their dedicated module in
+    /// `crate::theme::*` so the full theme stack (titlebar + nav + dialog +
+    /// statusbar + ImGui style) lives in one file per theme.
     pub fn colors(&self) -> TitlebarColors {
         match self {
             Self::Dark      => crate::theme::dark::titlebar_colors(),
             Self::Light     => crate::theme::light::titlebar_colors(),
-            Self::Midnight  => Self::midnight_colors(),
-            Self::Solarized => Self::solarized_colors(),
-            Self::Monokai   => Self::monokai_colors(),
+            Self::Midnight  => crate::theme::midnight::titlebar_colors(),
+            Self::Solarized => crate::theme::solarized::titlebar_colors(),
+            Self::Monokai   => crate::theme::monokai::titlebar_colors(),
             Self::Custom(c) => *c.clone(),
         }
     }
 
-    // ── Built-in palettes ────────────────────────────────────────────────────
-    //
-    // The Dark and Light palettes now live in `crate::theme::dark` /
-    // `crate::theme::light` along with their full stack (nav / dialog /
-    // statusbar / ImGui style). The remaining three palettes are inline —
-    // their nav / dialog / statusbar colors come from the
-    // `From<&TitlebarTheme>` derivations in each component's theme file.
-
-    pub fn midnight_colors() -> TitlebarColors {
-        let bg = [0.07, 0.07, 0.09, 1.0];
-        TitlebarColors {
-            bg,
-            separator:          [0.14, 0.16, 0.20, 1.0],
-            title:              [0.75, 0.75, 0.78, 1.0],
-            btn_minimize:       [1.00, 0.72, 0.00, 1.0],
-            btn_maximize:       [0.28, 0.69, 1.00, 1.0],
-            btn_close:          [1.00, 0.35, 0.35, 1.0],
-            btn_hover_bg:       [0.17, 0.19, 0.26, 0.88],
-            btn_close_hover_bg: [0.60, 0.10, 0.10, 0.92],
-            icon:               [0.75, 0.75, 0.78, 1.0],
-            bg_erase: bg,
-            drag_hint:          [0.14, 0.16, 0.24, 0.35],
-            bg_inactive:        [0.06, 0.06, 0.08, 1.0],
-            title_inactive:     [0.40, 0.40, 0.44, 1.0],
-        }
-    }
-
-    pub fn solarized_colors() -> TitlebarColors {
-        // Solarized dark: base02 #073642, base0 #839496, blue #268BD2, red #DC322F
-        let bg = [0.03, 0.21, 0.26, 1.0];
-        TitlebarColors {
-            bg,
-            separator:          [0.35, 0.43, 0.46, 1.0],
-            title:              [0.51, 0.58, 0.59, 1.0],
-            btn_minimize:       [0.71, 0.54, 0.00, 1.0],
-            btn_maximize:       [0.15, 0.55, 0.82, 1.0],
-            btn_close:          [0.86, 0.20, 0.18, 1.0],
-            btn_hover_bg:       [0.05, 0.27, 0.33, 0.88],
-            btn_close_hover_bg: [0.55, 0.12, 0.10, 0.90],
-            icon:               [0.51, 0.58, 0.59, 1.0],
-            bg_erase: bg,
-            drag_hint:          [0.05, 0.28, 0.35, 0.30],
-            bg_inactive:        [0.02, 0.17, 0.21, 1.0],
-            title_inactive:     [0.28, 0.35, 0.36, 1.0],
-        }
-    }
-
-    pub fn monokai_colors() -> TitlebarColors {
-        // Monokai Pro: #272822 bg, #F92672 pink, #A6E22E green, #E6DB74 yellow
-        let bg = [0.15, 0.15, 0.15, 1.0];
-        TitlebarColors {
-            bg,
-            separator:          [0.22, 0.22, 0.22, 1.0],
-            title:              [0.95, 0.94, 0.93, 1.0],
-            btn_minimize:       [0.90, 0.86, 0.45, 1.0],
-            btn_maximize:       [0.65, 0.89, 0.18, 1.0],
-            btn_close:          [0.98, 0.15, 0.45, 1.0],
-            btn_hover_bg:       [0.26, 0.26, 0.26, 0.85],
-            btn_close_hover_bg: [0.65, 0.08, 0.28, 0.92],
-            icon:               [0.95, 0.94, 0.93, 1.0],
-            bg_erase: bg,
-            drag_hint:          [0.22, 0.22, 0.22, 0.35],
-            bg_inactive:        [0.11, 0.11, 0.11, 1.0],
-            title_inactive:     [0.48, 0.48, 0.46, 1.0],
-        }
-    }
+    // All built-in palettes live in `crate::theme::*` modules.
+    // `TitlebarTheme::colors()` above dispatches to them.
 }

@@ -3,7 +3,7 @@
 //! Reusable modal confirmation dialog for Dear ImGui.
 //!
 //! ## Features
-//! - 6 built-in color themes (Dark, Light, Midnight, Nord, Solarized, Monokai)
+//! - 5 built-in color themes (Dark, Light, Midnight, Solarized, Monokai)
 //! - 4 icon types drawn via draw-list primitives (Warning, Error, Info, Question)
 //! - Fullscreen dim overlay behind the dialog
 //! - Keyboard shortcuts: Escape to cancel, Enter to confirm
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn builder_chain() {
         let cfg = DialogConfig::new("Delete File", "This cannot be undone.")
-            .with_theme(DialogTheme::Nord)
+            .with_theme(DialogTheme::Solarized)
             .with_icon(DialogIcon::Error)
             .with_confirm_label("Delete")
             .with_cancel_label("Keep")
@@ -482,10 +482,10 @@ mod tests {
     }
 
     #[test]
-    fn all_six_themes_resolve() {
+    fn all_builtin_themes_resolve() {
         for theme in [
             DialogTheme::Dark, DialogTheme::Light, DialogTheme::Midnight,
-            DialogTheme::Nord, DialogTheme::Solarized, DialogTheme::Monokai,
+            DialogTheme::Solarized, DialogTheme::Monokai,
         ] {
             let c = theme.colors();
             assert!(c.bg.iter().all(|&v| (0.0..=1.0).contains(&v)));

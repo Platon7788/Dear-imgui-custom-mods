@@ -7,24 +7,22 @@ use dear_imgui_rs::StyleColor;
 ///
 /// Called once at startup (or after a theme change) — not per frame.
 ///
-/// For `Dark` and `Light` this delegates to the per-theme full style in
-/// `crate::theme::{dark,light}::apply_imgui_style` (hand-tuned palettes).
-/// The remaining themes are derived algorithmically from their
-/// [`TitlebarColors`](crate::borderless_window::TitlebarColors).
+/// For every built-in theme this delegates to the per-theme full style in
+/// `crate::theme::{dark, light, midnight, solarized, monokai}::apply_imgui_style`
+/// (hand-tuned palettes). `TitlebarTheme::Custom` is derived algorithmically
+/// from its [`TitlebarColors`](crate::borderless_window::TitlebarColors) via
+/// the fallback path below.
 pub fn apply_imgui_style_for_theme(
     theme: &TitlebarTheme,
     s: &mut dear_imgui_rs::Style,
 ) {
     match theme {
-        TitlebarTheme::Dark => {
-            crate::theme::dark::apply_imgui_style(s);
-            return;
-        }
-        TitlebarTheme::Light => {
-            crate::theme::light::apply_imgui_style(s);
-            return;
-        }
-        _ => {}
+        TitlebarTheme::Dark      => { crate::theme::dark::apply_imgui_style(s);      return; }
+        TitlebarTheme::Light     => { crate::theme::light::apply_imgui_style(s);     return; }
+        TitlebarTheme::Midnight  => { crate::theme::midnight::apply_imgui_style(s);  return; }
+        TitlebarTheme::Solarized => { crate::theme::solarized::apply_imgui_style(s); return; }
+        TitlebarTheme::Monokai   => { crate::theme::monokai::apply_imgui_style(s);   return; }
+        TitlebarTheme::Custom(_) => {}
     }
 
     let c = theme.colors();
