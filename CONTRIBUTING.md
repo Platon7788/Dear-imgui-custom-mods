@@ -106,6 +106,26 @@ Test: `cargo run --example demo_app_window`, hit the theme picker.
 Use the bug report template; include environment (OS, Rust version,
 GPU backend) — rendering bugs are often backend-specific.
 
+## Known future work
+
+- **Per-component feature flags.** All components compile unconditionally
+  today — a downstream consumer that only wants `confirm_dialog` still
+  pays for `code_editor` + `node_graph` + `disasm_view` (~500KB of
+  binding code). Adding `#[cfg(feature = "...")]` gates is a known
+  refactor; deferred because:
+  - deep cross-module deps (`app_window` → `code_editor::BuiltinFont`,
+    `demo` → every component) mean gating requires broad edits
+  - the only current consumer (NxT) uses nearly everything, so there's
+    no concrete size-budget pressure
+  - Criterion benches + doctests need their own feature gates too
+  - Interested in picking this up? Open an issue to coordinate.
+
+- **Doc coverage under `#![warn(missing_docs)]`.** Currently ~8000 public
+  items are undocumented. Per-module opt-in is the realistic path.
+
+- **Property-based tests for parsers.** `hex_viewer`, `disasm_view`, and
+  `code_editor` syntax highlighters are good proptest candidates.
+
 ## License
 
 The repo has no explicit LICENSE file yet; contributions are under an
