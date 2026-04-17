@@ -239,9 +239,23 @@ impl TextBuffer {
     /// appears to use tab indentation — consult [`line_ending`] and
     /// [`detected_uses_tabs`] after load.
     pub fn set_text(&mut self, text: &str) {
-        // Line-ending detection: first `\r\n` occurrence wins. Most files
-        // are homogeneous, so one hit is enough.
-        self.line_ending = if text.contains("\r\n") {
+        // Line-ending detection: first `\r\n` occurrence wins. Cap the
+        // scan to the first 64 KB — CRLF files are homogeneous, a single
+        // `\r\n` within the first few KB is virtually certain. Without
+        // the cap, loading a 100 MB LF-only log file walked the entire
+        // buffer.
+        const CRLF_SCAN_CAP: usize = 64 * 1024;
+        let scan_region = if text.len() > CRLF_SCAN_CAP {
+            // Find a safe UTF-8 boundary at or below the cap.
+            let mut cut = CRLF_SCAN_CAP;
+            while cut > 0 && !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            &text[..cut]
+        } else {
+            text
+        };
+        self.line_ending = if scan_region.contains("\r\n") {
             LineEnding::Crlf
         } else {
             LineEnding::Lf
@@ -273,6 +287,43 @@ impl TextBuffer {
         self.edit_version = 0;
         self.extra_cursors.clear();
         self.extra_selections.clear();
+    }
+
+    /// Restore text from an undo/redo snapshot — preserves `modified` as
+    /// **true** and **bumps** `edit_version` instead of resetting them.
+    ///
+    /// The plain `set_text` resets both fields because it's meant for
+    /// "load a fresh document". Undo/redo is a different semantic — the
+    /// buffer still differs from disk, and caches keyed by `edit_version`
+    /// (wrap / find-lowercase / fold / token) must invalidate, not see
+    /// a lower version number than they were built against.
+    pub fn restore_from_undo(&mut self, text: &str, cursor: CursorPos) {
+        // Detect line-ending consistency (should match what was stored,
+        // but stay defensive).
+        self.line_ending = if text.contains("\r\n") {
+            LineEnding::Crlf
+        } else {
+            LineEnding::Lf
+        };
+        self.lines = text.lines().map(String::from).collect();
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+        if text.ends_with('\n') {
+            self.lines.push(String::new());
+        }
+        self.cursor = self.clamp_pos(cursor);
+        self.selection = None;
+        self.sticky_col = None;
+        self.extra_cursors.clear();
+        self.extra_selections.clear();
+        // Dirty state: undo/redo leaves the buffer differing from the
+        // last-saved state, so `modified = true` regardless of the
+        // undo direction. Host code reads `is_modified()` for the
+        // save-prompt gate — it must not silently go false.
+        self.modified = true;
+        // Bump version so caches rebuild at their next access.
+        self.edit_version = self.edit_version.saturating_add(1);
     }
 
     /// Mark buffer as clean.
@@ -1328,5 +1379,73 @@ mod tests {
         assert_eq!(char_to_byte("hello", 2), 2);
         assert_eq!(char_to_byte("hello", 5), 5);
         assert_eq!(char_to_byte("hello", 10), 5); // clamped
+    }
+
+    // ── Regression tests from audit ────────────────────────────────────
+
+    /// CRLF files must round-trip through `set_text` → `text()` cleanly —
+    /// load a Windows file, serialize it back out, line endings preserved.
+    #[test]
+    fn test_crlf_round_trip() {
+        let src = "line1\r\nline2\r\nline3";
+        let mut b = TextBuffer::default();
+        b.set_text(src);
+        assert_eq!(b.line_ending(), LineEnding::Crlf);
+        assert_eq!(b.line_count(), 3);
+        assert_eq!(b.text(), src);
+    }
+
+    /// LF files stay LF on round-trip — no accidental CRLF injection.
+    #[test]
+    fn test_lf_round_trip() {
+        let src = "line1\nline2\nline3";
+        let mut b = TextBuffer::default();
+        b.set_text(src);
+        assert_eq!(b.line_ending(), LineEnding::Lf);
+        assert_eq!(b.text(), src);
+    }
+
+    /// `restore_from_undo` must preserve `modified = true` and bump
+    /// `edit_version` — otherwise the save-prompt dirty indicator
+    /// silently goes false after Ctrl+Z.
+    #[test]
+    fn test_undo_restore_preserves_dirty_state() {
+        let mut b = TextBuffer::default();
+        b.set_text("clean state");
+        assert!(!b.is_modified());
+        let v0 = b.edit_version();
+
+        b.insert_char('X');
+        assert!(b.is_modified());
+
+        // Simulate undo: restore previous snapshot.
+        b.restore_from_undo("clean state", CursorPos::default());
+        assert!(
+            b.is_modified(),
+            "buffer differs from last-saved (which was the dirty edit \
+             before the undo) — must stay modified"
+        );
+        assert!(
+            b.edit_version() > v0,
+            "edit_version must bump so version-keyed caches invalidate"
+        );
+    }
+
+    /// `char_to_byte` / `byte_to_char` must be inverse on all valid
+    /// input — critical for search/replace correctness on non-ASCII text.
+    #[test]
+    fn test_char_byte_roundtrip_non_ascii() {
+        let samples = ["mañana", "радуга", "你好", "café", "αβγ"];
+        for s in &samples {
+            let n_chars = s.chars().count();
+            for i in 0..=n_chars {
+                let b = char_to_byte(s, i);
+                let back = byte_to_char(s, b);
+                assert_eq!(
+                    back, i,
+                    "roundtrip failed for {s:?} at char {i} → byte {b} → char {back}"
+                );
+            }
+        }
     }
 }

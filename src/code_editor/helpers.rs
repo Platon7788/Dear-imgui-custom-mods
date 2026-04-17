@@ -186,9 +186,15 @@ pub(super) fn set_clipboard(text: &str) {
 
 /// Get clipboard text via ImGui sys API.
 pub(super) fn get_clipboard() -> Option<String> {
-    // SAFETY: igGetClipboardText returns a pointer to ImGui's internal buffer.
+    // SAFETY: `igGetClipboardText` returns a pointer to ImGui's internal
+    // null-terminated UTF-8 clipboard buffer (or null if unavailable).
+    // `CStr::from_ptr` requires null-termination — documented by ImGui.
+    // We immediately copy to `String` so the returned value outlives any
+    // subsequent ImGui call that might invalidate the underlying buffer.
     let ptr = unsafe { dear_imgui_rs::sys::igGetClipboardText() };
     if ptr.is_null() { return None; }
+    // SAFETY: ptr is non-null and points at a null-terminated C string
+    // owned by ImGui; valid until the next clipboard API call.
     let c_str = unsafe { std::ffi::CStr::from_ptr(ptr) };
     c_str.to_str().ok().map(|s| s.to_string())
 }

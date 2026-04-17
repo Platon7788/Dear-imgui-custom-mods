@@ -11,11 +11,21 @@
 //!
 //! ```text
 //! code_editor/
-//! ├── mod.rs          CodeEditor widget + render + input
-//! ├── buffer.rs       TextBuffer (lines, cursor, selection, editing)
-//! ├── tokenizer.rs    Rust/TOML/RON syntax tokenizer
-//! ├── config.rs       EditorConfig, SyntaxColors, Language
-//! └── undo.rs         UndoStack with action grouping
+//! ├── mod.rs          CodeEditor widget + render + input dispatch
+//! ├── buffer.rs       TextBuffer (lines, cursor, selection, editing,
+//! │                   line-ending + tab-style detection)
+//! ├── config.rs       EditorConfig, SyntaxColors, Language, BuiltinFont
+//! ├── token.rs        Token + TokenKind types
+//! ├── tokenizer.rs    Tokenizer trait
+//! ├── lang/           Per-language syntax definitions (Rust, TOML, RON,
+//! │                   Rhai, JSON, YAML, XML, ASM, Hex, None)
+//! ├── helpers.rs      Free functions — layout math, color parsing,
+//! │                   clipboard/input FFI, bracket pairs, hash
+//! ├── find_replace.rs FindScope + FindReplaceState (scoped search +
+//! │                   lowercase cache)
+//! ├── fold.rs         FoldRegion + detect_fold_regions
+//! ├── wrap.rs         compute_wrap_points (word-wrap point finder)
+//! └── undo.rs         UndoStack with grouping + alloc-free should_push
 //! ```
 //!
 //! ## Key optimizations
@@ -308,6 +318,7 @@ impl CodeEditor {
     }
 
     /// Whether the buffer has been modified since last `clear_modified()`.
+    #[must_use]
     pub fn is_modified(&self) -> bool {
         self.buffer.is_modified()
     }
@@ -331,6 +342,7 @@ impl CodeEditor {
     }
 
     /// Whether the editor is read-only.
+    #[must_use]
     pub fn is_read_only(&self) -> bool {
         self.config.read_only
     }
@@ -411,16 +423,19 @@ impl CodeEditor {
     }
 
     /// Whether the editor is focused.
+    #[must_use]
     pub fn is_focused(&self) -> bool {
         self.focused
     }
 
     /// Whether undo is available.
+    #[must_use]
     pub fn can_undo(&self) -> bool {
         self.undo_stack.can_undo()
     }
 
     /// Whether redo is available.
+    #[must_use]
     pub fn can_redo(&self) -> bool {
         self.undo_stack.can_redo()
     }
@@ -1898,9 +1913,18 @@ impl CodeEditor {
         col_end: usize,
     ) {
         if !self.find_replace.open { return; }
+        // Matches are stored in document order — binary-search the range
+        // belonging to `line_idx` instead of scanning all M matches per
+        // visible line. Previous implementation was O(V × M); on a 10 000-
+        // match find with 50 visible rows this drops from 500K iterations
+        // to O(log M + k) where k = matches on this line (typically 0-3).
+        let matches = &self.find_replace.matches;
+        let lo = matches.partition_point(|(ml, _, _)| *ml < line_idx);
+        let hi = matches.partition_point(|(ml, _, _)| *ml <= line_idx);
+        if lo == hi { return; }
+
         let col_start_x = col_to_x(line_str, col_start, self.char_advance, self.config.tab_size);
-        for (i, &(ml, cs, ce)) in self.find_replace.matches.iter().enumerate() {
-            if ml != line_idx { continue; }
+        for (i, &(_, cs, ce)) in matches.iter().enumerate().take(hi).skip(lo) {
             // Clip match to sub-row range
             let vis_start = cs.max(col_start);
             let vis_end = ce.min(col_end);
@@ -2649,8 +2673,12 @@ impl CodeEditor {
     pub fn undo(&mut self) {
         let current = self.current_undo_entry();
         if let Some(entry) = self.undo_stack.undo(current) {
-            self.buffer.set_text(&entry.text);
-            self.buffer.set_cursor(entry.cursor);
+            // `restore_from_undo` preserves `modified = true` and bumps
+            // `edit_version` (unlike `set_text` which resets both). Without
+            // this the save-prompt dirty indicator silently goes false
+            // after Ctrl+Z, and version-keyed caches would see a DROP in
+            // version and reuse stale entries.
+            self.buffer.restore_from_undo(&entry.text, entry.cursor);
             self.invalidate_token_cache_all();
             self.ensure_cursor_visible();
         }
@@ -2660,8 +2688,7 @@ impl CodeEditor {
     pub fn redo(&mut self) {
         let current = self.current_undo_entry();
         if let Some(entry) = self.undo_stack.redo(current) {
-            self.buffer.set_text(&entry.text);
-            self.buffer.set_cursor(entry.cursor);
+            self.buffer.restore_from_undo(&entry.text, entry.cursor);
             self.invalidate_token_cache_all();
             self.ensure_cursor_visible();
         }
@@ -2986,16 +3013,22 @@ impl CodeEditor {
         last_visible: usize,
     ) -> Vec<(usize, usize)> {
         let mut result = Vec::with_capacity(last_visible - first_visible);
+        // Precompute a `start_line → end_line` map of folded regions so
+        // the per-line fold-check is O(1) instead of O(fold_count). On
+        // a file with many folds and many visible lines the previous
+        // `iter().find()` was O(V·N); this is O(N + V).
+        let folded_ends: std::collections::HashMap<usize, usize> = self
+            .fold_regions
+            .iter()
+            .filter(|r| r.folded)
+            .map(|r| (r.start_line, r.end_line))
+            .collect();
+
         let mut line_idx = first_visible;
         while line_idx < last_visible && line_idx < self.buffer.line_count() {
             result.push((line_idx, line_idx));
 
-            // Check if this line starts a folded region
-            let folded_end = self.fold_regions.iter()
-                .find(|r| r.start_line == line_idx && r.folded)
-                .map(|r| r.end_line);
-
-            if let Some(end) = folded_end {
+            if let Some(&end) = folded_ends.get(&line_idx) {
                 line_idx = end + 1;
             } else {
                 line_idx += 1;

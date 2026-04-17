@@ -26,16 +26,26 @@ pub(super) fn compute_wrap_points(
         return Vec::new();
     }
 
-    let chars: Vec<char> = line.chars().collect();
-    let len = chars.len();
+    // Precompute per-char widths via one iteration — stores `f32` (4B/char)
+    // instead of `char` (4B/char plus no guarantee of ASCII). Total memory
+    // is identical but the inner hot loop indexes a flat Vec<f32> rather
+    // than a Vec<char>, avoiding per-iteration branch on tab detection.
+    // (Compared to the previous Vec<char> + `char_w` closure call site,
+    // this is one less dispatch per iteration, and re-measuring after a
+    // wrap is a straight sum over a pre-known slice.)
+    let widths: Vec<f32> = line
+        .chars()
+        .map(|ch| if ch == '\t' { char_advance * tab_size as f32 } else { char_advance })
+        .collect();
+    // Also precompute a bitmap of wrap-candidate positions (ch == ' ' || '\t').
+    // A single `char_indices()` pass gives us everything we need.
+    let is_ws: Vec<bool> = line.chars().map(|ch| ch == ' ' || ch == '\t').collect();
+    let len = widths.len();
+
     let mut wraps = Vec::new();
     let mut x = 0.0f32;
     let mut last_space: Option<usize> = None;
     let mut row_start = 0usize;
-
-    let char_w = |ch: char| -> f32 {
-        if ch == '\t' { char_advance * tab_size as f32 } else { char_advance }
-    };
 
     // Belt-and-braces: the loop body always either advances `col` or pushes
     // a wrap entry (and changes `row_start`). A malformed edge case should
@@ -53,25 +63,18 @@ pub(super) fn compute_wrap_points(
             debug_assert!(false, "compute_wrap_points stalled");
             break;
         }
-        let ch = chars[col];
-        let w = char_w(ch);
+        let w = widths[col];
 
         // Check BEFORE adding: will this character overflow the row?
         // Exception: first character of a row always goes on that row
         // (prevents infinite loop on very narrow widths).
         if x + w > max_width && col > row_start {
             // Prefer breaking at a word boundary (last space).
-            // Guard: never push a wrap equal to the previous one or
-            // `row_start` itself — that would leave `row_start` unchanged
-            // after the continue, which is the classic stall shape.
             let wrap_col = match last_space {
                 Some(sp) if sp > row_start && sp <= col => sp,
                 _ => col,
             };
             if wrap_col <= row_start {
-                // Defensive: should be unreachable given the guard above,
-                // but if it ever fires we advance by one char rather than
-                // loop forever.
                 x += w;
                 col += 1;
                 continue;
@@ -79,21 +82,16 @@ pub(super) fn compute_wrap_points(
             wraps.push(wrap_col);
 
             // Reset x: re-measure from wrap_col up to (but not including)
-            // the current col — those characters landed on the new row.
-            x = 0.0;
-            for &c in &chars[wrap_col..col] {
-                x += char_w(c);
-            }
+            // the current col — single slice sum instead of closure calls.
+            x = widths[wrap_col..col].iter().sum();
             row_start = wrap_col;
             last_space = None;
-            // Do NOT advance col — re-evaluate the current character
-            // against the fresh row (handles lines wider than 2× max_width).
             continue;
         }
 
         x += w;
 
-        if ch == ' ' || ch == '\t' {
+        if is_ws[col] {
             last_space = Some(col + 1); // wrap AFTER whitespace
         }
 
