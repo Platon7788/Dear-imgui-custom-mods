@@ -195,18 +195,58 @@ impl StatusBar {
         self.right_items.clear();
     }
 
-    /// Render the status bar. Returns click events.
+    /// Render the status bar inside the current ImGui window using
+    /// `cursor_screen_pos()` + `content_region_avail()` as geometry.
+    /// Returns click events.
     pub fn render(&self, ui: &Ui) -> Vec<StatusBarEvent> {
-        let mut events = Vec::new();
-        let cfg = &self.config;
-
         let _id_tok = ui.push_id(&self.id);
-
         let avail_w = ui.content_region_avail()[0];
-        let bar_h = cfg.height;
-
+        let bar_h = self.config.height;
         let cursor = ui.cursor_screen_pos();
         let draw = ui.get_window_draw_list();
+
+        let events = self.render_impl(ui, cursor, [avail_w, bar_h], &draw, true);
+
+        // Advance cursor past the bar (legacy in-window contract).
+        ui.set_cursor_pos([ui.cursor_pos()[0], ui.cursor_pos()[1] + bar_h]);
+        ui.dummy([0.0, 0.0]);
+
+        events
+    }
+
+    /// Overlay variant: renders through `ui.get_foreground_draw_list()` at an
+    /// explicit screen-space position, without requiring a host ImGui window.
+    ///
+    /// - `origin` — top-left of the bar in **screen** coordinates.
+    /// - `size` — bar width / height in logical pixels (height overrides
+    ///   `config.height` for this call).
+    ///
+    /// Hover detection uses position-only (no `is_window_hovered`), so the bar
+    /// stays responsive even when no ImGui window covers the region.
+    pub fn render_overlay(
+        &self,
+        ui: &Ui,
+        origin: [f32; 2],
+        size: [f32; 2],
+    ) -> Vec<StatusBarEvent> {
+        let _id_tok = ui.push_id(&self.id);
+        let draw = ui.get_foreground_draw_list();
+        self.render_impl(ui, origin, size, &draw, false)
+    }
+
+    fn render_impl(
+        &self,
+        ui: &Ui,
+        origin: [f32; 2],
+        size: [f32; 2],
+        draw: &dear_imgui_rs::DrawListMut,
+        use_window_hovered: bool,
+    ) -> Vec<StatusBarEvent> {
+        let mut events = Vec::new();
+        let cfg = &self.config;
+        let avail_w = size[0];
+        let bar_h = size[1];
+        let cursor = origin;
 
         // Background
         draw.add_rect(
@@ -228,7 +268,7 @@ impl StatusBar {
         // ── Left items ──────────────────────────────────────────────
         let mut x = cursor[0] + cfg.item_padding;
         for item in &self.left_items {
-            let w = self.render_item(&draw, ui, item, x, text_y, cursor[1], bar_h, &mut events);
+            let w = self.render_item(draw, ui, item, x, text_y, cursor[1], bar_h, use_window_hovered, &mut events);
             x += w + cfg.item_padding;
 
             if cfg.show_separators {
@@ -246,7 +286,7 @@ impl StatusBar {
         for item in self.right_items.iter().rev() {
             let w = self.measure_item(item);
             rx -= w;
-            self.render_item(&draw, ui, item, rx, text_y, cursor[1], bar_h, &mut events);
+            self.render_item(draw, ui, item, rx, text_y, cursor[1], bar_h, use_window_hovered, &mut events);
             rx -= cfg.item_padding;
 
             if cfg.show_separators {
@@ -266,14 +306,10 @@ impl StatusBar {
                 .sum::<f32>() - cfg.item_padding;
             let mut cx = cursor[0] + (avail_w - total_w) * 0.5;
             for item in &self.center_items {
-                let w = self.render_item(&draw, ui, item, cx, text_y, cursor[1], bar_h, &mut events);
+                let w = self.render_item(draw, ui, item, cx, text_y, cursor[1], bar_h, use_window_hovered, &mut events);
                 cx += w + cfg.item_padding;
             }
         }
-
-        // Advance cursor past the bar
-        ui.set_cursor_pos([ui.cursor_pos()[0], ui.cursor_pos()[1] + bar_h]);
-        ui.dummy([0.0, 0.0]);
 
         events
     }
@@ -288,6 +324,7 @@ impl StatusBar {
         text_y: f32,
         bar_y: f32,
         bar_h: f32,
+        use_window_hovered: bool,
         events: &mut Vec<StatusBarEvent>,
     ) -> f32 {
         let cfg = &self.config;
@@ -295,11 +332,11 @@ impl StatusBar {
         let w = self.measure_item(item);
 
         let mouse_pos = ui.io().mouse_pos();
-        let hovered = ui.is_window_hovered()
-            && mouse_pos[0] >= x
+        let in_bounds = mouse_pos[0] >= x
             && mouse_pos[0] < x + w
             && mouse_pos[1] >= bar_y
             && mouse_pos[1] < bar_y + bar_h;
+        let hovered = in_bounds && (!use_window_hovered || ui.is_window_hovered());
 
         // Hover highlight (all items) + click for clickable items
         if hovered {

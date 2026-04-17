@@ -95,6 +95,38 @@ pub fn render_nav_panel(
     cfg: &NavPanelConfig,
     state: &mut NavPanelState,
 ) -> NavPanelResult {
+    let origin = ui.cursor_screen_pos();
+    let size = ui.content_region_avail();
+    render_nav_panel_impl(ui, cfg, state, origin, size, false)
+}
+
+/// Overlay variant: renders the nav panel through `ui.get_foreground_draw_list()`
+/// at an explicit screen-space position, without requiring a host ImGui window.
+///
+/// - `origin` — top-left of the panel region in **screen** coordinates.
+/// - `size` — `[width, height]` of the region reserved for the panel.
+///
+/// The submenu flyout still spawns its own ImGui window (it needs input focus),
+/// but the panel itself draws on the foreground draw list so content windows
+/// behind it remain clickable.
+pub fn render_nav_panel_overlay(
+    ui: &Ui,
+    cfg: &NavPanelConfig,
+    state: &mut NavPanelState,
+    origin: [f32; 2],
+    size: [f32; 2],
+) -> NavPanelResult {
+    render_nav_panel_impl(ui, cfg, state, origin, size, true)
+}
+
+fn render_nav_panel_impl(
+    ui: &Ui,
+    cfg: &NavPanelConfig,
+    state: &mut NavPanelState,
+    origin: [f32; 2],
+    size: [f32; 2],
+    use_foreground: bool,
+) -> NavPanelResult {
     let colors = cfg.resolved_colors();
     let dt = ui.io().delta_time();
     let [mx, my] = ui.io().mouse_pos();
@@ -118,8 +150,11 @@ pub fn render_nav_panel(
     let prog = state.animation_progress;
     if prog <= 0.0 {
         // Panel is fully hidden — draw a small restore tab on the edge.
-        let origin = ui.cursor_screen_pos();
-        let draw = ui.get_window_draw_list();
+        let draw = if use_foreground {
+            ui.get_foreground_draw_list()
+        } else {
+            ui.get_window_draw_list()
+        };
         let clicked = ui.is_mouse_clicked(MouseButton::Left);
         let colors = cfg.resolved_colors();
         let tab_w = 16.0_f32;
@@ -128,7 +163,7 @@ pub fn render_nav_panel(
         let (tx, ty, tw, th) = match cfg.position {
             DockPosition::Left   => (origin[0], origin[1] + 4.0, tab_w, tab_h),
             DockPosition::Right  => {
-                let [aw, _] = ui.content_region_avail();
+                let aw = size[0];
                 (origin[0] + aw - tab_w, origin[1] + 4.0, tab_w, tab_h)
             }
             DockPosition::Top    => (origin[0] + 4.0, origin[1], tab_h, tab_w),
@@ -170,14 +205,12 @@ pub fn render_nav_panel(
 
         // Also auto-show on edge hover (if configured)
         if cfg.auto_show_on_hover {
-            let win_pos = ui.window_pos();
-            let [win_w, _] = ui.window_size();
             let ox = cfg.content_offset_x;
             let oy = cfg.content_offset_y;
             let in_zone = match cfg.position {
-                DockPosition::Left   => mx >= win_pos[0] + ox && mx < win_pos[0] + ox + cfg.edge_zone,
-                DockPosition::Right  => mx > win_pos[0] + win_w - cfg.edge_zone,
-                DockPosition::Top    => my >= win_pos[1] + oy && my < win_pos[1] + oy + cfg.edge_zone,
+                DockPosition::Left   => mx >= origin[0] + ox && mx < origin[0] + ox + cfg.edge_zone,
+                DockPosition::Right  => mx > origin[0] + size[0] - cfg.edge_zone,
+                DockPosition::Top    => my >= origin[1] + oy && my < origin[1] + oy + cfg.edge_zone,
             };
             if in_zone { state.visible = true; }
         }
@@ -186,8 +219,7 @@ pub fn render_nav_panel(
     }
 
     // ── Geometry ─────────────────────────────────────────────────────────────
-    let origin = ui.cursor_screen_pos();
-    let [avail_w, avail_h] = ui.content_region_avail();
+    let [avail_w, avail_h] = size;
     let clicked = ui.is_mouse_clicked(MouseButton::Left);
 
     let panel_w = if is_vertical { cfg.width * prog } else { avail_w };
@@ -206,7 +238,11 @@ pub fn render_nav_panel(
     // ── Draw panel (scoped block so DrawListMut drops before submenu) ────────
     let panel_hovered;
     {
-    let draw = ui.get_window_draw_list();
+    let draw = if use_foreground {
+        ui.get_foreground_draw_list()
+    } else {
+        ui.get_window_draw_list()
+    };
 
     // ── Background ───────────────────────────────────────────────────────────
     draw.add_rect(
