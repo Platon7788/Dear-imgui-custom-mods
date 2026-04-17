@@ -56,7 +56,7 @@ pub use config::{
     JETBRAINS_MONO_LIGATURES_FONT_DATA, MDI_FONT_DATA,
 };
 
-use buffer::{CursorPos, Selection, TextBuffer};
+use buffer::{CursorPos, LineEnding, Selection, TextBuffer};
 use lang::tokenize_line;
 use token::{Token, TokenKind};
 use undo::{UndoEntry, UndoStack};
@@ -168,12 +168,21 @@ fn calc_char_advance(font_size: f32) -> f32 {
 
 /// Convert a column index to pixel X offset, accounting for tab characters.
 ///
-/// Walks the line's characters up to `col`, summing per-character widths:
-/// regular characters use `char_advance`, tabs use `tab_size * char_advance`
-/// (matching `draw_tokens_batched`).  For lines without tabs this reduces to
-/// `col * char_advance`.
+/// **Fast path** (most common): lines without tabs return
+/// `col * char_advance` immediately, skipping the O(col) `chars()` scan.
+/// `str::contains('\t')` uses `memchr` (SIMD) so the tab-absence check
+/// is near-zero cost — orders of magnitude faster than decoding UTF-8
+/// char-by-char. Hex-editor lines (no tabs by construction) take this
+/// path every time.
+///
+/// **Slow path** (line contains tabs): walks characters up to `col`,
+/// summing per-character widths — regular chars use `char_advance`,
+/// tabs use `tab_size * char_advance` (matching `draw_tokens_batched`).
 #[inline]
 fn col_to_x(line: &str, col: usize, char_advance: f32, tab_size: u8) -> f32 {
+    if !line.contains('\t') {
+        return col as f32 * char_advance;
+    }
     let mut x = 0.0f32;
     for (i, ch) in line.chars().enumerate() {
         if i == col { return x; }
@@ -191,8 +200,19 @@ fn col_to_x(line: &str, col: usize, char_advance: f32, tab_size: u8) -> f32 {
 /// Uses a **0.67-width** threshold (from ImGuiColorTextEdit): clicking the
 /// left third of a character places the cursor *before* it; clicking the
 /// right two-thirds places it *after*.
+///
+/// Tab-free fast path matches [`col_to_x`] — closed-form `x / char_advance`
+/// via direct floor division with the 0.67 threshold applied.
 #[inline]
 fn x_to_col(line: &str, x: f32, char_advance: f32, tab_size: u8) -> usize {
+    if !line.contains('\t') && char_advance > 0.0 {
+        // Closed-form path — no Unicode decode, no per-char loop.
+        // Closed-form: floor((x + 0.33·adv) / adv). Clamp to line length.
+        let max_col = line.chars().count();
+        if x <= 0.0 { return 0; }
+        let raw = ((x + char_advance * 0.33) / char_advance).floor() as usize;
+        return raw.min(max_col);
+    }
     let mut cur_x = 0.0f32;
     for (i, ch) in line.chars().enumerate() {
         let ch_w = if ch == '\t' {
@@ -302,6 +322,17 @@ fn hash_line(s: &str) -> u64 {
 
 // ── Find/Replace state ───────────────────────────────────────────────────────
 
+/// Where to search — matches VSCode's find-in-selection semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FindScope {
+    /// Search the entire document (default).
+    #[default]
+    All,
+    /// Search only within the current selection. If the user has no active
+    /// selection when this is set, the mode falls back to `All` silently.
+    Selection,
+}
+
 /// Find/Replace panel state.
 #[derive(Debug, Default)]
 pub struct FindReplaceState {
@@ -319,6 +350,8 @@ pub struct FindReplaceState {
     pub whole_word: bool,
     /// Whether the replace field is visible.
     pub show_replace: bool,
+    /// Restrict search scope to a selection (VSCode "Find in selection").
+    pub scope: FindScope,
     /// All match positions: (line, col_start, col_end) in chars.
     pub matches: Vec<(usize, usize, usize)>,
     /// Current match index (for cycling through matches).
@@ -341,7 +374,22 @@ impl FindReplaceState {
         self.lowercase_cache.clear();
     }
 
+    /// Retained for tests and downstream callers that want whole-document
+    /// search without wiring up the scoped variant. Thin wrapper — prefer
+    /// [`update_matches_scoped`](Self::update_matches_scoped) for new code.
+    #[allow(dead_code)]
     fn update_matches(&mut self, lines: &[String], edit_version: u64) {
+        self.update_matches_scoped(lines, edit_version, None);
+    }
+
+    /// Internal variant that restricts matching to `(start, end)` — inclusive
+    /// `(line, col)` bounds in char coordinates. Used for find-in-selection.
+    fn update_matches_scoped(
+        &mut self,
+        lines: &[String],
+        edit_version: u64,
+        bounds: Option<(CursorPos, CursorPos)>,
+    ) {
         self.matches.clear();
         if self.query.is_empty() { return; }
 
@@ -364,7 +412,16 @@ impl FindReplaceState {
             self.lowercase_version = edit_version;
         }
 
+        // Clamp iteration to `bounds` (for find-in-selection). Outside the
+        // bounds we skip the line entirely; on boundary lines we filter per-
+        // match after the find() returns a byte offset.
+        let (first_line, last_line) = match bounds {
+            Some((s, e)) => (s.line, e.line),
+            None => (0, lines.len().saturating_sub(1)),
+        };
+
         for (line_idx, line) in lines.iter().enumerate() {
+            if line_idx < first_line || line_idx > last_line { continue; }
             let search_line: &str = if self.case_sensitive {
                 line.as_str()
             } else {
@@ -382,6 +439,18 @@ impl FindReplaceState {
                 let byte_end = byte_start + query.len();
                 let col_start = buffer::byte_to_char(line, byte_start);
                 let col_end = buffer::byte_to_char(line, byte_end);
+
+                // Per-match bounds filter for start/end lines of the selection.
+                if let Some((s, e)) = bounds {
+                    if line_idx == s.line && col_start < s.col {
+                        start = byte_start + query.len().max(1);
+                        continue;
+                    }
+                    if line_idx == e.line && col_end > e.col {
+                        start = byte_start + query.len().max(1);
+                        continue;
+                    }
+                }
 
                 if self.whole_word {
                     // Word-boundary check with full Unicode awareness —
@@ -649,6 +718,29 @@ impl CodeEditor {
     /// heap allocation.
     pub fn get_text_into(&self, buf: &mut String) {
         self.buffer.text_into(buf);
+    }
+
+    /// Detected line-ending style from the last `set_text`. Preserved on
+    /// `get_text` / `get_text_into` so Windows CRLF files round-trip
+    /// without being mangled into LF.
+    pub fn line_ending(&self) -> LineEnding {
+        self.buffer.line_ending()
+    }
+
+    /// Override the detected line ending (e.g. user-forced conversion).
+    pub fn set_line_ending(&mut self, ending: LineEnding) {
+        self.buffer.set_line_ending(ending);
+    }
+
+    /// Whether the loaded text appeared to use tab indentation. Callers
+    /// can sync editor config after `set_text`:
+    ///
+    /// ```ignore
+    /// editor.set_text(&file_contents);
+    /// editor.config_mut().insert_spaces = !editor.detected_uses_tabs();
+    /// ```
+    pub fn detected_uses_tabs(&self) -> bool {
+        self.buffer.detected_uses_tabs()
     }
 
     /// Whether the buffer has been modified since last `clear_modified()`.
@@ -2360,8 +2452,19 @@ impl CodeEditor {
     // ── Find/Replace ────────────────────────────────────────────────
 
     fn update_find_matches(&mut self) {
-        self.find_replace
-            .update_matches(self.buffer.lines(), self.buffer.edit_version());
+        // Resolve the search scope: Selection mode requires an active
+        // non-empty selection; fall back to All otherwise.
+        let bounds = match self.find_replace.scope {
+            FindScope::Selection => self.buffer.selection().and_then(|sel| {
+                if sel.is_empty() { None } else { Some(sel.ordered()) }
+            }),
+            FindScope::All => None,
+        };
+        self.find_replace.update_matches_scoped(
+            self.buffer.lines(),
+            self.buffer.edit_version(),
+            bounds,
+        );
     }
 
     fn find_next(&mut self) {

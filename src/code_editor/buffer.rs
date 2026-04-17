@@ -50,6 +50,16 @@ impl Selection {
     }
 }
 
+/// Line-ending style detected at load time and preserved on save.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LineEnding {
+    /// `\n` (Unix, macOS). Default.
+    #[default]
+    Lf,
+    /// `\r\n` (Windows).
+    Crlf,
+}
+
 /// The text buffer — stores lines, cursor, selection, and dirty state.
 pub struct TextBuffer {
     lines: Vec<String>,
@@ -66,6 +76,14 @@ pub struct TextBuffer {
     extra_cursors: Vec<CursorPos>,
     /// Selections for each extra cursor (parallel to `extra_cursors`).
     extra_selections: Vec<Option<Selection>>,
+    /// Line-ending style — detected on `set_text` from the first `\r\n`
+    /// occurrence, preserved on `text()` so round-trip through the editor
+    /// doesn't mangle CRLF Windows files into LF.
+    line_ending: LineEnding,
+    /// Whether the loaded text appeared to use tab indentation (at least
+    /// one non-empty line starts with `\t`). Populated on `set_text`.
+    /// Downstream editors can consult this to pick the right indent style.
+    detected_uses_tabs: bool,
 }
 
 impl Default for TextBuffer {
@@ -79,6 +97,8 @@ impl Default for TextBuffer {
             edit_version: 0,
             extra_cursors: Vec::new(),
             extra_selections: Vec::new(),
+            line_ending: LineEnding::default(),
+            detected_uses_tabs: false,
         }
     }
 }
@@ -121,29 +141,60 @@ impl TextBuffer {
         self.edit_version
     }
 
+    /// Line-ending style detected at load time. Preserved by [`text`] and
+    /// [`text_into`] so Windows files round-trip cleanly.
+    pub fn line_ending(&self) -> LineEnding {
+        self.line_ending
+    }
+
+    /// Override the detected line ending (e.g. after conversion).
+    pub fn set_line_ending(&mut self, ending: LineEnding) {
+        self.line_ending = ending;
+    }
+
+    /// Whether the loaded text appeared to use tab indentation. Populated
+    /// by [`set_text`]. Downstream callers (editor config) consult this
+    /// to pick the right indent style.
+    pub fn detected_uses_tabs(&self) -> bool {
+        self.detected_uses_tabs
+    }
+
     /// Get entire text as a single string.
     ///
-    /// Allocates a fresh `String` on every call — for large buffers (> 1 MB)
+    /// Preserves the original line-ending style ([`LineEnding`]). Allocates
+    /// a fresh `String` on every call — for large buffers (> 1 MB)
     /// consider [`text_into`](Self::text_into) to reuse an existing capacity.
     pub fn text(&self) -> String {
-        self.lines.join("\n")
+        let sep = match self.line_ending {
+            LineEnding::Lf => "\n",
+            LineEnding::Crlf => "\r\n",
+        };
+        self.lines.join(sep)
     }
 
     /// Append the entire text into `buf`, reusing existing capacity.
     ///
-    /// Callers that poll text every frame (save-on-change watchers, export
-    /// dialogs) avoid the per-call heap allocation by keeping a persistent
-    /// `String` buffer. `buf` is cleared first.
+    /// Preserves the original line-ending style ([`LineEnding`]). Callers
+    /// that poll text every frame (save-on-change watchers, export dialogs)
+    /// avoid the per-call heap allocation by keeping a persistent `String`.
+    /// `buf` is cleared first.
     pub fn text_into(&self, buf: &mut String) {
         buf.clear();
+        let sep_len = match self.line_ending {
+            LineEnding::Lf => 1,
+            LineEnding::Crlf => 2,
+        };
         let needed = self.lines.iter().map(|l| l.len()).sum::<usize>()
-            + self.lines.len().saturating_sub(1);
+            + self.lines.len().saturating_sub(1) * sep_len;
         if buf.capacity() < needed {
             buf.reserve(needed - buf.capacity());
         }
         for (i, line) in self.lines.iter().enumerate() {
             if i > 0 {
-                buf.push('\n');
+                match self.line_ending {
+                    LineEnding::Lf => buf.push('\n'),
+                    LineEnding::Crlf => buf.push_str("\r\n"),
+                }
             }
             buf.push_str(line);
         }
@@ -183,7 +234,30 @@ impl TextBuffer {
     // ── Setters ──────────────────────────────────────────────────────────
 
     /// Replace all text (resets cursor, selection, modified flag).
+    ///
+    /// Detects line-ending style (`\r\n` vs `\n`) and whether the file
+    /// appears to use tab indentation — consult [`line_ending`] and
+    /// [`detected_uses_tabs`] after load.
     pub fn set_text(&mut self, text: &str) {
+        // Line-ending detection: first `\r\n` occurrence wins. Most files
+        // are homogeneous, so one hit is enough.
+        self.line_ending = if text.contains("\r\n") {
+            LineEnding::Crlf
+        } else {
+            LineEnding::Lf
+        };
+
+        // Tab vs spaces detection: scan first N indented lines. If any
+        // non-empty line begins with `\t`, mark as tabs. This is the same
+        // heuristic VSCode / Sublime use before falling back to config.
+        self.detected_uses_tabs = text
+            .lines()
+            .take(256)
+            .any(|l| l.starts_with('\t'));
+
+        // `str::lines()` strips both `\n` and `\r\n` — no need to do it
+        // ourselves. The line ending is preserved separately in
+        // `self.line_ending` and re-applied by `text()`.
         self.lines = text.lines().map(String::from).collect();
         if self.lines.is_empty() {
             self.lines.push(String::new());
@@ -293,10 +367,10 @@ impl TextBuffer {
     /// Move to next word boundary.
     pub fn move_word_right(&mut self) {
         let line = self.line(self.cursor.line);
-        let chars: Vec<char> = line.chars().collect();
+        let line_len = line.chars().count();
         let mut col = self.cursor.col;
 
-        if col >= chars.len() {
+        if col >= line_len {
             // Move to next line
             if self.cursor.line + 1 < self.lines.len() {
                 self.cursor.line += 1;
@@ -306,10 +380,21 @@ impl TextBuffer {
             return;
         }
 
+        // Forward scan from cursor position — `chars().skip(col)` iterates
+        // without allocating (no Vec<char> collect).
+        let mut iter = line.chars().skip(col).peekable();
         // Skip current word
-        while col < chars.len() && is_word_char(chars[col]) { col += 1; }
-        // Skip whitespace
-        while col < chars.len() && !is_word_char(chars[col]) { col += 1; }
+        while let Some(&c) = iter.peek() {
+            if !is_word_char(c) { break; }
+            iter.next();
+            col += 1;
+        }
+        // Skip whitespace / non-word
+        while let Some(&c) = iter.peek() {
+            if is_word_char(c) { break; }
+            iter.next();
+            col += 1;
+        }
 
         self.cursor.col = col;
         self.sticky_col = None;
@@ -318,7 +403,6 @@ impl TextBuffer {
     /// Move to previous word boundary.
     pub fn move_word_left(&mut self) {
         let line = self.line(self.cursor.line);
-        let chars: Vec<char> = line.chars().collect();
         let mut col = self.cursor.col;
 
         if col == 0 {
@@ -331,11 +415,23 @@ impl TextBuffer {
             return;
         }
 
-        // Back up over whitespace/non-word
-        while col > 0 && !is_word_char(chars[col - 1]) { col -= 1; }
+        // Reverse scan over the prefix `line[..byte_offset_of_col]`.
+        // `Chars` is DoubleEndedIterator — no Vec<char> allocation required.
+        // We slice by byte offset first to bound the rev() iterator.
+        let byte_col = char_to_byte(line, col);
+        let mut iter = line[..byte_col].chars().rev().peekable();
+        // Back up over whitespace / non-word
+        while let Some(&c) = iter.peek() {
+            if is_word_char(c) { break; }
+            iter.next();
+            col -= 1;
+        }
         // Back up over word
-        while col > 0 && is_word_char(chars[col - 1]) { col -= 1; }
-
+        while let Some(&c) = iter.peek() {
+            if !is_word_char(c) { break; }
+            iter.next();
+            col -= 1;
+        }
         self.cursor.col = col;
         self.sticky_col = None;
     }
@@ -767,13 +863,21 @@ impl TextBuffer {
 
     /// Find the matching bracket for the character at cursor.
     /// Returns `Some((line, col))` if found.
+    ///
+    /// Walks forward or backward across lines using iterator adapters —
+    /// no per-line `Vec<char>` allocation. Brackets are all ASCII so
+    /// `chars()` decoding is single-byte; `rev()` works via `Chars`'s
+    /// DoubleEndedIterator impl.
     pub fn find_matching_bracket(&self) -> Option<CursorPos> {
         let line = self.line(self.cursor.line);
-        let chars: Vec<char> = line.chars().collect();
         let col = self.cursor.col;
-        if col >= chars.len() { return None; }
+        let line_len = line.chars().count();
+        if col >= line_len { return None; }
 
-        let ch = chars[col];
+        // Get the bracket char at col via one chars().nth — cheaper than
+        // a full Vec<char> allocation when the char turns out not to be a
+        // bracket (common case on cursor moves).
+        let ch = line.chars().nth(col)?;
         let (open, close, forward) = match ch {
             '(' => ('(', ')', true),
             ')' => ('(', ')', false),
@@ -789,39 +893,46 @@ impl TextBuffer {
             let mut l = self.cursor.line;
             let mut c = col;
             while l < self.lines.len() {
-                let lchars: Vec<char> = self.line(l).chars().collect();
-                while c < lchars.len() {
-                    if lchars[c] == open { depth += 1; }
-                    if lchars[c] == close {
+                let line = self.line(l);
+                for (i, ch) in line.chars().enumerate().skip(c) {
+                    if ch == open { depth += 1; }
+                    if ch == close {
                         depth -= 1;
                         if depth == 0 {
-                            return Some(CursorPos::new(l, c));
+                            return Some(CursorPos::new(l, i));
                         }
                     }
-                    c += 1;
                 }
                 l += 1;
                 c = 0;
             }
         } else {
             let mut l = self.cursor.line;
-            let mut c = col as isize;
+            let mut c = col;
             loop {
-                let lchars: Vec<char> = self.line(l).chars().collect();
-                while c >= 0 {
-                    let cu = c as usize;
-                    if lchars[cu] == close { depth += 1; }
-                    if lchars[cu] == open {
+                let line = self.line(l);
+                let line_len = line.chars().count();
+                // Backward walk: iterate chars in reverse starting from
+                // byte offset of `c`, inclusive.
+                let byte_end = char_to_byte(line, (c + 1).min(line_len));
+                let prefix = &line[..byte_end];
+                // We need the char position relative to the full line —
+                // count down from `c`.
+                let mut pos = c;
+                for ch in prefix.chars().rev() {
+                    if ch == close { depth += 1; }
+                    if ch == open {
                         depth -= 1;
                         if depth == 0 {
-                            return Some(CursorPos::new(l, cu));
+                            return Some(CursorPos::new(l, pos));
                         }
                     }
-                    c -= 1;
+                    if pos == 0 { break; }
+                    pos -= 1;
                 }
                 if l == 0 { break; }
                 l -= 1;
-                c = self.line_char_count(l) as isize - 1;
+                c = self.line_char_count(l).saturating_sub(1);
             }
         }
         None
