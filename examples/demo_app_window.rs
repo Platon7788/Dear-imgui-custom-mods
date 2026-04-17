@@ -90,7 +90,6 @@ impl AppHandler for DemoApp {
                     ("Dark",      TitlebarTheme::Dark),
                     ("Light",     TitlebarTheme::Light),
                     ("Midnight",  TitlebarTheme::Midnight),
-                    ("Nord",      TitlebarTheme::Nord),
                     ("Solarized", TitlebarTheme::Solarized),
                     ("Monokai",   TitlebarTheme::Monokai),
                 ];
@@ -135,7 +134,6 @@ impl AppHandler for DemoApp {
                 TitlebarTheme::Dark      => DialogTheme::Dark,
                 TitlebarTheme::Light     => DialogTheme::Light,
                 TitlebarTheme::Midnight  => DialogTheme::Midnight,
-                TitlebarTheme::Nord      => DialogTheme::Nord,
                 TitlebarTheme::Solarized => DialogTheme::Solarized,
                 TitlebarTheme::Monokai   => DialogTheme::Monokai,
                 TitlebarTheme::Custom(_) => DialogTheme::Dark,

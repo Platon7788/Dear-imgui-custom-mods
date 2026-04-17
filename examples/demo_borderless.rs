@@ -2,7 +2,7 @@
 //!
 //! Features demonstrated:
 //!   • True borderless `with_decorations(false)` winit window
-//!   • 6 built-in themes selectable live (Dark/Light/Midnight/Nord/Solarized/Monokai)
+//!   • 5 built-in themes selectable live (Dark/Light/Midnight/Solarized/Monokai)
 //!   • Small icon-only hover highlights on buttons (xDx-style)
 //!   • Primitive draw-list button icons — no extra font needed
 //!   • Close confirmation dialog
@@ -65,10 +65,10 @@ fn cursor_for_edge(edge: Option<ResizeEdge>) -> CursorIcon {
 #[cfg(windows)]
 fn hwnd_of(window: &Window) -> Option<isize> {
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    if let Ok(h) = window.window_handle() {
-        if let RawWindowHandle::Win32(w) = h.as_raw() {
-            return Some(w.hwnd.get() as isize);
-        }
+    if let Ok(h) = window.window_handle()
+        && let RawWindowHandle::Win32(w) = h.as_raw()
+    {
+        return Some(w.hwnd.get());
     }
     None
 }
@@ -77,7 +77,7 @@ fn hwnd_of(window: &Window) -> Option<isize> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActiveTheme {
-    Dark, Light, Midnight, Nord, Solarized, Monokai,
+    Dark, Light, Midnight, Solarized, Monokai,
 }
 
 impl ActiveTheme {
@@ -86,7 +86,6 @@ impl ActiveTheme {
             Self::Dark      => "Dark",
             Self::Light     => "Light",
             Self::Midnight  => "Midnight",
-            Self::Nord      => "Nord",
             Self::Solarized => "Solarized",
             Self::Monokai   => "Monokai",
         }
@@ -95,8 +94,7 @@ impl ActiveTheme {
         match self {
             Self::Dark      => Self::Light,
             Self::Light     => Self::Midnight,
-            Self::Midnight  => Self::Nord,
-            Self::Nord      => Self::Solarized,
+            Self::Midnight  => Self::Solarized,
             Self::Solarized => Self::Monokai,
             Self::Monokai   => Self::Dark,
         }
@@ -106,7 +104,6 @@ impl ActiveTheme {
             Self::Dark      => TitlebarTheme::Dark,
             Self::Light     => TitlebarTheme::Light,
             Self::Midnight  => TitlebarTheme::Midnight,
-            Self::Nord      => TitlebarTheme::Nord,
             Self::Solarized => TitlebarTheme::Solarized,
             Self::Monokai   => TitlebarTheme::Monokai,
         }
@@ -116,7 +113,6 @@ impl ActiveTheme {
             Self::Dark      => DialogTheme::Dark,
             Self::Light     => DialogTheme::Light,
             Self::Midnight  => DialogTheme::Midnight,
-            Self::Nord      => DialogTheme::Nord,
             Self::Solarized => DialogTheme::Solarized,
             Self::Monokai   => DialogTheme::Monokai,
         }
@@ -318,7 +314,7 @@ impl DemoState {
 
         for t in [
             ActiveTheme::Dark, ActiveTheme::Light, ActiveTheme::Midnight,
-            ActiveTheme::Nord, ActiveTheme::Solarized, ActiveTheme::Monokai,
+            ActiveTheme::Solarized, ActiveTheme::Monokai,
         ] {
             let active = self.theme == t;
             if active {
@@ -556,7 +552,6 @@ impl ApplicationHandler for App {
 
                 let clear = match gpu.demo.theme {
                     ActiveTheme::Light => wgpu::Color { r: 0.89, g: 0.89, b: 0.93, a: 1.0 },
-                    ActiveTheme::Nord  => wgpu::Color { r: 0.17, g: 0.19, b: 0.24, a: 1.0 },
                     ActiveTheme::Solarized => wgpu::Color { r: 0.03, g: 0.19, b: 0.23, a: 1.0 },
                     ActiveTheme::Monokai   => wgpu::Color { r: 0.12, g: 0.12, b: 0.12, a: 1.0 },
                     _ => wgpu::Color { r: 0.07, g: 0.07, b: 0.09, a: 1.0 },
@@ -580,10 +575,10 @@ impl ApplicationHandler for App {
                         occlusion_query_set: None,
                         multiview_mask: None,
                     });
-                    if draw_data.total_vtx_count > 0 {
-                        if let Err(e) = gpu.renderer.render_draw_data(draw_data, &mut pass) {
-                            eprintln!("demo_borderless: imgui render error: {e:?}");
-                        }
+                    if draw_data.total_vtx_count > 0
+                        && let Err(e) = gpu.renderer.render_draw_data(draw_data, &mut pass)
+                    {
+                        eprintln!("demo_borderless: imgui render error: {e:?}");
                     }
                 }
                 gpu.queue.submit(Some(enc.finish()));
@@ -727,40 +722,6 @@ fn apply_imgui_midnight(s: &mut dear_imgui_rs::Style) {
     s.set_color(StyleColor::ModalWindowDimBg,    [0.02, 0.02, 0.03, 0.75]);
 }
 
-fn apply_imgui_nord(s: &mut dear_imgui_rs::Style) {
-    // Nord palette — #2E3440 family
-    s.set_window_rounding(0.0); s.set_frame_rounding(3.0);
-    s.set_scrollbar_rounding(4.0); s.set_window_border_size(0.0);
-    s.set_color(StyleColor::WindowBg,        [0.15, 0.17, 0.21, 1.0]);
-    s.set_color(StyleColor::ChildBg,         [0.18, 0.20, 0.25, 1.0]);
-    s.set_color(StyleColor::Border,          [0.23, 0.26, 0.32, 0.70]);
-    s.set_color(StyleColor::FrameBg,         [0.21, 0.24, 0.30, 1.0]);
-    s.set_color(StyleColor::FrameBgHovered,  [0.26, 0.29, 0.36, 1.0]);
-    s.set_color(StyleColor::Button,          [0.23, 0.26, 0.32, 1.0]);
-    s.set_color(StyleColor::ButtonHovered,   [0.30, 0.34, 0.42, 1.0]);
-    s.set_color(StyleColor::ButtonActive,    [0.53, 0.75, 0.82, 1.0]); // Nord frost blue
-    s.set_color(StyleColor::Header,          [0.23, 0.26, 0.32, 1.0]);
-    s.set_color(StyleColor::HeaderHovered,   [0.28, 0.32, 0.40, 1.0]);
-    s.set_color(StyleColor::Separator,       [0.23, 0.26, 0.32, 0.70]);
-    s.set_color(StyleColor::Text,            [0.85, 0.87, 0.91, 1.0]); // Nord snow
-    s.set_color(StyleColor::TextDisabled,    [0.45, 0.50, 0.58, 1.0]);
-    s.set_color(StyleColor::SliderGrab,      [0.53, 0.75, 0.82, 1.0]);
-    s.set_color(StyleColor::CheckMark,       [0.53, 0.75, 0.82, 1.0]);
-    s.set_color(StyleColor::ScrollbarBg,     [0.13, 0.15, 0.19, 0.60]);
-    s.set_color(StyleColor::ScrollbarGrab,   [0.26, 0.30, 0.37, 1.0]);
-    s.set_color(StyleColor::TitleBg,         [0.15, 0.17, 0.21, 1.0]);
-    s.set_color(StyleColor::TitleBgActive,   [0.18, 0.20, 0.25, 1.0]);
-    s.set_color(StyleColor::PopupBg,         [0.18, 0.20, 0.26, 0.97]);
-    s.set_color(StyleColor::SliderGrabActive,    [0.65, 0.84, 0.90, 1.0]);
-    s.set_color(StyleColor::FrameBgActive,       [0.28, 0.32, 0.40, 1.0]);
-    s.set_color(StyleColor::ScrollbarGrabHovered,[0.30, 0.34, 0.42, 1.0]);
-    s.set_color(StyleColor::ScrollbarGrabActive, [0.35, 0.40, 0.50, 1.0]);
-    s.set_color(StyleColor::ResizeGrip,          [0.23, 0.26, 0.32, 0.40]);
-    s.set_color(StyleColor::ResizeGripHovered,   [0.53, 0.75, 0.82, 0.80]);
-    s.set_color(StyleColor::ResizeGripActive,    [0.53, 0.75, 0.82, 1.0]);
-    s.set_color(StyleColor::TextSelectedBg,      [0.53, 0.75, 0.82, 0.40]);
-    s.set_color(StyleColor::ModalWindowDimBg,    [0.08, 0.09, 0.12, 0.70]);
-}
 
 fn apply_imgui_solarized(s: &mut dear_imgui_rs::Style) {
     // Solarized dark — base03 #002b36, accent #268BD2
@@ -837,7 +798,6 @@ fn apply_theme_style(theme: ActiveTheme, s: &mut dear_imgui_rs::Style) {
         ActiveTheme::Dark      => apply_imgui_dark(s),
         ActiveTheme::Light     => apply_imgui_light(s),
         ActiveTheme::Midnight  => apply_imgui_midnight(s),
-        ActiveTheme::Nord      => apply_imgui_nord(s),
         ActiveTheme::Solarized => apply_imgui_solarized(s),
         ActiveTheme::Monokai   => apply_imgui_monokai(s),
     }

@@ -966,7 +966,7 @@ mod tests {
                     TreeExportNode {
                         fields: vec![
                             ("name".into(), FieldValue::Str("Child B".into())),
-                            ("value".into(), FieldValue::Float(3.14)),
+                            ("value".into(), FieldValue::Float(3.25)),
                         ],
                         children: vec![],
                     },
@@ -1152,12 +1152,12 @@ mod tests {
 
     #[test]
     fn test_ron_parse_none_and_float() {
-        let ron = "[\n  (x: None, y: 3.14),\n]";
+        let ron = "[\n  (x: None, y: 3.25),\n]";
         let parsed = parse_flat_ron(ron).unwrap();
         assert_eq!(parsed.rows.len(), 1);
         assert!(matches!(parsed.rows[0][0], FieldValue::Null));
         match &parsed.rows[0][1] {
-            FieldValue::Float(f) => assert!((*f - 3.14).abs() < 0.001),
+            FieldValue::Float(f) => assert!((*f - 3.25).abs() < 0.001),
             other => panic!("Expected Float, got {:?}", other),
         }
     }

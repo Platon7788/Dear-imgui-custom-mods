@@ -150,8 +150,8 @@ mod tests {
     #[test]
     fn activate_float() {
         let mut es = EditState::default();
-        es.activate(0, 0, &CellValue::Float(3.14));
-        assert!((es.float_val - 3.14).abs() < 0.01);
+        es.activate(0, 0, &CellValue::Float(3.25));
+        assert!((es.float_val - 3.25).abs() < 0.01);
     }
 
     #[test]

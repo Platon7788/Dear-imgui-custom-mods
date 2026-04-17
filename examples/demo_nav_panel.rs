@@ -129,7 +129,6 @@ impl DemoApp {
             TitlebarTheme::Dark      => NavTheme::Dark,
             TitlebarTheme::Light     => NavTheme::Light,
             TitlebarTheme::Midnight  => NavTheme::Midnight,
-            TitlebarTheme::Nord      => NavTheme::Nord,
             TitlebarTheme::Solarized => NavTheme::Solarized,
             TitlebarTheme::Monokai   => NavTheme::Monokai,
             TitlebarTheme::Custom(_) => NavTheme::Dark,
@@ -141,7 +140,6 @@ impl DemoApp {
             TitlebarTheme::Dark      => DialogTheme::Dark,
             TitlebarTheme::Light     => DialogTheme::Light,
             TitlebarTheme::Midnight  => DialogTheme::Midnight,
-            TitlebarTheme::Nord      => DialogTheme::Nord,
             TitlebarTheme::Solarized => DialogTheme::Solarized,
             TitlebarTheme::Monokai   => DialogTheme::Monokai,
             TitlebarTheme::Custom(_) => DialogTheme::Dark,
@@ -152,8 +150,7 @@ impl DemoApp {
         let next = match &self.current_theme {
             TitlebarTheme::Dark      => TitlebarTheme::Light,
             TitlebarTheme::Light     => TitlebarTheme::Midnight,
-            TitlebarTheme::Midnight  => TitlebarTheme::Nord,
-            TitlebarTheme::Nord      => TitlebarTheme::Solarized,
+            TitlebarTheme::Midnight  => TitlebarTheme::Solarized,
             TitlebarTheme::Solarized => TitlebarTheme::Monokai,
             _                        => TitlebarTheme::Dark,
         };

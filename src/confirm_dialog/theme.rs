@@ -163,6 +163,12 @@ fn shift(c: [f32; 4], delta: f32) -> [f32; 4] {
     ]
 }
 
+/// Perceived luminance of an RGB color (Rec. 601 weights).
+#[inline]
+fn luminance(c: [f32; 4]) -> f32 {
+    c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114
+}
+
 /// Derive matching [`DialogColors`] from a [`TitlebarTheme`].
 ///
 /// Keeps the confirm dialog visually coherent with the titlebar:
@@ -171,12 +177,6 @@ fn shift(c: [f32; 4], delta: f32) -> [f32; 4] {
 /// - Cancel button uses a derived green accent. Icon palette stays semantic
 ///   (warning orange / error red / info blue / question purple) so the icon
 ///   meaning is independent of the chrome color.
-/// Perceived luminance of an RGB color (Rec. 601 weights).
-#[inline]
-fn luminance(c: [f32; 4]) -> f32 {
-    c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114
-}
-
 impl From<&TitlebarTheme> for DialogColors {
     fn from(theme: &TitlebarTheme) -> Self {
         let tb = theme.colors();

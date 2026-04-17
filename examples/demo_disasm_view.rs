@@ -242,28 +242,28 @@ impl DemoState {
             self.view.select(0);
         }
         ui.same_line();
-        if ui.button("Bottom") {
-            if count > 0 { self.view.select(count - 1); }
+        if ui.button("Bottom") && count > 0 {
+            self.view.select(count - 1);
         }
         ui.same_line();
         if ui.button("Current (IP)") {
             for i in 0..count {
-                if let Some(instr) = self.provider.instruction(i) {
-                    if instr.is_current() {
-                        self.view.select(i);
-                        break;
-                    }
+                if let Some(instr) = self.provider.instruction(i)
+                    && instr.is_current()
+                {
+                    self.view.select(i);
+                    break;
                 }
             }
         }
         ui.same_line();
         if ui.button("Breakpoint") {
             for i in 0..count {
-                if let Some(instr) = self.provider.instruction(i) {
-                    if instr.has_breakpoint() {
-                        self.view.select(i);
-                        break;
-                    }
+                if let Some(instr) = self.provider.instruction(i)
+                    && instr.has_breakpoint()
+                {
+                    self.view.select(i);
+                    break;
                 }
             }
         }

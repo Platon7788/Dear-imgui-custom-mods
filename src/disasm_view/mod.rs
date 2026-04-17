@@ -1332,7 +1332,7 @@ mod tests {
     fn test_new_view() {
         let view = DisasmView::new("test");
         assert!(view.selected_index().is_none());
-        assert!(view.is_focused() == false);
+        assert!(!view.is_focused());
     }
 
     #[test]
