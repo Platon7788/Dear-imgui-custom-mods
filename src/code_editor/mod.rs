@@ -834,7 +834,17 @@ impl CodeEditor {
             self.visible_height = inner_size[1];
 
             // ── Word wrap cache ───────────────────────────────────────
-            let text_area_w = inner_size[0] - gutter_width;
+            // Reserve the vertical scrollbar width so wrapped text never
+            // sneaks under the scrollbar on the right edge. ImGui's
+            // `content_region_avail()` already subtracts the scrollbar
+            // width when one is visible — but we want a STABLE wrap
+            // width regardless of scrollbar visibility, otherwise the
+            // wrap toggles on/off as content grows over the threshold
+            // (chicken-and-egg: wrap width depends on scrollbar, which
+            // depends on content height, which depends on wrap width).
+            // Always reserve `style.scrollbar_size` so the wrap is stable.
+            let scrollbar_reserve = ui.clone_style().scrollbar_size();
+            let text_area_w = (inner_size[0] - gutter_width - scrollbar_reserve).max(1.0);
             self.update_wrap_cache(text_area_w);
 
             // ── Read ImGui scroll state first ───────────────────────
@@ -860,6 +870,14 @@ impl CodeEditor {
             // Smooth scrolling (modifies self.scroll_y toward target)
             self.update_smooth_scroll(dt);
 
+            // Snapshot cursor position BEFORE input so we can tell whether
+            // the cursor was actually moved this frame. `ensure_cursor_visible`
+            // should fire only when the cursor moves (typing, arrow keys,
+            // click) — NOT on every frame, otherwise any wheel-scroll that
+            // takes the cursor off-screen gets immediately reverted back
+            // because we force the cursor into the viewport.
+            let cursor_before = self.buffer.cursor();
+
             // Handle input (may call ensure_cursor_visible → self.scroll_y)
             if self.focused {
                 self.handle_keyboard(ui);
@@ -867,11 +885,16 @@ impl CodeEditor {
             self.handle_mouse(ui, gutter_width, inner_size);
 
             // Re-sync wrap cache after input — paste/Enter may have added
-            // lines, so the pre-input cache is stale.  Then re-run
-            // ensure_cursor_visible with the fresh row counts so the
-            // scrollbar target covers the full document.
+            // lines, so the pre-input cache is stale.
             self.update_wrap_cache(text_area_w);
-            self.ensure_cursor_visible();
+
+            // Only pull scroll toward cursor when cursor itself moved.
+            // Wheel / scrollbar-drag scrolling is free to take the cursor
+            // out of view — the cursor stays clipped by the child window
+            // naturally until the user types or arrows back to it.
+            if self.buffer.cursor() != cursor_before {
+                self.ensure_cursor_visible();
+            }
 
             // ── Sync scroll back to ImGui ───────────────────────────
             // Input handling may have updated self.scroll_y (e.g.
