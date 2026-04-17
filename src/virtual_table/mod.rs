@@ -509,10 +509,18 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Sort
         self.handle_sort(ui);
 
-        // Rows — explicit row height for accurate ListClipper virtualization.
+        // Rows — explicit row stride for accurate ListClipper virtualization.
+        // We pass `row_stride = row_h + 2*CellPadding.y`, not bare `row_h`, because
+        // that is the physical pixel height of each row inside an ImGui table
+        // (see `row_height_to_stride` for the derivation). Using bare `row_h`
+        // causes ListClipper's final `SeekCursorForItem(ItemsCount)` to
+        // understate the scroll range by `row_count * 2*CellPadding.y`, which
+        // makes the last rows unreachable via manual scroll.
         let row_count = self.data.len();
         let row_h = self.effective_row_height(&None);
-        let clip = ListClipper::new(row_count as i32).items_height(row_h);
+        let cell_padding_y = ui.clone_style().cell_padding()[1];
+        let row_stride = row_height_to_stride(row_h, cell_padding_y);
+        let clip = ListClipper::new(row_count as i32).items_height(row_stride);
         let tok = clip.begin(ui);
 
         for row_idx in tok.iter() {
@@ -605,19 +613,19 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         // Quantize outer height so the last visible row is never clipped
         // mid-pixel (opt-in via `TableConfig::snap_last_row`).
-        // Header takes ~line_height + 2×frame_padding; the clipped content
-        // area is `outer.y - header_h - padding`, so we compute the biggest
-        // `N * row_h + header_h` that fits in the available height.
+        // Header row height = `FontSize + 2*CellPadding.y` (matches
+        // ImGui's internal `TableGetHeaderRowHeight`, imgui_tables.cpp:3084).
+        // Data row physical stride = `row_h + 2*CellPadding.y` (see
+        // `row_height_to_stride`), so we compute the biggest
+        // `N * row_stride + header_h` that fits in the available height.
         let row_h = self.effective_row_height(&None);
+        let cell_padding_y = ui.clone_style().cell_padding()[1];
+        let row_stride = row_height_to_stride(row_h, cell_padding_y);
         let outer_size = if self.config.snap_last_row && self.config.scroll_y {
             let avail_h = ui.content_region_avail()[1];
-            let style = ui.clone_style();
             let header_h = unsafe { dear_imgui_rs::sys::igGetTextLineHeight() }
-                + style.cell_padding()[1] * 2.0;
-            let content_h = (avail_h - header_h).max(0.0);
-            let row_count_fit = (content_h / row_h).floor().max(0.0);
-            let quantized = row_count_fit * row_h + header_h;
-            [0.0, quantized.max(row_h + header_h)]
+                + cell_padding_y * 2.0;
+            [0.0, snap_outer_height(avail_h, header_h, row_stride)]
         } else {
             [0.0, 0.0]
         };
@@ -654,8 +662,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         // No sorting — data order is caller-managed.
 
-        // Rows (read-only path: no inline editing)
-        let clip = ListClipper::new(row_count as i32).items_height(row_h);
+        // Rows (read-only path: no inline editing).
+        // Use `row_stride` (= row_h + 2*CellPadding.y), not bare `row_h` — see
+        // the comment in `render()` above and `row_height_to_stride` below.
+        let clip = ListClipper::new(row_count as i32).items_height(row_stride);
         let tok = clip.begin(ui);
 
         for row_idx in tok.iter() {
@@ -1476,4 +1486,125 @@ where
         out.push('\n');
     }
     out
+}
+
+/// Physical pixel height of a row inside a Dear ImGui table.
+///
+/// The value passed to `Selectable::size([_, row_height])` (and to
+/// `TableNextRow`'s `min_row_height`) is NOT what ImGui actually lays out.
+/// Every row is augmented by `2 * CellPadding.y`:
+///
+/// * `TableBeginCell` offsets the cursor by `+CellPadding.y` from `RowPosY1`
+///   (imgui_tables.cpp:2188 — `window->DC.CursorPos.y = table->RowPosY1 +
+///   table->RowCellPaddingY;`).
+/// * `TableEndCell` extends `RowPosY2` to `CursorMaxPos.y + CellPadding.y`
+///   (imgui_tables.cpp:2247).
+///
+/// Therefore `RowPosY2 - RowPosY1 == row_height + 2*CellPadding.y` for any
+/// row whose content (here: the SPAN_ALL_COLUMNS Selectable) equals
+/// `row_height`.
+///
+/// `ListClipper::items_height` must be set to this stride: ImGui's
+/// `ImGuiListClipper::End` seeks the cursor to
+/// `StartPosY + ItemsCount * items_height` (imgui.cpp:3401, 3406), which
+/// fixes the inner scroll-window's content size. Using the bare `row_height`
+/// there understates the content size by `row_count * 2*CellPadding.y` and
+/// ImGui clamps `scroll_y <= scroll_max_y`, making the final rows
+/// unreachable via manual scroll. This matches the upstream hint at
+/// imgui.cpp:3319 ("If your clipper item height is != from actual table
+/// row height, consider using ImGuiListClipperFlags_NoSetTableRowCounters").
+#[inline]
+pub(crate) fn row_height_to_stride(row_height: f32, cell_padding_y: f32) -> f32 {
+    row_height + 2.0 * cell_padding_y.max(0.0)
+}
+
+/// Quantize a Dear ImGui table's outer height so it holds a whole number of
+/// rows plus the header — used by `TableConfig::snap_last_row`.
+///
+/// Ensures at least one row fits even when the available area is very small.
+/// `row_stride` must already include the `2*CellPadding.y` surcharge (see
+/// `row_height_to_stride`).
+#[inline]
+pub(crate) fn snap_outer_height(avail_h: f32, header_h: f32, row_stride: f32) -> f32 {
+    let content_h = (avail_h - header_h).max(0.0);
+    let row_count_fit = if row_stride > 0.0 {
+        (content_h / row_stride).floor().max(0.0)
+    } else {
+        0.0
+    };
+    let quantized = row_count_fit * row_stride + header_h;
+    quantized.max(row_stride + header_h)
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    #[test]
+    fn row_stride_adds_two_cell_paddings() {
+        // Normal density with default ImGui CellPadding (2 px).
+        assert_eq!(row_height_to_stride(25.0, 2.0), 29.0);
+        // Generous padding used in some themes.
+        assert_eq!(row_height_to_stride(25.0, 4.0), 33.0);
+        // Dense density, zero padding.
+        assert_eq!(row_height_to_stride(17.0, 0.0), 17.0);
+    }
+
+    #[test]
+    fn row_stride_clamps_negative_padding() {
+        // Bogus negative padding from corrupted style must not shrink the stride.
+        assert_eq!(row_height_to_stride(20.0, -5.0), 20.0);
+    }
+
+    #[test]
+    fn snap_fits_nine_rows() {
+        // avail=300, header=20, stride=29 → floor(280/29)=9 → 9*29+20=281.
+        assert!((snap_outer_height(300.0, 20.0, 29.0) - 281.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn snap_guarantees_at_least_one_row() {
+        // avail too small to fit even header+row → still returns header+stride.
+        let out = snap_outer_height(10.0, 20.0, 29.0);
+        assert!((out - (29.0 + 20.0)).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn snap_with_exact_fit() {
+        // avail exactly fits 10 rows + header → quantized unchanged.
+        let stride = 30.0;
+        let header = 25.0;
+        let avail = 10.0 * stride + header;
+        let out = snap_outer_height(avail, header, stride);
+        assert!((out - avail).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn snap_zero_stride_does_not_panic() {
+        // Pathological input must not divide by zero.
+        let out = snap_outer_height(200.0, 20.0, 0.0);
+        assert!((out - 20.0).abs() < f32::EPSILON);
+    }
+
+    /// Regression test for the scroll-unreachability bug: with 500 rows of
+    /// `row_h=25` and `cell_padding_y=2`, the total content height the clipper
+    /// reports must match the rendered height (500 * 29 = 14500), not the
+    /// bogus 500 * 25 = 12500 that the pre-fix code produced.
+    #[test]
+    fn clipper_content_matches_rendered_height_large_row_count() {
+        let row_count = 500usize;
+        let row_h = 25.0;
+        let cp_y = 2.0;
+
+        // Pre-fix (bogus): items_height == row_h
+        let bogus_total = row_count as f32 * row_h;
+        // Post-fix: items_height == row_h + 2*CellPadding.y
+        let stride = row_height_to_stride(row_h, cp_y);
+        let correct_total = row_count as f32 * stride;
+
+        assert_eq!(correct_total, 14500.0);
+        assert_eq!(bogus_total, 12500.0);
+        // The gap equals exactly `row_count * 2 * CellPadding.y`.
+        assert_eq!(correct_total - bogus_total, row_count as f32 * 2.0 * cp_y);
+    }
 }

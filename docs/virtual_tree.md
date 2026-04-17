@@ -335,6 +335,7 @@ VirtualTree is optimized to handle up to 10,000,000 nodes at 60 FPS. Key techniq
 ### Per-frame rendering: O(visible rows)
 
 - **ListClipper virtualization** — Dear ImGui renders only visible rows (~50–100), regardless of total node count. Even with 1M nodes, per-frame work is constant.
+- **Padding-aware clipper stride** — `items_height` is set to `row_h + 2*CellPadding.y` (via shared `virtual_table::row_height_to_stride`). Using bare `row_h` causes ImGui's final `SeekCursorForItem` to understate the scroll range and makes the last rows unreachable inside tightly-sized containers.
 - **Flat view cache** — the DFS linearization is rebuilt only on expand/collapse or structural changes, not every frame.
 
 ### Flat view rebuild: O(visible nodes), zero allocations per node

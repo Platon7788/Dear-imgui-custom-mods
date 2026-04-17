@@ -709,9 +709,16 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // Sort
         self.handle_sort(ui);
 
-        // Rows via ListClipper — explicit row height for accurate virtualization.
+        // Rows via ListClipper — explicit row stride for accurate virtualization.
         // Without this, ListClipper auto-measures the first row which can be wrong
         // (header padding, variable density) → renders too few rows → empty gap.
+        //
+        // We pass `row_stride = row_h + 2*CellPadding.y`, not bare `row_h`: the
+        // physical row height inside an ImGui table is always row_h + 2*CellPadding.y
+        // (see `crate::virtual_table::row_height_to_stride` for the derivation).
+        // Using bare `row_h` understates the virtual content size by
+        // `row_count * 2*CellPadding.y` and makes the last rows unreachable via
+        // manual scroll in tightly-sized containers (e.g. nested child_window).
         let row_count = self.flat_view.len();
         let row_h = self.config.table.default_row_height.unwrap_or_else(|| unsafe {
             match self.config.table.row_density {
@@ -720,7 +727,9 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 RowDensity::Dense   => dear_imgui_rs::sys::igGetFontSize() + 2.0,
             }
         });
-        let clip = ListClipper::new(row_count as i32).items_height(row_h);
+        let cell_padding_y = ui.clone_style().cell_padding()[1];
+        let row_stride = crate::virtual_table::row_height_to_stride(row_h, cell_padding_y);
+        let clip = ListClipper::new(row_count as i32).items_height(row_stride);
         let tok = clip.begin(ui);
 
         let scroll_target = self.scroll_to_node.take()

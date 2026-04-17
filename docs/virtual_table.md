@@ -236,6 +236,7 @@ The RingBuffer always evicts the oldest row when full — this is inherent to th
 - **Scoped borrows for ComboBox/Button** — `items` and `label` references are scoped so the borrow ends before mutable data access, eliminating `Vec<String>` clone per frame.
 - **`take_cell_value()`** — moves String out of edit buffer via `mem::replace` instead of cloning (zero-copy commit).
 - **ListClipper with explicit `items_height`** — accurate row height avoids per-frame auto-measurement and empty gaps.
+- **Padding-aware clipper stride** — `items_height` is set to `row_h + 2*CellPadding.y` because ImGui's table adds cell padding around every row (`TableBeginCell` / `TableEndCell`, see `imgui_tables.cpp:1915,2188,2247`). Using the bare `row_h` understates the content size by `row_count * 2*CellPadding.y` and makes the final rows unreachable via manual scroll inside tightly-sized containers (e.g. nested `child_window`). The crate exposes the helper as `virtual_table::row_height_to_stride(row_h, cell_padding_y)` and covers it with unit tests.
 - **Safe error handling** — zero `unwrap()` calls in render paths; all use `if let Some` / `let Some else continue` patterns.
 - **Shared utilities** — `EditorKind`, `alignment_pad`, clipboard helpers extracted to avoid duplication between virtual_table and virtual_tree.
 
