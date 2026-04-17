@@ -122,8 +122,31 @@ impl TextBuffer {
     }
 
     /// Get entire text as a single string.
+    ///
+    /// Allocates a fresh `String` on every call — for large buffers (> 1 MB)
+    /// consider [`text_into`](Self::text_into) to reuse an existing capacity.
     pub fn text(&self) -> String {
         self.lines.join("\n")
+    }
+
+    /// Append the entire text into `buf`, reusing existing capacity.
+    ///
+    /// Callers that poll text every frame (save-on-change watchers, export
+    /// dialogs) avoid the per-call heap allocation by keeping a persistent
+    /// `String` buffer. `buf` is cleared first.
+    pub fn text_into(&self, buf: &mut String) {
+        buf.clear();
+        let needed = self.lines.iter().map(|l| l.len()).sum::<usize>()
+            + self.lines.len().saturating_sub(1);
+        if buf.capacity() < needed {
+            buf.reserve(needed - buf.capacity());
+        }
+        for (i, line) in self.lines.iter().enumerate() {
+            if i > 0 {
+                buf.push('\n');
+            }
+            buf.push_str(line);
+        }
     }
 
     /// Get selected text, or empty string if no selection.

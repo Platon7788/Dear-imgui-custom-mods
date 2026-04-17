@@ -323,10 +323,25 @@ pub struct FindReplaceState {
     pub matches: Vec<(usize, usize, usize)>,
     /// Current match index (for cycling through matches).
     pub current_match: usize,
+    /// Per-line lowercase cache for case-insensitive search. Rebuilt only
+    /// when the text `edit_version` changes — eliminates the
+    /// `line.to_lowercase()` alloc per line per keystroke of the query,
+    /// which on a 10 000-line file dominated Find perf.
+    lowercase_cache: Vec<String>,
+    /// Edit version the lowercase cache was built against. `u64::MAX` means
+    /// invalid / not yet built.
+    lowercase_version: u64,
 }
 
 impl FindReplaceState {
-    fn update_matches(&mut self, lines: &[String]) {
+    /// Invalidate the lowercase cache. Called when text or case-sensitivity
+    /// flag changes so the next `update_matches` rebuilds.
+    fn invalidate_lowercase_cache(&mut self) {
+        self.lowercase_version = u64::MAX;
+        self.lowercase_cache.clear();
+    }
+
+    fn update_matches(&mut self, lines: &[String], edit_version: u64) {
         self.matches.clear();
         if self.query.is_empty() { return; }
 
@@ -336,11 +351,29 @@ impl FindReplaceState {
             self.query.to_lowercase()
         };
 
+        // Build (or reuse) the per-line lowercase cache for case-insensitive
+        // searches. This is the single biggest source of allocations during
+        // a Find operation on large files: without cache, `line.to_lowercase()`
+        // runs N_lines × N_keystrokes times.
+        if !self.case_sensitive && self.lowercase_version != edit_version {
+            self.lowercase_cache.clear();
+            self.lowercase_cache.reserve(lines.len());
+            for line in lines {
+                self.lowercase_cache.push(line.to_lowercase());
+            }
+            self.lowercase_version = edit_version;
+        }
+
         for (line_idx, line) in lines.iter().enumerate() {
-            let search_line = if self.case_sensitive {
-                line.clone()
+            let search_line: &str = if self.case_sensitive {
+                line.as_str()
             } else {
-                line.to_lowercase()
+                // Defensive: cache should be in sync, but fall back if the
+                // caller forgot to pass a fresh edit_version.
+                self.lowercase_cache
+                    .get(line_idx)
+                    .map(|s| s.as_str())
+                    .unwrap_or(line.as_str())
             };
 
             let mut start = 0;
@@ -601,8 +634,21 @@ impl CodeEditor {
     }
 
     /// Get the entire text content.
+    ///
+    /// Allocates a fresh `String` on every call — for high-frequency
+    /// pollers (save-on-change watchers, streaming UIs) use
+    /// [`get_text_into`](Self::get_text_into) to reuse a persistent buffer.
     pub fn get_text(&self) -> String {
         self.buffer.text()
+    }
+
+    /// Append the entire text into `buf`, reusing existing capacity.
+    ///
+    /// `buf` is cleared first. Use this instead of `get_text` when you
+    /// poll the editor text every frame and want to avoid the per-frame
+    /// heap allocation.
+    pub fn get_text_into(&self, buf: &mut String) {
+        self.buffer.text_into(buf);
     }
 
     /// Whether the buffer has been modified since last `clear_modified()`.
@@ -794,9 +840,14 @@ impl CodeEditor {
         self.char_advance = calc_char_advance(scaled_font_size);
         self.line_height = unsafe { dear_imgui_rs::sys::igGetTextLineHeight() } + 2.0;
 
-        // Recompute caches if text changed
+        // Recompute caches if text changed. Fold regions are only needed
+        // when the gutter actually draws the fold markers — skip the full
+        // document scan otherwise. On a 10 000-line file this was running
+        // on every keystroke even when folds weren't visible.
         self.update_block_comment_states();
-        self.update_fold_regions();
+        if self.config.show_fold_indicators {
+            self.update_fold_regions();
+        }
         self.ensure_token_cache_size();
 
         let fold_extra = if self.config.show_fold_indicators { 2.0 } else { 0.0 };
@@ -1453,12 +1504,30 @@ impl CodeEditor {
                 return;
             }
 
+            // Alt+Shift+DownArrow: duplicate line (VSCode convention,
+            // alternative to Ctrl+Shift+D which conflicts with "select
+            // next occurrence" on some keymaps).
+            if alt && shift && ui.is_key_pressed(Key::DownArrow) {
+                self.snapshot_undo(true);
+                self.buffer.duplicate_line();
+                self.invalidate_token_cache_all();
+                self.ensure_cursor_visible();
+                return;
+            }
+
             // Ctrl+Shift+K: delete line
             if ctrl && shift && ui.is_key_pressed(Key::K) {
                 self.snapshot_undo(true);
                 self.buffer.delete_line();
                 self.invalidate_token_cache_all();
                 self.ensure_cursor_visible();
+                return;
+            }
+
+            // Ctrl+L: select current line (VSCode / IntelliJ convention).
+            // Extends selection to include the line break if one exists.
+            if ctrl && !shift && !alt && ui.is_key_pressed(Key::L) {
+                self.buffer.select_line();
                 return;
             }
 
@@ -2291,7 +2360,8 @@ impl CodeEditor {
     // ── Find/Replace ────────────────────────────────────────────────
 
     fn update_find_matches(&mut self) {
-        self.find_replace.update_matches(self.buffer.lines());
+        self.find_replace
+            .update_matches(self.buffer.lines(), self.buffer.edit_version());
     }
 
     fn find_next(&mut self) {
@@ -2729,6 +2799,10 @@ impl CodeEditor {
             let cs_lbl = format!("{}##fcs", icons::FORMAT_LETTER_CASE);
             if ui.small_button(&cs_lbl) {
                 self.find_replace.case_sensitive = !self.find_replace.case_sensitive;
+                // Lowercase cache becomes meaningless in case-sensitive
+                // mode; invalidate so we don't hand out stale strings the
+                // next time the user toggles back.
+                self.find_replace.invalidate_lowercase_cache();
                 self.update_find_matches();
             }
             drop(_c);
@@ -3476,7 +3550,7 @@ mod tests {
             "say hello".to_string(),
             "nothing here".to_string(),
         ];
-        state.update_matches(&lines);
+        state.update_matches(&lines, 1);
         assert_eq!(state.matches.len(), 2);
         assert_eq!(state.matches[0], (0, 0, 5));
         assert_eq!(state.matches[1], (1, 4, 9));
@@ -3488,7 +3562,7 @@ mod tests {
         state.query = "hello".to_string();
         state.case_sensitive = false;
         let lines = vec!["Hello HELLO hello".to_string()];
-        state.update_matches(&lines);
+        state.update_matches(&lines, 1);
         assert_eq!(state.matches.len(), 3);
     }
 
