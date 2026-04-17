@@ -5,9 +5,13 @@
 //! black, child/frame surfaces step up in very small increments so deep
 //! hierarchies stay readable.
 
+#[cfg(feature = "borderless_window")]
 use crate::borderless_window::TitlebarColors;
+#[cfg(feature = "confirm_dialog")]
 use crate::confirm_dialog::DialogColors;
+#[cfg(feature = "nav_panel")]
 use crate::nav_panel::NavColors;
+#[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
 use dear_imgui_rs::{Style, StyleColor};
 
@@ -64,6 +68,7 @@ const TAB_ACTIVE_BG: u32 = 0x1f2230;
 
 // ─── Titlebar ────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "borderless_window")]
 pub fn titlebar_colors() -> TitlebarColors {
     let bg = hex(TITLE_BG, 1.0);
     let icon = hex(FG_MUTED, 1.0);
@@ -87,6 +92,7 @@ pub fn titlebar_colors() -> TitlebarColors {
 
 // ─── Nav panel ───────────────────────────────────────────────────────────────
 
+#[cfg(feature = "nav_panel")]
 pub fn nav_colors() -> NavColors {
     let bg = hex(STATUSBAR_BG, 1.0);
     let btn_hover = hex(SECONDARY_HOVER, 1.0);
@@ -114,6 +120,7 @@ pub fn nav_colors() -> NavColors {
 
 // ─── Confirm dialog ──────────────────────────────────────────────────────────
 
+#[cfg(feature = "confirm_dialog")]
 pub fn dialog_colors() -> DialogColors {
     let bg = hex(BG_CHILD, 1.0);
     let bg_float = [
@@ -148,6 +155,7 @@ pub fn dialog_colors() -> DialogColors {
 
 // ─── Status bar ──────────────────────────────────────────────────────────────
 
+#[cfg(feature = "status_bar")]
 pub fn statusbar_config() -> StatusBarConfig {
     StatusBarConfig {
         height: 22.0,

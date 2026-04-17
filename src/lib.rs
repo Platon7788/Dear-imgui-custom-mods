@@ -105,29 +105,59 @@ pub use wgpu;
 /// Re-export of [`winit`] — the window / event loop backing [`dear_imgui_winit`].
 pub use winit;
 
-// ─── Component modules ───────────────────────────────────────────────────────
+// ─── Infrastructure modules (always compiled) ────────────────────────────────
+//
+// These are used by most components and carry little weight on their own.
+// Gating them behind features would force every leaf-component flag to
+// depend on them, adding noise to `Cargo.toml` for no payoff.
 
-pub mod app_window;
-pub mod borderless_window;
-pub mod code_editor;
-pub mod confirm_dialog;
-pub mod diff_viewer;
-pub mod disasm_view;
-pub mod file_manager;
 pub mod fonts;
-pub mod hex_viewer;
 pub mod icons;
 pub mod input;
-pub mod nav_panel;
-pub mod node_graph;
-pub mod page_control;
-pub mod property_inspector;
-pub mod status_bar;
 pub mod theme;
-pub mod timeline;
-pub mod toolbar;
 pub mod utils;
+
+// ─── Component modules (gated behind features) ───────────────────────────────
+
+#[cfg(feature = "app_window")]
+pub mod app_window;
+#[cfg(feature = "borderless_window")]
+pub mod borderless_window;
+#[cfg(feature = "code_editor")]
+pub mod code_editor;
+#[cfg(feature = "confirm_dialog")]
+pub mod confirm_dialog;
+#[cfg(feature = "diff_viewer")]
+pub mod diff_viewer;
+#[cfg(feature = "disasm_view")]
+pub mod disasm_view;
+#[cfg(feature = "file_manager")]
+pub mod file_manager;
+#[cfg(feature = "hex_viewer")]
+pub mod hex_viewer;
+#[cfg(feature = "nav_panel")]
+pub mod nav_panel;
+#[cfg(feature = "node_graph")]
+pub mod node_graph;
+#[cfg(feature = "page_control")]
+pub mod page_control;
+#[cfg(feature = "property_inspector")]
+pub mod property_inspector;
+#[cfg(feature = "status_bar")]
+pub mod status_bar;
+#[cfg(feature = "timeline")]
+pub mod timeline;
+#[cfg(feature = "toolbar")]
+pub mod toolbar;
+#[cfg(feature = "virtual_table")]
 pub mod virtual_table;
+#[cfg(feature = "virtual_tree")]
 pub mod virtual_tree;
 
+// ─── Demo helpers (internal; only compiled when `full` is on) ────────────────
+//
+// `demo/` references many components, so it needs every feature they bring.
+// Keep it gated behind `full` — it's just internal test scaffolding.
+
+#[cfg(feature = "full")]
 pub mod demo;

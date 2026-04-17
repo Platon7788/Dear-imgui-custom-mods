@@ -101,9 +101,16 @@ pub const LIGHT_SELECTION_BG: [f32; 4] = [0.25, 0.50, 0.82, 0.30];
 
 // ─── Unified Theme selector ──────────────────────────────────────────────────
 
+// Sub-palette types live in their component modules and only exist when
+// those features are enabled. The theme methods below mirror the gating
+// so a `--no-default-features` build of just `theme` still compiles.
+#[cfg(feature = "borderless_window")]
 use crate::borderless_window::TitlebarColors;
+#[cfg(feature = "confirm_dialog")]
 use crate::confirm_dialog::DialogColors;
+#[cfg(feature = "nav_panel")]
 use crate::nav_panel::NavColors;
+#[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
 use dear_imgui_rs::Style;
 
@@ -158,6 +165,8 @@ impl Theme {
     }
 
     /// Titlebar colours for this theme.
+    /// Available only with the `borderless_window` feature.
+    #[cfg(feature = "borderless_window")]
     pub fn titlebar(self) -> TitlebarColors {
         match self {
             Self::Dark => dark::titlebar_colors(),
@@ -169,6 +178,8 @@ impl Theme {
     }
 
     /// Nav-panel colours for this theme.
+    /// Available only with the `nav_panel` feature.
+    #[cfg(feature = "nav_panel")]
     pub fn nav(self) -> NavColors {
         match self {
             Self::Dark => dark::nav_colors(),
@@ -180,6 +191,8 @@ impl Theme {
     }
 
     /// Confirm-dialog colours for this theme.
+    /// Available only with the `confirm_dialog` feature.
+    #[cfg(feature = "confirm_dialog")]
     pub fn dialog(self) -> DialogColors {
         match self {
             Self::Dark => dark::dialog_colors(),
@@ -191,6 +204,8 @@ impl Theme {
     }
 
     /// Status-bar config (colours + default geometry) for this theme.
+    /// Available only with the `status_bar` feature.
+    #[cfg(feature = "status_bar")]
     pub fn statusbar(self) -> StatusBarConfig {
         match self {
             Self::Dark => dark::statusbar_config(),

@@ -4,9 +4,13 @@
 //! bright neon accents (pink, green, cyan, orange, yellow). Built for
 //! contrast-rich syntax highlighting; equally readable for UI chrome.
 
+#[cfg(feature = "borderless_window")]
 use crate::borderless_window::TitlebarColors;
+#[cfg(feature = "confirm_dialog")]
 use crate::confirm_dialog::DialogColors;
+#[cfg(feature = "nav_panel")]
 use crate::nav_panel::NavColors;
+#[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
 use dear_imgui_rs::{Style, StyleColor};
 
@@ -61,6 +65,7 @@ const NAV_BADGE_BG: u32 = RED;
 
 // ─── Titlebar ────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "borderless_window")]
 pub fn titlebar_colors() -> TitlebarColors {
     let bg = hex(TITLE_BG, 1.0);
     let icon = hex(FG_MUTED, 1.0);
@@ -84,6 +89,7 @@ pub fn titlebar_colors() -> TitlebarColors {
 
 // ─── Nav panel ───────────────────────────────────────────────────────────────
 
+#[cfg(feature = "nav_panel")]
 pub fn nav_colors() -> NavColors {
     let bg = hex(STATUSBAR_BG, 1.0);
     let btn_hover = hex(BG_FRAME_HOVER, 1.0);
@@ -111,6 +117,7 @@ pub fn nav_colors() -> NavColors {
 
 // ─── Confirm dialog ──────────────────────────────────────────────────────────
 
+#[cfg(feature = "confirm_dialog")]
 pub fn dialog_colors() -> DialogColors {
     let bg = hex(BG_CHILD, 1.0);
     let bg_float = [
@@ -145,6 +152,7 @@ pub fn dialog_colors() -> DialogColors {
 
 // ─── Status bar ──────────────────────────────────────────────────────────────
 
+#[cfg(feature = "status_bar")]
 pub fn statusbar_config() -> StatusBarConfig {
     StatusBarConfig {
         height: 22.0,

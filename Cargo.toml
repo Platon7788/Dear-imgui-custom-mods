@@ -5,6 +5,75 @@ edition = "2024"
 rust-version = "1.94"
 description = "Custom UI components for dear-imgui-rs"
 
+# ─── Features ────────────────────────────────────────────────────────────────
+#
+# All components are on by default (`full`). Downstream consumers who want a
+# slimmer build can `--no-default-features --features=confirm_dialog` (for
+# example) and compile only what they need. `theme`, `utils`, `icons`,
+# `fonts`, `input` are always-on infrastructure — not exposed as features.
+#
+# Inter-component dependencies are encoded transitively so toggling one
+# leaf component does the right thing (e.g. enabling `disasm_view`
+# automatically pulls `hex_viewer`; enabling `app_window` pulls
+# `borderless_window` + `code_editor`).
+
+[features]
+default = ["full"]
+
+# Meta-feature: every component.
+full = [
+    "app_window",
+    "borderless_window",
+    "code_editor",
+    "confirm_dialog",
+    "diff_viewer",
+    "disasm_view",
+    "file_manager",
+    "hex_viewer",
+    "nav_panel",
+    "node_graph",
+    "page_control",
+    "property_inspector",
+    "status_bar",
+    "timeline",
+    "toolbar",
+    "virtual_table",
+    "virtual_tree",
+]
+
+# ── Window chrome ───────────────────────────────────────────────────────────
+borderless_window = []
+# app_window is the composite wgpu+winit+ImGui host — pulls the chrome it
+# depends on transitively. Big feature (~MB of wgpu glue).
+app_window = ["borderless_window", "code_editor"]
+
+# ── Dialogs & small widgets ─────────────────────────────────────────────────
+confirm_dialog = []
+nav_panel = []
+status_bar = []
+toolbar = []
+property_inspector = []
+
+# ── Data viewers ────────────────────────────────────────────────────────────
+diff_viewer = []
+file_manager = []
+hex_viewer = []
+# disasm_view reuses hex_viewer's NavHistory type.
+disasm_view = ["hex_viewer"]
+virtual_table = []
+# virtual_tree shares column + cell types with virtual_table.
+virtual_tree = ["virtual_table"]
+
+# ── Specialized ─────────────────────────────────────────────────────────────
+# Heavy: embeds 3 TTF fonts (Hack + JetBrains Mono + JetBrains Mono NL)
+# and ~10 languages of syntax highlighting. The single biggest size
+# contributor in the crate.
+code_editor = []
+# Full visual node editor — bezier wires, selection, pan/zoom, mini-map.
+node_graph = []
+page_control = []
+timeline = []
+
 [dependencies]
 dear-imgui-rs = "0.11.0"
 dear-imgui-wgpu = "0.11.0"
@@ -39,54 +108,83 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+# ─── Examples ────────────────────────────────────────────────────────────────
+# Each demo declares `required-features` so `cargo build --examples
+# --no-default-features --features=xxx` only builds the ones that can
+# actually compile. With `default = ["full"]` this is transparent — every
+# demo compiles unless you explicitly disable features.
+
 [[example]]
 name = "demo_table"
 path = "examples/demo_table.rs"
+required-features = ["virtual_table", "app_window"]
 
 [[example]]
 name = "demo_node_graph"
 path = "examples/demo_node_graph.rs"
+required-features = ["node_graph", "app_window"]
 
 [[example]]
 name = "demo_tree"
 path = "examples/demo_tree.rs"
+required-features = ["virtual_tree", "app_window"]
 
 [[example]]
 name = "demo_code_editor"
 path = "examples/demo_code_editor.rs"
+required-features = ["code_editor", "app_window"]
 
 [[example]]
 name = "demo_hex_viewer"
 path = "examples/demo_hex_viewer.rs"
+required-features = ["hex_viewer", "app_window"]
 
 [[example]]
 name = "demo_disasm_view"
 path = "examples/demo_disasm_view.rs"
+required-features = ["disasm_view", "app_window"]
 
 [[example]]
 name = "demo_file_manager"
 path = "examples/demo_file_manager.rs"
+required-features = ["file_manager", "app_window"]
 
 [[example]]
 name = "demo_page_control"
 path = "examples/demo_page_control.rs"
+required-features = ["page_control", "app_window"]
 
 [[example]]
 name = "demo_timeline"
 path = "examples/demo_timeline.rs"
+required-features = ["timeline", "app_window"]
 
 [[example]]
 name = "demo_diff_viewer"
 path = "examples/demo_diff_viewer.rs"
+required-features = ["diff_viewer", "app_window"]
 
 [[example]]
 name = "demo_property_inspector"
 path = "examples/demo_property_inspector.rs"
+required-features = ["property_inspector", "app_window"]
 
 [[example]]
 name = "demo_status_toolbar"
 path = "examples/demo_status_toolbar.rs"
+required-features = ["status_bar", "toolbar", "app_window"]
 
 [[example]]
 name = "demo_borderless"
 path = "examples/demo_borderless.rs"
+required-features = ["borderless_window", "app_window"]
+
+[[example]]
+name = "demo_app_window"
+path = "examples/demo_app_window.rs"
+required-features = ["app_window"]
+
+[[example]]
+name = "demo_nav_panel"
+path = "examples/demo_nav_panel.rs"
+required-features = ["nav_panel", "app_window"]
