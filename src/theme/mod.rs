@@ -16,6 +16,12 @@
 //! their own widgets by the Dark palette (e.g. `code_editor`, `file_manager`).
 //! Prefer the full theme modules above for new code.
 
+// The legacy color constants below are semantic tokens named by their
+// intent (BG_WINDOW, ACCENT, …) so a rustdoc description would be
+// circular. Opt out of `missing_docs` for this module; the unified
+// `Theme` enum (below) is fully documented.
+#![allow(missing_docs)]
+
 pub mod dark;
 pub mod light;
 pub mod midnight;

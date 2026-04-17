@@ -40,6 +40,7 @@
 //! // editor.render(ui);
 //! ```
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod buffer;
 pub mod config;
 pub mod lang;
@@ -3482,5 +3483,37 @@ mod tests {
         assert_eq!(editor.line_count(), 2);
         assert_eq!(editor.buffer.line(0), "aaa");
         assert_eq!(editor.buffer.line(1), "ccc");
+    }
+
+    // ── Property-based tests ─────────────────────────────────────────────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        /// `parse_hex_color` accepts arbitrary strings without panicking.
+        /// Any Some(rgba) must be a 4-element array with values in [0,1].
+        #[test]
+        fn prop_parse_hex_color_never_panics(s in ".{0,16}") {
+            if let Some(rgba) = parse_hex_color(&s) {
+                for c in rgba {
+                    prop_assert!((0.0..=1.0).contains(&c));
+                }
+            }
+        }
+
+        /// `#RRGGBB` strings (6 hex digits) must decode successfully and
+        /// the decoded RGBA must have alpha == 1.0, with each channel
+        /// matching the input byte.
+        #[test]
+        fn prop_parse_hex_color_6_digit_decodes(
+            r in any::<u8>(), g in any::<u8>(), b in any::<u8>(),
+        ) {
+            let s = format!("#{r:02X}{g:02X}{b:02X}");
+            let rgba = parse_hex_color(&s).expect("valid 6-digit hex must parse");
+            prop_assert!((rgba[3] - 1.0).abs() < f32::EPSILON);
+            prop_assert_eq!((rgba[0] * 255.0).round() as u8, r);
+            prop_assert_eq!((rgba[1] * 255.0).round() as u8, g);
+            prop_assert_eq!((rgba[2] * 255.0).round() as u8, b);
+        }
     }
 }

@@ -125,6 +125,7 @@
 //! - **Vertical centering**: computed once per row, not per cell
 //! - **Sort**: in-place via `rotate_left` linearization (zero extra allocation)
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod column;
 pub mod config;
 mod edit;

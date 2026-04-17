@@ -34,6 +34,7 @@
 //! // In render loop: view.render(ui, &mut provider);
 //! ```
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod config;
 
 pub use config::{
@@ -1539,6 +1540,25 @@ mod tests {
         if arrows.len() >= 2 {
             assert_ne!(arrows[0].depth, arrows[1].depth,
                 "Overlapping arrows should have different depths");
+        }
+    }
+
+    // ── Property-based tests ─────────────────────────────────────────────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        /// `parse_address` accepts arbitrary strings without panicking.
+        #[test]
+        fn prop_parse_address_never_panics(s in ".{0,32}") {
+            let _ = parse_address(&s);
+        }
+
+        /// Hex-prefixed addresses round-trip cleanly.
+        #[test]
+        fn prop_parse_address_hex_roundtrips(value in any::<u64>()) {
+            let s = format!("0x{value:X}");
+            prop_assert_eq!(parse_address(&s), Some(value));
         }
     }
 }

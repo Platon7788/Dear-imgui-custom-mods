@@ -71,6 +71,12 @@
 
 // ─── Crate-level lints ───────────────────────────────────────────────────────
 //
+// `missing_docs` is ON crate-wide so any NEW public item surfaces a warning.
+// Existing modules that haven't been documented yet carry a module-level
+// `#![allow(missing_docs)]` — turn that into `#![warn(missing_docs)]` to
+// drive a per-module doc-coverage pass. This way the lint actively helps
+// without drowning the build in 8000 pre-existing warnings.
+//
 // `unreachable_pub` catches accidental public re-exports — the most common
 // source of silent API leaks from internal helpers. Kept at warn, not deny,
 // so intentional re-exports from `lib.rs` compile without per-item allow.
@@ -79,10 +85,7 @@
 // uses `unsafe` for documented Win32 calls (DWM dark mode, SetCursor bypass,
 // SetWindowRgn fallback on Win10). Every such block carries a `// SAFETY:`
 // comment.
-//
-// `missing_docs` is NOT enabled crate-wide yet — the codebase has ~8000
-// undocumented public items. A future PR series can raise coverage per-
-// module; until then, per-module `#![warn(missing_docs)]` is the path.
+#![warn(missing_docs)]
 #![warn(unreachable_pub)]
 
 // ─── Re-exports of foundational GUI crates ───────────────────────────────────

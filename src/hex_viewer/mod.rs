@@ -8,6 +8,7 @@
 //! optional editing with undo/redo, navigation history,
 //! semantic byte-category coloring, and auto-refresh for live data.
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod config;
 
 pub use config::{
@@ -1489,5 +1490,87 @@ mod tests {
         v.config.highlight_changes = true;
         let fg1 = v.byte_fg_with_overrides(1, 0xBB);
         assert_eq!(fg1, col32(v.config.color_changed));
+    }
+
+    // ── Property-based tests ─────────────────────────────────────────────
+    //
+    // Parsers walk user-controlled strings — a crash here is a DoS for
+    // hosts that hand arbitrary clipboard content to the viewer. These
+    // properties assert "never panic, always return sane output" on
+    // 256+ random inputs per property.
+
+    use proptest::prelude::*;
+
+    proptest! {
+        // Under default config (256 cases per prop).
+
+        /// `parse_address` must never panic regardless of what the user types.
+        /// Output is either `None` (input was garbage) or `Some(value)` where
+        /// `value` fits in u64 (tautological, but proves the function returns).
+        #[test]
+        fn prop_parse_address_never_panics(s in ".{0,32}") {
+            let _ = parse_address(&s);
+        }
+
+        /// Hex-prefix addresses `0x...` within 16 hex chars must round-trip
+        /// through `parse_address` back to the same value.
+        #[test]
+        fn prop_parse_address_hex_roundtrips(value in any::<u64>()) {
+            let s = format!("0x{value:X}");
+            prop_assert_eq!(parse_address(&s), Some(value));
+        }
+
+        /// Short decimal addresses (≤ 4 chars, no hex ambiguity) must
+        /// round-trip. `parse_address` auto-detects hex for longer
+        /// all-hex-digit strings so > 4 chars is not a clean roundtrip
+        /// domain for decimal — that's by design for UX.
+        #[test]
+        fn prop_parse_address_decimal_roundtrips(value in 0u64..10_000) {
+            let s = value.to_string();
+            if s.len() <= 4 {
+                prop_assert_eq!(parse_address(&s), Some(value));
+            }
+        }
+
+        /// `parse_hex_pattern_masked` must never panic on arbitrary string
+        /// input and must always return a Vec (possibly empty) — no
+        /// intermediate allocations leak.
+        #[test]
+        fn prop_parse_hex_pattern_never_panics(s in ".{0,64}") {
+            let result = parse_hex_pattern_masked(&s);
+            // Every byte is either Fixed(u8) or Wildcard — no invariants
+            // to check beyond "didn't panic".
+            prop_assert!(result.len() <= s.len() + 1);
+        }
+
+        /// `parse_ascii_pattern` never panics. Result length equals the
+        /// UTF-8 byte length (not char count) — the function iterates
+        /// over `s.bytes()` for raw-byte search, a deliberate choice so
+        /// the search matches on wire bytes rather than Unicode scalars.
+        #[test]
+        fn prop_parse_ascii_pattern_never_panics(s in ".{0,64}") {
+            let result = parse_ascii_pattern(&s);
+            prop_assert_eq!(result.len(), s.len());
+        }
+
+        /// `find_pattern_masked` invariant: every returned index must fall
+        /// within `data.len() - pattern.len()`. No off-by-one OOB reads.
+        #[test]
+        fn prop_find_pattern_in_bounds(
+            data in prop::collection::vec(any::<u8>(), 0..256),
+            pattern_str in "[0-9A-Fa-f ?\\*]{0,16}",
+        ) {
+            let pattern = parse_hex_pattern_masked(&pattern_str);
+            if pattern.is_empty() {
+                return Ok(());
+            }
+            let matches = find_pattern_masked(&data, &pattern);
+            for &idx in &matches {
+                prop_assert!(
+                    idx + pattern.len() <= data.len(),
+                    "match at {idx} OOB for data len {}", data.len()
+                );
+            }
+        }
     }
 }

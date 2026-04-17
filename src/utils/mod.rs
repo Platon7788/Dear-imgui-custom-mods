@@ -1,5 +1,6 @@
 //! Shared utility helpers for custom ImGui components.
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub(crate) mod clipboard;
 pub mod color;
 pub mod export;

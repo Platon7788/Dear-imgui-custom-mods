@@ -81,6 +81,7 @@
 //! let mut fm = FileManager::new_with_config(config);
 //! ```
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod config;
 mod entry;
 mod favorites;

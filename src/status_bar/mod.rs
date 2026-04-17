@@ -17,6 +17,7 @@
 //! // In render loop: bar.render(ui);
 //! ```
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod config;
 
 pub use config::{Alignment, StatusBarConfig};

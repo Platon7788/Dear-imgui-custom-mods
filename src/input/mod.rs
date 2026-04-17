@@ -39,6 +39,7 @@
 //! }
 //! ```
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod keyboard;
 
 pub use keyboard::{

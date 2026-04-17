@@ -20,6 +20,7 @@
 //! let ui = install_ui_font(&mut ctx, INTER, 15.0, "Inter", true);
 //! ```
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 use dear_imgui_rs::{Context, FontConfig, sys::ImFont};
 
 // ─── Bundled font data ───────────────────────────────────────────────────────

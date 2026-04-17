@@ -3,6 +3,7 @@
 //! Call `render_demo_window(ui)` every frame to display a window
 //! with tabs for each component module.
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 use crate::file_manager::FileManager;
 use crate::icons;
 use crate::page_control::{

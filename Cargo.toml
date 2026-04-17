@@ -18,6 +18,9 @@ winit = "0.30.13"
 # Microbenchmarks via Criterion — gate behind the `bench` runner so
 # regular `cargo test` stays fast.
 criterion = { version = "0.7", features = ["html_reports"] }
+# Property-based testing for parser correctness — catches panics on
+# malformed input that example-based tests would miss.
+proptest = "1.8"
 
 [[bench]]
 name = "theme_dispatch"

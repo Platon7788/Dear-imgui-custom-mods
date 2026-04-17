@@ -23,6 +23,7 @@
 //! }
 //! ```
 
+#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod config;
 pub mod gpu;
 pub mod state;
