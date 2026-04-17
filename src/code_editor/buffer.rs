@@ -689,12 +689,18 @@ impl TextBuffer {
         for i in range {
             if i >= self.lines.len() { continue; }
             if all_commented {
-                // Remove comment prefix
+                // Remove comment prefix — but only if the `//` we remove is
+                // the one that STARTS the line's non-whitespace content.
+                // `line.find("//")` without this guard strips `//` from
+                // inside strings (`let s = "a//b";` would lose the inner
+                // marker) or from inside other `//` comments.
                 let line = &self.lines[i];
-                if let Some(pos) = line.find("//") {
-                    let mut new_line = line[..pos].to_string();
-                    let after = &line[pos + 2..];
-                    // Remove one space after // if present
+                let indent_len = line.bytes().take_while(|b| b.is_ascii_whitespace()).count();
+                if line[indent_len..].starts_with("//") {
+                    let mut new_line = line[..indent_len].to_string();
+                    let after = &line[indent_len + 2..];
+                    // Remove one space after // if present (matches the
+                    // insert path below which writes "// rest").
                     if let Some(stripped) = after.strip_prefix(' ') {
                         new_line.push_str(stripped);
                     } else {
@@ -1034,7 +1040,10 @@ pub fn byte_to_char(s: &str, byte_offset: usize) -> usize {
     s[..byte_offset.min(s.len())].chars().count()
 }
 
-fn is_word_char(ch: char) -> bool {
+/// Unicode-aware word-char test — matches `\w` semantics: alphanumeric
+/// (including non-ASCII letters like é / ж / 你) plus underscore.
+/// Exported for use in editor-level helpers (whole-word find, etc.).
+pub(crate) fn is_word_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
 

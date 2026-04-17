@@ -40,6 +40,17 @@ impl UndoStack {
         }
     }
 
+    /// Whether `push(entry {version}, force)` would actually store the entry.
+    ///
+    /// Callers use this to skip the expensive snapshot-build (full buffer
+    /// text allocation) when consecutive char edits will just be grouped
+    /// into the existing snapshot anyway. On a 1 MB buffer, `buffer.text()`
+    /// is O(n) per keystroke — this check turns N keystrokes into a single
+    /// allocation.
+    pub fn should_push(&self, version: u64, force: bool) -> bool {
+        force || version == 0 || version - self.last_push_version > self.group_threshold
+    }
+
     /// Push a snapshot before an edit. Consecutive char edits are grouped.
     ///
     /// `force` = true means always push (used for newline, delete selection, paste).

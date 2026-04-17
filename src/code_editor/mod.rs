@@ -351,10 +351,18 @@ impl FindReplaceState {
                 let col_end = buffer::byte_to_char(line, byte_end);
 
                 if self.whole_word {
-                    let before_ok = byte_start == 0 ||
-                        !line.as_bytes()[byte_start - 1].is_ascii_alphanumeric();
-                    let after_ok = byte_end >= line.len() ||
-                        !line.as_bytes()[byte_end].is_ascii_alphanumeric();
+                    // Word-boundary check with full Unicode awareness —
+                    // ASCII-only `is_ascii_alphanumeric` treated é/ж/你 as
+                    // non-word chars, so "ana" inside "mañana" or "рад"
+                    // inside "радуга" leaked through the whole-word filter.
+                    let before_ok = match line[..byte_start].chars().next_back() {
+                        Some(c) => !buffer::is_word_char(c),
+                        None => true,
+                    };
+                    let after_ok = match line[byte_end..].chars().next() {
+                        Some(c) => !buffer::is_word_char(c),
+                        None => true,
+                    };
                     if before_ok && after_ok {
                         self.matches.push((line_idx, col_start, col_end));
                     }
@@ -583,6 +591,13 @@ impl CodeEditor {
         // skips recalculation, leaving a stale single-line layout.
         self.wrap_cached_version = u64::MAX;
         self.wrap_cached_width = 0.0;
+        // Reset scroll — otherwise the viewport can sit past end-of-document
+        // (pointing into whitespace) until the user scrolls or ensure_cursor_visible
+        // pulls it back, which now only fires when the cursor itself moves.
+        self.scroll_x = 0.0;
+        self.scroll_y = 0.0;
+        self.target_scroll_y = 0.0;
+        self.last_set_scroll_y = 0.0;
     }
 
     /// Get the entire text content.
@@ -2854,10 +2869,26 @@ impl CodeEditor {
     // ── Undo/Redo ───────────────────────────────────────────────────
 
     fn snapshot_undo(&mut self, force: bool) {
+        let version = self.buffer.edit_version();
+        // Skip the expensive `buffer.text()` clone when grouping would
+        // discard the snapshot anyway. On a 1 MB buffer this used to
+        // allocate a full copy on every keystroke — even though the
+        // resulting entry was immediately dropped by the grouping logic.
+        if !self.undo_stack.should_push(version, force) {
+            // Feed the stack a zero-alloc placeholder so it can still bump
+            // last_push_version and clear redo.
+            let marker = UndoEntry {
+                text: String::new(),
+                cursor: self.buffer.cursor(),
+                version,
+            };
+            self.undo_stack.push(marker, false);
+            return;
+        }
         let entry = UndoEntry {
             text: self.buffer.text(),
             cursor: self.buffer.cursor(),
-            version: self.buffer.edit_version(),
+            version,
         };
         if force {
             self.undo_stack.force_snapshot(entry);
@@ -3259,7 +3290,9 @@ fn compute_wrap_points(
     char_advance: f32,
     tab_size: u8,
 ) -> Vec<usize> {
-    if max_width <= char_advance { return Vec::new(); }
+    if max_width <= char_advance || !max_width.is_finite() {
+        return Vec::new();
+    }
 
     let chars: Vec<char> = line.chars().collect();
     let len = chars.len();
@@ -3272,8 +3305,22 @@ fn compute_wrap_points(
         if ch == '\t' { char_advance * tab_size as f32 } else { char_advance }
     };
 
+    // Belt-and-braces: the loop body always either advances `col` or pushes
+    // a wrap entry (and changes `row_start`). A malformed edge case should
+    // never sustain a position-stall, but an infinite `wraps.push` would be
+    // catastrophic (memory blow-up → OOM). Hard-cap iterations at
+    // `len * 2 + 4` which is comfortably above the worst legitimate case
+    // (single-char rows = len wraps, we allow a small slack for ties).
+    let max_iters = len.saturating_mul(2).saturating_add(4);
+    let mut iters = 0usize;
+
     let mut col = 0usize;
     while col < len {
+        iters += 1;
+        if iters > max_iters {
+            debug_assert!(false, "compute_wrap_points stalled");
+            break;
+        }
         let ch = chars[col];
         let w = char_w(ch);
 
@@ -3282,11 +3329,21 @@ fn compute_wrap_points(
         // (prevents infinite loop on very narrow widths).
         if x + w > max_width && col > row_start {
             // Prefer breaking at a word boundary (last space).
-            let wrap_col = if let Some(sp) = last_space {
-                if sp > row_start { sp } else { col }
-            } else {
-                col
+            // Guard: never push a wrap equal to the previous one or
+            // `row_start` itself — that would leave `row_start` unchanged
+            // after the continue, which is the classic stall shape.
+            let wrap_col = match last_space {
+                Some(sp) if sp > row_start && sp <= col => sp,
+                _ => col,
             };
+            if wrap_col <= row_start {
+                // Defensive: should be unreachable given the guard above,
+                // but if it ever fires we advance by one char rather than
+                // loop forever.
+                x += w;
+                col += 1;
+                continue;
+            }
             wraps.push(wrap_col);
 
             // Reset x: re-measure from wrap_col up to (but not including)
