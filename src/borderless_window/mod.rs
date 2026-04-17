@@ -143,10 +143,53 @@ pub fn render_titlebar(
     cfg: &BorderlessConfig,
     state: &mut TitlebarState,
 ) -> TitlebarResult {
+    let cursor = ui.cursor_screen_pos();
+    let win_pos = ui.window_pos();
+    let win_size = ui.window_size();
+    let draw = ui.get_window_draw_list();
+    let result = render_titlebar_impl(ui, cfg, state, cursor, win_pos, win_size, &draw, true);
+    // Advance content cursor past the titlebar (legacy contract).
+    ui.set_cursor_pos([0.0, cfg.titlebar_height]);
+    result
+}
+
+/// Overlay variant: renders the titlebar through `ui.get_foreground_draw_list()`
+/// at an explicit position without requiring a host ImGui window.
+///
+/// Use this when you already have regular content windows in the frame and
+/// don't want a fullscreen host layer sitting above them swallowing clicks —
+/// typical pattern for applications that compose their own event loop /
+/// layout rather than using [`crate::app_window::AppWindow`].
+///
+/// - `origin` — top-left of the titlebar strip in **screen** coordinates.
+/// - `full_window_size` — outer window (display) size in logical pixels; used
+///   so the 8-edge resize hit test can cover the whole OS window even though
+///   the titlebar itself is just the top strip.
+pub fn render_titlebar_overlay(
+    ui: &Ui,
+    cfg: &BorderlessConfig,
+    state: &mut TitlebarState,
+    origin: [f32; 2],
+    full_window_size: [f32; 2],
+) -> TitlebarResult {
+    let draw = ui.get_foreground_draw_list();
+    render_titlebar_impl(ui, cfg, state, origin, origin, full_window_size, &draw, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_titlebar_impl(
+    ui: &Ui,
+    cfg: &BorderlessConfig,
+    state: &mut TitlebarState,
+    cursor: [f32; 2],
+    win_pos: [f32; 2],
+    window_size: [f32; 2],
+    draw: &DrawListMut<'_>,
+    use_window_hovered: bool,
+) -> TitlebarResult {
     // ── Confirmed-close from previous frame ───────────────────────────────────
     if state.confirmed_close {
         state.confirmed_close = false;
-        ui.set_cursor_pos([0.0, cfg.titlebar_height]);
         return TitlebarResult { action: WindowAction::Close, hover_edge: None };
     }
 
@@ -161,12 +204,8 @@ pub fn render_titlebar(
     let ir     = cfg.buttons.icon_radius;   // icon half-size
     let ipad   = cfg.buttons.icon_hover_pad; // hover rect padding around icon
 
-    let cursor   = ui.cursor_screen_pos();
-    let win_pos  = ui.window_pos();
-    let [win_w, win_h] = ui.window_size();
+    let [win_w, win_h] = window_size;
     let [mx, my] = ui.io().mouse_pos();
-
-    let draw = ui.get_window_draw_list();
 
     // ── Background ────────────────────────────────────────────────────────────
     draw.add_rect(
@@ -194,8 +233,12 @@ pub fn render_titlebar(
     let [_, text_h] = calc_text_size("Mg");
     let text_y = cursor[1] + (h - text_h) * 0.5;
 
-    // Titlebar row hover check (exclusive window focus)
-    let in_row = ui.is_window_hovered() && my >= cursor[1] && my < cursor[1] + h;
+    // Titlebar row hover check. In the in-window path we also require
+    // `ui.is_window_hovered()` so other ImGui surfaces on top of the host
+    // steal the hover; in the overlay path there is no host window to gate
+    // on, so we just test the mouse rect directly.
+    let in_row = my >= cursor[1] && my < cursor[1] + h
+        && (!use_window_hovered || ui.is_window_hovered());
     let clicked = ui.is_mouse_clicked(MouseButton::Left);
 
     // ── Icon + title text ─────────────────────────────────────────────────────
@@ -346,8 +389,7 @@ pub fn render_titlebar(
         }
     }
 
-    // ── Advance cursor past titlebar (content area starts here) ──────────────
-    ui.set_cursor_pos([0.0, h]);
+    let _ = h; // suppress unused warning when no cursor advance here
 
     TitlebarResult { action, hover_edge }
 }
