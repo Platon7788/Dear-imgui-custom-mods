@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.8.0] — 2026-04-17 — BREAKING
+
+### Changed
+- **Unified theme system.** Dropped per-component theme enums
+  (`TitlebarTheme`, `NavTheme`, `DialogTheme`) in favor of a single
+  crate-wide `theme::Theme` (Dark / Light / Midnight / Solarized / Monokai).
+  Each variant owns the full stack via its per-theme module
+  (`theme::{dark,light,midnight,solarized,monokai}`) and exposes
+  `.titlebar()`, `.nav()`, `.dialog()`, `.statusbar()`,
+  `.apply_imgui_style()`, `.next()`, `Theme::ALL`.
+- **Config shape.** `BorderlessConfig`, `NavPanelConfig`, `DialogConfig`
+  now each carry `theme: Theme` + optional
+  `colors_override: Option<Box<*Colors>>` for custom palettes, plus a
+  `pub(crate) fn resolved_colors()` that resolves override vs theme default.
+- **Theme files are palette-only.** `src/borderless_window/theme.rs` /
+  `src/nav_panel/theme.rs` / `src/confirm_dialog/theme.rs` shrunk to just
+  the `TitlebarColors` / `NavColors` / `DialogColors` structs — no enum,
+  no `From<&OtherEnum>` adapters, no per-module luminance helpers.
+- **`app_window::style::apply_imgui_style_for_theme`** is now a thin
+  wrapper over `Theme::apply_imgui_style`.
+- **Demos** (`demo_app_window`, `demo_borderless`, `demo_nav_panel`)
+  migrated — identity conversions collapsed into `*t` where the orphan
+  rule previously forced helper functions.
+
+### Added
+- **`borderless_window::render_titlebar_overlay`** (added earlier in the
+  0.7 series) — renders through `ui.get_foreground_draw_list()` at an
+  explicit screen origin without a host window; content clicks pass
+  through instead of being swallowed.
+- **`nav_panel::render_nav_panel_overlay(ui, cfg, state, origin, size)`**
+  — overlay variant matching the titlebar pattern. Panel draws on the
+  foreground draw list; the submenu flyout still opens as a dedicated
+  ImGui window (it needs input focus).
+- **`StatusBar::render_overlay(ui, origin, size)`** — same overlay
+  pattern for the status bar. Hover detection uses position-only checks
+  in overlay mode (skips `is_window_hovered()`).
+
+### Refactored
+- `status_bar::render` internals extracted as
+  `render_impl(origin, size, draw, use_window_hovered)`; `render()` is
+  now a thin wrapper computing origin/size from the current window and
+  calling impl with the legacy flag.
+- `nav_panel::render_nav_panel` body extracted as
+  `render_nav_panel_impl(origin, size, use_foreground)`; same
+  wrapping pattern.
+
+### Fixed
+- `nav_panel` hidden-tab branch dropped a redundant
+  `cfg.resolved_colors()` call — the outer `colors` is still in scope.
+- `#[must_use]` added to `TitlebarResult`, `NavPanelResult`, and
+  `DialogResult` so silently dropping user-action output becomes a
+  compile warning.
+
+### Clippy
+- Cleared `needless_borrows_for_generic_args` (4× in
+  `borderless_window/mod.rs`) and `clone_on_copy` (5× across demos)
+  surfaced by the new `Theme: Copy` impl.
+
+### Migration guide (0.7.x → 0.8.0)
+
+```diff
+- use dear_imgui_custom_mod::borderless_window::TitlebarTheme;
++ use dear_imgui_custom_mod::theme::Theme;
+
+- .with_theme(TitlebarTheme::Dark)
++ .with_theme(Theme::Dark)
+
+- let palette = TitlebarTheme::Dark.colors();
++ let palette = Theme::Dark.titlebar();
+
+- fn my_theme_bridge(t: AppTheme) -> NavTheme { /* identity match */ }
++ fn my_theme_bridge(t: AppTheme) -> Theme { /* identity match */ }
+```
+
+`TitlebarTheme::Custom(colors)` becomes `with_theme(Theme::*)` +
+`with_colors(colors)` (configs preserve an override on top of a
+semantic theme selection).
+
 ## [0.7.1] — 2026-04-17
 
 ### Changed

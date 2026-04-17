@@ -44,14 +44,14 @@ fn main() {
 
 ```rust
 use dear_imgui_custom_mod::app_window::{AppConfig, StartPosition};
-use dear_imgui_custom_mod::borderless_window::TitlebarTheme;
+use dear_imgui_custom_mod::theme::Theme;
 
-let config = AppConfig::new("My App", 1100.0, 680.0)
+let _config = AppConfig::new("My App", 1100.0, 680.0)
     .with_min_size(640.0, 400.0)
     .with_fps_limit(60)                              // 0 = unlimited
     .with_font_size(15.0)                            // logical px
     .with_start_position(StartPosition::CenterScreen)
-    .with_theme(TitlebarTheme::Dark);
+    .with_theme(Theme::Dark);
 ```
 
 ### `StartPosition`
@@ -84,9 +84,12 @@ impl AppHandler for MyApp {
     fn on_icon_click(&mut self, state: &mut AppState) { }
 
     /// Called after a theme change is applied (style already updated).
-    fn on_theme_changed(&mut self, theme: &TitlebarTheme, state: &mut AppState) { }
+    fn on_theme_changed(&mut self, theme: &Theme, state: &mut AppState) { }
 }
 ```
+
+`Theme` is re-exported from `dear_imgui_custom_mod::app_window` for
+convenience; it is the same type as [`dear_imgui_custom_mod::theme::Theme`](theme.md).
 
 ## AppState
 
@@ -101,7 +104,7 @@ state.toggle_maximized();
 state.set_maximized(true);
 
 // Request a theme change (applied at end of frame)
-state.set_theme(TitlebarTheme::Nord);
+state.set_theme(Theme::Solarized);
 
 // Access titlebar state (read-only in most cases)
 let is_maximized = state.titlebar.maximized;
@@ -115,10 +118,10 @@ Calling `state.set_theme()` inside `render()` will, at the end of the current fr
 2. Reapply the full Dear ImGui widget color palette (derived from the theme)
 3. Call `on_theme_changed()` on the handler
 
-```rust
+```rust,ignore
 fn render(&mut self, ui: &Ui, state: &mut AppState) {
-    if ui.button("Switch to Nord") {
-        state.set_theme(TitlebarTheme::Nord);
+    if ui.button("Switch to Solarized") {
+        state.set_theme(Theme::Solarized);
     }
 }
 ```

@@ -20,16 +20,20 @@ Modern navigation panel (activity bar) for Rust + Dear ImGui.
 - **Button separators** — optional thin lines between buttons
 - **Per-button tooltip control** + global tooltip toggle
 - **Custom icon colors** per button
-- **6 built-in themes** + fully custom palette
+- **5 built-in themes** via the unified [`Theme`](theme.md) enum + per-instance custom palette via `colors_override`
 - **content_offset_y** for correct edge detection with borderless titlebar
+- **Overlay variant** — `render_nav_panel_overlay` draws through the foreground draw list without a host ImGui window
 
 ## Quick Start
 
 ```rust
-use dear_imgui_custom_mod::nav_panel::*;
+use dear_imgui_custom_mod::nav_panel::{
+    DockPosition, NavButton, NavPanelConfig, NavPanelState, SubMenuItem,
+};
+use dear_imgui_custom_mod::theme::Theme;
 
-let cfg = NavPanelConfig::new(DockPosition::Left)
-    .with_theme(NavTheme::Dark)
+let _cfg = NavPanelConfig::new(DockPosition::Left)
+    .with_theme(Theme::Dark)
     .add_button(NavButton::action("home", "H", "Home")
         .with_color([0.3, 0.6, 1.0, 1.0]))
     .add_button(NavButton::action("search", "S", "Search")
@@ -44,23 +48,27 @@ let mut state = NavPanelState::new();
 state.set_active("home");
 
 // In render loop:
-let result = render_nav_panel(ui, &cfg, &mut state);
-for event in &result.events {
-    match event {
-        NavEvent::ButtonClicked(id) => { /* navigate */ }
-        NavEvent::SubMenuClicked(btn_id, item_id) => { /* handle */ }
-        NavEvent::ToggleClicked(visible) => { /* panel toggled */ }
-    }
-}
-// Offset content by result.occupied_size
+// let result = render_nav_panel(ui, &cfg, &mut state);
+// for event in &result.events {
+//     match event {
+//         NavEvent::ButtonClicked(id) => { /* navigate */ }
+//         NavEvent::SubMenuClicked(btn_id, item_id) => { /* handle */ }
+//         NavEvent::ToggleClicked(visible) => { /* panel toggled */ }
+//     }
+// }
+// // Offset content by result.occupied_size
 ```
+
+`NavPanelResult` is `#[must_use]` — its `events` vec is how button clicks
+and submenu selections reach you.
 
 ## Configuration
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `position` | `DockPosition` | `Left` | Left, Right, or Top |
-| `theme` | `NavTheme` | `Dark` | Color theme (6 presets + Custom) |
+| `theme` | `Theme` | `Dark` | Color theme selector |
+| `colors_override` | `Option<Box<NavColors>>` | `None` | Per-instance palette override |
 | `width` | `f32` | `28.0` | Panel width for Left/Right (min 16) |
 | `height` | `f32` | `20.0` | Panel height for Top (min 16) |
 | `button_size` | `f32` | `24.0` | Button cell size (min 14) |
@@ -80,15 +88,17 @@ for event in &result.events {
 
 ## Themes
 
+Themes come from the unified [`Theme`](theme.md) enum. For a one-off custom
+palette that does not fit any built-in theme, use `.with_colors(NavColors)`
+— it takes priority over the `Theme` selector for that instance.
+
 | Variant | Description |
 |---------|-------------|
-| `NavTheme::Dark` | Deep navy (default) |
-| `NavTheme::Light` | Clean white / light-grey |
-| `NavTheme::Midnight` | Near-black, high-contrast |
-| `NavTheme::Nord` | Nordic #2E3440 palette |
-| `NavTheme::Solarized` | Solarized dark |
-| `NavTheme::Monokai` | Monokai Pro |
-| `NavTheme::Custom(Box<NavColors>)` | Fully custom |
+| `Theme::Dark` | Deep navy (default) |
+| `Theme::Light` | Clean white / light-grey |
+| `Theme::Midnight` | Near-black, high-contrast |
+| `Theme::Solarized` | Solarized dark |
+| `Theme::Monokai` | Monokai Pro |
 
 ## Events
 
@@ -97,6 +107,31 @@ for event in &result.events {
 | `NavEvent::ButtonClicked(id)` | Action button clicked |
 | `NavEvent::SubMenuClicked(btn_id, item_id)` | Submenu item clicked |
 | `NavEvent::ToggleClicked(visible)` | Toggle arrow clicked |
+
+## Rendering variants
+
+### `render_nav_panel(ui, cfg, state) -> NavPanelResult`
+
+Draws inside the current ImGui window using `ui.cursor_screen_pos()` +
+`ui.content_region_avail()` for geometry. Use this when your layout is built
+from regular ImGui windows and you want the panel to flow with them.
+
+### `render_nav_panel_overlay(ui, cfg, state, origin, size) -> NavPanelResult`
+
+Overlay variant: draws through `ui.get_foreground_draw_list()` at an
+explicit screen-space position without requiring a host ImGui window.
+
+- `origin` — top-left of the panel region in **screen** coordinates.
+- `size` — `[width, height]` of the region reserved for the panel.
+
+The submenu flyout still spawns its own ImGui window (it needs input focus),
+but the panel surface itself draws on the foreground draw list so content
+windows behind it remain clickable.
+
+Use this variant when you already have regular content windows in the frame
+and you do not want a fullscreen host ImGui window sitting above them and
+swallowing mouse clicks — the typical case when you roll your own event loop
+and layout rather than using [`app_window::AppWindow`](app_window.md).
 
 ## Integration with StatusBar
 
@@ -119,12 +154,14 @@ Wrap NavPanel + content in a child_window sized to `avail_h - status_bar_height`
 ## NavButton API
 
 ```rust
-NavButton::action("id", "icon", "tooltip")    // plain click
-NavButton::submenu("id", "icon", "tooltip")   // opens flyout
+use dear_imgui_custom_mod::nav_panel::{NavButton, SubMenuItem};
+
+let _btn = NavButton::action("id", "icon", "tooltip");    // plain click
+let _sub = NavButton::submenu("id", "icon", "tooltip")    // opens flyout
     .add_item(SubMenuItem::new("a", "Label"))
     .add_item(SubMenuItem::separator())
     .add_item(SubMenuItem::new("b", "Label").with_shortcut("Ctrl+B"))
-    .with_color([r, g, b, a])
+    .with_color([1.0, 1.0, 1.0, 1.0])
     .with_badge("3")
-    .without_tooltip()
+    .without_tooltip();
 ```

@@ -8,7 +8,7 @@ Reusable modal confirmation dialog component for Rust + Dear ImGui.
 
 ## Features
 
-- **6 built-in themes**: Dark, Light, Midnight, Nord, Solarized, Monokai + fully custom palette
+- **5 built-in themes**: Dark, Light, Midnight, Solarized, Monokai (via the unified [`Theme`](theme.md) enum) + per-instance custom palette via `colors_override`
 - **4 icon types**: Warning (filled triangle), Error (circle + X), Info (circle + i), Question (circle + ?)
 - **Fullscreen dim overlay** behind the dialog (toggleable)
 - **Keyboard shortcuts**: Escape = cancel, Enter = confirm (toggleable)
@@ -25,52 +25,62 @@ Reusable modal confirmation dialog component for Rust + Dear ImGui.
 
 ```rust
 use dear_imgui_custom_mod::confirm_dialog::{
-    DialogConfig, DialogIcon, DialogResult, DialogTheme, render_confirm_dialog,
+    DialogConfig, DialogIcon, DialogResult,
 };
+use dear_imgui_custom_mod::theme::Theme;
 
 let cfg = DialogConfig::new("Close Application", "Are you sure you want to close?")
     .with_icon(DialogIcon::Warning)
     .with_confirm_label("Close")
     .with_cancel_label("Cancel")
-    .with_theme(DialogTheme::Dark);
+    .with_theme(Theme::Dark);
 
 let mut show = true;
 
 // In render loop:
-match render_confirm_dialog(ui, &cfg, &mut show) {
-    DialogResult::Confirmed => { /* do the action */ }
-    DialogResult::Cancelled => { /* user cancelled */ }
-    DialogResult::Open      => { /* still showing */ }
-}
+// match render_confirm_dialog(ui, &cfg, &mut show) {
+//     DialogResult::Confirmed => { /* do the action */ }
+//     DialogResult::Cancelled => { /* user cancelled */ }
+//     DialogResult::Open      => { /* still showing */ }
+// }
 ```
+
+`DialogResult` is `#[must_use]` — callers must react to `Confirmed` /
+`Cancelled` (the destructive action, or dismissing the dialog).
 
 ## Configuration
 
 ```rust
-let cfg = DialogConfig::new("Delete File", "This action cannot be undone.")
-    .with_theme(DialogTheme::Nord)       // color theme
-    .with_icon(DialogIcon::Error)        // icon type
-    .with_confirm_label("Delete")        // red button text
-    .with_cancel_label("Keep")           // green button text
+use dear_imgui_custom_mod::confirm_dialog::{ConfirmStyle, DialogConfig, DialogIcon};
+use dear_imgui_custom_mod::theme::Theme;
+
+let _cfg = DialogConfig::new("Delete File", "This action cannot be undone.")
+    .with_theme(Theme::Solarized)                  // color theme
+    .with_icon(DialogIcon::Error)                  // icon type
+    .with_confirm_label("Delete")                  // red button text
+    .with_cancel_label("Keep")                     // green button text
     .with_confirm_style(ConfirmStyle::Destructive) // red confirm button
-    .with_width(380.0)                   // dialog width
-    .with_height(170.0)                  // dialog height
-    .with_rounding(8.0)                  // border radius
-    .without_dim()                       // no background overlay
-    .without_keyboard();                 // no Esc/Enter shortcuts
+    .with_width(380.0)                             // dialog width
+    .with_height(170.0)                            // dialog height
+    .with_rounding(8.0)                            // border radius
+    .without_dim()                                 // no background overlay
+    .without_keyboard();                           // no Esc/Enter shortcuts
 ```
 
 ## Themes
 
+Themes come from the unified [`Theme`](theme.md) enum. For a one-off custom
+palette that does not fit any built-in theme, use
+`.with_colors(DialogColors)` — it takes priority over the `Theme` selector
+for that instance.
+
 | Variant | Description |
 |---------|-------------|
-| `DialogTheme::Dark` | Deep navy, pastel accents (default) |
-| `DialogTheme::Light` | Clean white / light-grey |
-| `DialogTheme::Midnight` | Near-black, high-contrast |
-| `DialogTheme::Nord` | Nordic #2E3440 palette |
-| `DialogTheme::Solarized` | Solarized dark |
-| `DialogTheme::Monokai` | Monokai Pro |
-| `DialogTheme::Custom(colors)` | Fully custom `DialogColors` |
+| `Theme::Dark` | Deep navy, pastel accents (default) |
+| `Theme::Light` | Clean white / light-grey |
+| `Theme::Midnight` | Near-black, high-contrast |
+| `Theme::Solarized` | Solarized dark |
+| `Theme::Monokai` | Monokai Pro |
 
 ## Icons
 
@@ -110,7 +120,8 @@ Returns:
 | `cancel_label` | `String` | `"Cancel"` | Cancel button text |
 | `icon` | `DialogIcon` | `Warning` | Icon type |
 | `confirm_style` | `ConfirmStyle` | `Destructive` | Button color style |
-| `theme` | `DialogTheme` | `Dark` | Color theme |
+| `theme` | `Theme` | `Dark` | Color theme |
+| `colors_override` | `Option<Box<DialogColors>>` | `None` | Per-instance palette override |
 | `width` | `f32` | `340.0` | Dialog width (px) |
 | `height` | `f32` | `160.0` | Dialog height (px) |
 | `padding` | `f32` | `16.0` | Inner padding (px) |
@@ -126,9 +137,13 @@ Returns:
 
 ## Integration with app_window
 
-```rust
-use dear_imgui_custom_mod::app_window::{AppHandler, AppState, TitlebarTheme};
-use dear_imgui_custom_mod::confirm_dialog::*;
+```rust,ignore
+use dear_imgui_custom_mod::app_window::{AppHandler, AppState};
+use dear_imgui_custom_mod::confirm_dialog::{
+    DialogConfig, DialogIcon, DialogResult, render_confirm_dialog,
+};
+use dear_imgui_custom_mod::theme::Theme;
+use dear_imgui_rs::Ui;
 
 struct MyApp { show_confirm: bool }
 
@@ -138,11 +153,12 @@ impl AppHandler for MyApp {
             let cfg = DialogConfig::new("Close", "Are you sure?")
                 .with_icon(DialogIcon::Warning)
                 .with_confirm_label("Close")
-                .with_theme(DialogTheme::Dark);
+                .with_theme(Theme::Dark);
 
-            match render_confirm_dialog(ui, &cfg, &mut self.show_confirm) {
-                DialogResult::Confirmed => state.exit(),
-                _ => {}
+            if let DialogResult::Confirmed =
+                render_confirm_dialog(ui, &cfg, &mut self.show_confirm)
+            {
+                state.exit();
             }
         }
     }

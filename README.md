@@ -10,10 +10,10 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 | Component | Description | Docs |
 |-----------|-------------|------|
-| **`borderless_window`** | Reusable borderless-window titlebar — 6 built-in themes (Dark, Light, Midnight, Nord, Solarized, Monokai), minimize/maximize/close buttons, 8-direction edge resize, drag-to-move, close-confirmation mode, optional focus-dim, drag-hint, separator, icon, extra buttons, `IconClick` action | [docs/borderless_window.md](docs/borderless_window.md) |
-| **`app_window`** | Zero-boilerplate application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Auto GPU backend (DX12→Vulkan→GL), auto HiDPI, FPS cap, `StartPosition`, atomic theme switching via `AppState::set_theme()` | [docs/app_window.md](docs/app_window.md) |
-| **`nav_panel`** | Modern navigation panel (activity bar) — 3 docking positions (Left/Right/Top), flyout submenus, auto-hide with slide animation, toggle arrow, badges, button spacing/separators, per-button tooltip control, 6 themes | [docs/nav_panel.md](docs/nav_panel.md) |
-| **`confirm_dialog`** | Reusable modal confirmation dialog — 6 themes, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
+| **`borderless_window`** | Reusable borderless-window titlebar — 5 built-in themes (Dark, Light, Midnight, Solarized, Monokai) via the unified `Theme` enum + per-instance `colors_override`, minimize/maximize/close buttons, 8-direction edge resize, drag-to-move, close-confirmation mode, optional focus-dim, drag-hint, separator, icon, extra buttons, `IconClick` action, overlay variant (`render_titlebar_overlay`) | [docs/borderless_window.md](docs/borderless_window.md) |
+| **`app_window`** | Zero-boilerplate application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Auto GPU backend (DX12→Vulkan→GL), auto HiDPI, FPS cap, `StartPosition`, atomic theme switching via `AppState::set_theme(Theme)` | [docs/app_window.md](docs/app_window.md) |
+| **`nav_panel`** | Modern navigation panel (activity bar) — 3 docking positions (Left/Right/Top), flyout submenus, auto-hide with slide animation, toggle arrow, badges, button spacing/separators, per-button tooltip control, 5 unified themes, overlay variant (`render_nav_panel_overlay`) | [docs/nav_panel.md](docs/nav_panel.md) |
+| **`confirm_dialog`** | Reusable modal confirmation dialog — 5 unified themes + `colors_override`, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
 
 ### UI Widgets
 
@@ -30,9 +30,9 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`diff_viewer`** | Side-by-side and unified diff viewer — Myers diff algorithm (O((N+M)D)), synchronized scrolling, fold unchanged regions, hunk navigation, hover row highlights, hunk accent bars, +/- prefixes in unified mode, context line control | [docs/diff_viewer.md](docs/diff_viewer.md) |
 | **`property_inspector`** | Hierarchical property editor — 15+ value types (bool, i32/i64, f32/f64, String, Color3/4, Vec2/3/4, Enum, Flags, Object, Array), categories with collapse, search/filter, diff highlighting, nested objects with expand/collapse, type badges, hover highlights | [docs/property_inspector.md](docs/property_inspector.md) |
 | **`toolbar`** | Configurable horizontal toolbar — buttons, toggles, separators, dropdowns, spacers, builder API, icon support, hover underline accent, window-hovered guard, flexible spacer layout | [docs/toolbar.md](docs/toolbar.md) |
-| **`status_bar`** | Composable bottom status bar — left/center/right sections, status indicators (Success/Warning/Error/Info), progress bars, clickable items with events, tooltips, icon support, hover highlights | [docs/status_bar.md](docs/status_bar.md) |
+| **`status_bar`** | Composable bottom status bar — left/center/right sections, status indicators (Success/Warning/Error/Info), progress bars, clickable items with events, tooltips, icon support, hover highlights, overlay variant (`render_overlay`) | [docs/status_bar.md](docs/status_bar.md) |
 | **`icons`** | Material Design Icons v7.4 codepoint constants (7400+ icons) | |
-| **`theme`** | Shared dark color palette with semantic color tokens | [docs/theme.md](docs/theme.md) |
+| **`theme`** | Unified `Theme` enum — 5 built-in palettes (Dark/Light/Midnight/Solarized/Monokai), each owning the full stack (titlebar/nav/dialog/statusbar/ImGui style); legacy semantic color tokens retained | [docs/theme.md](docs/theme.md) |
 | **`utils`** | Color packing (RGB/RGBA to u32), `calc_text_size` wrapper | |
 
 ## Stack
@@ -51,15 +51,14 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 src/
   lib.rs                            Crate root
   icons.rs                          MDI icon constants
-  theme/mod.rs                      Color palette
   utils/
     color.rs                        RGBA packing helpers
     text.rs                         CalcTextSize wrapper
   borderless_window/
-    mod.rs                          render_titlebar() — draw-list titlebar, edge resize, buttons
-    config.rs                       BorderlessConfig, ButtonConfig, ExtraButton, CloseMode, TitleAlign
-    theme.rs                        TitlebarTheme, TitlebarColors (6 built-in + Custom)
-    actions.rs                      WindowAction, ResizeEdge, TitlebarResult
+    mod.rs                          render_titlebar() + render_titlebar_overlay() — draw-list titlebar, edge resize, buttons
+    config.rs                       BorderlessConfig (theme: Theme + colors_override), ButtonConfig, ExtraButton, CloseMode, TitleAlign
+    theme.rs                        TitlebarColors (shared struct)
+    actions.rs                      WindowAction, ResizeEdge, TitlebarResult (#[must_use])
     state.rs                        TitlebarState — focused, maximized, confirm_close()
     platform.rs                     hwnd_of(), set_titlebar_dark_mode() — OS helpers
   app_window/
@@ -69,14 +68,18 @@ src/
     gpu.rs                          wgpu + winit event loop, frame render, GPU init
     style.rs                        apply_imgui_style_for_theme() — full ImGui color palette
   confirm_dialog/
-    mod.rs                          render_confirm_dialog() — themed modal dialog
-    config.rs                       DialogConfig, DialogIcon, ConfirmStyle
-    theme.rs                        DialogTheme, DialogColors (6 built-in + Custom)
+    mod.rs                          render_confirm_dialog() — themed modal dialog, DialogResult (#[must_use])
+    config.rs                       DialogConfig (theme: Theme + colors_override), DialogIcon, ConfirmStyle
+    theme.rs                        DialogColors (shared struct)
   nav_panel/
-    mod.rs                          render_nav_panel() — draw-list navigation bar
-    config.rs                       NavPanelConfig, NavButton, SubMenuItem, DockPosition
+    mod.rs                          render_nav_panel() + render_nav_panel_overlay(), NavPanelResult (#[must_use])
+    config.rs                       NavPanelConfig (theme: Theme + colors_override), NavButton, SubMenuItem, DockPosition
     state.rs                        NavPanelState — active, visible, animation, submenu
-    theme.rs                        NavTheme, NavColors (6 built-in + Custom)
+    theme.rs                        NavColors (shared struct)
+  theme/
+    mod.rs                          Theme enum, ALL, sub-palette resolvers, legacy color tokens
+    dark.rs | light.rs | midnight.rs | solarized.rs | monokai.rs
+                                    Per-theme full stacks (titlebar/nav/dialog/statusbar/ImGui style)
   code_editor/
     mod.rs                          CodeEditor widget — render, input, drawing
     buffer.rs                       TextBuffer — lines, cursor, selection, editing
@@ -164,7 +167,7 @@ examples/
   demo_diff_viewer.rs               DiffViewer demo — 4 sample datasets, modes
   demo_property_inspector.rs        PropertyInspector demo — 5 categories, 20+ props
   demo_status_toolbar.rs            Toolbar + StatusBar combined demo with events
-  demo_borderless.rs                BorderlessWindow standalone demo — all 6 themes, edge resize
+  demo_borderless.rs                BorderlessWindow standalone demo — all 5 themes, edge resize
   demo_nav_panel.rs                 NavPanel + StatusBar demo — full config panel, all positions
   demo_app_window.rs                AppWindow demo — counter, theme picker, log panel, close confirm
 ```
@@ -198,11 +201,12 @@ fn main() {
 
 ```rust
 use dear_imgui_custom_mod::borderless_window::{
-    BorderlessConfig, TitlebarState, WindowAction, render_titlebar,
+    BorderlessConfig, CloseMode, TitlebarState, WindowAction, render_titlebar,
 };
+use dear_imgui_custom_mod::theme::Theme;
 
 let cfg = BorderlessConfig::new("My App")
-    .with_theme(TitlebarTheme::Nord)
+    .with_theme(Theme::Solarized)
     .with_close_mode(CloseMode::Confirm);
 let mut state = TitlebarState::new();
 
@@ -222,6 +226,12 @@ match res.action {
     _ => {}
 }
 ```
+
+Need a foreground-draw-list titlebar over your own windows instead of
+inside a host ImGui window? Use `render_titlebar_overlay(ui, &cfg, &mut
+state, origin, full_window_size)` — see [docs/borderless_window.md](docs/borderless_window.md).
+`nav_panel` and `status_bar` have matching `render_nav_panel_overlay` and
+`StatusBar::render_overlay` entry points.
 
 ### Node Graph
 

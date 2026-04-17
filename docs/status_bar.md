@@ -80,7 +80,29 @@ bar.left(StatusItem::text("main")
 
 | Method | Description |
 |--------|-------------|
-| `render(ui) -> Vec<StatusBarEvent>` | Render the bar. Returns click events |
+| `render(ui) -> Vec<StatusBarEvent>` | Render inside the current ImGui window using the cursor + `content_region_avail()` |
+| `render_overlay(ui, origin, size) -> Vec<StatusBarEvent>` | Overlay variant — draws via `ui.get_foreground_draw_list()` at an explicit screen position, no host window required |
+
+### Overlay variant
+
+`render_overlay(ui, origin, size)` draws through the foreground draw list at
+an explicit screen-space position, so it does not need a host ImGui window
+to live inside.
+
+- `origin` — top-left of the bar in **screen** coordinates.
+- `size` — `[width, height]` in logical pixels. `size[1]` overrides
+  `config.height` for this call.
+
+Hover detection is position-only (no `is_window_hovered` check), so
+clickable items stay responsive even when no ImGui window covers the bar
+region.
+
+Use this variant when your application already has content windows on
+screen and you do not want a fullscreen host ImGui layer sitting above them
+and swallowing mouse clicks — the typical pattern when you compose your own
+event loop / layout rather than using
+[`app_window::AppWindow`](app_window.md). For the in-window case (render
+flows with regular ImGui layout) stick with `render`.
 
 ## StatusItem
 
