@@ -294,7 +294,7 @@ fn render_titlebar_impl(
                 CloseMode::Confirm   => WindowAction::CloseRequested,
             };
         }
-        draw_icon_close(&draw, cx_btn, cy_btn, ir, c32(colors.btn_close));
+        draw_icon_close(draw, cx_btn, cy_btn, ir, c32(colors.btn_close));
     }
 
     // Maximize / Restore
@@ -305,9 +305,9 @@ fn render_titlebar_impl(
             action = WindowAction::Maximize;
         }
         if state.maximized {
-            draw_icon_restore(&draw, cx_btn, cy_btn, ir, c32(colors.btn_maximize), c32(colors.bg_erase));
+            draw_icon_restore(draw, cx_btn, cy_btn, ir, c32(colors.btn_maximize), c32(colors.bg_erase));
         } else {
-            draw_icon_maximize(&draw, cx_btn, cy_btn, ir, c32(colors.btn_maximize));
+            draw_icon_maximize(draw, cx_btn, cy_btn, ir, c32(colors.btn_maximize));
         }
     }
 
@@ -318,7 +318,7 @@ fn render_titlebar_impl(
         if btn_cell!(bx, colors.btn_hover_bg) {
             action = WindowAction::Minimize;
         }
-        draw_icon_minimize(&draw, cx_btn, cy_btn, ir, c32(colors.btn_minimize));
+        draw_icon_minimize(draw, cx_btn, cy_btn, ir, c32(colors.btn_minimize));
     }
 
     // Extra buttons (right-to-left)

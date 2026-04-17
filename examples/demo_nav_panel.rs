@@ -136,7 +136,7 @@ impl DemoApp {
             Theme::Solarized => Theme::Monokai,
             _                        => Theme::Dark,
         };
-        self.current_theme = next.clone();
+        self.current_theme = next;
         state.set_theme(next);
         self.push_log(format!("Theme -> {:?}", self.current_theme));
     }
@@ -357,7 +357,7 @@ impl AppHandler for DemoApp {
     }
 
     fn on_theme_changed(&mut self, theme: &Theme, _state: &mut AppState) {
-        self.current_theme = theme.clone();
+        self.current_theme = *theme;
         self.push_log(format!("Theme: {:?}", theme));
     }
 }

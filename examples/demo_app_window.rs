@@ -103,8 +103,8 @@ impl AppHandler for DemoApp {
                         );
                         ui.button(label);
                     } else if ui.button(label) {
-                        self.current_theme = theme.clone();
-                        state.set_theme(theme.clone());
+                        self.current_theme = *theme;
+                        state.set_theme(*theme);
                         self.push_log(format!("Theme → {label}"));
                     }
                     ui.same_line();
@@ -152,7 +152,7 @@ impl AppHandler for DemoApp {
 
     // ── Theme change notification ──────────────────────────────────────────────
     fn on_theme_changed(&mut self, theme: &Theme, _state: &mut AppState) {
-        self.current_theme = theme.clone();
+        self.current_theme = *theme;
         self.push_log(format!("Theme changed to {:?}", theme));
     }
 }
