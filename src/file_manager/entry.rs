@@ -15,7 +15,7 @@ use std::time::SystemTime;
 
 /// Which column the file list is sorted by.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SortColumn {
+pub(super) enum SortColumn {
     /// Sort by file/folder name (case-insensitive).
     #[default]
     Name,
@@ -29,7 +29,7 @@ pub enum SortColumn {
 
 /// Sort direction.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SortOrder {
+pub(super) enum SortOrder {
     /// A → Z, smallest → largest, oldest → newest.
     #[default]
     Ascending,
@@ -41,7 +41,7 @@ pub enum SortOrder {
 
 /// A single file or directory entry with pre-computed display strings.
 #[derive(Clone)]
-pub struct FsEntry {
+pub(super) struct FsEntry {
     /// Original filename as returned by the OS.
     pub name: String,
     /// Pre-computed lowercase name for sorting and search (zero per-call alloc).
@@ -68,7 +68,7 @@ pub struct FsEntry {
 
 impl FsEntry {
     /// Build an `FsEntry` from a `std::fs::DirEntry`, pre-computing all display strings.
-    pub fn from_dir_entry(entry: &std::fs::DirEntry) -> Option<Self> {
+    pub(super) fn from_dir_entry(entry: &std::fs::DirEntry) -> Option<Self> {
         let meta = entry.metadata().ok()?;
         let name = entry.file_name().to_str()?.to_string();
         let is_dir = meta.is_dir();
@@ -130,7 +130,7 @@ impl FsEntry {
 /// When `dirs_first` is `true`, directories are grouped before files.
 /// The Type column sorts by extension, with a secondary sort by name for entries
 /// sharing the same extension.
-pub fn sort_entries(entries: &mut [FsEntry], column: SortColumn, order: SortOrder, dirs_first: bool) {
+pub(super) fn sort_entries(entries: &mut [FsEntry], column: SortColumn, order: SortOrder, dirs_first: bool) {
     entries.sort_by(|a, b| {
         // Optionally group directories before files
         if dirs_first {
@@ -185,7 +185,7 @@ fn is_hidden_entry(name: &str, meta: &std::fs::Metadata) -> bool {
 // ─── Formatting helpers ─────────────────────────────────────────────────────
 
 /// Format a byte count into a human-readable string.
-pub fn format_size(bytes: u64) -> String {
+pub(super) fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = 1024 * 1024;
     const GB: u64 = 1024 * 1024 * 1024;

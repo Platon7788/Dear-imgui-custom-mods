@@ -1,0 +1,21 @@
+# Project-wide clippy tuning. Levels are set via the `[lints.clippy]`
+# section in Cargo.toml; this file covers the numeric / semantic thresholds
+# clippy consults at analysis time.
+
+# Functions longer than this trigger `clippy::too_many_lines`. Our render
+# paths (borderless_window, nav_panel) naturally run long, so relax above
+# the default 100.
+too-many-lines-threshold = 200
+
+# Cognitive complexity threshold. The default is 25 — fine for most code,
+# but ImGui widget rendering is deeply branchy (hover/active/disabled/etc.).
+cognitive-complexity-threshold = 30
+
+# Functions with more than this many arguments trigger
+# `clippy::too_many_arguments`. Render helpers legitimately take
+# (ui, cfg, state, origin, size, colors, events) = 7.
+too-many-arguments-threshold = 8
+
+# MSRV hint so clippy disables lints that suggest features newer than our
+# declared minimum.
+msrv = "1.94"

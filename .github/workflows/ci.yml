@@ -1,0 +1,121 @@
+# CI for dear-imgui-custom-mod.
+#
+# Runs on push / PR against any branch. Three matrix jobs, one cross-platform
+# bench job, one doc job, and one supply-chain (deny) job. Keep fast enough
+# to finish under 10 min on GitHub-hosted runners.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # `-D warnings` applies only to the clippy step (inline), not to plain
+  # `cargo build` / `cargo test`. This lets aspirational lints like
+  # `missing_docs` accumulate as warnings during the doc-coverage push
+  # without breaking merges. Regressions in clippy::* still fail the job.
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Build, test, clippy on Linux + Windows ──────────────────────────────
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install toolchain from rust-toolchain.toml
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      # Linux needs X11 + Wayland libs for winit to build.
+      - name: Install Linux GUI deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libxkbcommon-dev libwayland-dev
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (lib + tests + examples)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --all-features --verbose
+
+      - name: Test
+        run: cargo test --workspace --all-features --verbose
+
+  # ── Documentation build — fails on broken intra-doc links ───────────────
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings --cfg docsrs"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxkbcommon-dev libwayland-dev
+      - run: cargo doc --workspace --all-features --no-deps
+
+  # ── Supply-chain: licenses, advisories, banned crates ───────────────────
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          # `bans` runs but duplicates are configured as warn-not-deny in
+          # deny.toml, so won't fail the job unless a new one creeps in
+          # outside the skip list.
+          arguments: --all-features
+
+  # ── MSRV guard: build on the declared minimum stable ────────────────────
+  msrv:
+    name: msrv (rust 1.94)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - run: sudo apt-get update && sudo apt-get install -y libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxkbcommon-dev libwayland-dev
+      - run: cargo build --workspace --all-features --locked
+
+  # ── Semver guard: catch accidental breaking changes before release ──────
+  semver:
+    name: cargo-semver-checks
+    runs-on: ubuntu-latest
+    # Only on PRs against master — noisy on feature branches.
+    if: github.event_name == 'pull_request' && github.base_ref == 'master'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxkbcommon-dev libwayland-dev
+      - uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: dear-imgui-custom-mod

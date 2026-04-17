@@ -101,7 +101,7 @@ pub(crate) struct RectSelect {
 
 impl RectSelect {
     /// Normalized rectangle: `[min_x, min_y, max_x, max_y]` in screen space.
-    pub fn rect(&self) -> [f32; 4] {
+    pub(crate) fn rect(&self) -> [f32; 4] {
         [
             self.start[0].min(self.end[0]),
             self.start[1].min(self.end[1]),

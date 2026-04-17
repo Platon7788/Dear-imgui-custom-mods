@@ -1,0 +1,7 @@
+# Pin the toolchain so every clone / CI runner builds with the same
+# compiler. Matches `rust-version = "1.94"` in Cargo.toml — if you bump
+# the MSRV, update both.
+[toolchain]
+channel = "1.94"
+components = ["rustfmt", "clippy"]
+profile = "default"

@@ -1,0 +1,55 @@
+# Weekly PRs with dependency bumps.
+#
+# Grouping keeps PR noise down: one PR per logical cluster per week instead
+# of one per crate. Security advisories always open their own separate PR
+# (highest priority — no grouping).
+
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Warsaw"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "rust"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Hold the Dear-ImGui / wgpu / winit triplet as a mono-group — moving
+    # any one of them out of sync breaks the downstream GUI stack. Bump
+    # these only via a manual coordinated release.
+    ignore:
+      - dependency-name: "dear-imgui-rs"
+      - dependency-name: "dear-imgui-wgpu"
+      - dependency-name: "dear-imgui-winit"
+      - dependency-name: "wgpu"
+      - dependency-name: "winit"
+    groups:
+      patches:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+      minors:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+      security:
+        applies-to: security-updates
+        update-types:
+          - "patch"
+          - "minor"
+          - "major"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"

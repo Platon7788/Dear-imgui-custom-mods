@@ -36,7 +36,7 @@ impl SortState {
     }
 
     /// Sort all sibling groups in the arena using current specs.
-    pub fn sort_all<T: VirtualTreeNode>(&self, arena: &mut TreeArena<T>) {
+    pub(super) fn sort_all<T: VirtualTreeNode>(&self, arena: &mut TreeArena<T>) {
         if self.specs.is_empty() {
             return;
         }

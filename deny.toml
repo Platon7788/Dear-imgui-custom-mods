@@ -1,0 +1,95 @@
+# cargo-deny config for supply-chain hygiene.
+#
+# Install:   cargo install cargo-deny
+# Run full:  cargo deny check
+# Run one:   cargo deny check advisories
+#
+# CI runs all four sections on every push; local developers typically only
+# care about `advisories` (are we pulling anything vulnerable?) and
+# `bans` (did a dep duplication creep in?).
+
+[graph]
+# Skip platforms we don't ship to; reduces graph noise.
+targets = [
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "x86_64-unknown-linux-gnu" },
+]
+
+# ── Advisories ───────────────────────────────────────────────────────────────
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Unmaintained crates are warnings, not errors — some transitive deps are
+# legitimately frozen (e.g. `serde-value 0.7.0` hasn't been updated since
+# 2020 but still works). Vulnerabilities are always errors.
+yanked = "deny"
+ignore = []
+
+# ── Bans / duplicates ────────────────────────────────────────────────────────
+[bans]
+multiple-versions = "warn"
+# Duplicates we've accepted after triage. Revisit these on every
+# `cargo update` — if the transitive tree collapses naturally, remove.
+skip = [
+    # Transitive: wgpu 29 pulls hashbrown 0.16, rusqlite/fontdue pull 0.15,
+    # cbindgen pulls 0.17. All three isolated; collapsing requires upstream.
+    { name = "hashbrown" },
+    # windows-sys family has three majors in the tree via winit (0.52),
+    # winreg (0.59), arboard (0.60), our direct pin (0.61). Same story.
+    { name = "windows-sys" },
+    { name = "windows-targets" },
+    { name = "windows_x86_64_msvc" },
+    # thiserror 1.x (xshm transitive) vs 2.x (our pin).
+    { name = "thiserror" },
+    { name = "thiserror-impl" },
+    # foldhash 0.1 via hashbrown 0.15, foldhash 0.2 via hashbrown 0.16.
+    { name = "foldhash" },
+    # getrandom family: 0.2 via ahash, 0.3/0.4 via rand/uuid/tempfile.
+    { name = "getrandom" },
+    # Minor noise from proc-macro crates.
+    { name = "regex-automata" },
+    { name = "regex-syntax" },
+    { name = "rustc-hash" },
+    { name = "once_cell" },
+    { name = "log" },
+    { name = "memchr" },
+    { name = "indexmap" },
+    { name = "ordered-float" },
+    { name = "serde_json" },
+    { name = "toml" },
+    { name = "toml_datetime" },
+    { name = "winnow" },
+]
+deny = []
+wildcards = "warn"
+
+# ── Licenses ─────────────────────────────────────────────────────────────────
+[licenses]
+version = 2
+# Permissive licenses accepted. GPL / AGPL would fail loudly — we want
+# to know if a transitive dep pulls one in.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+    "CC0-1.0",
+    "BSL-1.0",
+    "0BSD",
+]
+# Default: deny anything unlisted — surface new licenses for review.
+confidence-threshold = 0.93
+
+# ── Sources ──────────────────────────────────────────────────────────────────
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

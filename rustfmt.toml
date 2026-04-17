@@ -1,0 +1,10 @@
+# Edition 2024 formatting defaults, with a couple of opinionated overrides
+# to keep the source easy to diff on Windows (LF-normalized by .gitattributes
+# anyway, but explicit is better).
+
+edition = "2024"
+newline_style = "Unix"
+max_width = 100
+tab_spaces = 4
+use_field_init_shorthand = true
+use_try_shorthand = true

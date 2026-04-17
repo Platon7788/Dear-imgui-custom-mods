@@ -43,7 +43,7 @@ impl Default for EditState {
 
 impl EditState {
     /// Activate editor for (row, col) by copying the current cell value into buffers.
-    pub fn activate(&mut self, row: usize, col: usize, value: &CellValue) {
+    pub(super) fn activate(&mut self, row: usize, col: usize, value: &CellValue) {
         self.active = true;
         self.row = row;
         self.col = col;
@@ -65,7 +65,7 @@ impl EditState {
     }
 
     /// Deactivate the editor.
-    pub fn deactivate(&mut self) {
+    pub(super) fn deactivate(&mut self) {
         self.active = false;
     }
 
@@ -74,7 +74,7 @@ impl EditState {
     /// For `TextInput`: moves the string out of `text_buf` (zero-copy) and replaces
     /// it with a fresh pre-allocated buffer. The old capacity is not wasted because
     /// `set_cell_value` takes ownership of the String inside CellValue.
-    pub fn take_cell_value(&mut self, editor: &CellEditor) -> CellValue {
+    pub(super) fn take_cell_value(&mut self, editor: &CellEditor) -> CellValue {
         match editor {
             CellEditor::None | CellEditor::TextInput => {
                 // Move the string out instead of cloning — saves one allocation.
@@ -97,7 +97,7 @@ impl EditState {
 
     /// Check if editing this specific cell.
     #[inline]
-    pub fn is_editing(&self, row: usize, col: usize) -> bool {
+    pub(super) fn is_editing(&self, row: usize, col: usize) -> bool {
         self.active && self.row == row && self.col == col
     }
 }
