@@ -339,18 +339,22 @@ impl StatusBar {
             && mouse_pos[1] < bar_y + bar_h;
         let hovered = in_bounds && (!use_window_hovered || ui.is_window_hovered());
 
-        // Hover highlight (all items) + click for clickable items
+        // Hover paint — opt-in via `config.highlight_hover` (default: off).
+        // Clicks are dispatched regardless of the flag so minimalist buttons
+        // stay functional without any visual feedback.
         if hovered {
-            let hover_bg = if item.clickable {
-                if ui.is_mouse_down(MouseButton::Left) { cfg.color_active } else { cfg.color_hover }
-            } else {
-                [1.0, 1.0, 1.0, 0.04] // subtle highlight for non-clickable
-            };
-            draw.add_rect(
-                [x - 2.0, bar_y],
-                [x + w + 2.0, bar_y + bar_h],
-                col32(hover_bg),
-            ).filled(true).build();
+            if cfg.highlight_hover {
+                let hover_bg = if item.clickable {
+                    if ui.is_mouse_down(MouseButton::Left) { cfg.color_active } else { cfg.color_hover }
+                } else {
+                    [1.0, 1.0, 1.0, 0.04] // subtle highlight for non-clickable
+                };
+                draw.add_rect(
+                    [x - 2.0, bar_y],
+                    [x + w + 2.0, bar_y + bar_h],
+                    col32(hover_bg),
+                ).filled(true).build();
+            }
 
             if item.clickable && ui.is_mouse_clicked(MouseButton::Left) {
                 events.push(StatusBarEvent {
@@ -529,6 +533,30 @@ mod tests {
         let cfg = StatusBarConfig::default();
         assert_eq!(cfg.height, 22.0);
         assert!(cfg.show_separators);
+        // Minimal/static-looking bar by default — hover feedback is opt-in.
+        assert!(!cfg.highlight_hover);
+    }
+
+    #[test]
+    fn theme_presets_keep_hover_off_by_default() {
+        // Every theme that ships a bundled StatusBarConfig must follow the
+        // same default: no hover paint unless the caller explicitly enables it.
+        #[cfg(feature = "status_bar")]
+        {
+            use crate::theme::Theme;
+            for theme in [
+                Theme::Dark,
+                Theme::Light,
+                Theme::Midnight,
+                Theme::Solarized,
+                Theme::Monokai,
+            ] {
+                assert!(
+                    !theme.statusbar().highlight_hover,
+                    "theme {theme:?} must default to highlight_hover=false",
+                );
+            }
+        }
     }
 
     #[test]

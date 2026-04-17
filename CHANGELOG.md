@@ -1,5 +1,46 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **`virtual_table` / `virtual_tree` — last rows unreachable via manual
+  scroll inside tightly-sized containers** (reproduced in NxT
+  `packet_monitor` on a `child_window [300, 300]` hosting 500 rows).
+  `ListClipper::items_height` was set to the bare `row_h`, but ImGui's
+  table adds `2 * CellPadding.y` around every row (`TableBeginCell` cursor
+  offset + `TableEndCell` RowPosY2 expansion; see `imgui_tables.cpp:1915,
+  2188, 2247`). The clipper's final `SeekCursorForItem(ItemsCount)`
+  therefore understated the inner scroll-window's content size by
+  `row_count * 2*CellPadding.y`, so `scroll_max_y` clamped before the
+  last rows and they could not be revealed by dragging the scrollbar.
+  This also affected `render_external` / `render_slice` /
+  `render_lookup` paths and the `snap_last_row` quantisation formula.
+  Matches the upstream hint at `imgui.cpp:3319`.
+- **`virtual_table` — `snap_last_row` quantisation now uses the true
+  row stride**, so the quantised outer height actually matches a whole
+  number of rendered rows (previously it quantised by `row_h` and
+  left a fractional row below the fold).
+
+### Added
+- **`virtual_table::row_height_to_stride(row_h, cell_padding_y)`**
+  `pub(crate)` helper with the ImGui-reference derivation in its doc
+  comment, re-used by `virtual_tree`. New `snap_outer_height(avail_h,
+  header_h, row_stride)` helper for the quantisation path. Seven new
+  unit tests in `virtual_table::layout_tests`.
+- **`StatusBarConfig::highlight_hover: bool`** (default `false`).
+  When off, the bar paints no hover background at all — the panel stays
+  fully static visually. Clickable items still emit
+  `StatusBarEvent`s and tooltips still fire regardless of the flag.
+  Set to `true` to restore the pre-0.8.1 Windows-style hover/active
+  feedback. All five bundled themes (`Dark`, `Light`, `Midnight`,
+  `Monokai`, `Solarized`) default the flag to `false`.
+
+### Tests
+- `388` → `396` library tests (7 layout tests for `virtual_table`,
+  `config_defaults` hover assertion and a theme-preset sweep for the
+  new `StatusBar` flag). All green, `cargo clippy -D warnings` stays
+  clean.
+
 ## [0.8.0] — 2026-04-17 — BREAKING
 
 ### Changed

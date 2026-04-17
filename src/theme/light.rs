@@ -166,6 +166,7 @@ pub fn statusbar_config() -> StatusBarConfig {
         item_padding: 10.0,
         separator_width: 1.0,
         show_separators: false,
+        highlight_hover: false,
         color_bg: hex(STATUSBAR_BG, 1.0),
         color_text: hex(FG, 1.0),
         color_text_dim: hex(FG_MUTED, 1.0),

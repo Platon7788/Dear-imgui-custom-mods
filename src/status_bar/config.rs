@@ -23,6 +23,17 @@ pub struct StatusBarConfig {
     pub separator_width: f32,
     /// Show separator lines between items.
     pub show_separators: bool,
+    /// Paint a background behind items under the mouse cursor.
+    ///
+    /// When `false` (default), neither plain text items nor clickable items
+    /// receive any hover paint — the bar stays fully static visually.
+    /// Clickable items continue to emit [`StatusBarEvent`](super::StatusBarEvent)s
+    /// and show their tooltip regardless of this flag; only the optional
+    /// hover/active rectangle is gated by it.
+    ///
+    /// Set to `true` when you want the pre-0.8.1 behavior with Windows-style
+    /// button feedback on hover and press.
+    pub highlight_hover: bool,
 
     // ── Colors ──────────────────────────────────────────────
     /// Bar background color.
@@ -55,6 +66,7 @@ impl Default for StatusBarConfig {
             item_padding: 8.0,
             separator_width: 1.0,
             show_separators: true,
+            highlight_hover: false,
 
             color_bg:        [0.12, 0.12, 0.15, 1.0],
             color_text:      [0.85, 0.87, 0.90, 1.0],

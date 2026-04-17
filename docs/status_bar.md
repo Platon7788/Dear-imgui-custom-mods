@@ -10,10 +10,11 @@ Composable bottom status bar for Dear ImGui with left/center/right sections, sta
 
 - **3-section layout**: left-aligned, center-aligned, right-aligned items
 - **Status indicators**: colored dots (Success/Warning/Error/Info) before text
-- **Clickable items** — emits events on click with hover/active highlighting
+- **Clickable items** — minimalist text-buttons that emit events on click
+- **Opt-in hover feedback** — `highlight_hover` config (default **off**) keeps the bar looking fully static; turn on for Windows-style button feedback
 - **Progress bars** — inline 60px progress bar with label
 - **Icon prefix** — Unicode icon text before label
-- **Tooltips** — hover tooltip on any item
+- **Tooltips** — hover tooltip on any item (works regardless of `highlight_hover`)
 - **Color override** — per-item text color
 - **Separator lines** between items (configurable)
 - **Unique item IDs** — auto-generated for event tracking
@@ -37,13 +38,30 @@ for event in events {
 }
 ```
 
-### Clickable Items
+### Clickable Items (minimalist text-buttons)
 
 ```rust
 bar.left(StatusItem::clickable("Errors: 3")
     .with_color([0.9, 0.3, 0.3, 1.0])
     .with_tooltip("Click to open error panel"));
+
+// Optional: icon + label looks like a tiny toolbar button
+bar.right(StatusItem::clickable("Build")
+    .with_icon("\u{25B6}")     // ▶
+    .with_tooltip("Ctrl+B"));
+
+// In the render loop — click events are emitted regardless of `highlight_hover`:
+for ev in bar.render(ui) {
+    match ev.label.as_str() {
+        "Build" => { /* trigger action */ }
+        _ => {}
+    }
+}
 ```
+
+Clickable items are intentionally frameless — the bar is a miniature UI, so
+buttons stay as text-with-hover. If you want the mouse-over paint, enable
+`config.highlight_hover = true`.
 
 ### Progress Bar
 
@@ -149,10 +167,14 @@ Only emitted for items created with `StatusItem::clickable()`.
 ```rust
 let cfg = &mut bar.config;
 
-cfg.height = 22.0;           // bar height in pixels
-cfg.item_padding = 8.0;      // horizontal padding between items
-cfg.separator_width = 1.0;   // separator line width
-cfg.show_separators = true;  // show separator lines between items
+cfg.height = 22.0;             // bar height in pixels
+cfg.item_padding = 8.0;        // horizontal padding between items
+cfg.separator_width = 1.0;     // separator line width
+cfg.show_separators = true;    // show separator lines between items
+cfg.highlight_hover = false;   // paint `color_hover` / `color_active`
+                               // behind items under the cursor.
+                               // Default: off — the bar stays static;
+                               // clicks still fire and tooltips still show.
 ```
 
 ### Colors
