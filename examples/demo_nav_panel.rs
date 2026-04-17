@@ -4,12 +4,13 @@
 //!   cargo run --example demo_nav_panel
 
 use dear_imgui_custom_mod::app_window::{
-    AppConfig, AppHandler, AppState, AppWindow, StartPosition, TitlebarTheme,
+    AppConfig, AppHandler, AppState, AppWindow, StartPosition,
 };
 use dear_imgui_custom_mod::confirm_dialog::{
-    DialogConfig, DialogIcon, DialogResult, DialogTheme, render_confirm_dialog,
+    DialogConfig, DialogIcon, DialogResult, render_confirm_dialog,
 };
 use dear_imgui_custom_mod::nav_panel::*;
+use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_custom_mod::status_bar::{Indicator, StatusBar, StatusBarConfig, StatusItem};
 use dear_imgui_rs::{StyleColor, StyleVar, Ui};
 
@@ -18,7 +19,7 @@ use dear_imgui_rs::{StyleColor, StyleVar, Ui};
 struct DemoApp {
     nav_state:     NavPanelState,
     status_bar:    StatusBar,
-    current_theme: TitlebarTheme,
+    current_theme: Theme,
     show_confirm:  bool,
     log:           Vec<String>,
     notification:  u32,
@@ -53,7 +54,7 @@ impl DemoApp {
         Self {
             nav_state,
             status_bar,
-            current_theme: TitlebarTheme::Dark,
+            current_theme: Theme::Dark,
             show_confirm: false,
             log: vec!["NavPanel + StatusBar demo started.".into()],
             notification: 2,
@@ -124,35 +125,16 @@ impl DemoApp {
         if self.log.len() > 300 { self.log.drain(..1); }
     }
 
-    fn to_nav_theme(t: &TitlebarTheme) -> NavTheme {
-        match t {
-            TitlebarTheme::Dark      => NavTheme::Dark,
-            TitlebarTheme::Light     => NavTheme::Light,
-            TitlebarTheme::Midnight  => NavTheme::Midnight,
-            TitlebarTheme::Solarized => NavTheme::Solarized,
-            TitlebarTheme::Monokai   => NavTheme::Monokai,
-            TitlebarTheme::Custom(_) => NavTheme::Dark,
-        }
-    }
-
-    fn to_dialog_theme(t: &TitlebarTheme) -> DialogTheme {
-        match t {
-            TitlebarTheme::Dark      => DialogTheme::Dark,
-            TitlebarTheme::Light     => DialogTheme::Light,
-            TitlebarTheme::Midnight  => DialogTheme::Midnight,
-            TitlebarTheme::Solarized => DialogTheme::Solarized,
-            TitlebarTheme::Monokai   => DialogTheme::Monokai,
-            TitlebarTheme::Custom(_) => DialogTheme::Dark,
-        }
-    }
+    fn to_nav_theme(t: &Theme) -> Theme { *t }
+    fn to_dialog_theme(t: &Theme) -> Theme { *t }
 
     fn cycle_theme(&mut self, state: &mut AppState) {
         let next = match &self.current_theme {
-            TitlebarTheme::Dark      => TitlebarTheme::Light,
-            TitlebarTheme::Light     => TitlebarTheme::Midnight,
-            TitlebarTheme::Midnight  => TitlebarTheme::Solarized,
-            TitlebarTheme::Solarized => TitlebarTheme::Monokai,
-            _                        => TitlebarTheme::Dark,
+            Theme::Dark      => Theme::Light,
+            Theme::Light     => Theme::Midnight,
+            Theme::Midnight  => Theme::Solarized,
+            Theme::Solarized => Theme::Monokai,
+            _                        => Theme::Dark,
         };
         self.current_theme = next.clone();
         state.set_theme(next);
@@ -374,7 +356,7 @@ impl AppHandler for DemoApp {
         self.show_confirm = true;
     }
 
-    fn on_theme_changed(&mut self, theme: &TitlebarTheme, _state: &mut AppState) {
+    fn on_theme_changed(&mut self, theme: &Theme, _state: &mut AppState) {
         self.current_theme = theme.clone();
         self.push_log(format!("Theme: {:?}", theme));
     }
@@ -387,7 +369,7 @@ fn main() {
         .with_min_size(800.0, 500.0)
         .with_fps_limit(60)
         .with_start_position(StartPosition::CenterScreen)
-        .with_theme(TitlebarTheme::Dark);
+        .with_theme(Theme::Dark);
 
     AppWindow::new(config)
         .run(DemoApp::new())

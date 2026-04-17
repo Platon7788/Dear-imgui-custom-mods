@@ -1,6 +1,7 @@
 //! Window startup configuration.
 
-use crate::borderless_window::{BorderlessConfig, TitlebarTheme};
+use crate::borderless_window::BorderlessConfig;
+use crate::theme::Theme;
 
 /// Where to place the window on startup.
 #[derive(Debug, Clone, Default)]
@@ -106,7 +107,7 @@ impl AppConfig {
     }
 
     /// Apply a theme to the titlebar.
-    pub fn with_theme(mut self, theme: TitlebarTheme) -> Self {
+    pub fn with_theme(mut self, theme: Theme) -> Self {
         self.titlebar = self.titlebar.with_theme(theme);
         self
     }

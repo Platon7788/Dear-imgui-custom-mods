@@ -30,7 +30,7 @@
 //! use dear_imgui_custom_mod::nav_panel::*;
 //!
 //! let cfg = NavPanelConfig::new(DockPosition::Left)
-//!     .with_theme(NavTheme::Dark)
+//!     .with_theme(Theme::Dark)
 //!     .add_button(NavButton::action("home", "H", "Home")
 //!         .with_color([0.3, 0.6, 1.0, 1.0]))
 //!     .add_separator()
@@ -52,7 +52,7 @@ pub use config::{
     ButtonStyle, DockPosition, NavButton, NavItem, NavPanelConfig, SubMenuItem,
 };
 pub use state::NavPanelState;
-pub use theme::{NavColors, NavTheme};
+pub use theme::NavColors;
 
 use dear_imgui_rs::{Condition, MouseButton, StyleColor, StyleVar, Ui, WindowFlags};
 
@@ -95,7 +95,7 @@ pub fn render_nav_panel(
     cfg: &NavPanelConfig,
     state: &mut NavPanelState,
 ) -> NavPanelResult {
-    let colors = cfg.theme.colors();
+    let colors = cfg.resolved_colors();
     let dt = ui.io().delta_time();
     let [mx, my] = ui.io().mouse_pos();
     let is_vertical = matches!(cfg.position, DockPosition::Left | DockPosition::Right);
@@ -121,7 +121,7 @@ pub fn render_nav_panel(
         let origin = ui.cursor_screen_pos();
         let draw = ui.get_window_draw_list();
         let clicked = ui.is_mouse_clicked(MouseButton::Left);
-        let colors = cfg.theme.colors();
+        let colors = cfg.resolved_colors();
         let tab_w = 16.0_f32;
         let tab_h = 36.0_f32;
 
@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn builder_chain() {
         let cfg = NavPanelConfig::new(DockPosition::Right)
-            .with_theme(NavTheme::Solarized)
+            .with_theme(crate::theme::Theme::Solarized)
             .with_width(48.0)
             .with_auto_hide(true)
             .with_toggle_button(true)
@@ -619,11 +619,8 @@ mod tests {
 
     #[test]
     fn all_builtin_themes_resolve() {
-        for theme in [
-            NavTheme::Dark, NavTheme::Light, NavTheme::Midnight,
-            NavTheme::Solarized, NavTheme::Monokai,
-        ] {
-            let c = theme.colors();
+        for &theme in crate::theme::Theme::ALL {
+            let c = theme.nav();
             assert!(c.bg.iter().all(|&v| (0.0..=1.0).contains(&v)));
             assert!(c.indicator[3] > 0.0);
         }

@@ -1,6 +1,7 @@
 //! Configuration for the borderless window titlebar.
 
-use super::theme::TitlebarTheme;
+use super::theme::TitlebarColors;
+use crate::theme::Theme;
 
 // ── Close mode ───────────────────────────────────────────────────────────────
 
@@ -108,8 +109,9 @@ impl ButtonConfig {
 /// # Example
 /// ```rust,no_run
 /// # use dear_imgui_custom_mod::borderless_window::*;
+/// # use dear_imgui_custom_mod::theme::Theme;
 /// let cfg = BorderlessConfig::new("My App")
-///     .with_theme(TitlebarTheme::Nord)
+///     .with_theme(Theme::Solarized)
 ///     .with_title_align(TitleAlign::Center)
 ///     .with_close_mode(CloseMode::Confirm)
 ///     .with_icon("\u{2302}")
@@ -129,8 +131,14 @@ pub struct BorderlessConfig {
     pub resize_zone: f32,
     /// Height of the separator line below the titlebar (px). Default: `1.0`.
     pub separator_height: f32,
-    /// Color theme.
-    pub theme: TitlebarTheme,
+    /// Color theme selector. Concrete palette is resolved at render time via
+    /// [`Theme::titlebar`](crate::theme::Theme::titlebar), unless
+    /// [`colors_override`](Self::colors_override) is set.
+    pub theme: Theme,
+    /// Optional custom palette that bypasses [`theme`](Self::theme). Set via
+    /// [`with_colors`](Self::with_colors); useful for third-party themes or
+    /// tint overrides that do not fit the built-in palette set.
+    pub colors_override: Option<Box<TitlebarColors>>,
     /// Title text alignment.
     pub title_align: TitleAlign,
     /// Optional icon character shown before the title.
@@ -158,7 +166,8 @@ impl Default for BorderlessConfig {
             titlebar_height: 28.0,
             resize_zone: 6.0,
             separator_height: 1.0,
-            theme: TitlebarTheme::Dark,
+            theme: Theme::Dark,
+            colors_override: None,
             title_align: TitleAlign::Left,
             icon: None,
             buttons: ButtonConfig::default(),
@@ -180,7 +189,24 @@ impl BorderlessConfig {
     /// Set the window title text.
     pub fn with_title(mut self, t: impl Into<String>) -> Self { self.title = t.into(); self }
     /// Set the color theme.
-    pub fn with_theme(mut self, t: TitlebarTheme) -> Self { self.theme = t; self }
+    pub fn with_theme(mut self, t: Theme) -> Self {
+        self.theme = t;
+        self.colors_override = None;
+        self
+    }
+    /// Use a custom [`TitlebarColors`] palette instead of the built-in theme.
+    pub fn with_colors(mut self, c: TitlebarColors) -> Self {
+        self.colors_override = Some(Box::new(c));
+        self
+    }
+    /// Resolve the palette for rendering: override if set, otherwise theme.
+    pub(crate) fn resolved_colors(&self) -> TitlebarColors {
+        if let Some(c) = &self.colors_override {
+            (**c).clone()
+        } else {
+            self.theme.titlebar()
+        }
+    }
     /// Set the titlebar height in pixels.
     pub fn with_titlebar_height(mut self, h: f32) -> Self { self.titlebar_height = h; self }
     /// Set the edge/corner resize detection zone width in pixels.

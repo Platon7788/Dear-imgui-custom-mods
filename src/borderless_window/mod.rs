@@ -54,7 +54,7 @@ pub mod theme;
 pub use actions::{ResizeEdge, TitlebarResult, WindowAction};
 pub use config::{BorderlessConfig, ButtonConfig, CloseMode, ExtraButton, TitleAlign};
 pub use state::TitlebarState;
-pub use theme::{TitlebarColors, TitlebarTheme};
+pub use theme::TitlebarColors;
 
 use dear_imgui_rs::{DrawListMut, MouseButton, Ui};
 
@@ -193,7 +193,7 @@ fn render_titlebar_impl(
         return TitlebarResult { action: WindowAction::Close, hover_edge: None };
     }
 
-    let colors = cfg.theme.colors();
+    let colors = cfg.resolved_colors();
     let dim       = cfg.focus_dim && !state.focused;
     let bg_col    = if dim { colors.bg_inactive    } else { colors.bg    };
     let title_col = if dim { colors.title_inactive } else { colors.title };
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn builder_chain() {
         let cfg = BorderlessConfig::new("Test")
-            .with_theme(TitlebarTheme::Solarized)
+            .with_theme(crate::theme::Theme::Solarized)
             .with_titlebar_height(32.0)
             .with_close_mode(CloseMode::Confirm)
             .with_title_align(TitleAlign::Center)
@@ -460,11 +460,8 @@ mod tests {
 
     #[test]
     fn all_builtin_themes_resolve() {
-        for theme in [
-            TitlebarTheme::Dark, TitlebarTheme::Light, TitlebarTheme::Midnight,
-            TitlebarTheme::Solarized, TitlebarTheme::Monokai,
-        ] {
-            let c = theme.colors();
+        for &theme in crate::theme::Theme::ALL {
+            let c = theme.titlebar();
             // Every bg should be valid RGBA (values in [0,1])
             assert!(c.bg.iter().all(|&v| (0.0..=1.0).contains(&v)));
         }

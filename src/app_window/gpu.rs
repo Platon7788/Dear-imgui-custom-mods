@@ -133,7 +133,7 @@ pub(super) fn init_imgui(
         None,
     );
 
-    super::style::apply_imgui_style_for_theme(&titlebar_cfg.theme, context.style_mut());
+    titlebar_cfg.theme.apply_imgui_style(context.style_mut());
 
     let renderer = WgpuRenderer::new(
         WgpuInitInfo::new(device, queue, surface_format),
@@ -235,7 +235,7 @@ pub(super) fn render_frame<H: AppHandler>(
     let draw_data = gpu.context.render();
 
     // Background clear colour derived from theme.
-    let bg = gpu.titlebar_cfg.theme.colors().bg;
+    let bg = gpu.titlebar_cfg.resolved_colors().bg;
     let clear = wgpu::Color {
         r: bg[0] as f64,
         g: bg[1] as f64,
@@ -300,8 +300,8 @@ pub(super) fn render_frame<H: AppHandler>(
 
     // Theme change requested from within render().
     if let Some(theme) = gpu.app_state.pending_theme.take() {
-        super::style::apply_imgui_style_for_theme(&theme, gpu.context.style_mut());
-        gpu.titlebar_cfg.theme = theme.clone();
+        theme.apply_imgui_style(gpu.context.style_mut());
+        gpu.titlebar_cfg.theme = theme;
         handler.on_theme_changed(&theme, &mut gpu.app_state);
     }
 

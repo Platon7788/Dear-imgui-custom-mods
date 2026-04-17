@@ -20,7 +20,7 @@
 //!     .with_icon(DialogIcon::Warning)
 //!     .with_confirm_label("Close")
 //!     .with_cancel_label("Cancel")
-//!     .with_theme(DialogTheme::Dark);
+//!     .with_theme(Theme::Dark);
 //!
 //! let mut open = true;
 //!
@@ -35,7 +35,7 @@ pub mod config;
 pub mod theme;
 
 pub use config::{ConfirmStyle, DialogConfig, DialogIcon};
-pub use theme::{DialogColors, DialogTheme};
+pub use theme::DialogColors;
 
 use dear_imgui_rs::{Condition, DrawListMut, Key, StyleColor, StyleVar, Ui, WindowFlags};
 
@@ -220,7 +220,7 @@ pub fn render_confirm_dialog(
         return DialogResult::Cancelled;
     }
 
-    let colors = cfg.theme.colors();
+    let colors = cfg.resolved_colors();
     let [dw, dh] = ui.io().display_size();
 
     let fg_draw = ui.get_foreground_draw_list();
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn builder_chain() {
         let cfg = DialogConfig::new("Delete File", "This cannot be undone.")
-            .with_theme(DialogTheme::Solarized)
+            .with_theme(crate::theme::Theme::Solarized)
             .with_icon(DialogIcon::Error)
             .with_confirm_label("Delete")
             .with_cancel_label("Keep")
@@ -483,11 +483,8 @@ mod tests {
 
     #[test]
     fn all_builtin_themes_resolve() {
-        for theme in [
-            DialogTheme::Dark, DialogTheme::Light, DialogTheme::Midnight,
-            DialogTheme::Solarized, DialogTheme::Monokai,
-        ] {
-            let c = theme.colors();
+        for &theme in crate::theme::Theme::ALL {
+            let c = theme.dialog();
             assert!(c.bg.iter().all(|&v| (0.0..=1.0).contains(&v)));
             assert!(c.overlay[3] > 0.0);
             assert!(c.btn_confirm[3] > 0.0);

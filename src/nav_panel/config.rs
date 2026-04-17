@@ -1,6 +1,7 @@
 //! Configuration for the navigation panel.
 
-use super::theme::NavTheme;
+use super::theme::NavColors;
+use crate::theme::Theme;
 
 // ── Position ─────────────────────────────────────────────────────────────────
 
@@ -141,8 +142,9 @@ pub enum NavItem {
 /// # Example
 /// ```rust,no_run
 /// # use dear_imgui_custom_mod::nav_panel::*;
+/// # use dear_imgui_custom_mod::theme::Theme;
 /// let cfg = NavPanelConfig::new(DockPosition::Left)
-///     .with_theme(NavTheme::Dark)
+///     .with_theme(Theme::Dark)
 ///     .add_button(NavButton::action("home", "H", "Home")
 ///         .with_color([0.3, 0.6, 1.0, 1.0]))
 ///     .add_separator()
@@ -153,8 +155,12 @@ pub enum NavItem {
 pub struct NavPanelConfig {
     /// Docking position.
     pub position: DockPosition,
-    /// Color theme.
-    pub theme: NavTheme,
+    /// Color theme selector (built-in). Resolved at render time via
+    /// [`Theme::nav`](crate::theme::Theme::nav), unless
+    /// [`colors_override`](Self::colors_override) is set.
+    pub theme: Theme,
+    /// Optional custom palette that bypasses [`theme`](Self::theme).
+    pub colors_override: Option<Box<NavColors>>,
 
     // ── Dimensions ───────────────────────────────────────────────────────
     /// Panel width for Left/Right (px). Min: `16.0`.
@@ -221,7 +227,8 @@ impl Default for NavPanelConfig {
     fn default() -> Self {
         Self {
             position: DockPosition::Left,
-            theme: NavTheme::Dark,
+            theme: Theme::Dark,
+            colors_override: None,
             width: 28.0,
             height: 24.0,
             button_size: 24.0,
@@ -269,7 +276,24 @@ impl NavPanelConfig {
 
     // ── Builders ─────────────────────────────────────────────────────────────
 
-    pub fn with_theme(mut self, t: NavTheme) -> Self { self.theme = t; self }
+    pub fn with_theme(mut self, t: Theme) -> Self {
+        self.theme = t;
+        self.colors_override = None;
+        self
+    }
+    /// Use a custom [`NavColors`] palette instead of the built-in theme.
+    pub fn with_colors(mut self, c: NavColors) -> Self {
+        self.colors_override = Some(Box::new(c));
+        self
+    }
+    /// Resolved palette for rendering.
+    pub(crate) fn resolved_colors(&self) -> NavColors {
+        if let Some(c) = &self.colors_override {
+            (**c).clone()
+        } else {
+            self.theme.nav()
+        }
+    }
     pub fn with_width(mut self, w: f32) -> Self { self.width = w.max(16.0); self }
     pub fn with_height(mut self, h: f32) -> Self { self.height = h.max(16.0); self }
     pub fn with_button_size(mut self, s: f32) -> Self { self.button_size = s.max(14.0); self }

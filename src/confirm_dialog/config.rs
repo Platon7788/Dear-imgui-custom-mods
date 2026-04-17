@@ -1,6 +1,7 @@
 //! Configuration for the confirm dialog.
 
-use super::theme::DialogTheme;
+use super::theme::DialogColors;
+use crate::theme::Theme;
 
 /// Icon type displayed in the dialog header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,11 +34,12 @@ pub enum ConfirmStyle {
 /// # Example
 /// ```rust,no_run
 /// # use dear_imgui_custom_mod::confirm_dialog::*;
+/// # use dear_imgui_custom_mod::theme::Theme;
 /// let cfg = DialogConfig::new("Close Application", "Are you sure you want to close?")
 ///     .with_icon(DialogIcon::Warning)
 ///     .with_confirm_label("Close")
 ///     .with_cancel_label("Cancel")
-///     .with_theme(DialogTheme::Dark);
+///     .with_theme(Theme::Dark);
 /// ```
 #[derive(Debug, Clone)]
 pub struct DialogConfig {
@@ -54,7 +56,9 @@ pub struct DialogConfig {
     /// Confirm button visual style. Default: `Destructive`.
     pub confirm_style: ConfirmStyle,
     /// Color theme. Default: `Dark`.
-    pub theme: DialogTheme,
+    pub theme: Theme,
+    /// Optional custom palette that bypasses [`theme`](Self::theme).
+    pub colors_override: Option<Box<DialogColors>>,
     /// Dialog width (px). Default: `340.0`.
     pub width: f32,
     /// Dialog height (px). Default: `160.0`.
@@ -95,7 +99,8 @@ impl Default for DialogConfig {
             cancel_label: String::from("Cancel"),
             icon: DialogIcon::Warning,
             confirm_style: ConfirmStyle::Destructive,
-            theme: DialogTheme::Dark,
+            theme: Theme::Dark,
+            colors_override: None,
             width: 340.0,
             height: 160.0,
             padding: 16.0,
@@ -121,7 +126,24 @@ impl DialogConfig {
         }
     }
 
-    pub fn with_theme(mut self, t: DialogTheme) -> Self { self.theme = t; self }
+    pub fn with_theme(mut self, t: Theme) -> Self {
+        self.theme = t;
+        self.colors_override = None;
+        self
+    }
+    /// Use a custom [`DialogColors`] palette instead of the built-in theme.
+    pub fn with_colors(mut self, c: DialogColors) -> Self {
+        self.colors_override = Some(Box::new(c));
+        self
+    }
+    /// Resolved palette for rendering.
+    pub(crate) fn resolved_colors(&self) -> DialogColors {
+        if let Some(c) = &self.colors_override {
+            (**c).clone()
+        } else {
+            self.theme.dialog()
+        }
+    }
     pub fn with_icon(mut self, icon: DialogIcon) -> Self { self.icon = icon; self }
     pub fn with_confirm_label(mut self, l: impl Into<String>) -> Self { self.confirm_label = l.into(); self }
     pub fn with_cancel_label(mut self, l: impl Into<String>) -> Self { self.cancel_label = l.into(); self }

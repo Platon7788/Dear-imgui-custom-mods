@@ -15,10 +15,11 @@
 
 use dear_imgui_custom_mod::borderless_window::{
     BorderlessConfig, ButtonConfig, CloseMode, ExtraButton,
-    TitleAlign, TitlebarState, TitlebarTheme, WindowAction,
+    TitleAlign, TitlebarState, WindowAction,
     actions::ResizeEdge, render_titlebar,
 };
-use dear_imgui_custom_mod::confirm_dialog::{DialogConfig, DialogIcon, DialogResult, DialogTheme, render_confirm_dialog};
+use dear_imgui_custom_mod::confirm_dialog::{DialogConfig, DialogIcon, DialogResult, render_confirm_dialog};
+use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_rs::{Condition, StyleColor, StyleVar, Ui, WindowFlags};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
@@ -99,22 +100,22 @@ impl ActiveTheme {
             Self::Monokai   => Self::Dark,
         }
     }
-    fn titlebar_theme(self) -> TitlebarTheme {
+    fn titlebar_theme(self) -> Theme {
         match self {
-            Self::Dark      => TitlebarTheme::Dark,
-            Self::Light     => TitlebarTheme::Light,
-            Self::Midnight  => TitlebarTheme::Midnight,
-            Self::Solarized => TitlebarTheme::Solarized,
-            Self::Monokai   => TitlebarTheme::Monokai,
+            Self::Dark      => Theme::Dark,
+            Self::Light     => Theme::Light,
+            Self::Midnight  => Theme::Midnight,
+            Self::Solarized => Theme::Solarized,
+            Self::Monokai   => Theme::Monokai,
         }
     }
-    fn dialog_theme(self) -> DialogTheme {
+    fn dialog_theme(self) -> Theme {
         match self {
-            Self::Dark      => DialogTheme::Dark,
-            Self::Light     => DialogTheme::Light,
-            Self::Midnight  => DialogTheme::Midnight,
-            Self::Solarized => DialogTheme::Solarized,
-            Self::Monokai   => DialogTheme::Monokai,
+            Self::Dark      => Theme::Dark,
+            Self::Light     => Theme::Light,
+            Self::Midnight  => Theme::Midnight,
+            Self::Solarized => Theme::Solarized,
+            Self::Monokai   => Theme::Monokai,
         }
     }
 }
@@ -318,7 +319,7 @@ impl DemoState {
         ] {
             let active = self.theme == t;
             if active {
-                let col = self.cfg.theme.colors();
+                let col = self.cfg.theme.titlebar();
                 let _c  = ui.push_style_color(StyleColor::Button,        col.btn_maximize);
                 let _c2 = ui.push_style_color(StyleColor::ButtonHovered, col.btn_maximize);
                 ui.button(t.label());

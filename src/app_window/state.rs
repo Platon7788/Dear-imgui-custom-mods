@@ -1,6 +1,7 @@
 //! Per-frame application state passed to [`AppHandler::render`](super::AppHandler::render).
 
-use crate::borderless_window::{TitlebarState, TitlebarTheme};
+use crate::borderless_window::TitlebarState;
+use crate::theme::Theme;
 
 /// Mutable application state available every render frame.
 ///
@@ -11,7 +12,7 @@ pub struct AppState {
     pub titlebar: TitlebarState,
     pub(super) should_exit:      bool,
     pub(super) maximize_toggle:  Option<bool>,
-    pub(super) pending_theme:    Option<TitlebarTheme>,
+    pub(super) pending_theme:    Option<Theme>,
 }
 
 impl AppState {
@@ -29,7 +30,7 @@ impl AppState {
     /// `AppWindow` will apply the full ImGui style and call
     /// [`AppHandler::on_theme_changed`](super::AppHandler::on_theme_changed)
     /// at the end of the current frame.
-    pub fn set_theme(&mut self, theme: TitlebarTheme) {
+    pub fn set_theme(&mut self, theme: Theme) {
         self.pending_theme = Some(theme);
     }
 

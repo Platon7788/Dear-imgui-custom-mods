@@ -1,7 +1,7 @@
 //! Dark theme — full stack (titlebar + nav + dialog + statusbar + ImGui style).
 //!
 //! This is the native NxT palette lifted into the library so any application
-//! that picks `TitlebarTheme::Dark` (the default) gets a consistent,
+//! that picks `Theme::Dark` (the default) gets a consistent,
 //! fully-tuned dark look across every component.
 
 use crate::borderless_window::TitlebarColors;

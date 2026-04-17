@@ -8,8 +8,8 @@
 //! methods are optional.
 
 use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow, StartPosition};
-use dear_imgui_custom_mod::borderless_window::TitlebarTheme;
-use dear_imgui_custom_mod::confirm_dialog::{DialogConfig, DialogIcon, DialogResult, DialogTheme, render_confirm_dialog};
+use dear_imgui_custom_mod::confirm_dialog::{DialogConfig, DialogIcon, DialogResult, render_confirm_dialog};
+use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_rs::Ui;
 
 // ── Application state ─────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ struct DemoApp {
     counter:      i32,
     show_confirm: bool,
     log:          Vec<String>,
-    current_theme: TitlebarTheme,
+    current_theme: Theme,
 }
 
 impl DemoApp {
@@ -87,11 +87,11 @@ impl AppHandler for DemoApp {
                 // Theme picker
                 ui.text("Theme");
                 let themes = [
-                    ("Dark",      TitlebarTheme::Dark),
-                    ("Light",     TitlebarTheme::Light),
-                    ("Midnight",  TitlebarTheme::Midnight),
-                    ("Solarized", TitlebarTheme::Solarized),
-                    ("Monokai",   TitlebarTheme::Monokai),
+                    ("Dark",      Theme::Dark),
+                    ("Light",     Theme::Light),
+                    ("Midnight",  Theme::Midnight),
+                    ("Solarized", Theme::Solarized),
+                    ("Monokai",   Theme::Monokai),
                 ];
                 for (label, theme) in &themes {
                     let active = std::mem::discriminant(&self.current_theme)
@@ -130,14 +130,7 @@ impl AppHandler for DemoApp {
 
         // ── Close confirmation dialog ─────────────────────────────────────────
         if self.show_confirm {
-            let dlg_theme = match &self.current_theme {
-                TitlebarTheme::Dark      => DialogTheme::Dark,
-                TitlebarTheme::Light     => DialogTheme::Light,
-                TitlebarTheme::Midnight  => DialogTheme::Midnight,
-                TitlebarTheme::Solarized => DialogTheme::Solarized,
-                TitlebarTheme::Monokai   => DialogTheme::Monokai,
-                TitlebarTheme::Custom(_) => DialogTheme::Dark,
-            };
+            let dlg_theme = self.current_theme;
             let cfg = DialogConfig::new("Close Application", "Are you sure you want to close?")
                 .with_icon(DialogIcon::Warning)
                 .with_confirm_label("Close")
@@ -158,7 +151,7 @@ impl AppHandler for DemoApp {
     }
 
     // ── Theme change notification ──────────────────────────────────────────────
-    fn on_theme_changed(&mut self, theme: &TitlebarTheme, _state: &mut AppState) {
+    fn on_theme_changed(&mut self, theme: &Theme, _state: &mut AppState) {
         self.current_theme = theme.clone();
         self.push_log(format!("Theme changed to {:?}", theme));
     }
@@ -171,7 +164,7 @@ fn main() {
         .with_min_size(600.0, 380.0)
         .with_fps_limit(60)
         .with_start_position(StartPosition::CenterScreen)
-        .with_theme(TitlebarTheme::Dark);
+        .with_theme(Theme::Dark);
 
     AppWindow::new(config)
         .run(DemoApp::default())

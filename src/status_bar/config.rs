@@ -1,6 +1,7 @@
 //! Configuration types for [`StatusBar`](super::StatusBar).
-
-use crate::borderless_window::TitlebarTheme;
+//!
+//! For per-theme palettes use [`crate::theme::Theme::statusbar()`] — it
+//! returns a fully configured `StatusBarConfig`.
 
 /// Alignment of a status bar section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -70,39 +71,3 @@ impl Default for StatusBarConfig {
     }
 }
 
-// ─── Conversion from a borderless-window titlebar theme ──────────────────────
-
-/// Derive a matching [`StatusBarConfig`] from a [`TitlebarTheme`].
-///
-/// Keeps the bar visually in sync with the titlebar: background is slightly
-/// darkened, text / separator / hover colors come straight from the titlebar
-/// palette. Semantic indicator colors (success / warning / error / info) stay
-/// constant across themes so the bar meaning does not shift when switching
-/// palettes. Non-color fields use the `StatusBarConfig::default()` values.
-impl From<&TitlebarTheme> for StatusBarConfig {
-    fn from(theme: &TitlebarTheme) -> Self {
-        let tb = theme.colors();
-        let bg = [
-            (tb.bg[0] * 0.90).clamp(0.0, 1.0),
-            (tb.bg[1] * 0.90).clamp(0.0, 1.0),
-            (tb.bg[2] * 0.90).clamp(0.0, 1.0),
-            1.0,
-        ];
-        let defaults = Self::default();
-        Self {
-            color_bg: bg,
-            color_text: tb.title,
-            color_text_dim: tb.title_inactive,
-            color_separator: tb.separator,
-            color_hover: tb.btn_hover_bg,
-            color_active: tb.btn_hover_bg,
-            // Semantic colors kept constant for cross-theme consistency.
-            color_success: defaults.color_success,
-            color_warning: defaults.color_warning,
-            color_error: defaults.color_error,
-            // `info` tracks the titlebar accent (maximize-button color).
-            color_info: tb.btn_maximize,
-            ..defaults
-        }
-    }
-}

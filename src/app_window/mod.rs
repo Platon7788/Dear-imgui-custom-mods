@@ -33,8 +33,9 @@ pub use state::AppState;
 pub use style::apply_imgui_style_for_theme;
 
 pub use crate::borderless_window::{
-    TitlebarTheme, BorderlessConfig, ButtonConfig, ExtraButton, CloseMode, TitleAlign,
+    BorderlessConfig, ButtonConfig, ExtraButton, CloseMode, TitleAlign,
 };
+pub use crate::theme::Theme;
 
 use dear_imgui_rs::Ui;
 use std::sync::Arc;
@@ -81,7 +82,7 @@ pub trait AppHandler {
     /// Called after the theme changes (e.g., from an extra button).
     ///
     /// Default: no-op. Override to apply your own imgui style.
-    fn on_theme_changed(&mut self, _theme: &TitlebarTheme, _state: &mut AppState) {}
+    fn on_theme_changed(&mut self, _theme: &Theme, _state: &mut AppState) {}
 }
 
 // ── AppWindow ─────────────────────────────────────────────────────────────────
