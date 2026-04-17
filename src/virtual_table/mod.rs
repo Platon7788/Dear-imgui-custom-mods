@@ -603,7 +603,32 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         let flags = self.config.to_table_flags();
 
-        let _table = match ui.begin_table_with_flags(&self.id, col_count, flags) {
+        // Quantize outer height so the last visible row is never clipped
+        // mid-pixel (opt-in via `TableConfig::snap_last_row`).
+        // Header takes ~line_height + 2×frame_padding; the clipped content
+        // area is `outer.y - header_h - padding`, so we compute the biggest
+        // `N * row_h + header_h` that fits in the available height.
+        let row_h = self.effective_row_height(&None);
+        let outer_size = if self.config.snap_last_row && self.config.scroll_y {
+            let avail_h = ui.content_region_avail()[1];
+            let style = ui.clone_style();
+            let header_h = unsafe { dear_imgui_rs::sys::igGetTextLineHeight() }
+                + style.cell_padding()[1] * 2.0;
+            let content_h = (avail_h - header_h).max(0.0);
+            let row_count_fit = (content_h / row_h).floor().max(0.0);
+            let quantized = row_count_fit * row_h + header_h;
+            [0.0, quantized.max(row_h + header_h)]
+        } else {
+            [0.0, 0.0]
+        };
+
+        let _table = match ui.begin_table_with_sizing(
+            &self.id,
+            col_count,
+            flags,
+            outer_size,
+            0.0,
+        ) {
             Some(t) => t,
             None => return,
         };
@@ -630,7 +655,6 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // No sorting — data order is caller-managed.
 
         // Rows (read-only path: no inline editing)
-        let row_h = self.effective_row_height(&None);
         let clip = ListClipper::new(row_count as i32).items_height(row_h);
         let tok = clip.begin(ui);
 

@@ -149,6 +149,15 @@ pub struct TableConfig {
     /// Row vertical density (Normal / Compact / Dense).
     pub row_density: RowDensity,
     pub default_row_height: Option<f32>,
+    /// Quantize the table's outer height to a multiple of `row_height` so
+    /// the last visible row is never clipped mid-pixel. The trade-off is a
+    /// small gap below the last row (up to `row_height - 1` pixels) when
+    /// the parent isn't an exact row-multiple. Default: `false` — matches
+    /// ImGui's native table behavior.
+    ///
+    /// Useful for log / packet views where a half-visible last row looks
+    /// broken. Requires `scroll_y = true` (the default).
+    pub snap_last_row: bool,
     /// Extra Dear ImGui flags merged into the computed flags.
     pub extra_flags: TableFlags,
 }
@@ -182,6 +191,7 @@ impl Default for TableConfig {
             auto_scroll: false,
             row_density: RowDensity::Normal,
             default_row_height: None,
+            snap_last_row: false,
             extra_flags: TableFlags::NONE,
         }
     }

@@ -1796,8 +1796,14 @@ impl CodeEditor {
         let wheel = ui.io().mouse_wheel();
         if wheel != 0.0 && !io.key_ctrl() {
             let delta = -wheel * self.config.scroll_speed * self.line_height;
+            // Use total VISUAL rows (word-wrap aware) — not buffer.line_count().
+            // With wrap on, one text line can produce N visual rows, so clamping
+            // to line_count instead of total_visual_rows() caps wheel scroll at
+            // a tiny fraction of the actual document height and the scrollbar
+            // appears stuck. Keep a one-row bottom margin for consistency with
+            // the total_height used by the dummy element (see render()).
             let max_scroll =
-                (self.buffer.line_count() as f32 * self.line_height).max(0.0);
+                (self.total_visual_rows() as f32 * self.line_height).max(0.0);
             if self.config.smooth_scrolling {
                 self.target_scroll_y =
                     (self.target_scroll_y + delta).clamp(0.0, max_scroll);
