@@ -762,12 +762,13 @@ impl FileManager {
 
         // Set window size before opening popup
         unsafe {
+            #[allow(clippy::unnecessary_cast)] // ImGuiCond_Appearing is u32 on Linux, i32 on Windows
             dear_imgui_rs::sys::igSetNextWindowSize(
                 dear_imgui_rs::sys::ImVec2 {
                     x: self.config.initial_size[0],
                     y: self.config.initial_size[1],
                 },
-                dear_imgui_rs::sys::ImGuiCond_Appearing,
+                dear_imgui_rs::sys::ImGuiCond_Appearing as i32,
             );
             dear_imgui_rs::sys::igSetNextWindowSizeConstraints(
                 dear_imgui_rs::sys::ImVec2 {

@@ -4,6 +4,7 @@ version = "0.8.0"
 edition = "2024"
 rust-version = "1.94"
 description = "Custom UI components for dear-imgui-rs"
+license = "MIT"
 
 # ─── Features ────────────────────────────────────────────────────────────────
 #
