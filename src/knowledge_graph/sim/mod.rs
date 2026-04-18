@@ -75,19 +75,33 @@ impl Simulation {
         let mut forces: HashMap<NodeId, [f32; 2]> =
             node_data.iter().map(|(id, _, _, _)| (*id, [0.0_f32; 2])).collect();
 
-        // Repulsion: every pair.
-        for i in 0..node_data.len() {
-            for j in (i + 1)..node_data.len() {
-                let (id_a, pos_a, _, _) = node_data[i];
-                let (id_b, pos_b, _, _) = node_data[j];
-                let f = spring::repulsion_force(pos_a, pos_b, config.repulsion);
-                if let Some(fa) = forces.get_mut(&id_a) {
+        // Repulsion: Barnes-Hut O(N log N) for large graphs, O(N²) otherwise.
+        let use_bh = node_data.len() > 50 && config.barnes_hut_theta > 0.0;
+        if use_bh {
+            let particles: Vec<([f32; 2], f32)> =
+                node_data.iter().map(|(_, pos, _, _)| (*pos, 1.0)).collect();
+            let tree = barnes_hut::BarnesHutTree::new(&particles, config.barnes_hut_theta);
+            for (id, pos, _, _) in &node_data {
+                let f = tree.force(*pos, config.repulsion);
+                if let Some(fa) = forces.get_mut(id) {
                     fa[0] += f[0];
                     fa[1] += f[1];
                 }
-                if let Some(fb) = forces.get_mut(&id_b) {
-                    fb[0] -= f[0];
-                    fb[1] -= f[1];
+            }
+        } else {
+            for i in 0..node_data.len() {
+                for j in (i + 1)..node_data.len() {
+                    let (id_a, pos_a, _, _) = node_data[i];
+                    let (id_b, pos_b, _, _) = node_data[j];
+                    let f = spring::repulsion_force(pos_a, pos_b, config.repulsion);
+                    if let Some(fa) = forces.get_mut(&id_a) {
+                        fa[0] += f[0];
+                        fa[1] += f[1];
+                    }
+                    if let Some(fb) = forces.get_mut(&id_b) {
+                        fb[0] -= f[0];
+                        fb[1] -= f[1];
+                    }
                 }
             }
         }
@@ -102,7 +116,7 @@ impl Simulation {
                 Some(n) => n.pos,
                 None => continue,
             };
-            let f = spring::spring_force(pos_a, pos_b, config.attraction, edge.weight);
+            let f = spring::spring_force(pos_a, pos_b, config.attraction, edge.weight, config.link_distance);
             if let Some(fa) = forces.get_mut(&edge.from) {
                 fa[0] += f[0];
                 fa[1] += f[1];
@@ -113,11 +127,12 @@ impl Simulation {
             }
         }
 
-        // Center pull.
+        // Center pull + optional downward gravity.
         for (id_a, pos_a, _, _) in &node_data {
             if let Some(f) = forces.get_mut(id_a) {
                 f[0] -= config.center_pull * pos_a[0];
                 f[1] -= config.center_pull * pos_a[1];
+                f[1] += config.gravity_strength;
             }
         }
 
@@ -147,6 +162,11 @@ impl Simulation {
                 if let Some(anchor) = node.style.anchor {
                     node.pos = anchor;
                 }
+                node.vel = [0.0, 0.0];
+                continue;
+            }
+            if node.style.pinned {
+                // Pinned by user — physics doesn't move it; dragging sets pos directly.
                 node.vel = [0.0, 0.0];
                 continue;
             }
@@ -192,6 +212,7 @@ mod tests {
             barnes_hut_theta: 0.9,
             repulsion: 50.0,
             attraction: 0.1,
+            link_distance: 80.0,
             center_pull: 0.001,
             collision_radius: 20.0,
             velocity_decay: 0.6,

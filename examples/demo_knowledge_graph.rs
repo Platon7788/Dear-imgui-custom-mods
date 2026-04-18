@@ -192,6 +192,14 @@ impl DemoState {
                                     }
                                     GraphEvent::CameraChanged => "Camera moved".to_string(),
                                     GraphEvent::FilterChanged => "Filter changed".to_string(),
+                                    GraphEvent::NodeMoved(id, _) => format!("Moved: {id:?}"),
+                                    GraphEvent::NodePinned(id, p) => format!("Pin {id:?}: {p}"),
+                                    GraphEvent::NodeActivated(id) => format!("Activated: {id:?}"),
+                                    GraphEvent::SelectionDeleteRequested(_) => "Delete requested".to_string(),
+                                    GraphEvent::FitToScreen => "Fit to screen".to_string(),
+                                    GraphEvent::SearchChanged(q) => format!("Search: {q}"),
+                                    GraphEvent::GroupChanged => "Groups changed".to_string(),
+                                    GraphEvent::SimulationToggled(s) => format!("Sim paused: {s}"),
                                 };
                                 if self.event_log.last().as_deref() != Some(&msg) {
                                     self.event_log.push(msg);

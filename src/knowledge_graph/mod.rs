@@ -93,6 +93,14 @@ pub struct GraphViewer {
     filter: FilterState,
     selection: HashSet<NodeId>,
     hovered: Option<NodeId>,
+
+    // Interaction state.
+    dragging_node: Option<NodeId>,
+    drag_world_offset: [f32; 2],
+    box_select_start: Option<[f32; 2]>,
+    ctx_menu_node: Option<NodeId>,
+    /// Node to smoothly pan to on the next render frame.
+    pending_focus: Option<NodeId>,
 }
 
 impl GraphViewer {
@@ -108,6 +116,11 @@ impl GraphViewer {
             filter: FilterState::new(),
             selection: HashSet::new(),
             hovered: None,
+            dragging_node: None,
+            drag_world_offset: [0.0; 2],
+            box_select_start: None,
+            ctx_menu_node: None,
+            pending_focus: None,
         }
     }
 
@@ -141,11 +154,29 @@ impl GraphViewer {
     /// frame. Callers should process events rather than polling state.
     #[must_use = "graph events (click / select / filter change) are emitted here"]
     pub fn render(&mut self, ui: &Ui, graph: &mut GraphData) -> Vec<GraphEvent> {
+        // Resolve pending focus now that we know canvas size.
+        if let Some(id) = self.pending_focus.take() {
+            if let Some(node) = graph.nodes.get(id) {
+                let sidebar_w = match &self.sidebar {
+                    SidebarKind::None => 0.0_f32,
+                    _ => 220.0_f32,
+                };
+                let avail = ui.content_region_avail();
+                let canvas_size = [avail[0] - sidebar_w, avail[1].max(100.0)];
+                self.camera.animate_to_node(node.pos, canvas_size, self.camera.zoom);
+            }
+        }
+
         let mut ctx = RenderCtx {
             camera: &mut self.camera,
             sim: &mut self.sim,
             selection: &mut self.selection,
             hovered: &mut self.hovered,
+            filter: &mut self.filter,
+            dragging_node: &mut self.dragging_node,
+            drag_world_offset: &mut self.drag_world_offset,
+            box_select_start: &mut self.box_select_start,
+            ctx_menu_node: &mut self.ctx_menu_node,
         };
 
         let mut events = render::render(
@@ -175,9 +206,10 @@ impl GraphViewer {
 
     /// Pan the camera smoothly so `id` is centred on screen.
     ///
-    /// Has no effect if `id` is not a valid node handle.
-    pub fn focus(&mut self, _id: NodeId) {
-        // Phase B: smooth pan animation.
+    /// Has no effect if `id` is not a valid node handle. The pan is resolved
+    /// on the next [`render`](Self::render) call once canvas size is known.
+    pub fn focus(&mut self, id: NodeId) {
+        self.pending_focus = Some(id);
     }
 
     /// Add `id` to the selection set (replaces existing selection).

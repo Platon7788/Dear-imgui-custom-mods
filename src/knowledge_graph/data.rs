@@ -72,6 +72,18 @@ pub struct GraphData {
     /// Cached unique tag set (rebuilt lazily from `tag_cache_dirty`).
     pub(crate) tag_cache: Vec<&'static str>,
     pub(crate) tag_cache_dirty: bool,
+    /// Cached metrics (computed lazily when dirty_metrics is set).
+    pub(crate) metrics: Option<MetricsCache>,
+}
+
+/// Cached graph analytics computed by Phase-C metrics modules.
+pub(crate) struct MetricsCache {
+    /// Node ordering used during the metrics computation run.
+    pub(crate) node_order: Vec<NodeId>,
+    /// PageRank score per node (same order as `node_order`).
+    pub(crate) pagerank: Vec<f32>,
+    /// Betweenness centrality score per node (same order as `node_order`).
+    pub(crate) betweenness: Vec<f32>,
 }
 
 // ─── Initial position helper ──────────────────────────────────────────────────
@@ -103,6 +115,7 @@ impl GraphData {
             dirty_metrics: false,
             tag_cache: Vec::new(),
             tag_cache_dirty: false,
+            metrics: None,
         }
     }
 
@@ -119,6 +132,7 @@ impl GraphData {
             dirty_metrics: false,
             tag_cache: Vec::new(),
             tag_cache_dirty: false,
+            metrics: None,
         }
     }
 
@@ -318,27 +332,41 @@ impl GraphData {
 
     // ── Metrics stubs (Phase B) ───────────────────────────────────────────────
 
-    /// Per-node PageRank scores in the same order as the SlotMap iteration.
+    /// Ensure metrics are up to date, recomputing from scratch when
+    /// `dirty_metrics` is set.
     ///
-    /// *Phase A stub* — returns an empty slice. Phase B will implement the
-    /// power-iteration algorithm and cache the result until `dirty_metrics`
-    /// is set.
-    pub fn pagerank(&self) -> &[f32] {
-        &[]
+    /// Call before accessing [`Self::pagerank_for`] or [`Self::betweenness_for`].
+    pub fn recompute_metrics_if_needed(&mut self) {
+        if self.dirty_metrics || self.metrics.is_none() {
+            use super::metrics::{centrality, pagerank};
+            let (node_order, pr) = pagerank::compute(self, 0.85, 100, 1e-6);
+            let (_, bt) = centrality::compute(self);
+            self.metrics = Some(MetricsCache {
+                node_order,
+                pagerank: pr,
+                betweenness: bt,
+            });
+            self.dirty_metrics = false;
+        }
     }
 
-    /// Per-node betweenness centrality scores.
-    ///
-    /// *Phase A stub* — returns an empty slice. Phase B will implement
-    /// Brandes' algorithm with sampling for large graphs.
-    pub fn betweenness_centrality(&self) -> &[f32] {
-        &[]
+    /// PageRank score for a specific node (0.0 if metrics not computed yet).
+    pub fn pagerank_for(&self, id: NodeId) -> f32 {
+        self.metrics.as_ref().and_then(|m| {
+            m.node_order.iter().position(|&n| n == id).map(|i| m.pagerank[i])
+        }).unwrap_or(0.0)
+    }
+
+    /// Betweenness centrality score for a specific node (0.0 if not computed).
+    pub fn betweenness_for(&self, id: NodeId) -> f32 {
+        self.metrics.as_ref().and_then(|m| {
+            m.node_order.iter().position(|&n| n == id).map(|i| m.betweenness[i])
+        }).unwrap_or(0.0)
     }
 
     /// Per-node community assignment (integer community ID).
     ///
-    /// *Phase A stub* — returns an empty slice. Phase B will implement the
-    /// Louvain modularity-maximisation algorithm.
+    /// *Phase D stub* — Louvain implementation pending.
     pub fn community_assignment(&self) -> &[u32] {
         &[]
     }
