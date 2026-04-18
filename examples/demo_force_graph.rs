@@ -1,19 +1,23 @@
 //! Demo: force_graph — Obsidian/IDA-style force-directed graph viewer.
 //!
-//! Demonstrates Phase B + C features:
-//!   - 50+ nodes with preferential-attachment edges
-//!   - Different NodeKind shapes: Regular (circle), Tag (square), Unresolved (diamond)
-//!   - Built-in sidebar: Filter / Color Groups / Display / Physics controls
-//!   - Color modes: ByTag (Okabe-Ito palette) and Static
-//!   - Hover fade — non-neighbors dim when hovering
-//!   - Drag, box-select, context menu (right-click)
-//!   - Keyboard: arrows=pan, +/-=zoom, F=fit, Esc=clear, Space=toggle sim, P=pin
-//!   - Regenerate button rebuilds the graph
+//! Demonstrates ALL major force_graph features:
+//!   - 5 NodeKind shapes: Regular, Tag, Unresolved, Attachment, Cluster
+//!   - 6 color modes: Static, ByTag, ByCommunity, ByPageRank, ByBetweenness, Custom
+//!   - Directed and undirected edges with weight-based thickness
+//!   - Time-travel slider (nodes/edges have created_at timestamps)
+//!   - Search-as-highlight (dims non-matching nodes instead of hiding them)
+//!   - Minimap overlay (bottom-right corner, click to pan)
+//!   - Pre-pinned cluster hub nodes
+//!   - viewer.focus(id) on double-click → smooth camera pan
+//!   - viewer.select_multi() via toolbar button
+//!   - Color groups + edge colors + edge labels
+//!   - Full event log (all GraphEvent variants)
+//!   - Regenerate button, node/edge stats, sidebar
 //!
 //! Run: cargo run --example demo_force_graph --features force_graph,app_window
 
 use dear_imgui_custom_mod::force_graph::{
-    config::{ColorGroupQuery, ColorMode, ForceConfig, LabelVisibility, SidebarKind, ViewerConfig},
+    config::{ColorGroup, ColorGroupQuery, ColorMode, ForceConfig, LabelVisibility, SidebarKind, ViewerConfig},
     data::GraphData,
     event::GraphEvent,
     style::{EdgeStyle, NodeKind, NodeStyle},
@@ -36,6 +40,22 @@ use winit::{
 
 const TAGS: &[&str] = &["core", "api", "ui", "data", "infra", "test"];
 
+const TAG_META: &[(&str, char, [f32; 4])] = &[
+    ("core",  '\u{25CF}', [0.40, 0.70, 1.00, 1.0]),
+    ("api",   '\u{25B6}', [0.40, 0.90, 0.60, 1.0]),
+    ("ui",    '\u{25C6}', [0.95, 0.60, 0.20, 1.0]),
+    ("data",  '\u{25A0}', [0.80, 0.40, 0.90, 1.0]),
+    ("infra", '\u{25B2}', [0.90, 0.30, 0.30, 1.0]),
+    ("test",  '\u{2714}', [0.60, 0.85, 0.85, 1.0]),
+];
+
+fn tag_icon(tag: &str) -> char {
+    TAG_META.iter().find(|(t, _, _)| *t == tag).map_or('\u{25CF}', |m| m.1)
+}
+fn tag_color(tag: &str) -> [f32; 4] {
+    TAG_META.iter().find(|(t, _, _)| *t == tag).map_or([0.65, 0.65, 0.70, 1.0], |m| m.2)
+}
+
 // ─── LCG RNG ──────────────────────────────────────────────────────────────────
 
 struct Lcg(u64);
@@ -51,27 +71,9 @@ impl Lcg {
 
 // ─── Graph construction ───────────────────────────────────────────────────────
 
-// Tag icon + color palette.
-const TAG_META: &[(&str, char, [f32; 4])] = &[
-    ("core",  '\u{25CF}', [0.40, 0.70, 1.00, 1.0]),  // bright blue
-    ("api",   '\u{25B6}', [0.40, 0.90, 0.60, 1.0]),  // green
-    ("ui",    '\u{25C6}', [0.95, 0.60, 0.20, 1.0]),  // orange
-    ("data",  '\u{25A0}', [0.80, 0.40, 0.90, 1.0]),  // purple
-    ("infra", '\u{25B2}', [0.90, 0.30, 0.30, 1.0]),  // red
-    ("test",  '\u{2714}', [0.60, 0.85, 0.85, 1.0]),  // cyan
-];
-
-fn tag_icon(tag: &str) -> char {
-    TAG_META.iter().find(|(t, _, _)| *t == tag).map_or('\u{25CF}', |m| m.1)
-}
-
-fn tag_color(tag: &str) -> [f32; 4] {
-    TAG_META.iter().find(|(t, _, _)| *t == tag).map_or([0.65, 0.65, 0.70, 1.0], |m| m.2)
-}
-
 fn build_graph(seed: u64) -> GraphData {
     let mut rng = Lcg::new(seed);
-    let mut graph = GraphData::with_capacity(60, 90);
+    let mut graph = GraphData::with_capacity(80, 120);
 
     let names = [
         "Alpha","Beta","Gamma","Delta","Epsilon","Zeta","Eta","Theta",
@@ -83,61 +85,126 @@ fn build_graph(seed: u64) -> GraphData {
         "Antares","Fomalhaut","Acrux","Mimosa","Hadar","Canopus",
     ];
 
-    // 50 regular nodes with per-tag icon + color + tooltip.
-    let mut ids = Vec::with_capacity(60);
-    for name in &names {
+    // ── 50 Regular nodes — spread across time 0..100 ──────────────────────────
+    let mut ids = Vec::with_capacity(80);
+    for (i, name) in names.iter().enumerate() {
         let tag = TAGS[rng.next_usize(TAGS.len())];
-        let tooltip = format!("{name} — tag: #{tag}\nHover for details; drag to pin.");
+        let created_at = i as f32 * 2.0 + rng.next_f32() * 1.5; // 0 .. ~100
+        let tooltip = format!("{name} — #{tag}\ncreated_at: {created_at:.1}");
         ids.push(graph.add_node(
             NodeStyle::new(*name)
                 .with_tag(tag)
                 .with_icon(tag_icon(tag))
                 .with_color(tag_color(tag))
-                .with_tooltip(tooltip),
+                .with_tooltip(tooltip)
+                .with_timestamp(created_at),
         ));
     }
 
-    // 6 hub/tag nodes (square shape) — one per tag, larger radius.
+    // ── 6 Tag hub nodes (NodeKind::Tag = square, large, pinned) ───────────────
+    let mut hub_ids = Vec::with_capacity(6);
     for &(tag, icon, color) in TAG_META {
-        let label = format!("#{tag}");
-        ids.push(graph.add_node(
-            NodeStyle::new(label)
+        let id = graph.add_node(
+            NodeStyle::new(format!("#{tag}"))
                 .with_kind(NodeKind::Tag)
                 .with_tag(tag)
                 .with_icon(icon)
                 .with_color(color)
-                .with_radius(18.0),
-        ));
+                .with_radius(18.0)
+                .pinned(),
+        );
+        hub_ids.push(id);
+        ids.push(id);
     }
 
-    // 4 unresolved / stub nodes (diamond shape).
+    // ── 4 Unresolved stub nodes (NodeKind::Unresolved = diamond) ─────────────
     for name in &["???mod_x", "???dep_y", "???ext_z", "???todo"] {
         ids.push(graph.add_node(
             NodeStyle::new(*name)
                 .with_kind(NodeKind::Unresolved)
-                .with_color([0.60, 0.60, 0.60, 1.0]),
+                .with_color([0.55, 0.55, 0.55, 1.0])
+                .with_timestamp(80.0 + rng.next_f32() * 20.0),
         ));
     }
 
-    // Preferential-attachment edges for the first 50 nodes.
+    // ── 4 Attachment nodes (NodeKind::Attachment = small circle) ──────────────
+    for name in &["attach_A", "attach_B", "attach_C", "attach_D"] {
+        ids.push(graph.add_node(
+            NodeStyle::new(*name)
+                .with_kind(NodeKind::Attachment)
+                .with_color([0.70, 0.70, 0.50, 1.0])
+                .with_timestamp(50.0 + rng.next_f32() * 30.0),
+        ));
+    }
+
+    // ── 2 Cluster nodes (NodeKind::Cluster = large octagon) ───────────────────
+    let cluster_a = graph.add_node(
+        NodeStyle::new("Cluster-A")
+            .with_kind(NodeKind::Cluster)
+            .with_color([0.30, 0.60, 0.80, 1.0])
+            .with_radius(22.0)
+            .pinned()
+            .with_tooltip("Cluster A — aggregates 'core' and 'api' nodes"),
+    );
+    let cluster_b = graph.add_node(
+        NodeStyle::new("Cluster-B")
+            .with_kind(NodeKind::Cluster)
+            .with_color([0.80, 0.40, 0.60, 1.0])
+            .with_radius(22.0)
+            .pinned()
+            .with_tooltip("Cluster B — aggregates 'ui' and 'data' nodes"),
+    );
+
+    // ── Edges: preferential attachment (undirected) ────────────────────────────
     for i in 1..50 {
         let j = rng.next_usize(i);
         let w = 0.3 + rng.next_f32() * 0.7;
-        let _ = graph.add_edge(ids[i], ids[j], EdgeStyle::new(), w, false);
+        let created_at = i as f32 * 2.0;
+        let _ = graph.add_edge(
+            ids[i], ids[j],
+            EdgeStyle::new().with_timestamp(created_at),
+            w, false,
+        );
     }
     // Extra random edges.
-    for _ in 0..35 {
+    for _ in 0..30 {
         let a = rng.next_usize(50);
         let b = rng.next_usize(50);
         if a != b {
             let _ = graph.add_edge(ids[a], ids[b], EdgeStyle::new(), 0.4, false);
         }
     }
-    // Connect hub/tag nodes to regular nodes sharing the same tag.
-    for hub_i in 50..56 {
-        for _ in 0..6 {
-            let target = rng.next_usize(50);
-            let _ = graph.add_edge(ids[hub_i], ids[target], EdgeStyle::new(), 0.7, false);
+
+    // ── Directed edges: hub → members (show arrowheads) ───────────────────────
+    for (hub_i, &(tag, _, _)) in TAG_META.iter().enumerate() {
+        let hub = hub_ids[hub_i];
+        for &target in ids[..50].iter() {
+            if graph.node(target).is_some_and(|n| n.tags.contains(&tag)) {
+                let _ = graph.add_edge(
+                    hub, target,
+                    EdgeStyle::new().with_color([0.7, 0.7, 0.7, 0.5]),
+                    0.7, true, // directed = true → arrowhead
+                );
+            }
+        }
+    }
+
+    // ── Cluster connections ────────────────────────────────────────────────────
+    for &id in ids[..20].iter() {
+        let _ = graph.add_edge(cluster_a, id, EdgeStyle::new(), 0.5, false);
+    }
+    for &id in ids[20..40].iter() {
+        let _ = graph.add_edge(cluster_b, id, EdgeStyle::new(), 0.5, false);
+    }
+
+    // ── Attachment nodes connected to nearby regular nodes ─────────────────────
+    let attach_start = 60; // idx in ids where attachment nodes begin
+    for i in 0..4 {
+        if let Some(&att) = ids.get(attach_start + i) {
+            for _ in 0..3 {
+                let target = rng.next_usize(50);
+                let _ = graph.add_edge(att, ids[target], EdgeStyle::new(), 0.3, false);
+            }
         }
     }
 
@@ -145,6 +212,10 @@ fn build_graph(seed: u64) -> GraphData {
 }
 
 // ─── Demo state ───────────────────────────────────────────────────────────────
+
+const COLOR_MODES: &[&str] = &[
+    "Static", "By Tag", "By Community", "By PageRank", "By Betweenness",
+];
 
 struct DemoState {
     viewer: GraphViewer,
@@ -154,25 +225,23 @@ struct DemoState {
     color_mode_idx: usize,
 }
 
-const COLOR_MODE_NAMES: &[&str] = &["By Tag", "Static", "By PageRank", "By Betweenness"];
-
 impl DemoState {
     fn new() -> Self {
         let seed = 42;
         let graph = build_graph(seed);
 
-        use dear_imgui_custom_mod::force_graph::config::ColorGroup;
         let mut config = ViewerConfig {
             background_grid: true,
             hover_fade_opacity: 0.12,
-            color_mode: ColorMode::Static,  // per-node color already set
+            glow_on_hover: true,
+            color_mode: ColorMode::Static,
             show_labels: LabelVisibility::BySize,
             min_label_zoom: 0.45,
-            glow_on_hover: true,
+            minimap: true,                // Phase D: minimap overlay enabled
+            search_highlight_mode: true,  // Phase D: dim non-matches instead of hiding
             ..ViewerConfig::default()
         };
 
-        // Color groups match per-tag colors from TAG_META.
         for &(tag, _, color) in TAG_META {
             config.color_groups.push(ColorGroup::new(
                 tag,
@@ -181,7 +250,7 @@ impl DemoState {
             ));
         }
 
-        let viewer = GraphViewer::new("kg_main")
+        let viewer = GraphViewer::new("fg_main")
             .with_config(config)
             .with_force_config(ForceConfig::default())
             .with_sidebar(SidebarKind::Built);
@@ -200,16 +269,16 @@ impl DemoState {
         if self.event_log.last() != Some(&msg) {
             self.event_log.push(msg);
         }
-        if self.event_log.len() > 120 {
+        if self.event_log.len() > 150 {
             self.event_log.remove(0);
         }
     }
 
     fn render(&mut self, ui: &Ui) {
-        ui.window("Force Graph Demo")
-            .size([1280.0, 800.0], Condition::FirstUseEver)
+        ui.window("Force Graph Demo — all features")
+            .size([1440.0, 900.0], Condition::FirstUseEver)
             .build(|| {
-                // ── Toolbar ──────────────────────────────────────────────
+                // ── Toolbar ──────────────────────────────────────────────────
                 if ui.button("Regenerate") { self.regenerate(); }
                 ui.same_line();
                 if ui.button("Fit [F]") {
@@ -223,18 +292,27 @@ impl DemoState {
                 }
                 ui.same_line();
 
-                // Color mode combo.
+                // Select all via API.
+                if ui.button("Select all") {
+                    let all: Vec<_> = self.graph.nodes().map(|(id, _)| id).collect();
+                    self.viewer.select_multi(&all);
+                    self.log(format!("select_multi: {} nodes", all.len()));
+                }
+                ui.same_line();
+
+                // Recompute metrics + switch color mode.
                 {
-                    let _w = ui.push_item_width(130.0);
-                    if let Some(_c) = ui.begin_combo("##cmode", COLOR_MODE_NAMES[self.color_mode_idx]) {
-                        for (i, label) in COLOR_MODE_NAMES.iter().enumerate() {
-                            let selected = i == self.color_mode_idx;
-                            if ui.selectable_config(*label).selected(selected).build() {
+                    let _w = ui.push_item_width(150.0);
+                    if let Some(_c) = ui.begin_combo("##cmode", COLOR_MODES[self.color_mode_idx]) {
+                        for (i, label) in COLOR_MODES.iter().enumerate() {
+                            let sel = i == self.color_mode_idx;
+                            if ui.selectable_config(*label).selected(sel).build() {
                                 self.color_mode_idx = i;
                                 self.viewer.config.color_mode = match i {
-                                    0 => ColorMode::ByTag,
-                                    1 => ColorMode::Static,
-                                    2 => { self.graph.recompute_metrics_if_needed(); ColorMode::ByPageRank }
+                                    0 => ColorMode::Static,
+                                    1 => ColorMode::ByTag,
+                                    2 => { self.graph.recompute_metrics_if_needed(); ColorMode::ByCommunity }
+                                    3 => { self.graph.recompute_metrics_if_needed(); ColorMode::ByPageRank }
                                     _ => { self.graph.recompute_metrics_if_needed(); ColorMode::ByBetweenness }
                                 };
                             }
@@ -251,9 +329,9 @@ impl DemoState {
 
                 ui.separator();
 
-                // ── Main area: graph + log ────────────────────────────────
+                // ── Main area: graph + log ────────────────────────────────────
                 let avail = ui.content_region_avail();
-                let log_w = 240.0_f32;
+                let log_w = 260.0_f32;
                 let graph_w = avail[0] - log_w - 8.0;
 
                 // Graph canvas.
@@ -265,47 +343,43 @@ impl DemoState {
                         for ev in &events {
                             let msg = match ev {
                                 GraphEvent::NodeClicked(id) => {
-                                    let lbl = self.graph.node(*id)
-                                        .map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
                                     format!("Click: {lbl}")
                                 }
                                 GraphEvent::NodeDoubleClicked(id) => {
-                                    let lbl = self.graph.node(*id)
-                                        .map(|s| s.label.as_str()).unwrap_or("?");
-                                    format!("DblClick: {lbl}")
+                                    // Double-click → smooth camera focus via viewer.focus()
+                                    self.viewer.focus(*id);
+                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
+                                    format!("Focus→ {lbl}")
                                 }
-                                GraphEvent::NodeHovered(_) => return,  // too noisy
-                                GraphEvent::CameraChanged => return,   // too noisy
+                                GraphEvent::NodeHovered(_) => return,
+                                GraphEvent::CameraChanged => return,
                                 GraphEvent::NodeContextMenu(id, _) => {
-                                    let lbl = self.graph.node(*id)
-                                        .map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
                                     format!("RClick: {lbl}")
                                 }
                                 GraphEvent::SelectionChanged(sel) => {
                                     format!("Selection: {} nodes", sel.len())
                                 }
                                 GraphEvent::FilterChanged => "Filter changed".into(),
+                                GraphEvent::SearchChanged(q) => format!("Search: \"{q}\""),
+                                GraphEvent::GroupChanged => "Color groups changed".into(),
                                 GraphEvent::NodeMoved(id, _) => {
-                                    let lbl = self.graph.node(*id)
-                                        .map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
                                     format!("Dragged: {lbl}")
                                 }
                                 GraphEvent::NodePinned(id, p) => {
-                                    let lbl = self.graph.node(*id)
-                                        .map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
                                     format!("{} {lbl}", if *p { "Pinned:" } else { "Unpinned:" })
                                 }
                                 GraphEvent::NodeActivated(id) => {
-                                    let lbl = self.graph.node(*id)
-                                        .map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
                                     format!("Activated: {lbl}")
                                 }
                                 GraphEvent::SelectionDeleteRequested(sel) => {
                                     format!("Delete {} nodes?", sel.len())
                                 }
                                 GraphEvent::FitToScreen => "Fit to screen".into(),
-                                GraphEvent::SearchChanged(q) => format!("Search: {q}"),
-                                GraphEvent::GroupChanged => "Color groups changed".into(),
                                 GraphEvent::SimulationToggled(paused) => {
                                     format!("Sim {}", if *paused { "paused" } else { "running" })
                                 }
@@ -324,7 +398,7 @@ impl DemoState {
                     .build(ui, || {
                         ui.text_disabled("Event log");
                         ui.separator();
-                        let start = self.event_log.len().saturating_sub(20);
+                        let start = self.event_log.len().saturating_sub(24);
                         for entry in &self.event_log[start..] {
                             ui.text_wrapped(entry);
                         }
@@ -333,21 +407,36 @@ impl DemoState {
                         }
 
                         ui.separator();
-                        ui.text_disabled("Shapes");
+                        ui.text_disabled("Node shapes");
                         ui.bullet_text("Circle  = Regular");
-                        ui.bullet_text("Square  = Tag node");
+                        ui.bullet_text("Square  = Tag hub (pinned)");
                         ui.bullet_text("Diamond = Unresolved");
+                        ui.bullet_text("Small   = Attachment");
+                        ui.bullet_text("Octagon = Cluster (pinned)");
+
+                        ui.separator();
+                        ui.text_disabled("Edge types");
+                        ui.bullet_text("Plain   = undirected");
+                        ui.bullet_text("Arrow   = directed (hub→member)");
+
+                        ui.separator();
+                        ui.text_disabled("Features (Phase D)");
+                        ui.bullet_text("Minimap: bottom-right corner");
+                        ui.bullet_text("Time-travel: sidebar Filters");
+                        ui.bullet_text("Search: dims non-matches");
+                        ui.bullet_text("Export: sidebar bottom");
 
                         ui.separator();
                         ui.text_disabled("Keys");
-                        ui.bullet_text("Arrows — pan");
-                        ui.bullet_text("+/-    — zoom");
-                        ui.bullet_text("F      — fit");
-                        ui.bullet_text("Space  — pause sim");
-                        ui.bullet_text("P      — pin selected");
-                        ui.bullet_text("Esc    — clear selection");
-                        ui.bullet_text("Del    — delete request");
-                        ui.bullet_text("RClick — context menu");
+                        ui.bullet_text("Arrows  pan");
+                        ui.bullet_text("+/-     zoom");
+                        ui.bullet_text("F       fit");
+                        ui.bullet_text("Space   pause sim");
+                        ui.bullet_text("P       pin selected");
+                        ui.bullet_text("Esc     clear selection");
+                        ui.bullet_text("Del     delete request");
+                        ui.bullet_text("DblClick  focus node");
+                        ui.bullet_text("RClick  context menu");
                     });
             });
     }
@@ -368,7 +457,6 @@ struct GpuState {
 }
 
 struct App { gpu: Option<GpuState> }
-
 impl App { fn new() -> Self { Self { gpu: None } } }
 
 impl ApplicationHandler for App {
@@ -379,7 +467,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_inner_size(LogicalSize::new(1280.0, 800.0))
+                        .with_inner_size(LogicalSize::new(1440.0, 900.0))
                         .with_title("Force Graph Demo — dear-imgui-custom-mod"),
                 )
                 .expect("window"),
@@ -446,9 +534,10 @@ impl ApplicationHandler for App {
             context, platform, renderer, demo: DemoState::new() });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId, event: WindowEvent)
-    {
+    fn window_event(
+        &mut self, event_loop: &ActiveEventLoop,
+        window_id: winit::window::WindowId, event: WindowEvent,
+    ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
         gpu.platform.handle_event::<()>(&mut gpu.context, &gpu.window,
             &Event::WindowEvent { window_id, event: event.clone() });
@@ -468,16 +557,14 @@ impl ApplicationHandler for App {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
-                    other => { eprintln!("Surface unavailable: {other:?}"); return; }
+                    other => { eprintln!("Surface error: {other:?}"); return; }
                 };
-
                 let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);
                 gpu.platform.prepare_render_with_ui(ui, &gpu.window);
                 let draw_data = gpu.context.render();
-
                 let mut enc = gpu.device.create_command_encoder(
                     &wgpu::CommandEncoderDescriptor { label: Some("imgui") });
                 {
