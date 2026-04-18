@@ -34,8 +34,11 @@ impl VisibleSet {
 
 /// Compute which nodes are visible given the current filter state.
 ///
+/// `search_highlight` — when `true`, the search-query pass is skipped so the
+/// render layer can dim non-matching nodes instead of hiding them.
+///
 /// Returns [`VisibleSet::All`] when the filter is an identity (nothing active).
-pub(crate) fn compute(graph: &GraphData, filter: &FilterState) -> VisibleSet {
+pub(crate) fn compute(graph: &GraphData, filter: &FilterState, search_highlight: bool) -> VisibleSet {
     if filter.is_identity() {
         return VisibleSet::All;
     }
@@ -50,8 +53,8 @@ pub(crate) fn compute(graph: &GraphData, filter: &FilterState) -> VisibleSet {
         });
     }
 
-    // ── Search filter ───────────────────────────────────────────────────────
-    if !filter.search_query.is_empty() {
+    // ── Search filter (skipped when search_highlight is on) ─────────────────
+    if !search_highlight && !filter.search_query.is_empty() {
         let q = filter.search_query.to_ascii_lowercase();
         set.retain(|id| {
             let Some(node) = graph.node(*id) else { return false };
@@ -64,6 +67,14 @@ pub(crate) fn compute(graph: &GraphData, filter: &FilterState) -> VisibleSet {
             } else {
                 false
             }
+        });
+    }
+
+    // ── Time-travel filter ──────────────────────────────────────────────────
+    if filter.time_threshold.is_finite() {
+        set.retain(|id| {
+            let Some(node) = graph.node(*id) else { return false };
+            node.created_at <= filter.time_threshold
         });
     }
 

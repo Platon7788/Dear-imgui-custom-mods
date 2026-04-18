@@ -202,6 +202,7 @@ impl GraphViewer {
 
         sidebar::render_sidebar(
             ui,
+            graph,
             &mut self.config,
             &mut self.force_config,
             &mut self.filter,

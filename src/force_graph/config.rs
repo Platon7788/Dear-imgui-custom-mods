@@ -360,6 +360,10 @@ pub struct ViewerConfig {
     /// Draw a convex-hull outline around nodes in the same Louvain community.
     /// Requires the metrics pass to have run. Phase C.
     pub cluster_hulls: bool,
+
+    /// When `true`, an active `search_query` *dims* non-matching nodes
+    /// (alpha × 0.15) rather than hiding them. Default `true`.
+    pub search_highlight_mode: bool,
 }
 
 impl Default for ViewerConfig {
@@ -395,6 +399,7 @@ impl Default for ViewerConfig {
             fit_padding:               40.0,
             depth_fade:                false,
             cluster_hulls:             false,
+            search_highlight_mode:     true,
         }
     }
 }
@@ -432,6 +437,7 @@ impl std::fmt::Debug for ViewerConfig {
             .field("fit_padding", &self.fit_padding)
             .field("depth_fade", &self.depth_fade)
             .field("cluster_hulls", &self.cluster_hulls)
+            .field("search_highlight_mode", &self.search_highlight_mode)
             .finish()
     }
 }

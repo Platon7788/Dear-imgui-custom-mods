@@ -7,6 +7,7 @@
 use dear_imgui_rs::{TreeNodeFlags, Ui};
 
 use super::config::{ColorGroup, ColorGroupQuery, ForceConfig, SidebarKind, ViewerConfig};
+use super::data::GraphData;
 use super::event::GraphEvent;
 use super::filter::FilterState;
 
@@ -20,6 +21,7 @@ use super::filter::FilterState;
 /// Returns `false` immediately when `kind` is [`SidebarKind::None`].
 pub(crate) fn render_sidebar(
     ui: &Ui,
+    graph: &GraphData,
     config: &mut ViewerConfig,
     force_config: &mut ForceConfig,
     filter: &mut FilterState,
@@ -46,6 +48,7 @@ pub(crate) fn render_sidebar(
             render_color_groups(ui, config, events);
             render_display(ui, config, events);
             render_physics(ui, force_config, events);
+            render_export(ui, graph);
         });
 
     hovered
@@ -93,6 +96,21 @@ fn render_filters(ui: &Ui, filter: &mut FilterState, events: &mut Vec<GraphEvent
         } else {
             Some(depth_val as u32)
         };
+        events.push(GraphEvent::FilterChanged);
+    }
+
+    // --- time-travel slider -------------------------------------------------
+    ui.separator();
+    ui.text("Time travel:");
+    let is_inf = filter.time_threshold.is_infinite();
+    let mut t_val = if is_inf { 1000.0_f32 } else { filter.time_threshold };
+    if ui.slider("##time", 0.0_f32, 1000.0_f32, &mut t_val) {
+        filter.time_threshold = if t_val >= 999.9 { f32::INFINITY } else { t_val };
+        events.push(GraphEvent::FilterChanged);
+    }
+    ui.same_line();
+    if ui.small_button("All") {
+        filter.time_threshold = f32::INFINITY;
         events.push(GraphEvent::FilterChanged);
     }
 
@@ -251,6 +269,32 @@ fn render_display(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<GraphEven
 
     if changed {
         events.push(GraphEvent::FilterChanged);
+    }
+
+    ui.spacing();
+}
+
+// ─── Section: Export ──────────────────────────────────────────────────────
+
+/// Render the "Export" collapsing section.
+fn render_export(ui: &Ui, graph: &GraphData) {
+    if !ui.collapsing_header("Export", TreeNodeFlags::empty()) {
+        return;
+    }
+
+    if ui.button("Copy SVG") {
+        let svg = super::render::export::export_svg(graph);
+        ui.set_clipboard_text(svg);
+    }
+    ui.same_line();
+    if ui.button("Copy DOT") {
+        let dot = super::render::export::export_dot(graph);
+        ui.set_clipboard_text(dot);
+    }
+    ui.same_line();
+    if ui.button("Copy Mermaid") {
+        let mmd = super::render::export::export_mermaid(graph);
+        ui.set_clipboard_text(mmd);
     }
 
     ui.spacing();

@@ -6,6 +6,7 @@
 
 pub(crate) mod camera;
 pub(crate) mod edge_bundle;
+pub(crate) mod export;
 pub(crate) mod groups;
 pub(crate) mod interaction;
 pub(crate) mod labels;
@@ -102,6 +103,7 @@ pub(crate) fn render(
     let dt = ui.io().delta_time();
     ctx.sim.tick(graph, force_config, dt);
     let was_animating = ctx.camera.is_animating();
+    ctx.camera.update_inertia(dt, 5.0);
     ctx.camera.update_animation(dt);
     if was_animating {
         events.push(GraphEvent::CameraChanged);
@@ -122,7 +124,7 @@ pub(crate) fn render(
     let canvas_hovered = ui.is_item_hovered();
 
     // 6. Visibility pass — which nodes to draw.
-    let visible = visibility::compute(graph, ctx.filter);
+    let visible = visibility::compute(graph, ctx.filter, config.search_highlight_mode);
 
     // 7. Handle camera pan and zoom.
     let io = ui.io();
@@ -295,6 +297,13 @@ pub(crate) fn render(
             continue;
         }
 
+        // Time-travel: hide edges created after the threshold.
+        if ctx.filter.time_threshold.is_finite()
+            && edge.style.created_at > ctx.filter.time_threshold
+        {
+            continue;
+        }
+
         let sa = ctx.camera.world_to_screen(node_a.pos, canvas_min);
         let sb = ctx.camera.world_to_screen(node_b.pos, canvas_min);
 
@@ -350,11 +359,22 @@ pub(crate) fn render(
         let num_segments: i32 = if use_lod || screen_radius < 4.0 { 4 } else { 0 };
 
         // Hover fade: dim non-neighbor nodes.
-        let node_alpha = if hover_active {
+        let mut node_alpha = if hover_active {
             if ctx.hover_neighbors.contains(&node_id) { 1.0 } else { config.hover_fade_opacity }
         } else {
             1.0
         };
+
+        // Search-highlight: dim nodes that don't match the active query.
+        if config.search_highlight_mode && !ctx.filter.search_query.is_empty() {
+            let q = ctx.filter.search_query.to_ascii_lowercase();
+            let label_match = node.style.label.to_ascii_lowercase().contains(&q);
+            let tag_match = ctx.filter.search_match_tags
+                && node.style.tags.iter().any(|t| t.to_ascii_lowercase().contains(&q));
+            if !label_match && !tag_match {
+                node_alpha *= 0.15;
+            }
+        }
 
         // Resolve fill color (color groups take priority).
         let base_fill = groups::resolve_group_color(&node.style, &config.color_groups)
@@ -517,6 +537,11 @@ pub(crate) fn render(
         mouse,
         &colors,
     );
+
+    // 22. Minimap overlay (bottom-right corner).
+    if config.minimap {
+        minimap::render_minimap(ui, graph, ctx.camera, canvas_min, canvas_size, &draw);
+    }
 
     events
 }
