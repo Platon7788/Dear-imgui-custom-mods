@@ -6,6 +6,8 @@
 
 use dear_imgui_rs::{TreeNodeFlags, Ui};
 
+use crate::utils::clipboard::set_clipboard;
+
 use super::config::{ColorGroup, ColorGroupQuery, ForceConfig, SidebarKind, ViewerConfig};
 use super::data::GraphData;
 use super::event::GraphEvent;
@@ -283,18 +285,15 @@ fn render_export(ui: &Ui, graph: &GraphData) {
     }
 
     if ui.button("Copy SVG") {
-        let svg = super::render::export::export_svg(graph);
-        ui.set_clipboard_text(svg);
+        set_clipboard(&super::render::export::export_svg(graph));
     }
     ui.same_line();
     if ui.button("Copy DOT") {
-        let dot = super::render::export::export_dot(graph);
-        ui.set_clipboard_text(dot);
+        set_clipboard(&super::render::export::export_dot(graph));
     }
     ui.same_line();
     if ui.button("Copy Mermaid") {
-        let mmd = super::render::export::export_mermaid(graph);
-        ui.set_clipboard_text(mmd);
+        set_clipboard(&super::render::export::export_mermaid(graph));
     }
 
     ui.spacing();
