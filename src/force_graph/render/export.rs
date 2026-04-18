@@ -42,7 +42,7 @@ pub(crate) fn export_svg(graph: &GraphData) -> String {
     ));
 
     // Edges.
-    s.push_str(r#"<g stroke="#556" stroke-width="1" opacity="0.75">"#);
+    s.push_str(r##"<g stroke="#556" stroke-width="1" opacity="0.75">"##);
     for (_, edge) in graph.edges.iter() {
         let Some(na) = graph.nodes.get(edge.from) else { continue };
         let Some(nb) = graph.nodes.get(edge.to) else { continue };
@@ -62,7 +62,7 @@ pub(crate) fn export_svg(graph: &GraphData) -> String {
 
     // Arrow marker definition (only if any directed edges exist).
     if graph.edges().any(|(_, e)| e.directed) {
-        s.push_str(r#"<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#888"/></marker></defs>"#);
+        s.push_str(r##"<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#888"/></marker></defs>"##);
     }
 
     // Nodes.
@@ -77,12 +77,12 @@ pub(crate) fn export_svg(graph: &GraphData) -> String {
             ),
         );
         s.push_str(&format!(
-            r#"<circle cx="{cx:.1}" cy="{cy:.1}" r="{r:.1}" fill="{fill}" stroke="#fff" stroke-width="0.8"/>"#
+            r##"<circle cx="{cx:.1}" cy="{cy:.1}" r="{r:.1}" fill="{fill}" stroke="#fff" stroke-width="0.8"/>"##
         ));
         if !node.style.label.is_empty() {
             let label = xml_escape(&node.style.label);
             s.push_str(&format!(
-                r#"<text x="{cx:.1}" y="{:.1}" font-size="9" text-anchor="middle" fill="#ccc">{label}</text>"#,
+                r##"<text x="{cx:.1}" y="{:.1}" font-size="9" text-anchor="middle" fill="#ccc">{label}</text>"##,
                 cy + r + 10.0
             ));
         }

@@ -64,7 +64,7 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
     let h = haystack.as_bytes();
     let n = needle.as_bytes();
     h.windows(n.len())
-        .any(|w| w.iter().zip(n).all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase()))
+        .any(|w| w.eq_ignore_ascii_case(n))
 }
 
 
