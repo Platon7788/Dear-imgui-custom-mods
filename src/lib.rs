@@ -153,6 +153,8 @@ pub mod toolbar;
 pub mod virtual_table;
 #[cfg(feature = "virtual_tree")]
 pub mod virtual_tree;
+#[cfg(feature = "knowledge_graph")]
+pub mod knowledge_graph;
 
 // ─── Demo helpers (internal; only compiled when `full` is on) ────────────────
 //

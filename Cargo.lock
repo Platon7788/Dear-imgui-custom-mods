@@ -537,6 +537,7 @@ dependencies = [
  "foldhash 0.2.0",
  "pollster",
  "proptest",
+ "slotmap",
  "wgpu",
  "windows-sys 0.61.2",
  "winit",
