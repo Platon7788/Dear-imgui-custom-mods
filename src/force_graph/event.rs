@@ -1,4 +1,4 @@
-//! Graph events emitted by [`crate::knowledge_graph::GraphViewer::render`].
+//! Graph events emitted by [`crate::force_graph::GraphViewer::render`].
 
 use std::collections::HashSet;
 
@@ -7,7 +7,7 @@ use super::data::NodeId;
 /// A public-facing event emitted by the knowledge-graph viewer each frame.
 ///
 /// Events are returned in a `Vec<GraphEvent>` from
-/// [`crate::knowledge_graph::GraphViewer::render`]. Callers should drain this
+/// [`crate::force_graph::GraphViewer::render`]. Callers should drain this
 /// vec after every frame and react to relevant variants.
 #[must_use]
 pub enum GraphEvent {
@@ -47,6 +47,9 @@ pub enum GraphEvent {
     SelectionDeleteRequested(HashSet<NodeId>),
     /// Fit-to-screen was triggered (button or 'F' key).
     FitToScreen,
+    /// The sidebar "Reset Layout" button was pressed — layout was scattered
+    /// and the physics simulation was restarted.
+    ResetLayout,
     /// The search query in the sidebar changed.
     SearchChanged(String),
     /// A color group was added, removed, or modified.
@@ -82,6 +85,7 @@ impl std::fmt::Debug for GraphEvent {
                 )
             }
             Self::FitToScreen => write!(f, "GraphEvent::FitToScreen"),
+            Self::ResetLayout => write!(f, "GraphEvent::ResetLayout"),
             Self::SearchChanged(q) => write!(f, "GraphEvent::SearchChanged({q:?})"),
             Self::GroupChanged => write!(f, "GraphEvent::GroupChanged"),
             Self::SimulationToggled(paused) => {

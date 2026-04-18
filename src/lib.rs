@@ -153,8 +153,10 @@ pub mod toolbar;
 pub mod virtual_table;
 #[cfg(feature = "virtual_tree")]
 pub mod virtual_tree;
-#[cfg(feature = "knowledge_graph")]
-pub mod knowledge_graph;
+#[cfg(feature = "force_graph")]
+pub mod force_graph;
+#[cfg(feature = "force_graph")]
+pub use force_graph as knowledge_graph; // backwards-compat alias
 
 // ─── Demo helpers (internal; only compiled when `full` is on) ────────────────
 //

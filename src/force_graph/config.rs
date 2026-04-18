@@ -3,7 +3,7 @@
 //! [`ViewerConfig`] is the top-level configuration bundle. It is cheap to
 //! clone (the only heap allocation is the optional boxed [`GraphColors`]
 //! override and the label-visibility variant). Build one at startup and hand
-//! it to [`crate::knowledge_graph::GraphViewer`].
+//! it to [`crate::force_graph::GraphViewer`].
 //!
 //! [`ForceConfig`] controls Barnes-Hut force-directed physics separately so
 //! callers can tweak the simulation without touching visual settings.
@@ -155,7 +155,7 @@ pub enum SidebarKind {
 /// Configuration for the time-travel slider in the sidebar.
 ///
 /// When present on [`ViewerConfig::time_travel`], the sidebar shows a slider
-/// that controls [`crate::knowledge_graph::filter::FilterState::time_threshold`].
+/// that controls [`crate::force_graph::filter::FilterState::time_threshold`].
 #[derive(Debug, Clone)]
 pub struct TimeTravelSlider {
     /// Minimum slider value (earliest timestamp to show).
@@ -226,7 +226,7 @@ impl Default for ForceConfig {
 
 // ─── Viewer config ────────────────────────────────────────────────────────────
 
-/// Top-level configuration for [`crate::knowledge_graph::GraphViewer`].
+/// Top-level configuration for [`crate::force_graph::GraphViewer`].
 ///
 /// Construct with `ViewerConfig::default()` and override individual fields:
 ///
@@ -291,6 +291,9 @@ pub struct ViewerConfig {
     pub drag_enabled: bool,
     /// When `true`, a right-click context menu is shown on nodes.
     pub context_menu_enabled: bool,
+    /// When `true`, dragging a node automatically pins it so the physics
+    /// simulation does not pull it back after release. Default `true`.
+    pub pin_on_drag: bool,
 
     // ── Hover appearance ─────────────────────────────────────────────────────
 
@@ -377,6 +380,7 @@ impl Default for ViewerConfig {
             color_mode:                ColorMode::Static,
             drag_enabled:              true,
             context_menu_enabled:      true,
+            pin_on_drag:               true,
             hover_fade_opacity:        0.15,
             glow_on_hover:             true,
             text_fade_threshold:       0.0,
@@ -413,6 +417,7 @@ impl std::fmt::Debug for ViewerConfig {
             .field("color_mode", &self.color_mode)
             .field("drag_enabled", &self.drag_enabled)
             .field("context_menu_enabled", &self.context_menu_enabled)
+            .field("pin_on_drag", &self.pin_on_drag)
             .field("hover_fade_opacity", &self.hover_fade_opacity)
             .field("glow_on_hover", &self.glow_on_hover)
             .field("text_fade_threshold", &self.text_fade_threshold)

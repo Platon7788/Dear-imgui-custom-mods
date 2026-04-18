@@ -73,11 +73,13 @@ code_editor = []
 node_graph = []
 page_control = []
 timeline = []
-# Force-directed graph viewer — Obsidian-like knowledge graph with Barnes-Hut
-# physics, pan/zoom/select, sidebar, metrics (PageRank/Louvain/betweenness),
-# time-travel slider, search-as-highlight, and SVG/DOT/Mermaid export.
+# Force-directed interactive graph viewer — Obsidian-style with Barnes-Hut
+# physics, pan/zoom/drag/select, sidebar, PageRank/betweenness metrics,
+# color groups, BFS depth filter, and SVG/DOT/Mermaid export (Phase D).
 # Re-uses nav_panel palette for the sidebar. Requires slotmap for stable NodeId/EdgeId.
-knowledge_graph = ["nav_panel", "dep:slotmap"]
+force_graph = ["nav_panel", "dep:slotmap"]
+# Keep old name as alias so existing users aren't broken immediately.
+knowledge_graph = ["force_graph"]
 
 [dependencies]
 slotmap = { version = "1.0", optional = true }
@@ -196,6 +198,11 @@ path = "examples/demo_nav_panel.rs"
 required-features = ["nav_panel", "app_window"]
 
 [[example]]
+name = "demo_force_graph"
+path = "examples/demo_force_graph.rs"
+required-features = ["force_graph", "app_window"]
+
+[[example]]
 name = "demo_knowledge_graph"
 path = "examples/demo_knowledge_graph.rs"
-required-features = ["knowledge_graph", "app_window"]
+required-features = ["force_graph", "app_window"]

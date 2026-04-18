@@ -1,9 +1,9 @@
 //! Filter state for the knowledge-graph sidebar.
 //!
-//! [`FilterState`] is embedded inside [`crate::knowledge_graph::GraphViewer`]
+//! [`FilterState`] is embedded inside [`crate::force_graph::GraphViewer`]
 //! and exposed read-only via its public field. Callers may mutate the state
 //! directly or through the built-in sidebar UI — both paths set the
-//! [`crate::knowledge_graph::event::GraphEvent::FilterChanged`] event.
+//! [`crate::force_graph::event::GraphEvent::FilterChanged`] event.
 
 use super::data::NodeId;
 
@@ -11,7 +11,7 @@ use super::data::NodeId;
 ///
 /// All fields are `pub` so the host application can pre-populate them before
 /// handing the viewer to the render loop, or read them after a
-/// [`crate::knowledge_graph::event::GraphEvent::FilterChanged`] event.
+/// [`crate::force_graph::event::GraphEvent::FilterChanged`] event.
 ///
 /// A filter is a *narrowing* operation: a node is shown when it passes
 /// *every* active filter (tags, search query, time threshold, and optionally
@@ -47,7 +47,7 @@ pub struct FilterState {
 
     /// Minimum edge weight threshold.
     ///
-    /// Edges whose [`crate::knowledge_graph::style::Edge::weight`] is strictly
+    /// Edges whose [`crate::force_graph::style::Edge::weight`] is strictly
     /// less than this value are hidden. `0.0` (the default) shows all edges.
     pub min_edge_weight: f32,
 

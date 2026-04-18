@@ -79,9 +79,7 @@ fn render_filters(ui: &Ui, filter: &mut FilterState, events: &mut Vec<GraphEvent
     // --- search query --------------------------------------------------------
     ui.separator();
     ui.text("Search:");
-    let prev_query = filter.search_query.clone();
-    ui.input_text("##search", &mut filter.search_query).build();
-    if filter.search_query != prev_query {
+    if ui.input_text("##search", &mut filter.search_query).build() {
         events.push(GraphEvent::SearchChanged(filter.search_query.clone()));
         events.push(GraphEvent::FilterChanged);
     }
@@ -319,12 +317,12 @@ fn render_physics(ui: &Ui, force_config: &mut ForceConfig, events: &mut Vec<Grap
 
     // -- simulation controls -------------------------------------------------
     if ui.button("Pause/Resume") {
-        // Caller tracks actual paused state; we just signal the toggle.
+        // GraphViewer::render intercepts this and corrects the bool to actual sim state.
         events.push(GraphEvent::SimulationToggled(false));
     }
     ui.same_line();
     if ui.button("Reset Layout") {
-        events.push(GraphEvent::FitToScreen);
+        events.push(GraphEvent::ResetLayout);
     }
 
     ui.spacing();

@@ -1,4 +1,4 @@
-//! Demo: knowledge_graph — Obsidian/IDA-style force-directed graph viewer.
+//! Demo: force_graph — Obsidian/IDA-style force-directed graph viewer.
 //!
 //! Demonstrates Phase B + C features:
 //!   - 50+ nodes with preferential-attachment edges
@@ -10,10 +10,10 @@
 //!   - Keyboard: arrows=pan, +/-=zoom, F=fit, Esc=clear, Space=toggle sim, P=pin
 //!   - Regenerate button rebuilds the graph
 //!
-//! Run: cargo run --example demo_knowledge_graph --features knowledge_graph,app_window
+//! Run: cargo run --example demo_force_graph --features force_graph,app_window
 
-use dear_imgui_custom_mod::knowledge_graph::{
-    config::{ColorGroupQuery, ColorMode, ForceConfig, SidebarKind, ViewerConfig},
+use dear_imgui_custom_mod::force_graph::{
+    config::{ColorGroupQuery, ColorMode, ForceConfig, LabelVisibility, SidebarKind, ViewerConfig},
     data::GraphData,
     event::GraphEvent,
     style::{EdgeStyle, NodeKind, NodeStyle},
@@ -51,6 +51,24 @@ impl Lcg {
 
 // ─── Graph construction ───────────────────────────────────────────────────────
 
+// Tag icon + color palette.
+const TAG_META: &[(&str, char, [f32; 4])] = &[
+    ("core",  '\u{25CF}', [0.40, 0.70, 1.00, 1.0]),  // bright blue
+    ("api",   '\u{25B6}', [0.40, 0.90, 0.60, 1.0]),  // green
+    ("ui",    '\u{25C6}', [0.95, 0.60, 0.20, 1.0]),  // orange
+    ("data",  '\u{25A0}', [0.80, 0.40, 0.90, 1.0]),  // purple
+    ("infra", '\u{25B2}', [0.90, 0.30, 0.30, 1.0]),  // red
+    ("test",  '\u{2714}', [0.60, 0.85, 0.85, 1.0]),  // cyan
+];
+
+fn tag_icon(tag: &str) -> char {
+    TAG_META.iter().find(|(t, _, _)| *t == tag).map_or('\u{25CF}', |m| m.1)
+}
+
+fn tag_color(tag: &str) -> [f32; 4] {
+    TAG_META.iter().find(|(t, _, _)| *t == tag).map_or([0.65, 0.65, 0.70, 1.0], |m| m.2)
+}
+
 fn build_graph(seed: u64) -> GraphData {
     let mut rng = Lcg::new(seed);
     let mut graph = GraphData::with_capacity(60, 90);
@@ -65,27 +83,39 @@ fn build_graph(seed: u64) -> GraphData {
         "Antares","Fomalhaut","Acrux","Mimosa","Hadar","Canopus",
     ];
 
-    // 50 regular nodes with tags.
+    // 50 regular nodes with per-tag icon + color + tooltip.
     let mut ids = Vec::with_capacity(60);
     for name in &names {
         let tag = TAGS[rng.next_usize(TAGS.len())];
-        ids.push(graph.add_node(NodeStyle::new(*name).with_tag(tag)));
-    }
-
-    // 5 tag nodes (square shape).
-    for tag in &["#core", "#api", "#ui", "#data", "#infra"] {
+        let tooltip = format!("{name} — tag: #{tag}\nHover for details; drag to pin.");
         ids.push(graph.add_node(
-            NodeStyle::new(*tag)
-                .with_kind(NodeKind::Tag)
-                .with_tag(&tag[1..]),
+            NodeStyle::new(*name)
+                .with_tag(tag)
+                .with_icon(tag_icon(tag))
+                .with_color(tag_color(tag))
+                .with_tooltip(tooltip),
         ));
     }
 
-    // 5 unresolved / stub nodes (diamond shape).
-    for name in &["???mod_x", "???dep_y", "???ext_z", "???missing_a", "???todo_b"] {
+    // 6 hub/tag nodes (square shape) — one per tag, larger radius.
+    for &(tag, icon, color) in TAG_META {
+        let label = format!("#{tag}");
+        ids.push(graph.add_node(
+            NodeStyle::new(label)
+                .with_kind(NodeKind::Tag)
+                .with_tag(tag)
+                .with_icon(icon)
+                .with_color(color)
+                .with_radius(18.0),
+        ));
+    }
+
+    // 4 unresolved / stub nodes (diamond shape).
+    for name in &["???mod_x", "???dep_y", "???ext_z", "???todo"] {
         ids.push(graph.add_node(
             NodeStyle::new(*name)
-                .with_kind(NodeKind::Unresolved),
+                .with_kind(NodeKind::Unresolved)
+                .with_color([0.60, 0.60, 0.60, 1.0]),
         ));
     }
 
@@ -103,11 +133,11 @@ fn build_graph(seed: u64) -> GraphData {
             let _ = graph.add_edge(ids[a], ids[b], EdgeStyle::new(), 0.4, false);
         }
     }
-    // Connect tag nodes to random regular nodes.
-    for tag_idx in 50..55 {
-        for _ in 0..5 {
+    // Connect hub/tag nodes to regular nodes sharing the same tag.
+    for hub_i in 50..56 {
+        for _ in 0..6 {
             let target = rng.next_usize(50);
-            let _ = graph.add_edge(ids[tag_idx], ids[target], EdgeStyle::new(), 0.6, false);
+            let _ = graph.add_edge(ids[hub_i], ids[target], EdgeStyle::new(), 0.7, false);
         }
     }
 
@@ -131,20 +161,25 @@ impl DemoState {
         let seed = 42;
         let graph = build_graph(seed);
 
+        use dear_imgui_custom_mod::force_graph::config::ColorGroup;
         let mut config = ViewerConfig {
             background_grid: true,
-            hover_fade_opacity: 0.15,
-            color_mode: ColorMode::ByTag,
+            hover_fade_opacity: 0.12,
+            color_mode: ColorMode::Static,  // per-node color already set
+            show_labels: LabelVisibility::BySize,
+            min_label_zoom: 0.45,
+            glow_on_hover: true,
             ..ViewerConfig::default()
         };
 
-        // Pre-load a sample color group: highlight "core" nodes in gold.
-        use dear_imgui_custom_mod::knowledge_graph::config::ColorGroup;
-        config.color_groups.push(ColorGroup::new(
-            "core",
-            ColorGroupQuery::Tag("core".into()),
-            [1.0, 0.80, 0.20, 1.0],
-        ));
+        // Color groups match per-tag colors from TAG_META.
+        for &(tag, _, color) in TAG_META {
+            config.color_groups.push(ColorGroup::new(
+                tag,
+                ColorGroupQuery::Tag(tag.into()),
+                color,
+            ));
+        }
 
         let viewer = GraphViewer::new("kg_main")
             .with_config(config)
@@ -162,7 +197,7 @@ impl DemoState {
     }
 
     fn log(&mut self, msg: String) {
-        if self.event_log.last().as_deref() != Some(&msg) {
+        if self.event_log.last() != Some(&msg) {
             self.event_log.push(msg);
         }
         if self.event_log.len() > 120 {

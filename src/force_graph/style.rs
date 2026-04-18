@@ -50,7 +50,7 @@ pub struct NodeStyle {
 
     /// Override node radius in canvas units. `None` → use the physics-derived
     /// radius (based on degree when `radius_by_degree` is on, otherwise
-    /// [`crate::knowledge_graph::config::ForceConfig::radius_base`]).
+    /// [`crate::force_graph::config::ForceConfig::radius_base`]).
     pub radius: Option<f32>,
 
     /// RGBA override colour for the node fill. `None` → theme default or
@@ -258,10 +258,10 @@ impl Default for EdgeStyle {
 
 // ─── Edge record ─────────────────────────────────────────────────────────────
 
-/// A graph edge, stored inside [`crate::knowledge_graph::data::GraphData`].
+/// A graph edge, stored inside [`crate::force_graph::data::GraphData`].
 ///
 /// Edges are created through
-/// [`crate::knowledge_graph::data::GraphData::add_edge`] and keyed by
+/// [`crate::force_graph::data::GraphData::add_edge`] and keyed by
 /// [`EdgeId`] for stable, O(1) access.
 #[derive(Debug, Clone)]
 pub struct Edge {
@@ -292,7 +292,7 @@ pub struct Edge {
 ///
 /// Obtain the default values with `GraphColors::default()` (dark-mode
 /// values), or supply a fully custom palette via
-/// [`crate::knowledge_graph::config::ViewerConfig::colors_override`].
+/// [`crate::force_graph::config::ViewerConfig::colors_override`].
 #[derive(Debug, Clone)]
 pub struct GraphColors {
     /// Canvas background fill colour.
