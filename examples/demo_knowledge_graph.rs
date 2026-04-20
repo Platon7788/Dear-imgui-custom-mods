@@ -225,7 +225,7 @@ impl DemoState {
     }
 
     fn log(&mut self, msg: String) {
-        if self.event_log.last().as_deref() != Some(&msg) {
+        if self.event_log.last() != Some(&msg) {
             self.event_log.push(msg);
         }
         if self.event_log.len() > 120 {

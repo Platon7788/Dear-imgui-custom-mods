@@ -1609,7 +1609,7 @@ mod tests {
         let t = Instant::now();
         filter_state.set_filter("file_1", &mut arena, true);
         let filter_ms = elapsed_ms(t);
-        let visible = filter_state.visible_set.len();
+        let visible = filter_state.visible_count();
         println!("[FILTER '\"file_1\"']  {visible} visible nodes in {filter_ms:.1} ms");
 
         // ── 7. Filter rebuild flat view ──────────────────────────────

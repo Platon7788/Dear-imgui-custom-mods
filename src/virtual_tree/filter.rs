@@ -51,6 +51,13 @@ impl FilterState {
             .unwrap_or(false)
     }
 
+    /// Number of nodes currently marked visible. O(N) — intended for
+    /// diagnostics / benchmarks, not hot-path rendering.
+    #[inline]
+    pub fn visible_count(&self) -> usize {
+        self.visible_set.iter().filter(|&&v| v).count()
+    }
+
     /// Apply a filter query. Empty/whitespace-only query clears the filter.
     pub fn set_filter<T: VirtualTreeNode>(
         &mut self,

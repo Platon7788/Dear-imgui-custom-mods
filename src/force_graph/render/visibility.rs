@@ -162,7 +162,7 @@ mod tests {
         let mut g = GraphData::new();
         g.add_node(NodeStyle::new("a"));
         let f = FilterState::new();
-        assert!(matches!(compute(&g, &f), VisibleSet::All));
+        assert!(matches!(compute(&g, &f, false), VisibleSet::All));
     }
 
     #[test]
@@ -172,7 +172,7 @@ mod tests {
         g.add_node(NodeStyle::new("beta"));
         let mut f = FilterState::new();
         f.search_query = "alp".into();
-        let vis = compute(&g, &f);
+        let vis = compute(&g, &f, false);
         let nodes: Vec<_> = g.nodes().map(|(id, _)| id).collect();
         // exactly 1 should be visible
         let visible_count = nodes.iter().filter(|id| vis.contains(**id)).count();
@@ -188,7 +188,7 @@ mod tests {
         g.add_edge(a, b, EdgeStyle::new(), 1.0, false);
         let mut f = FilterState::new();
         f.show_orphans = false;
-        let vis = compute(&g, &f);
+        let vis = compute(&g, &f, false);
         let visible: Vec<_> = g
             .nodes()
             .map(|(id, _)| id)
@@ -213,7 +213,7 @@ mod tests {
         f.focused_node = Some(a);
         f.depth = Some(2); // should reach a, b, c but NOT d
 
-        let vis = compute(&g, &f);
+        let vis = compute(&g, &f, false);
         assert!(vis.contains(a));
         assert!(vis.contains(b));
         assert!(vis.contains(c));
