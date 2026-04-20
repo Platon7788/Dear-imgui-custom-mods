@@ -33,6 +33,7 @@ full = [
     "hex_viewer",
     "nav_panel",
     "node_graph",
+    "notifications",
     "page_control",
     "property_inspector",
     "status_bar",
@@ -51,6 +52,10 @@ app_window = ["borderless_window", "code_editor"]
 # ── Dialogs & small widgets ─────────────────────────────────────────────────
 confirm_dialog = []
 nav_panel = []
+# Toast-notification center — severity-tinted popups with stacking, progress,
+# actions, 6 placements, fade/slide animations. Fully custom draw-list icons
+# so it's font-independent.
+notifications = []
 status_bar = []
 toolbar = []
 property_inspector = []
@@ -191,7 +196,7 @@ required-features = ["borderless_window", "app_window"]
 [[example]]
 name = "demo_app_window"
 path = "examples/demo_app_window.rs"
-required-features = ["app_window"]
+required-features = ["app_window", "notifications", "confirm_dialog"]
 
 [[example]]
 name = "demo_nav_panel"

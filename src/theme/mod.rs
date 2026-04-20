@@ -110,6 +110,8 @@ use crate::borderless_window::TitlebarColors;
 use crate::confirm_dialog::DialogColors;
 #[cfg(feature = "nav_panel")]
 use crate::nav_panel::NavColors;
+#[cfg(feature = "notifications")]
+use crate::notifications::NotificationColors;
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
 use dear_imgui_rs::Style;
@@ -200,6 +202,19 @@ impl Theme {
             Self::Midnight => midnight::dialog_colors(),
             Self::Solarized => solarized::dialog_colors(),
             Self::Monokai => monokai::dialog_colors(),
+        }
+    }
+
+    /// Notification-center colours for this theme.
+    /// Available only with the `notifications` feature.
+    #[cfg(feature = "notifications")]
+    pub fn notifications(self) -> NotificationColors {
+        match self {
+            Self::Dark => NotificationColors::dark(),
+            Self::Light => NotificationColors::light(),
+            Self::Midnight => NotificationColors::midnight(),
+            Self::Solarized => NotificationColors::solarized(),
+            Self::Monokai => NotificationColors::monokai(),
         }
     }
 

@@ -139,6 +139,8 @@ pub mod hex_viewer;
 pub mod nav_panel;
 #[cfg(feature = "node_graph")]
 pub mod node_graph;
+#[cfg(feature = "notifications")]
+pub mod notifications;
 #[cfg(feature = "page_control")]
 pub mod page_control;
 #[cfg(feature = "property_inspector")]

@@ -2,6 +2,46 @@
 
 ## [Unreleased]
 
+### Added
+- **`notifications` module** — modern toast-notification center with
+  `NotificationCenter` holding the live stack between frames.
+  Gated behind the `notifications` feature (on by default via `full`).
+  - 5 severity levels (`Info`, `Success`, `Warning`, `Error`, `Debug`),
+    each with a dedicated draw-list icon (font-independent, matches the
+    `confirm_dialog` approach).
+  - 6 stack placements: 4 corners + `TopCenter` / `BottomCenter`.
+    Stack newest-at-anchor; older toasts push outward. Margin and
+    inter-toast spacing are configurable — callers with custom titlebars
+    raise `margin[1]` to clear the chrome (the center uses
+    `io.display_size()` and does not know about host windows).
+  - Auto-dismiss via `Duration::Timed(secs)` with an optional bottom
+    progress bar; `Duration::Sticky` for user-closed toasts.
+  - Pause-on-hover so long bodies stay readable.
+  - `AnimationKind::{Fade, SlideIn, None}` with configurable duration.
+  - Action buttons with caller-defined ids surfaced via
+    `NotificationEvent::ActionClicked { id, action_id }`.
+  - Manual `×` close (`NotificationEvent::Dismissed`) and body-click
+    (`NotificationEvent::Clicked`).
+  - Per-toast `with_custom_color([r,g,b,a])` accent override on top of the
+    severity default.
+  - `max_visible` cap with graceful overflow fade-out.
+  - 5 built-in palettes (`NotificationColors::dark/light/midnight/
+    solarized/monokai`) wired through `Theme::notifications()`; custom
+    palettes via `CenterConfig::with_colors`.
+  - 5-pass render pipeline: advance animations → layout stack
+    (pre-measured heights, single pass) → draw toasts → tick timers
+    (paused while hovered) → reap finished notifications.
+  - 8 unit tests covering id uniqueness, dismiss flags, builder chain,
+    severity labels, and placement orientation helpers.
+- **`docs/notifications.md`** — full component reference (features,
+  quick start, configuration, API reference, `app_window` integration).
+- **`examples/demo_app_window.rs`** — rewritten to showcase `notifications`
+  end-to-end alongside the existing `AppWindow` / theme / confirm-dialog
+  demo. Buttons for every severity, sticky / custom-color / actions /
+  burst / dismiss-all, live `Placement` / `AnimationKind` combos, sliders
+  for `max_visible` + `pause_on_hover`, counter and theme changes push
+  toasts of their own, events mirrored to the event log.
+
 ### Fixed
 - **`virtual_table` / `virtual_tree` — last rows unreachable via manual
   scroll inside tightly-sized containers** (reproduced in NxT
