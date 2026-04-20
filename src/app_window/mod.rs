@@ -196,6 +196,7 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
             surface_format,
             cfg.font_size,
             &cfg.titlebar,
+            cfg.merge_mdi_icons,
         );
 
         let fps_interval = if cfg.fps_limit > 0 {

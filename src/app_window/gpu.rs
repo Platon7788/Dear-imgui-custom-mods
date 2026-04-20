@@ -109,6 +109,7 @@ pub(super) fn init_imgui(
     surface_format: wgpu::TextureFormat,
     font_size: f32,
     titlebar_cfg: &crate::borderless_window::BorderlessConfig,
+    merge_mdi: bool,
 ) -> (dear_imgui_rs::Context, WinitPlatform, WgpuRenderer) {
     let mut context = dear_imgui_rs::Context::create();
     let _ = context.set_ini_filename(None::<std::path::PathBuf>);
@@ -132,6 +133,10 @@ pub(super) fn init_imgui(
         ),
         None,
     );
+
+    if merge_mdi {
+        crate::fonts::merge_mdi_icons(&mut context, scaled_font);
+    }
 
     titlebar_cfg.theme.apply_imgui_style(context.style_mut());
 

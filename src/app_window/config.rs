@@ -45,6 +45,10 @@ pub struct AppConfig {
     pub corner_radius: i32,
     /// Titlebar configuration.
     pub titlebar: BorderlessConfig,
+    /// Merge Material Design Icons font into the default font atlas.
+    /// Required for MDI icon codepoints (U+F0000–U+F1FFF) in nav panel buttons etc.
+    /// Default: `false`.
+    pub merge_mdi_icons: bool,
 }
 
 impl Default for AppConfig {
@@ -58,6 +62,7 @@ impl Default for AppConfig {
             font_size: 15.0,
             corner_radius: 8,
             titlebar: BorderlessConfig::default(),
+            merge_mdi_icons: false,
         }
     }
 }
@@ -109,6 +114,13 @@ impl AppConfig {
     /// Apply a theme to the titlebar.
     pub fn with_theme(mut self, theme: Theme) -> Self {
         self.titlebar = self.titlebar.with_theme(theme);
+        self
+    }
+
+    /// Merge Material Design Icons into the font atlas.
+    /// Enables MDI codepoints (U+F0000–U+F1FFF) for icons in nav panel buttons and UI widgets.
+    pub fn with_mdi_icons(mut self) -> Self {
+        self.merge_mdi_icons = true;
         self
     }
 }
