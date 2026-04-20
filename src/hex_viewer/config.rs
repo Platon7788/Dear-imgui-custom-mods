@@ -10,19 +10,27 @@ pub trait HexDataProvider {
     /// Total data length in bytes (may be `u64::MAX` for streaming).
     fn len(&self) -> u64;
     /// Whether the data source is empty.
-    fn is_empty(&self) -> bool { self.len() == 0 }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     /// Read bytes at `offset` into `buf`. Returns number of bytes actually read.
     fn read(&self, offset: u64, buf: &mut [u8]) -> usize;
     /// Write bytes at `offset`. Returns `true` on success.
     /// Default: returns `false` (read-only).
-    fn write(&mut self, _offset: u64, _data: &[u8]) -> bool { false }
+    fn write(&mut self, _offset: u64, _data: &[u8]) -> bool {
+        false
+    }
     /// Whether the given offset is readable (e.g., mapped memory region).
     /// Default: `true` for any offset < len.
-    fn is_readable(&self, offset: u64) -> bool { offset < self.len() }
+    fn is_readable(&self, offset: u64) -> bool {
+        offset < self.len()
+    }
     /// Whether the byte at `offset` has changed since last snapshot.
     /// Used for diff highlighting in live-memory scenarios.
     /// Default: `false`.
-    fn is_changed(&self, _offset: u64) -> bool { false }
+    fn is_changed(&self, _offset: u64) -> bool {
+        false
+    }
     /// Called every frame when auto-refresh is enabled.
     /// Use this to trigger page re-fetches, poll for changes, etc.
     fn refresh(&mut self) {}
@@ -37,24 +45,46 @@ pub struct VecDataProvider {
 
 impl VecDataProvider {
     pub fn new(data: Vec<u8>) -> Self {
-        Self { data, reference: None }
+        Self {
+            data,
+            reference: None,
+        }
     }
     pub fn from_slice(data: &[u8]) -> Self {
-        Self { data: data.to_vec(), reference: None }
+        Self {
+            data: data.to_vec(),
+            reference: None,
+        }
     }
-    pub fn set_data(&mut self, data: Vec<u8>) { self.data = data; }
-    pub fn set_data_slice(&mut self, data: &[u8]) { self.data = data.to_vec(); }
-    pub fn data(&self) -> &[u8] { &self.data }
-    pub fn data_mut(&mut self) -> &mut Vec<u8> { &mut self.data }
-    pub fn set_reference(&mut self, r: &[u8]) { self.reference = Some(r.to_vec()); }
-    pub fn clear_reference(&mut self) { self.reference = None; }
+    pub fn set_data(&mut self, data: Vec<u8>) {
+        self.data = data;
+    }
+    pub fn set_data_slice(&mut self, data: &[u8]) {
+        self.data = data.to_vec();
+    }
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+    pub fn data_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.data
+    }
+    pub fn set_reference(&mut self, r: &[u8]) {
+        self.reference = Some(r.to_vec());
+    }
+    pub fn clear_reference(&mut self) {
+        self.reference = None;
+    }
 }
 
 impl HexDataProvider for VecDataProvider {
-    fn len(&self) -> u64 { self.data.len() as u64 }
+    fn len(&self) -> u64 {
+        self.data.len() as u64
+    }
     fn read(&self, offset: u64, buf: &mut [u8]) -> usize {
         let off = offset as usize;
-        if off >= self.data.len() { return 0; }
+        if off >= self.data.len() {
+            return 0;
+        }
         let end = (off + buf.len()).min(self.data.len());
         let n = end - off;
         buf[..n].copy_from_slice(&self.data[off..end]);
@@ -62,7 +92,9 @@ impl HexDataProvider for VecDataProvider {
     }
     fn write(&mut self, offset: u64, data: &[u8]) -> bool {
         let off = offset as usize;
-        if off + data.len() > self.data.len() { return false; }
+        if off + data.len() > self.data.len() {
+            return false;
+        }
         self.data[off..off + data.len()].copy_from_slice(data);
         true
     }
@@ -94,7 +126,12 @@ pub struct ColorRegion {
 
 impl ColorRegion {
     pub fn new(offset: usize, len: usize, color: [f32; 4], label: impl Into<String>) -> Self {
-        Self { offset, len, color, label: label.into() }
+        Self {
+            offset,
+            len,
+            color,
+            label: label.into(),
+        }
     }
 }
 
@@ -137,18 +174,23 @@ impl ByteCategory {
 pub struct BytesPerRow(usize);
 
 impl BytesPerRow {
-    pub const EIGHT:       Self = Self(8);
-    pub const TWELVE:      Self = Self(12);
-    pub const SIXTEEN:     Self = Self(16);
-    pub const TWENTY:      Self = Self(20);
+    pub const EIGHT: Self = Self(8);
+    pub const TWELVE: Self = Self(12);
+    pub const SIXTEEN: Self = Self(16);
+    pub const TWENTY: Self = Self(20);
     pub const TWENTY_FOUR: Self = Self(24);
-    pub const TWENTY_EIGHT:Self = Self(28);
-    pub const THIRTY_TWO:  Self = Self(32);
+    pub const TWENTY_EIGHT: Self = Self(28);
+    pub const THIRTY_TWO: Self = Self(32);
 
     /// All standard presets.
     pub const ALL: &'static [BytesPerRow] = &[
-        Self::EIGHT, Self::TWELVE, Self::SIXTEEN, Self::TWENTY,
-        Self::TWENTY_FOUR, Self::TWENTY_EIGHT, Self::THIRTY_TWO,
+        Self::EIGHT,
+        Self::TWELVE,
+        Self::SIXTEEN,
+        Self::TWENTY,
+        Self::TWENTY_FOUR,
+        Self::TWENTY_EIGHT,
+        Self::THIRTY_TWO,
     ];
 
     /// Create from an arbitrary value (clamped to 4..=64, rounded to multiple of 4).
@@ -157,24 +199,28 @@ impl BytesPerRow {
         Self(n - (n % 4).min(n)) // round down to multiple of 4, minimum 4
     }
 
-    pub fn value(self) -> usize { self.0 }
+    pub fn value(self) -> usize {
+        self.0
+    }
 
     pub fn display_name(self) -> &'static str {
         match self.0 {
-            8  => "8",
+            8 => "8",
             12 => "12",
             16 => "16",
             20 => "20",
             24 => "24",
             28 => "28",
             32 => "32",
-            _  => "?",
+            _ => "?",
         }
     }
 }
 
 impl Default for BytesPerRow {
-    fn default() -> Self { Self::SIXTEEN }
+    fn default() -> Self {
+        Self::SIXTEEN
+    }
 }
 
 /// Byte grouping for visual separation in the hex column.
@@ -192,7 +238,9 @@ pub enum ByteGrouping {
 }
 
 impl ByteGrouping {
-    pub fn value(self) -> usize { self as usize }
+    pub fn value(self) -> usize {
+        self as usize
+    }
 }
 
 /// Endianness for multi-byte data inspector values.
@@ -274,7 +322,11 @@ pub struct UndoStack {
 
 impl UndoStack {
     pub fn new(max_depth: usize) -> Self {
-        Self { entries: Vec::new(), pos: 0, max_depth }
+        Self {
+            entries: Vec::new(),
+            pos: 0,
+            max_depth,
+        }
     }
 
     /// Record an edit. Truncates any redo history.
@@ -292,33 +344,50 @@ impl UndoStack {
 
     /// Undo the last edit. Returns the entry to reverse, or `None`.
     pub fn undo(&mut self) -> Option<&UndoEntry> {
-        if self.pos == 0 { return None; }
+        if self.pos == 0 {
+            return None;
+        }
         self.pos -= 1;
         Some(&self.entries[self.pos])
     }
 
     /// Redo the next edit. Returns the entry to re-apply, or `None`.
     pub fn redo(&mut self) -> Option<&UndoEntry> {
-        if self.pos >= self.entries.len() { return None; }
+        if self.pos >= self.entries.len() {
+            return None;
+        }
         let entry = &self.entries[self.pos];
         self.pos += 1;
         Some(entry)
     }
 
     /// Whether undo is available.
-    pub fn can_undo(&self) -> bool { self.pos > 0 }
+    pub fn can_undo(&self) -> bool {
+        self.pos > 0
+    }
     /// Whether redo is available.
-    pub fn can_redo(&self) -> bool { self.pos < self.entries.len() }
+    pub fn can_redo(&self) -> bool {
+        self.pos < self.entries.len()
+    }
     /// Number of undo steps available.
-    pub fn undo_count(&self) -> usize { self.pos }
+    pub fn undo_count(&self) -> usize {
+        self.pos
+    }
     /// Number of redo steps available.
-    pub fn redo_count(&self) -> usize { self.entries.len() - self.pos }
+    pub fn redo_count(&self) -> usize {
+        self.entries.len() - self.pos
+    }
     /// Clear all history.
-    pub fn clear(&mut self) { self.entries.clear(); self.pos = 0; }
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.pos = 0;
+    }
 }
 
 impl Default for UndoStack {
-    fn default() -> Self { Self::new(256) }
+    fn default() -> Self {
+        Self::new(256)
+    }
 }
 
 // ── Navigation History ──────────────────────────────────────────────────────
@@ -366,9 +435,16 @@ impl NavHistory {
         Some(addr)
     }
 
-    pub fn can_go_back(&self) -> bool { !self.back.is_empty() }
-    pub fn can_go_forward(&self) -> bool { !self.forward.is_empty() }
-    pub fn clear(&mut self) { self.back.clear(); self.forward.clear(); }
+    pub fn can_go_back(&self) -> bool {
+        !self.back.is_empty()
+    }
+    pub fn can_go_forward(&self) -> bool {
+        !self.forward.is_empty()
+    }
+    pub fn clear(&mut self) {
+        self.back.clear();
+        self.forward.clear();
+    }
 }
 
 // ── Hex Viewer Config ───────────────────────────────────────────────────────
@@ -459,46 +535,46 @@ pub struct HexViewerConfig {
 impl Default for HexViewerConfig {
     fn default() -> Self {
         Self {
-            bytes_per_row:       BytesPerRow::SIXTEEN,
-            grouping:            ByteGrouping::DWord,
-            show_ascii:          true,
-            show_inspector:      true,
-            show_offsets:        true,
+            bytes_per_row: BytesPerRow::SIXTEEN,
+            grouping: ByteGrouping::DWord,
+            show_ascii: true,
+            show_inspector: true,
+            show_offsets: true,
             show_column_headers: true,
-            uppercase:           true,
-            endianness:          Endianness::Little,
+            uppercase: true,
+            endianness: Endianness::Little,
 
-            editable:            false,
-            base_address:        0,
-            highlight_changes:   false,
-            category_colors:     true,
-            dim_zeros:           true,
+            editable: false,
+            base_address: 0,
+            highlight_changes: false,
+            category_colors: true,
+            dim_zeros: true,
             auto_refresh_frames: 0,
-            search_mode:         HexSearchMode::Hex,
-            copy_format:         CopyFormat::HexSpaced,
-            max_undo:            256,
+            search_mode: HexSearchMode::Hex,
+            copy_format: CopyFormat::HexSpaced,
+            max_undo: 256,
 
             // Semantic byte category palette (dark theme optimized)
-            color_cat_zero:      [0.45, 0.35, 0.35, 0.55],  // dim salmon
-            color_cat_control:   [0.50, 0.50, 0.55, 0.70],  // dim gray-blue
-            color_cat_printable: [0.55, 0.85, 0.55, 1.0],   // green
-            color_cat_high:      [0.65, 0.55, 0.80, 0.85],  // muted purple
-            color_cat_full:      [0.95, 0.75, 0.30, 1.0],   // amber
+            color_cat_zero: [0.45, 0.35, 0.35, 0.55], // dim salmon
+            color_cat_control: [0.50, 0.50, 0.55, 0.70], // dim gray-blue
+            color_cat_printable: [0.55, 0.85, 0.55, 1.0], // green
+            color_cat_high: [0.65, 0.55, 0.80, 0.85], // muted purple
+            color_cat_full: [0.95, 0.75, 0.30, 1.0],  // amber
 
             // UI colors
-            color_offset:        [0.45, 0.55, 0.70, 1.0],
-            color_hex:           [0.85, 0.85, 0.85, 1.0],
-            color_ascii:         [0.70, 0.80, 0.65, 1.0],
-            color_ascii_dot:     [0.35, 0.35, 0.40, 0.6],
-            color_zero:          [0.30, 0.30, 0.35, 0.5],
-            color_selection_bg:  [0.20, 0.35, 0.55, 0.5],
-            color_changed:       [1.00, 0.50, 0.20, 1.0],
-            color_cursor_bg:     [0.30, 0.45, 0.65, 0.7],
-            color_header:        [0.50, 0.55, 0.60, 0.8],
-            color_inspector_label:  [0.55, 0.58, 0.65, 1.0],
-            color_inspector_value:  [0.90, 0.90, 0.90, 1.0],
-            color_search_match:  [0.80, 0.70, 0.20, 0.35],
-            color_unreadable:    [0.40, 0.15, 0.15, 0.25],
+            color_offset: [0.45, 0.55, 0.70, 1.0],
+            color_hex: [0.85, 0.85, 0.85, 1.0],
+            color_ascii: [0.70, 0.80, 0.65, 1.0],
+            color_ascii_dot: [0.35, 0.35, 0.40, 0.6],
+            color_zero: [0.30, 0.30, 0.35, 0.5],
+            color_selection_bg: [0.20, 0.35, 0.55, 0.5],
+            color_changed: [1.00, 0.50, 0.20, 1.0],
+            color_cursor_bg: [0.30, 0.45, 0.65, 0.7],
+            color_header: [0.50, 0.55, 0.60, 0.8],
+            color_inspector_label: [0.55, 0.58, 0.65, 1.0],
+            color_inspector_value: [0.90, 0.90, 0.90, 1.0],
+            color_search_match: [0.80, 0.70, 0.20, 0.35],
+            color_unreadable: [0.40, 0.15, 0.15, 0.25],
         }
     }
 }
@@ -513,11 +589,11 @@ impl HexViewerConfig {
             return self.color_hex;
         }
         match ByteCategory::of(byte) {
-            ByteCategory::Zero     => self.color_cat_zero,
-            ByteCategory::Control  => self.color_cat_control,
+            ByteCategory::Zero => self.color_cat_zero,
+            ByteCategory::Control => self.color_cat_control,
             ByteCategory::Printable => self.color_cat_printable,
-            ByteCategory::High     => self.color_cat_high,
-            ByteCategory::Full     => self.color_cat_full,
+            ByteCategory::High => self.color_cat_high,
+            ByteCategory::Full => self.color_cat_full,
         }
     }
 }

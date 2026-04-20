@@ -142,17 +142,20 @@ impl DemoState {
                 1 => {
                     self.viewer.old_label = "before.txt".into();
                     self.viewer.new_label = "after.txt".into();
-                    self.viewer.set_texts("line 1\nline 2\nline 3", "line 1\nchanged\nline 3\nline 4");
+                    self.viewer
+                        .set_texts("line 1\nline 2\nline 3", "line 1\nchanged\nline 3\nline 4");
                 }
                 2 => {
                     self.viewer.old_label = "same.txt".into();
                     self.viewer.new_label = "same.txt".into();
-                    self.viewer.set_texts("identical\ncontent\nhere", "identical\ncontent\nhere");
+                    self.viewer
+                        .set_texts("identical\ncontent\nhere", "identical\ncontent\nhere");
                 }
                 3 => {
                     self.viewer.old_label = "empty.txt".into();
                     self.viewer.new_label = "new_file.txt".into();
-                    self.viewer.set_texts("", "brand new\nfile content\nthree lines");
+                    self.viewer
+                        .set_texts("", "brand new\nfile content\nthree lines");
                 }
                 _ => {}
             }
@@ -228,35 +231,50 @@ struct GpuState {
     demo: DemoState,
 }
 
-struct App { gpu: Option<GpuState> }
-impl App { fn new() -> Self { Self { gpu: None } } }
+struct App {
+    gpu: Option<GpuState>,
+}
+impl App {
+    fn new() -> Self {
+        Self { gpu: None }
+    }
+}
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gpu.is_some() { return; }
-        let window = Arc::new(event_loop.create_window(
-            Window::default_attributes()
-                .with_inner_size(LogicalSize::new(1100.0, 650.0))
-                .with_title("DiffViewer Demo"),
-        ).expect("window"));
+        if self.gpu.is_some() {
+            return;
+        }
+        let window = Arc::new(
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_inner_size(LogicalSize::new(1100.0, 650.0))
+                        .with_title("DiffViewer Demo"),
+                )
+                .expect("window"),
+        );
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY, ..wgpu::InstanceDescriptor::new_without_display_handle()
+            backends: wgpu::Backends::PRIMARY,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface), force_fallback_adapter: false,
-        })).expect("adapter");
-        let (device, queue) = block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor::default(),
-        )).expect("device");
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        }))
+        .expect("adapter");
+        let (device, queue) =
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            width: phys.width.max(1), height: phys.height.max(1),
+            width: phys.width.max(1),
+            height: phys.height.max(1),
             present_mode: wgpu::PresentMode::Fifo,
             desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
@@ -275,8 +293,14 @@ impl ApplicationHandler for App {
 
         use dear_imgui_custom_mod::code_editor::BuiltinFont;
         context.fonts().add_font_from_memory_ttf(
-            BuiltinFont::Hack.data(), font_size,
-            Some(&dear_imgui_rs::FontConfig::new().size_pixels(font_size).oversample_h(2).name("Hack")),
+            BuiltinFont::Hack.data(),
+            font_size,
+            Some(
+                &dear_imgui_rs::FontConfig::new()
+                    .size_pixels(font_size)
+                    .oversample_h(2)
+                    .name("Hack"),
+            ),
             None,
         );
 
@@ -284,18 +308,37 @@ impl ApplicationHandler for App {
         let renderer = WgpuRenderer::new(
             WgpuInitInfo::new(device.clone(), queue.clone(), surface_cfg.format),
             &mut context,
-        ).expect("renderer");
+        )
+        .expect("renderer");
 
         self.gpu = Some(GpuState {
-            device, queue, window, surface_cfg, surface,
-            context, platform, renderer, demo: DemoState::new(),
+            device,
+            queue,
+            window,
+            surface_cfg,
+            surface,
+            context,
+            platform,
+            renderer,
+            demo: DemoState::new(),
         });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
-        gpu.platform.handle_event::<()>(&mut gpu.context, &gpu.window,
-            &Event::WindowEvent { window_id, event: event.clone() });
+        gpu.platform.handle_event::<()>(
+            &mut gpu.context,
+            &gpu.window,
+            &Event::WindowEvent {
+                window_id,
+                event: event.clone(),
+            },
+        );
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(s) => {
@@ -306,25 +349,58 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame = match gpu.surface.get_current_texture() {
-                    wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => { gpu.surface.configure(&gpu.device, &gpu.surface_cfg); return; }
-                    other => { eprintln!("Surface unavailable: {other:?}"); return; }
+                    wgpu::CurrentSurfaceTexture::Success(f)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                        gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
+                        return;
+                    }
+                    other => {
+                        eprintln!("Surface unavailable: {other:?}");
+                        return;
+                    }
                 };
-                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);
                 gpu.platform.prepare_render_with_ui(ui, &gpu.window);
                 let draw_data = gpu.context.render();
-                let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("imgui") });
-                { let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("imgui_pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view, resolve_target: None, depth_slice: None,
-                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.06, g: 0.06, b: 0.08, a: 1.0 }), store: wgpu::StoreOp::Store },
-                    })], depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None, multiview_mask: None,
-                });
-                if draw_data.total_vtx_count > 0 { gpu.renderer.render_draw_data(draw_data, &mut pass).expect("render"); } }
+                let mut encoder =
+                    gpu.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("imgui"),
+                        });
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("imgui_pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            depth_slice: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.06,
+                                    g: 0.06,
+                                    b: 0.08,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    if draw_data.total_vtx_count > 0 {
+                        gpu.renderer
+                            .render_draw_data(draw_data, &mut pass)
+                            .expect("render");
+                    }
+                }
                 gpu.queue.submit(Some(encoder.finish()));
                 frame.present();
                 gpu.window.request_redraw();
@@ -334,14 +410,19 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _: &ActiveEventLoop) {
-        if let Some(gpu) = self.gpu.as_ref() { gpu.window.request_redraw(); }
+        if let Some(gpu) = self.gpu.as_ref() {
+            gpu.window.request_redraw();
+        }
     }
 }
 
 fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
-    style.set_window_rounding(6.0); style.set_frame_rounding(4.0);
-    style.set_grab_rounding(4.0); style.set_scrollbar_rounding(6.0);
-    style.set_window_border_size(1.0); style.set_popup_rounding(4.0);
+    style.set_window_rounding(6.0);
+    style.set_frame_rounding(4.0);
+    style.set_grab_rounding(4.0);
+    style.set_scrollbar_rounding(6.0);
+    style.set_window_border_size(1.0);
+    style.set_popup_rounding(4.0);
     let accent = [0.40, 0.63, 0.88, 1.0];
     let accent_dim = [0.30, 0.50, 0.75, 1.0];
     style.set_color(StyleColor::WindowBg, [0.09, 0.09, 0.11, 1.0]);

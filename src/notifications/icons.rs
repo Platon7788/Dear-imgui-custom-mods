@@ -23,11 +23,11 @@ pub(crate) fn draw_severity(
     bg: u32,
 ) {
     match sev {
-        Severity::Info    => draw_info(draw, cx, cy, r, fill),
+        Severity::Info => draw_info(draw, cx, cy, r, fill),
         Severity::Success => draw_success(draw, cx, cy, r, fill),
         Severity::Warning => draw_warning(draw, cx, cy, r, fill, bg),
-        Severity::Error   => draw_error(draw, cx, cy, r, fill),
-        Severity::Debug   => draw_debug(draw, cx, cy, r, fill),
+        Severity::Error => draw_error(draw, cx, cy, r, fill),
+        Severity::Debug => draw_debug(draw, cx, cy, r, fill),
     }
 }
 
@@ -36,9 +36,12 @@ fn draw_info(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     draw.add_circle([cx, cy], r, col).filled(true).build();
     // 'i' drawn as two overlapping small elements in white.
     let white = 0xFFFF_FFFF;
-    draw.add_circle([cx, cy - r * 0.38], 1.6, white).filled(true).build();
+    draw.add_circle([cx, cy - r * 0.38], 1.6, white)
+        .filled(true)
+        .build();
     draw.add_line([cx, cy - r * 0.10], [cx, cy + r * 0.48], white)
-        .thickness(2.0).build();
+        .thickness(2.0)
+        .build();
 }
 
 /// Success — filled circle with a white checkmark.
@@ -57,19 +60,23 @@ fn draw_success(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
 fn draw_warning(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32, bg: u32) {
     let h = r * 1.7;
     let half_base = h * 0.577;
-    let top_y  = cy - r * 0.85;
+    let top_y = cy - r * 0.85;
     let base_y = top_y + h;
 
     let p_top = [cx, top_y];
-    let p_bl  = [cx - half_base, base_y];
-    let p_br  = [cx + half_base, base_y];
-    draw.add_triangle(p_top, p_bl, p_br, col).filled(true).build();
+    let p_bl = [cx - half_base, base_y];
+    let p_br = [cx + half_base, base_y];
+    draw.add_triangle(p_top, p_bl, p_br, col)
+        .filled(true)
+        .build();
 
     // "!" in background color on top of the filled triangle.
     let bang_top = cy - r * 0.15;
     let bang_bot = cy + r * 0.28;
-    let dot_y    = cy + r * 0.52;
-    draw.add_line([cx, bang_top], [cx, bang_bot], bg).thickness(2.2).build();
+    let dot_y = cy + r * 0.52;
+    draw.add_line([cx, bang_top], [cx, bang_bot], bg)
+        .thickness(2.2)
+        .build();
     draw.add_circle([cx, dot_y], 1.6, bg).filled(true).build();
 }
 
@@ -78,8 +85,12 @@ fn draw_error(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     draw.add_circle([cx, cy], r, col).filled(true).build();
     let white = 0xFFFF_FFFF;
     let d = r * 0.42;
-    draw.add_line([cx - d, cy - d], [cx + d, cy + d], white).thickness(2.2).build();
-    draw.add_line([cx + d, cy - d], [cx - d, cy + d], white).thickness(2.2).build();
+    draw.add_line([cx - d, cy - d], [cx + d, cy + d], white)
+        .thickness(2.2)
+        .build();
+    draw.add_line([cx + d, cy - d], [cx - d, cy + d], white)
+        .thickness(2.2)
+        .build();
 }
 
 /// Debug — outlined circle with three horizontal dots (ellipsis).
@@ -87,13 +98,21 @@ fn draw_debug(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     draw.add_circle([cx, cy], r, col).thickness(2.0).build();
     let dy = cy;
     let dx = r * 0.42;
-    draw.add_circle([cx - dx, dy], 1.6, col).filled(true).build();
-    draw.add_circle([cx,      dy], 1.6, col).filled(true).build();
-    draw.add_circle([cx + dx, dy], 1.6, col).filled(true).build();
+    draw.add_circle([cx - dx, dy], 1.6, col)
+        .filled(true)
+        .build();
+    draw.add_circle([cx, dy], 1.6, col).filled(true).build();
+    draw.add_circle([cx + dx, dy], 1.6, col)
+        .filled(true)
+        .build();
 }
 
 /// Draw a "×" close glyph centered at `(cx, cy)` with arm length `r`.
 pub(crate) fn draw_close_x(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
-    draw.add_line([cx - r, cy - r], [cx + r, cy + r], col).thickness(1.6).build();
-    draw.add_line([cx + r, cy - r], [cx - r, cy + r], col).thickness(1.6).build();
+    draw.add_line([cx - r, cy - r], [cx + r, cy + r], col)
+        .thickness(1.6)
+        .build();
+    draw.add_line([cx + r, cy - r], [cx - r, cy + r], col)
+        .thickness(1.6)
+        .build();
 }

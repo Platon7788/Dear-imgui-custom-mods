@@ -72,7 +72,12 @@ impl AppConfig {
     pub fn new(title: impl Into<String>, width: f64, height: f64) -> Self {
         let title = title.into();
         let titlebar = BorderlessConfig::new(title.clone());
-        Self { title, size: [width, height], titlebar, ..Self::default() }
+        Self {
+            title,
+            size: [width, height],
+            titlebar,
+            ..Self::default()
+        }
     }
 
     /// Set the minimum window size.

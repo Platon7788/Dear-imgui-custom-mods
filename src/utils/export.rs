@@ -38,17 +38,15 @@ pub enum ExportFormat {
 
 impl ExportFormat {
     /// All supported formats.
-    pub const ALL: &'static [ExportFormat] = &[
-        Self::Json, Self::Yaml, Self::Ron, Self::Txt,
-    ];
+    pub const ALL: &'static [ExportFormat] = &[Self::Json, Self::Yaml, Self::Ron, Self::Txt];
 
     /// File extension (without dot).
     pub fn extension(self) -> &'static str {
         match self {
             Self::Json => "json",
             Self::Yaml => "yaml",
-            Self::Ron  => "ron",
-            Self::Txt  => "txt",
+            Self::Ron => "ron",
+            Self::Txt => "txt",
         }
     }
 
@@ -57,8 +55,8 @@ impl ExportFormat {
         match self {
             Self::Json => "JSON",
             Self::Yaml => "YAML",
-            Self::Ron  => "RON",
-            Self::Txt  => "Text",
+            Self::Ron => "RON",
+            Self::Txt => "Text",
         }
     }
 
@@ -122,7 +120,9 @@ pub trait Exportable {
     fn field_value(&self, col: usize) -> FieldValue;
 
     /// Number of fields.
-    fn field_count() -> usize { Self::field_names().len() }
+    fn field_count() -> usize {
+        Self::field_names().len()
+    }
 }
 
 // ── Importable Trait ────────────────────────────────────────────────────────
@@ -158,7 +158,10 @@ pub struct FlatExportData {
 
 impl FlatExportData {
     pub fn new(columns: Vec<String>) -> Self {
-        Self { columns, rows: Vec::new() }
+        Self {
+            columns,
+            rows: Vec::new(),
+        }
     }
 
     pub fn add_row(&mut self, row: Vec<FieldValue>) {
@@ -173,8 +176,8 @@ pub fn format_flat(data: &FlatExportData, format: ExportFormat) -> String {
     match format {
         ExportFormat::Json => format_flat_json(data),
         ExportFormat::Yaml => format_flat_yaml(data),
-        ExportFormat::Ron  => format_flat_ron(data),
-        ExportFormat::Txt  => format_flat_txt(data),
+        ExportFormat::Ron => format_flat_ron(data),
+        ExportFormat::Txt => format_flat_txt(data),
     }
 }
 
@@ -183,8 +186,8 @@ pub fn format_tree(nodes: &[TreeExportNode], format: ExportFormat) -> String {
     match format {
         ExportFormat::Json => format_tree_json(nodes, 0),
         ExportFormat::Yaml => format_tree_yaml(nodes, 0),
-        ExportFormat::Ron  => format_tree_ron(nodes, 0),
-        ExportFormat::Txt  => format_tree_txt(nodes, 0),
+        ExportFormat::Ron => format_tree_ron(nodes, 0),
+        ExportFormat::Txt => format_tree_txt(nodes, 0),
     }
 }
 
@@ -194,7 +197,8 @@ pub fn export_flat_to_file(
     path: &Path,
     format: Option<ExportFormat>,
 ) -> std::io::Result<()> {
-    let fmt = format.or_else(|| ExportFormat::from_path(path))
+    let fmt = format
+        .or_else(|| ExportFormat::from_path(path))
         .unwrap_or(ExportFormat::Json);
     let content = format_flat(data, fmt);
     std::fs::write(path, content)
@@ -206,7 +210,8 @@ pub fn export_tree_to_file(
     path: &Path,
     format: Option<ExportFormat>,
 ) -> std::io::Result<()> {
-    let fmt = format.or_else(|| ExportFormat::from_path(path))
+    let fmt = format
+        .or_else(|| ExportFormat::from_path(path))
         .unwrap_or(ExportFormat::Json);
     let content = format_tree(nodes, fmt);
     std::fs::write(path, content)
@@ -219,8 +224,8 @@ pub fn parse_flat(content: &str, format: ExportFormat) -> Option<FlatExportData>
     match format {
         ExportFormat::Json => parse_flat_json(content),
         ExportFormat::Yaml => parse_flat_yaml(content),
-        ExportFormat::Ron  => parse_flat_ron(content),
-        ExportFormat::Txt  => parse_flat_txt(content),
+        ExportFormat::Ron => parse_flat_ron(content),
+        ExportFormat::Txt => parse_flat_txt(content),
     }
 }
 
@@ -239,7 +244,7 @@ fn json_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     for ch in s.chars() {
         match ch {
-            '"'  => out.push_str("\\\""),
+            '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
@@ -257,8 +262,11 @@ fn field_value_json(v: &FieldValue) -> String {
         FieldValue::Bool(b) => b.to_string(),
         FieldValue::Int(i) => i.to_string(),
         FieldValue::Float(f) => {
-            if f.is_nan() || f.is_infinite() { "null".into() }
-            else { format!("{}", f) }
+            if f.is_nan() || f.is_infinite() {
+                "null".into()
+            } else {
+                format!("{}", f)
+            }
         }
         FieldValue::Str(s) => format!("\"{}\"", json_escape(s)),
         FieldValue::Color(c) => format!("[{:.3}, {:.3}, {:.3}, {:.3}]", c[0], c[1], c[2], c[3]),
@@ -270,12 +278,20 @@ fn format_flat_json(data: &FlatExportData) -> String {
     for (ri, row) in data.rows.iter().enumerate() {
         out.push_str("  {");
         for (ci, val) in row.iter().enumerate() {
-            if ci > 0 { out.push_str(", "); }
+            if ci > 0 {
+                out.push_str(", ");
+            }
             let key = data.columns.get(ci).map(|s| s.as_str()).unwrap_or("?");
-            out.push_str(&format!("\"{}\": {}", json_escape(key), field_value_json(val)));
+            out.push_str(&format!(
+                "\"{}\": {}",
+                json_escape(key),
+                field_value_json(val)
+            ));
         }
         out.push('}');
-        if ri + 1 < data.rows.len() { out.push(','); }
+        if ri + 1 < data.rows.len() {
+            out.push(',');
+        }
         out.push('\n');
     }
     out.push(']');
@@ -289,16 +305,28 @@ fn format_tree_json(nodes: &[TreeExportNode], indent: usize) -> String {
     for (i, node) in nodes.iter().enumerate() {
         out.push_str(&format!("{}  {{\n", pad));
         for (fi, (key, val)) in node.fields.iter().enumerate() {
-            out.push_str(&format!("{}  \"{}\": {}", pad1, json_escape(key), field_value_json(val)));
-            if fi + 1 < node.fields.len() || !node.children.is_empty() { out.push(','); }
+            out.push_str(&format!(
+                "{}  \"{}\": {}",
+                pad1,
+                json_escape(key),
+                field_value_json(val)
+            ));
+            if fi + 1 < node.fields.len() || !node.children.is_empty() {
+                out.push(',');
+            }
             out.push('\n');
         }
         if !node.children.is_empty() {
-            out.push_str(&format!("{}  \"children\": {}\n", pad1,
-                format_tree_json(&node.children, indent + 2)));
+            out.push_str(&format!(
+                "{}  \"children\": {}\n",
+                pad1,
+                format_tree_json(&node.children, indent + 2)
+            ));
         }
         out.push_str(&format!("{}  }}", pad));
-        if i + 1 < nodes.len() { out.push(','); }
+        if i + 1 < nodes.len() {
+            out.push(',');
+        }
         out.push('\n');
     }
     out.push_str(&format!("{}]", pad));
@@ -310,8 +338,10 @@ fn format_tree_json(nodes: &[TreeExportNode], indent: usize) -> String {
 fn parse_flat_json(content: &str) -> Option<FlatExportData> {
     // Minimal JSON array-of-objects parser.
     let content = content.trim();
-    if !content.starts_with('[') || !content.ends_with(']') { return None; }
-    let inner = &content[1..content.len()-1];
+    if !content.starts_with('[') || !content.ends_with(']') {
+        return None;
+    }
+    let inner = &content[1..content.len() - 1];
 
     let mut columns = Vec::new();
     let mut rows = Vec::new();
@@ -350,13 +380,26 @@ fn split_json_objects(s: &str) -> Vec<&str> {
     let mut escape = false;
 
     for (i, &b) in bytes.iter().enumerate() {
-        if escape { escape = false; continue; }
-        if b == b'\\' && in_string { escape = true; continue; }
-        if b == b'"' { in_string = !in_string; continue; }
-        if in_string { continue; }
+        if escape {
+            escape = false;
+            continue;
+        }
+        if b == b'\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if b == b'"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
 
         if b == b'{' {
-            if depth == 0 { start = Some(i); }
+            if depth == 0 {
+                start = Some(i);
+            }
             depth += 1;
         } else if b == b'}' {
             depth -= 1;
@@ -373,19 +416,27 @@ fn split_json_objects(s: &str) -> Vec<&str> {
 
 fn parse_json_object(s: &str) -> Vec<(String, FieldValue)> {
     let s = s.trim();
-    if !s.starts_with('{') || !s.ends_with('}') { return Vec::new(); }
-    let inner = s[1..s.len()-1].trim();
-    if inner.is_empty() { return Vec::new(); }
+    if !s.starts_with('{') || !s.ends_with('}') {
+        return Vec::new();
+    }
+    let inner = s[1..s.len() - 1].trim();
+    if inner.is_empty() {
+        return Vec::new();
+    }
 
     let mut fields = Vec::new();
     let mut remaining = inner;
 
     while !remaining.is_empty() {
         remaining = remaining.trim_start_matches([',', ' ', '\n', '\r', '\t']);
-        if remaining.is_empty() { break; }
+        if remaining.is_empty() {
+            break;
+        }
 
         // Parse key.
-        if !remaining.starts_with('"') { break; }
+        if !remaining.starts_with('"') {
+            break;
+        }
         let key_end = remaining[1..].find('"').map(|p| p + 1);
         let Some(ke) = key_end else { break };
         let key = remaining[1..ke].to_string();
@@ -393,7 +444,9 @@ fn parse_json_object(s: &str) -> Vec<(String, FieldValue)> {
 
         // Skip colon.
         remaining = remaining.trim_start();
-        if remaining.starts_with(':') { remaining = &remaining[1..]; }
+        if remaining.starts_with(':') {
+            remaining = &remaining[1..];
+        }
         remaining = remaining.trim_start();
 
         // Parse value.
@@ -412,12 +465,24 @@ fn parse_json_value(s: &str) -> (FieldValue, &str) {
         let mut end = 0;
         let mut escape = false;
         for (i, b) in rest.bytes().enumerate() {
-            if escape { escape = false; continue; }
-            if b == b'\\' { escape = true; continue; }
-            if b == b'"' { end = i; break; }
+            if escape {
+                escape = false;
+                continue;
+            }
+            if b == b'\\' {
+                escape = true;
+                continue;
+            }
+            if b == b'"' {
+                end = i;
+                break;
+            }
         }
-        let val = rest[..end].replace("\\\"", "\"").replace("\\n", "\n")
-            .replace("\\t", "\t").replace("\\\\", "\\");
+        let val = rest[..end]
+            .replace("\\\"", "\"")
+            .replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace("\\\\", "\\");
         (FieldValue::Str(val), &rest[end + 1..])
     } else if let Some(rest) = s.strip_prefix("null") {
         (FieldValue::Null, rest)
@@ -430,16 +495,28 @@ fn parse_json_value(s: &str) -> (FieldValue, &str) {
         let mut depth = 0i32;
         let mut end = 0;
         for (i, b) in s.bytes().enumerate() {
-            if b == b'[' { depth += 1; }
-            if b == b']' { depth -= 1; if depth == 0 { end = i + 1; break; } }
+            if b == b'[' {
+                depth += 1;
+            }
+            if b == b']' {
+                depth -= 1;
+                if depth == 0 {
+                    end = i + 1;
+                    break;
+                }
+            }
         }
         // Try parse as color [f32; 4].
-        let arr_str = &s[1..end-1];
-        let nums: Vec<f32> = arr_str.split(',')
+        let arr_str = &s[1..end - 1];
+        let nums: Vec<f32> = arr_str
+            .split(',')
             .filter_map(|n| n.trim().parse::<f32>().ok())
             .collect();
         if nums.len() == 4 {
-            (FieldValue::Color([nums[0], nums[1], nums[2], nums[3]]), &s[end..])
+            (
+                FieldValue::Color([nums[0], nums[1], nums[2], nums[3]]),
+                &s[end..],
+            )
         } else {
             (FieldValue::Str(s[..end].to_string()), &s[end..])
         }
@@ -468,8 +545,12 @@ fn field_value_yaml(v: &FieldValue) -> String {
         FieldValue::Int(i) => i.to_string(),
         FieldValue::Float(f) => format!("{}", f),
         FieldValue::Str(s) => {
-            if s.contains('\n') || s.contains(':') || s.contains('#')
-                || s.starts_with(' ') || s.starts_with('"') || s.is_empty()
+            if s.contains('\n')
+                || s.contains(':')
+                || s.contains('#')
+                || s.starts_with(' ')
+                || s.starts_with('"')
+                || s.is_empty()
             {
                 format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
             } else {
@@ -536,12 +617,16 @@ fn format_flat_ron(data: &FlatExportData) -> String {
     for (ri, row) in data.rows.iter().enumerate() {
         out.push_str("  (");
         for (ci, val) in row.iter().enumerate() {
-            if ci > 0 { out.push_str(", "); }
+            if ci > 0 {
+                out.push_str(", ");
+            }
             let key = data.columns.get(ci).map(|s| s.as_str()).unwrap_or("?");
             out.push_str(&format!("{}: {}", key, field_value_ron(val)));
         }
         out.push(')');
-        if ri + 1 < data.rows.len() { out.push(','); }
+        if ri + 1 < data.rows.len() {
+            out.push(',');
+        }
         out.push('\n');
     }
     out.push(']');
@@ -557,11 +642,16 @@ fn format_tree_ron(nodes: &[TreeExportNode], indent: usize) -> String {
             out.push_str(&format!("{}    {}: {},\n", pad, key, field_value_ron(val)));
         }
         if !node.children.is_empty() {
-            out.push_str(&format!("{}    children: {},\n", pad,
-                format_tree_ron(&node.children, indent + 2)));
+            out.push_str(&format!(
+                "{}    children: {},\n",
+                pad,
+                format_tree_ron(&node.children, indent + 2)
+            ));
         }
         out.push_str(&format!("{}  )", pad));
-        if i + 1 < nodes.len() { out.push(','); }
+        if i + 1 < nodes.len() {
+            out.push(',');
+        }
         out.push('\n');
     }
     out.push_str(&format!("{}]", pad));
@@ -590,7 +680,9 @@ fn format_tree_txt(nodes: &[TreeExportNode], depth: usize) -> String {
     let mut out = String::new();
     let indent = "  ".repeat(depth);
     for node in nodes {
-        let fields: Vec<String> = node.fields.iter()
+        let fields: Vec<String> = node
+            .fields
+            .iter()
             .map(|(k, v)| format!("{}: {}", k, v.to_string_lossy()))
             .collect();
         out.push_str(&format!("{}{}\n", indent, fields.join(" | ")));
@@ -607,16 +699,26 @@ fn parse_flat_txt(content: &str) -> Option<FlatExportData> {
     let columns: Vec<String> = header.split('\t').map(|s| s.to_string()).collect();
     let mut rows = Vec::new();
     for line in lines {
-        if line.trim().is_empty() { continue; }
-        let vals: Vec<FieldValue> = line.split('\t')
+        if line.trim().is_empty() {
+            continue;
+        }
+        let vals: Vec<FieldValue> = line
+            .split('\t')
             .map(|s| {
                 let s = s.trim();
-                if s.is_empty() { FieldValue::Null }
-                else if s == "true" { FieldValue::Bool(true) }
-                else if s == "false" { FieldValue::Bool(false) }
-                else if let Ok(i) = s.parse::<i64>() { FieldValue::Int(i) }
-                else if let Ok(f) = s.parse::<f64>() { FieldValue::Float(f) }
-                else { FieldValue::Str(s.to_string()) }
+                if s.is_empty() {
+                    FieldValue::Null
+                } else if s == "true" {
+                    FieldValue::Bool(true)
+                } else if s == "false" {
+                    FieldValue::Bool(false)
+                } else if let Ok(i) = s.parse::<i64>() {
+                    FieldValue::Int(i)
+                } else if let Ok(f) = s.parse::<f64>() {
+                    FieldValue::Float(f)
+                } else {
+                    FieldValue::Str(s.to_string())
+                }
             })
             .collect();
         rows.push(vals);
@@ -646,7 +748,9 @@ fn parse_flat_yaml(content: &str) -> Option<FlatExportData> {
 
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
 
         if let Some(rest) = trimmed.strip_prefix("- ") {
             // New list item. Flush previous.
@@ -655,12 +759,16 @@ fn parse_flat_yaml(content: &str) -> Option<FlatExportData> {
             }
             // Parse the key: value on the same line as "- ".
             if let Some((key, val)) = parse_yaml_kv(rest) {
-                if col_set.insert(key.clone()) { columns.push(key.clone()); }
+                if col_set.insert(key.clone()) {
+                    columns.push(key.clone());
+                }
                 current_fields.push((key, val));
             }
         } else if let Some((key, val)) = parse_yaml_kv(trimmed) {
             // Continuation field of current item.
-            if col_set.insert(key.clone()) { columns.push(key.clone()); }
+            if col_set.insert(key.clone()) {
+                columns.push(key.clone());
+            }
             current_fields.push((key, val));
         }
     }
@@ -669,7 +777,9 @@ fn parse_flat_yaml(content: &str) -> Option<FlatExportData> {
         rows.push(current_fields);
     }
 
-    if columns.is_empty() { return None; }
+    if columns.is_empty() {
+        return None;
+    }
 
     // Build aligned rows.
     let mut data = FlatExportData::new(columns.clone());
@@ -696,20 +806,27 @@ fn parse_yaml_kv(s: &str) -> Option<(String, FieldValue)> {
 }
 
 fn parse_yaml_value(s: &str) -> FieldValue {
-    if s.is_empty() || s == "~" || s == "null" { return FieldValue::Null; }
-    if s == "true" { return FieldValue::Bool(true); }
-    if s == "false" { return FieldValue::Bool(false); }
+    if s.is_empty() || s == "~" || s == "null" {
+        return FieldValue::Null;
+    }
+    if s == "true" {
+        return FieldValue::Bool(true);
+    }
+    if s == "false" {
+        return FieldValue::Bool(false);
+    }
 
     // Quoted string.
     if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        let inner = &s[1..s.len()-1];
+        let inner = &s[1..s.len() - 1];
         return FieldValue::Str(inner.replace("\\\"", "\"").replace("\\\\", "\\"));
     }
 
     // Array (color).
     if s.starts_with('[') && s.ends_with(']') {
-        let inner = &s[1..s.len()-1];
-        let nums: Vec<f32> = inner.split(',')
+        let inner = &s[1..s.len() - 1];
+        let nums: Vec<f32> = inner
+            .split(',')
             .filter_map(|n| n.trim().parse::<f32>().ok())
             .collect();
         if nums.len() == 4 {
@@ -719,8 +836,12 @@ fn parse_yaml_value(s: &str) -> FieldValue {
     }
 
     // Number.
-    if let Ok(i) = s.parse::<i64>() { return FieldValue::Int(i); }
-    if let Ok(f) = s.parse::<f64>() { return FieldValue::Float(f); }
+    if let Ok(i) = s.parse::<i64>() {
+        return FieldValue::Int(i);
+    }
+    if let Ok(f) = s.parse::<f64>() {
+        return FieldValue::Float(f);
+    }
 
     FieldValue::Str(s.to_string())
 }
@@ -740,8 +861,10 @@ fn parse_yaml_value(s: &str) -> FieldValue {
 /// ```
 fn parse_flat_ron(content: &str) -> Option<FlatExportData> {
     let content = content.trim();
-    if !content.starts_with('[') || !content.ends_with(']') { return None; }
-    let inner = &content[1..content.len()-1];
+    if !content.starts_with('[') || !content.ends_with(']') {
+        return None;
+    }
+    let inner = &content[1..content.len() - 1];
 
     let mut columns = Vec::new();
     let mut col_set = std::collections::HashSet::new();
@@ -752,13 +875,17 @@ fn parse_flat_ron(content: &str) -> Option<FlatExportData> {
         let fields = parse_ron_tuple(tuple_str.trim());
         if rows.is_empty() {
             for (key, _) in &fields {
-                if col_set.insert(key.clone()) { columns.push(key.clone()); }
+                if col_set.insert(key.clone()) {
+                    columns.push(key.clone());
+                }
             }
         }
         rows.push(fields);
     }
 
-    if columns.is_empty() { return None; }
+    if columns.is_empty() {
+        return None;
+    }
 
     let mut data = FlatExportData::new(columns.clone());
     for fields in &rows {
@@ -783,13 +910,26 @@ fn split_ron_tuples(s: &str) -> Vec<&str> {
     let mut escape = false;
 
     for (i, &b) in bytes.iter().enumerate() {
-        if escape { escape = false; continue; }
-        if b == b'\\' && in_string { escape = true; continue; }
-        if b == b'"' { in_string = !in_string; continue; }
-        if in_string { continue; }
+        if escape {
+            escape = false;
+            continue;
+        }
+        if b == b'\\' && in_string {
+            escape = true;
+            continue;
+        }
+        if b == b'"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
 
         if b == b'(' {
-            if depth == 0 { start = Some(i); }
+            if depth == 0 {
+                start = Some(i);
+            }
             depth += 1;
         } else if b == b')' {
             depth -= 1;
@@ -806,16 +946,22 @@ fn split_ron_tuples(s: &str) -> Vec<&str> {
 
 fn parse_ron_tuple(s: &str) -> Vec<(String, FieldValue)> {
     let s = s.trim();
-    if !s.starts_with('(') || !s.ends_with(')') { return Vec::new(); }
-    let inner = s[1..s.len()-1].trim();
-    if inner.is_empty() { return Vec::new(); }
+    if !s.starts_with('(') || !s.ends_with(')') {
+        return Vec::new();
+    }
+    let inner = s[1..s.len() - 1].trim();
+    if inner.is_empty() {
+        return Vec::new();
+    }
 
     let mut fields = Vec::new();
     let mut remaining = inner;
 
     while !remaining.is_empty() {
         remaining = remaining.trim_start_matches([',', ' ', '\n', '\r', '\t']);
-        if remaining.is_empty() { break; }
+        if remaining.is_empty() {
+            break;
+        }
 
         // Parse key (unquoted identifier).
         let colon_pos = match remaining.find(':') {
@@ -841,9 +987,18 @@ fn parse_ron_value(s: &str) -> (FieldValue, &str) {
         let mut end = 0;
         let mut escape = false;
         for (i, b) in rest.bytes().enumerate() {
-            if escape { escape = false; continue; }
-            if b == b'\\' { escape = true; continue; }
-            if b == b'"' { end = i; break; }
+            if escape {
+                escape = false;
+                continue;
+            }
+            if b == b'\\' {
+                escape = true;
+                continue;
+            }
+            if b == b'"' {
+                end = i;
+                break;
+            }
         }
         let val = rest[..end].replace("\\\"", "\"").replace("\\\\", "\\");
         (FieldValue::Str(val), &rest[end + 1..])
@@ -857,11 +1012,15 @@ fn parse_ron_value(s: &str) -> (FieldValue, &str) {
         // Color tuple (r, g, b, a).
         let close = s.find(')').unwrap_or(s.len());
         let inner = &s[1..close];
-        let nums: Vec<f32> = inner.split(',')
+        let nums: Vec<f32> = inner
+            .split(',')
             .filter_map(|n| n.trim().parse::<f32>().ok())
             .collect();
         if nums.len() == 4 {
-            (FieldValue::Color([nums[0], nums[1], nums[2], nums[3]]), &s[close + 1..])
+            (
+                FieldValue::Color([nums[0], nums[1], nums[2], nums[3]]),
+                &s[close + 1..],
+            )
         } else {
             (FieldValue::Str(s[..close + 1].to_string()), &s[close + 1..])
         }
@@ -932,47 +1091,47 @@ mod tests {
     fn sample_flat() -> FlatExportData {
         let mut data = FlatExportData::new(vec!["name".into(), "age".into(), "active".into()]);
         data.add_row(vec![
-            FieldValue::Str("Alice".into()), FieldValue::Int(30), FieldValue::Bool(true),
+            FieldValue::Str("Alice".into()),
+            FieldValue::Int(30),
+            FieldValue::Bool(true),
         ]);
         data.add_row(vec![
-            FieldValue::Str("Bob".into()), FieldValue::Int(25), FieldValue::Bool(false),
+            FieldValue::Str("Bob".into()),
+            FieldValue::Int(25),
+            FieldValue::Bool(false),
         ]);
         data
     }
 
     fn sample_tree() -> Vec<TreeExportNode> {
-        vec![
-            TreeExportNode {
-                fields: vec![
-                    ("name".into(), FieldValue::Str("Root".into())),
-                    ("value".into(), FieldValue::Int(100)),
-                ],
-                children: vec![
-                    TreeExportNode {
+        vec![TreeExportNode {
+            fields: vec![
+                ("name".into(), FieldValue::Str("Root".into())),
+                ("value".into(), FieldValue::Int(100)),
+            ],
+            children: vec![
+                TreeExportNode {
+                    fields: vec![
+                        ("name".into(), FieldValue::Str("Child A".into())),
+                        ("value".into(), FieldValue::Int(50)),
+                    ],
+                    children: vec![TreeExportNode {
                         fields: vec![
-                            ("name".into(), FieldValue::Str("Child A".into())),
-                            ("value".into(), FieldValue::Int(50)),
-                        ],
-                        children: vec![
-                            TreeExportNode {
-                                fields: vec![
-                                    ("name".into(), FieldValue::Str("Grandchild".into())),
-                                    ("value".into(), FieldValue::Int(10)),
-                                ],
-                                children: vec![],
-                            },
-                        ],
-                    },
-                    TreeExportNode {
-                        fields: vec![
-                            ("name".into(), FieldValue::Str("Child B".into())),
-                            ("value".into(), FieldValue::Float(3.25)),
+                            ("name".into(), FieldValue::Str("Grandchild".into())),
+                            ("value".into(), FieldValue::Int(10)),
                         ],
                         children: vec![],
-                    },
-                ],
-            },
-        ]
+                    }],
+                },
+                TreeExportNode {
+                    fields: vec![
+                        ("name".into(), FieldValue::Str("Child B".into())),
+                        ("value".into(), FieldValue::Float(3.25)),
+                    ],
+                    children: vec![],
+                },
+            ],
+        }]
     }
 
     #[test]
@@ -1064,9 +1223,18 @@ mod tests {
 
     #[test]
     fn test_format_detection() {
-        assert_eq!(ExportFormat::from_extension("json"), Some(ExportFormat::Json));
-        assert_eq!(ExportFormat::from_extension("yaml"), Some(ExportFormat::Yaml));
-        assert_eq!(ExportFormat::from_extension("yml"), Some(ExportFormat::Yaml));
+        assert_eq!(
+            ExportFormat::from_extension("json"),
+            Some(ExportFormat::Json)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("yaml"),
+            Some(ExportFormat::Yaml)
+        );
+        assert_eq!(
+            ExportFormat::from_extension("yml"),
+            Some(ExportFormat::Yaml)
+        );
         assert_eq!(ExportFormat::from_extension("ron"), Some(ExportFormat::Ron));
         assert_eq!(ExportFormat::from_extension("txt"), Some(ExportFormat::Txt));
         assert_eq!(ExportFormat::from_extension("csv"), Some(ExportFormat::Txt));

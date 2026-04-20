@@ -7,8 +7,7 @@
 //! Run: cargo run --example demo_hex_viewer
 
 use dear_imgui_custom_mod::hex_viewer::{
-    ByteGrouping, BytesPerRow, ColorRegion, CopyFormat,
-    Endianness, HexSearchMode, HexViewer,
+    ByteGrouping, BytesPerRow, ColorRegion, CopyFormat, Endianness, HexSearchMode, HexViewer,
 };
 use dear_imgui_rs::{Condition, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
@@ -30,29 +29,29 @@ fn sample_pe_header() -> Vec<u8> {
     let mut data = Vec::with_capacity(512);
 
     // DOS header
-    data.extend_from_slice(b"MZ");                              // 0x00: Magic
-    data.extend_from_slice(&[0x90, 0x00]);                      // 0x02: Bytes on last page
-    data.extend_from_slice(&[0x03, 0x00, 0x00, 0x00]);          // 0x04: Pages
-    data.extend_from_slice(&[0x04, 0x00, 0x00, 0x00]);          // 0x08: Relocations
-    data.extend_from_slice(&[0x00, 0x00, 0xFF, 0xFF]);          // 0x0C: Header paragraphs
-    data.extend_from_slice(&[0x00, 0x00, 0xB8, 0x00]);          // 0x10
-    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);          // 0x14
-    data.extend_from_slice(&[0x40, 0x00, 0x00, 0x00]);          // 0x18
+    data.extend_from_slice(b"MZ"); // 0x00: Magic
+    data.extend_from_slice(&[0x90, 0x00]); // 0x02: Bytes on last page
+    data.extend_from_slice(&[0x03, 0x00, 0x00, 0x00]); // 0x04: Pages
+    data.extend_from_slice(&[0x04, 0x00, 0x00, 0x00]); // 0x08: Relocations
+    data.extend_from_slice(&[0x00, 0x00, 0xFF, 0xFF]); // 0x0C: Header paragraphs
+    data.extend_from_slice(&[0x00, 0x00, 0xB8, 0x00]); // 0x10
+    data.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // 0x14
+    data.extend_from_slice(&[0x40, 0x00, 0x00, 0x00]); // 0x18
     // Pad to 0x3C
     data.resize(0x3C, 0x00);
-    data.extend_from_slice(&[0x80, 0x00, 0x00, 0x00]);          // 0x3C: PE offset
+    data.extend_from_slice(&[0x80, 0x00, 0x00, 0x00]); // 0x3C: PE offset
 
     // Pad to PE header at 0x80
     data.resize(0x80, 0x00);
 
     // PE signature
-    data.extend_from_slice(b"PE\0\0");                           // 0x80: Signature
-    data.extend_from_slice(&[0x4C, 0x01]);                       // 0x84: Machine (i386)
-    data.extend_from_slice(&[0x06, 0x00]);                       // 0x86: Sections
-    data.extend_from_slice(&[0xA2, 0xB3, 0xC4, 0xD5]);          // 0x88: Timestamp
-    data.extend_from_slice(&[0x00; 8]);                          // 0x8C: Symbol table + count
-    data.extend_from_slice(&[0xE0, 0x00]);                       // 0x94: Optional header size
-    data.extend_from_slice(&[0x02, 0x01]);                       // 0x96: Characteristics
+    data.extend_from_slice(b"PE\0\0"); // 0x80: Signature
+    data.extend_from_slice(&[0x4C, 0x01]); // 0x84: Machine (i386)
+    data.extend_from_slice(&[0x06, 0x00]); // 0x86: Sections
+    data.extend_from_slice(&[0xA2, 0xB3, 0xC4, 0xD5]); // 0x88: Timestamp
+    data.extend_from_slice(&[0x00; 8]); // 0x8C: Symbol table + count
+    data.extend_from_slice(&[0xE0, 0x00]); // 0x94: Optional header size
+    data.extend_from_slice(&[0x02, 0x01]); // 0x96: Characteristics
 
     // Fill rest with varied data for interesting hex view
     while data.len() < 512 {
@@ -72,14 +71,14 @@ fn sample_pe_header() -> Vec<u8> {
 /// Color regions for PE header struct overlay.
 fn pe_color_regions() -> Vec<ColorRegion> {
     vec![
-        ColorRegion::new(0x00, 2,  [0.4, 0.8, 1.0, 1.0], "DOS Magic (MZ)"),
-        ColorRegion::new(0x3C, 4,  [1.0, 0.8, 0.3, 1.0], "PE Offset"),
-        ColorRegion::new(0x80, 4,  [0.3, 1.0, 0.5, 1.0], "PE Signature"),
-        ColorRegion::new(0x84, 2,  [1.0, 0.5, 0.5, 1.0], "Machine"),
-        ColorRegion::new(0x86, 2,  [0.8, 0.5, 1.0, 1.0], "Sections"),
-        ColorRegion::new(0x88, 4,  [0.5, 0.8, 0.5, 1.0], "Timestamp"),
-        ColorRegion::new(0x94, 2,  [1.0, 1.0, 0.5, 1.0], "Opt Header Size"),
-        ColorRegion::new(0x96, 2,  [0.5, 1.0, 1.0, 1.0], "Characteristics"),
+        ColorRegion::new(0x00, 2, [0.4, 0.8, 1.0, 1.0], "DOS Magic (MZ)"),
+        ColorRegion::new(0x3C, 4, [1.0, 0.8, 0.3, 1.0], "PE Offset"),
+        ColorRegion::new(0x80, 4, [0.3, 1.0, 0.5, 1.0], "PE Signature"),
+        ColorRegion::new(0x84, 2, [1.0, 0.5, 0.5, 1.0], "Machine"),
+        ColorRegion::new(0x86, 2, [0.8, 0.5, 1.0, 1.0], "Sections"),
+        ColorRegion::new(0x88, 4, [0.5, 0.8, 0.5, 1.0], "Timestamp"),
+        ColorRegion::new(0x94, 2, [1.0, 1.0, 0.5, 1.0], "Opt Header Size"),
+        ColorRegion::new(0x96, 2, [0.5, 1.0, 1.0, 1.0], "Characteristics"),
         ColorRegion::new(0x100, 54, [0.9, 0.7, 0.4, 1.0], "ASCII String"),
     ]
 }
@@ -111,7 +110,7 @@ impl DemoState {
         Self {
             viewer,
             show_config: true,
-            bpr_idx: 2, // 16 (index into [8,12,16,20,24,28,32])
+            bpr_idx: 2,   // 16 (index into [8,12,16,20,24,28,32])
             group_idx: 2, // DWord
             show_regions: true,
             diff_mode: false,
@@ -176,7 +175,11 @@ impl DemoState {
             ui.same_line();
             ui.text_colored(
                 [0.7, 0.7, 0.5, 1.0],
-                format!("  Undo:{} Redo:{}", undo_stack.undo_count(), undo_stack.redo_count()),
+                format!(
+                    "  Undo:{} Redo:{}",
+                    undo_stack.undo_count(),
+                    undo_stack.redo_count()
+                ),
             );
         }
 
@@ -201,13 +204,17 @@ impl DemoState {
         let can_back = self.viewer.nav_history().can_go_back();
         let can_fwd = self.viewer.nav_history().can_go_forward();
         if can_back {
-            if ui.button("<< Back") { self.viewer.nav_back(); }
+            if ui.button("<< Back") {
+                self.viewer.nav_back();
+            }
         } else {
             ui.text_disabled("<< Back");
         }
         ui.same_line();
         if can_fwd {
-            if ui.button("Fwd >>") { self.viewer.nav_forward(); }
+            if ui.button("Fwd >>") {
+                self.viewer.nav_forward();
+            }
         } else {
             ui.text_disabled("Fwd >>");
         }
@@ -223,9 +230,13 @@ impl DemoState {
             }
         }
         ui.same_line();
-        if ui.button("Undo") { self.viewer.undo(); }
+        if ui.button("Undo") {
+            self.viewer.undo();
+        }
         ui.same_line();
-        if ui.button("Redo") { self.viewer.redo(); }
+        if ui.button("Redo") {
+            self.viewer.redo();
+        }
     }
 
     fn render_config(&mut self, ui: &Ui) {
@@ -263,7 +274,14 @@ impl DemoState {
         }
 
         // Copy format
-        let copy_names = ["Hex Spaced", "Hex Compact", "C Array", "Rust Array", "Base64", "ASCII"];
+        let copy_names = [
+            "Hex Spaced",
+            "Hex Compact",
+            "C Array",
+            "Rust Array",
+            "Base64",
+            "ASCII",
+        ];
         ui.set_next_item_width(-1.0);
         if ui.combo_simple_string("Copy Format", &mut self.copy_fmt_idx, &copy_names) {
             self.viewer.config_mut().copy_format = match self.copy_fmt_idx {
@@ -295,7 +313,10 @@ impl DemoState {
         ui.checkbox("Show Offsets", &mut self.viewer.config.show_offsets);
         ui.checkbox("Show ASCII", &mut self.viewer.config.show_ascii);
         ui.checkbox("Show Inspector", &mut self.viewer.config.show_inspector);
-        ui.checkbox("Column Headers", &mut self.viewer.config.show_column_headers);
+        ui.checkbox(
+            "Column Headers",
+            &mut self.viewer.config.show_column_headers,
+        );
         ui.checkbox("Uppercase Hex", &mut self.viewer.config.uppercase);
         ui.checkbox("Dim Zeros", &mut self.viewer.config.dim_zeros);
         ui.checkbox("Category Colors", &mut self.viewer.config.category_colors);
@@ -352,12 +373,15 @@ impl DemoState {
         if self.show_regions {
             ui.text("Regions");
             for region in &pe_color_regions() {
-                ui.text_colored(region.color, format!(
-                    "0x{:04X}..{:04X} {}",
-                    region.offset,
-                    region.offset + region.len,
-                    region.label,
-                ));
+                ui.text_colored(
+                    region.color,
+                    format!(
+                        "0x{:04X}..{:04X} {}",
+                        region.offset,
+                        region.offset + region.len,
+                        region.label,
+                    ),
+                );
             }
         }
 
@@ -391,12 +415,16 @@ struct App {
 }
 
 impl App {
-    fn new() -> Self { Self { gpu: None } }
+    fn new() -> Self {
+        Self { gpu: None }
+    }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gpu.is_some() { return; }
+        if self.gpu.is_some() {
+            return;
+        }
 
         let window = Arc::new(
             event_loop
@@ -420,8 +448,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -490,7 +517,10 @@ impl ApplicationHandler for App {
         gpu.platform.handle_event::<()>(
             &mut gpu.context,
             &gpu.window,
-            &Event::WindowEvent { window_id, event: event.clone() },
+            &Event::WindowEvent {
+                window_id,
+                event: event.clone(),
+            },
         );
 
         match event {
@@ -505,8 +535,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -516,7 +545,9 @@ impl ApplicationHandler for App {
                     }
                 };
 
-                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
 
                 let ui = gpu.context.frame();
@@ -525,9 +556,11 @@ impl ApplicationHandler for App {
 
                 let draw_data = gpu.context.render();
 
-                let mut encoder = gpu.device.create_command_encoder(
-                    &wgpu::CommandEncoderDescriptor { label: Some("imgui") },
-                );
+                let mut encoder =
+                    gpu.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("imgui"),
+                        });
 
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -538,7 +571,10 @@ impl ApplicationHandler for App {
                             depth_slice: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.06, g: 0.06, b: 0.08, a: 1.0,
+                                    r: 0.06,
+                                    g: 0.06,
+                                    b: 0.08,
+                                    a: 1.0,
                                 }),
                                 store: wgpu::StoreOp::Store,
                             },
@@ -550,7 +586,9 @@ impl ApplicationHandler for App {
                     });
 
                     if draw_data.total_vtx_count > 0 {
-                        gpu.renderer.render_draw_data(draw_data, &mut pass).expect("render");
+                        gpu.renderer
+                            .render_draw_data(draw_data, &mut pass)
+                            .expect("render");
                     }
                 }
 
@@ -613,7 +651,10 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::Tab, [0.14, 0.15, 0.19, 1.0]);
     style.set_color(StyleColor::TabHovered, accent_dim);
     style.set_color(StyleColor::TabSelected, [0.22, 0.24, 0.30, 1.0]);
-    style.set_color(StyleColor::TextSelectedBg, [accent[0], accent[1], accent[2], 0.30]);
+    style.set_color(
+        StyleColor::TextSelectedBg,
+        [accent[0], accent[1], accent[2], 0.30],
+    );
     style.set_color(StyleColor::Text, [0.92, 0.93, 0.95, 1.0]);
     style.set_color(StyleColor::TextDisabled, [0.42, 0.45, 0.52, 1.0]);
     style.set_color(StyleColor::PlotHistogram, accent_hi);

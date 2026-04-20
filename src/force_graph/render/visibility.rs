@@ -38,7 +38,11 @@ impl VisibleSet {
 /// render layer can dim non-matching nodes instead of hiding them.
 ///
 /// Returns [`VisibleSet::All`] when the filter is an identity (nothing active).
-pub(crate) fn compute(graph: &GraphData, filter: &FilterState, search_highlight: bool) -> VisibleSet {
+pub(crate) fn compute(
+    graph: &GraphData,
+    filter: &FilterState,
+    search_highlight: bool,
+) -> VisibleSet {
     if filter.is_identity() {
         return VisibleSet::All;
     }
@@ -48,7 +52,9 @@ pub(crate) fn compute(graph: &GraphData, filter: &FilterState, search_highlight:
     // ── Tag whitelist (enabled_tags) ────────────────────────────────────────
     if !filter.enabled_tags.is_empty() {
         set.retain(|id| {
-            let Some(node) = graph.node(*id) else { return false };
+            let Some(node) = graph.node(*id) else {
+                return false;
+            };
             node.tags.iter().any(|t| filter.enabled_tags.contains(t))
         });
     }
@@ -57,13 +63,17 @@ pub(crate) fn compute(graph: &GraphData, filter: &FilterState, search_highlight:
     if !search_highlight && !filter.search_query.is_empty() {
         let q = filter.search_query.to_ascii_lowercase();
         set.retain(|id| {
-            let Some(node) = graph.node(*id) else { return false };
+            let Some(node) = graph.node(*id) else {
+                return false;
+            };
             let label_match = node.label.to_ascii_lowercase().contains(&q);
             if label_match {
                 return true;
             }
             if filter.search_match_tags {
-                node.tags.iter().any(|t| t.to_ascii_lowercase().contains(&q))
+                node.tags
+                    .iter()
+                    .any(|t| t.to_ascii_lowercase().contains(&q))
             } else {
                 false
             }
@@ -73,7 +83,9 @@ pub(crate) fn compute(graph: &GraphData, filter: &FilterState, search_highlight:
     // ── Time-travel filter ──────────────────────────────────────────────────
     if filter.time_threshold.is_finite() {
         set.retain(|id| {
-            let Some(node) = graph.node(*id) else { return false };
+            let Some(node) = graph.node(*id) else {
+                return false;
+            };
             node.created_at <= filter.time_threshold
         });
     }
@@ -81,7 +93,9 @@ pub(crate) fn compute(graph: &GraphData, filter: &FilterState, search_highlight:
     // ── Node-kind visibility ────────────────────────────────────────────────
     if filter.hide_unresolved || filter.hide_tags || filter.hide_attachments {
         set.retain(|id| {
-            let Some(node) = graph.node(*id) else { return false };
+            let Some(node) = graph.node(*id) else {
+                return false;
+            };
             match node.kind {
                 NodeKind::Unresolved if filter.hide_unresolved => false,
                 NodeKind::Tag if filter.hide_tags => false,
@@ -175,7 +189,11 @@ mod tests {
         let mut f = FilterState::new();
         f.show_orphans = false;
         let vis = compute(&g, &f);
-        let visible: Vec<_> = g.nodes().map(|(id, _)| id).filter(|id| vis.contains(*id)).collect();
+        let visible: Vec<_> = g
+            .nodes()
+            .map(|(id, _)| id)
+            .filter(|id| vis.contains(*id))
+            .collect();
         assert_eq!(visible.len(), 2);
     }
 

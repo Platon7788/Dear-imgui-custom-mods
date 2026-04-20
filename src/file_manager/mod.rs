@@ -95,7 +95,7 @@ use std::path::PathBuf;
 use dear_imgui_rs::{Key, Ui, WindowFlags};
 
 use config::FmStrings as Strings;
-use entry::{sort_entries, FsEntry, SortColumn, SortOrder};
+use entry::{FsEntry, SortColumn, SortOrder, sort_entries};
 use favorites::FavoritesPanel;
 use history::NavigationHistory;
 
@@ -284,10 +284,31 @@ fn is_valid_filename(name: &str) -> bool {
     // Windows reserved names
     let upper = name.to_uppercase();
     let stem = upper.split('.').next().unwrap_or("");
-    if matches!(stem, "CON" | "PRN" | "AUX" | "NUL"
-        | "COM1" | "COM2" | "COM3" | "COM4" | "COM5" | "COM6" | "COM7" | "COM8" | "COM9"
-        | "LPT1" | "LPT2" | "LPT3" | "LPT4" | "LPT5" | "LPT6" | "LPT7" | "LPT8" | "LPT9")
-    {
+    if matches!(
+        stem,
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    ) {
         return false;
     }
     // Invalid characters across platforms
@@ -311,7 +332,8 @@ impl FileManager {
             mode: DialogMode::SelectFolder,
             filters: vec![FileFilter::all()],
             active_filter: 0,
-            current_path: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(if cfg!(windows) { "C:\\" } else { "/" })),
+            current_path: std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from(if cfg!(windows) { "C:\\" } else { "/" })),
             drives: enumerate_drives(),
             history: NavigationHistory::new(max_history),
             entries: Vec::new(),
@@ -492,7 +514,12 @@ impl FileManager {
                         }
                     }
                 }
-                sort_entries(&mut self.entries, self.sort_column, self.sort_order, self.config.dirs_first);
+                sort_entries(
+                    &mut self.entries,
+                    self.sort_column,
+                    self.sort_order,
+                    self.config.dirs_first,
+                );
             }
             Err(e) => {
                 self.error = Some(FmError::CannotReadDir(e.to_string()));
@@ -555,7 +582,9 @@ impl FileManager {
             }
             Action::CreateFolder(name) => {
                 if !is_valid_filename(&name) {
-                    self.error = Some(FmError::CreateFolderFailed(format!("Invalid name: \"{name}\"")));
+                    self.error = Some(FmError::CreateFolderFailed(format!(
+                        "Invalid name: \"{name}\""
+                    )));
                     self.show_new_folder = false;
                 } else {
                     let new_path = self.current_path.join(&name);
@@ -573,7 +602,9 @@ impl FileManager {
             }
             Action::CreateFile(name) => {
                 if !is_valid_filename(&name) {
-                    self.error = Some(FmError::CreateFileFailed(format!("Invalid name: \"{name}\"")));
+                    self.error = Some(FmError::CreateFileFailed(format!(
+                        "Invalid name: \"{name}\""
+                    )));
                     self.show_new_file = false;
                 } else {
                     let new_path = self.current_path.join(&name);
@@ -614,16 +645,26 @@ impl FileManager {
             }
             Action::SetSort(_col) => {
                 // sort_column/sort_order already updated by render_file_table
-                sort_entries(&mut self.entries, self.sort_column, self.sort_order, self.config.dirs_first);
+                sort_entries(
+                    &mut self.entries,
+                    self.sort_column,
+                    self.sort_order,
+                    self.config.dirs_first,
+                );
             }
             Action::ConfirmSelection => {}
             Action::RenameEntry { index, new_name } => {
                 if !is_valid_filename(&new_name) {
-                    self.error = Some(FmError::RenameFailed(format!("Invalid name: \"{new_name}\"")));
+                    self.error = Some(FmError::RenameFailed(format!(
+                        "Invalid name: \"{new_name}\""
+                    )));
                     self.rename_index = None;
                 } else if let Some(entry) = self.entries.get(index) {
                     let old_path = entry.path.clone();
-                    let new_path = old_path.parent().unwrap_or(&self.current_path).join(&new_name);
+                    let new_path = old_path
+                        .parent()
+                        .unwrap_or(&self.current_path)
+                        .join(&new_name);
                     match std::fs::rename(&old_path, &new_path) {
                         Ok(()) => {
                             self.rename_index = None;
@@ -701,13 +742,32 @@ impl FileManager {
         let mut typed_char = None;
         for c in b'A'..=b'Z' {
             let key = match c {
-                b'A' => Key::A, b'B' => Key::B, b'C' => Key::C, b'D' => Key::D,
-                b'E' => Key::E, b'F' => Key::F, b'G' => Key::G, b'H' => Key::H,
-                b'I' => Key::I, b'J' => Key::J, b'K' => Key::K, b'L' => Key::L,
-                b'M' => Key::M, b'N' => Key::N, b'O' => Key::O, b'P' => Key::P,
-                b'Q' => Key::Q, b'R' => Key::R, b'S' => Key::S, b'T' => Key::T,
-                b'U' => Key::U, b'V' => Key::V, b'W' => Key::W, b'X' => Key::X,
-                b'Y' => Key::Y, b'Z' => Key::Z,
+                b'A' => Key::A,
+                b'B' => Key::B,
+                b'C' => Key::C,
+                b'D' => Key::D,
+                b'E' => Key::E,
+                b'F' => Key::F,
+                b'G' => Key::G,
+                b'H' => Key::H,
+                b'I' => Key::I,
+                b'J' => Key::J,
+                b'K' => Key::K,
+                b'L' => Key::L,
+                b'M' => Key::M,
+                b'N' => Key::N,
+                b'O' => Key::O,
+                b'P' => Key::P,
+                b'Q' => Key::Q,
+                b'R' => Key::R,
+                b'S' => Key::S,
+                b'T' => Key::T,
+                b'U' => Key::U,
+                b'V' => Key::V,
+                b'W' => Key::W,
+                b'X' => Key::X,
+                b'Y' => Key::Y,
+                b'Z' => Key::Z,
                 _ => continue,
             };
             if ui.is_key_pressed(key) {
@@ -762,7 +822,8 @@ impl FileManager {
 
         // Set window size before opening popup
         unsafe {
-            #[allow(clippy::unnecessary_cast)] // ImGuiCond_Appearing is u32 on Linux, i32 on Windows
+            #[allow(clippy::unnecessary_cast)]
+            // ImGuiCond_Appearing is u32 on Linux, i32 on Windows
             dear_imgui_rs::sys::igSetNextWindowSize(
                 dear_imgui_rs::sys::ImVec2 {
                     x: self.config.initial_size[0],
@@ -878,8 +939,7 @@ impl FileManager {
             let reserved = 64.0_f32;
             let content_h = (ui.content_region_avail()[1] - reserved).max(100.0);
 
-            let show_favorites =
-                self.config.show_favorites && !self.favorites.entries.is_empty();
+            let show_favorites = self.config.show_favorites && !self.favorites.entries.is_empty();
 
             if show_favorites {
                 // Left panel: Favorites
@@ -893,8 +953,7 @@ impl FileManager {
                             &self.current_path,
                             strings,
                             &mut self.fmt_buf,
-                        )
-                            && deferred.is_none()
+                        ) && deferred.is_none()
                         {
                             deferred = Some(a);
                         }
@@ -1029,14 +1088,12 @@ impl FileManager {
             {
                 self.breadcrumb_editing = true;
                 self.path_input_buf.clear();
-                self.path_input_buf.push_str(&self.current_path.to_string_lossy());
+                self.path_input_buf
+                    .push_str(&self.current_path.to_string_lossy());
             }
 
             // ── Ctrl+H to toggle hidden files ──
-            if ui.is_key_pressed(Key::H)
-                && ui.io().key_ctrl()
-                && !ui.is_any_item_active()
-            {
+            if ui.is_key_pressed(Key::H) && ui.io().key_ctrl() && !ui.is_any_item_active() {
                 self.show_hidden = !self.show_hidden;
                 self.refresh_directory();
             }
@@ -1075,8 +1132,7 @@ impl FileManager {
                 strings,
                 &mut self.show_overwrite_confirm,
                 &mut self.fmt_buf,
-            )
-                && result
+            ) && result
             {
                 self.finalize_selection();
                 confirmed = true;
@@ -1088,7 +1144,8 @@ impl FileManager {
                 ui,
                 strings,
                 &mut self.show_delete_confirm,
-                self.delete_target.and_then(|i| self.entries.get(i).map(|e| e.name.as_str())),
+                self.delete_target
+                    .and_then(|i| self.entries.get(i).map(|e| e.name.as_str())),
                 &mut self.fmt_buf,
             ) {
                 if result {

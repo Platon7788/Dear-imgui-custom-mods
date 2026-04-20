@@ -10,33 +10,33 @@ use dear_imgui_custom_mod::confirm_dialog::{
     DialogConfig, DialogIcon, DialogResult, render_confirm_dialog,
 };
 use dear_imgui_custom_mod::nav_panel::*;
-use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_custom_mod::status_bar::{Indicator, StatusBar, StatusBarConfig, StatusItem};
+use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_rs::{StyleColor, StyleVar, Ui};
 
 // ── Application state ────────────────────────────────────────────────────────
 
 struct DemoApp {
-    nav_state:     NavPanelState,
-    status_bar:    StatusBar,
+    nav_state: NavPanelState,
+    status_bar: StatusBar,
     current_theme: Theme,
-    show_confirm:  bool,
-    log:           Vec<String>,
-    notification:  u32,
+    show_confirm: bool,
+    log: Vec<String>,
+    notification: u32,
     // Config values
-    position_idx:  i32,
-    width:         f32,
-    height:        f32,
-    button_size:   f32,
-    indicator:     f32,
-    show_toggle:   bool,
-    auto_hide:     bool,
-    auto_show:     bool,
-    animate:       bool,
-    anim_speed:    f32,
-    btn_rounding:  f32,
-    btn_spacing:   f32,
-    btn_seps:      bool,
+    position_idx: i32,
+    width: f32,
+    height: f32,
+    button_size: f32,
+    indicator: f32,
+    show_toggle: bool,
+    auto_hide: bool,
+    auto_show: bool,
+    animate: bool,
+    anim_speed: f32,
+    btn_rounding: f32,
+    btn_spacing: f32,
+    btn_seps: bool,
 }
 
 impl DemoApp {
@@ -45,7 +45,10 @@ impl DemoApp {
         nav_state.set_active("home");
 
         let mut status_bar = StatusBar::new("##status");
-        status_bar.config = StatusBarConfig { height: 22.0, ..StatusBarConfig::default() };
+        status_bar.config = StatusBarConfig {
+            height: 22.0,
+            ..StatusBarConfig::default()
+        };
         status_bar.left(StatusItem::indicator("Ready", Indicator::Success));
         status_bar.left(StatusItem::text("Ln 1, Col 1"));
         status_bar.right(StatusItem::text("UTF-8"));
@@ -81,8 +84,7 @@ impl DemoApp {
             _ => DockPosition::Left,
         };
 
-        let mut home = NavButton::action("home", "H", "Home")
-            .with_color([0.30, 0.65, 1.00, 1.0]);
+        let mut home = NavButton::action("home", "H", "Home").with_color([0.30, 0.65, 1.00, 1.0]);
         if self.notification > 0 {
             home = home.with_badge(self.notification.to_string());
         }
@@ -122,19 +124,25 @@ impl DemoApp {
 
     fn push_log(&mut self, msg: String) {
         self.log.push(msg);
-        if self.log.len() > 300 { self.log.drain(..1); }
+        if self.log.len() > 300 {
+            self.log.drain(..1);
+        }
     }
 
-    fn to_nav_theme(t: &Theme) -> Theme { *t }
-    fn to_dialog_theme(t: &Theme) -> Theme { *t }
+    fn to_nav_theme(t: &Theme) -> Theme {
+        *t
+    }
+    fn to_dialog_theme(t: &Theme) -> Theme {
+        *t
+    }
 
     fn cycle_theme(&mut self, state: &mut AppState) {
         let next = match &self.current_theme {
-            Theme::Dark      => Theme::Light,
-            Theme::Light     => Theme::Midnight,
-            Theme::Midnight  => Theme::Solarized,
+            Theme::Dark => Theme::Light,
+            Theme::Light => Theme::Midnight,
+            Theme::Midnight => Theme::Solarized,
             Theme::Solarized => Theme::Monokai,
-            _                        => Theme::Dark,
+            _ => Theme::Dark,
         };
         self.current_theme = next;
         state.set_theme(next);
@@ -149,7 +157,7 @@ impl AppHandler for DemoApp {
         let [avail_w, avail_h] = ui.content_region_avail();
         let is_vertical = self.position_idx <= 1; // Left=0, Right=1
         let is_left = self.position_idx == 0;
-        let is_top  = self.position_idx == 2;  // Top=2
+        let is_top = self.position_idx == 2; // Top=2
 
         // ── Reserve space for status bar at bottom ───────────────────────────
         let status_h = self.status_bar.config.height;
@@ -181,136 +189,156 @@ impl AppHandler for DemoApp {
                     ui.set_cursor_pos([cx, content_y]);
                 }
 
-                let content_w = if is_vertical { avail_w - nav_w } else { avail_w };
+                let content_w = if is_vertical {
+                    avail_w - nav_w
+                } else {
+                    avail_w
+                };
                 let zone_h = ui.content_region_avail()[1];
                 let content_h = zone_h;
 
-        ui.child_window("##content")
-            .size([content_w, content_h])
-            .border(false)
-            .build(ui, || {
-                let _pad = ui.push_style_var(StyleVar::WindowPadding([10.0, 6.0]));
-                let _sp  = ui.push_style_var(StyleVar::ItemSpacing([6.0, 4.0]));
-
-                let page = self.nav_state.active.unwrap_or("none");
-                let panel_w = 260.0_f32;
-                let avail = ui.content_region_avail();
-
-                // Left: Config panel
-                ui.child_window("##cfg")
-                    .size([panel_w, avail[1]])
-                    .border(true)
-                    .build(ui, || {
-                        ui.text("NavPanel Config");
-                        ui.separator();
-                        ui.spacing();
-
-                        // Position buttons
-                        ui.text("Position");
-                        for (i, label) in ["Left", "Right", "Top"].iter().enumerate() {
-                            if i > 0 { ui.same_line(); }
-                            let active = self.position_idx == i as i32;
-                            if active {
-                                let _c = ui.push_style_color(StyleColor::Button, [0.3, 0.5, 0.9, 1.0]);
-                                ui.button(label);
-                            } else if ui.button(label) {
-                                self.position_idx = i as i32;
-                                self.push_log(format!("Position: {label}"));
-                            }
-                        }
-
-                        ui.spacing();
-                        ui.separator();
-                        ui.text("Dimensions");
-                        ui.set_next_item_width(130.0);
-                        ui.slider("Width", 20.0, 60.0, &mut self.width);
-                        ui.set_next_item_width(130.0);
-                        ui.slider("Height", 20.0, 60.0, &mut self.height);
-                        ui.set_next_item_width(130.0);
-                        ui.slider("Btn size", 18.0, 48.0, &mut self.button_size);
-                        ui.set_next_item_width(130.0);
-                        ui.slider("Indicator", 1.0, 6.0, &mut self.indicator);
-                        ui.set_next_item_width(130.0);
-                        ui.slider("Rounding", 0.0, 16.0, &mut self.btn_rounding);
-                        ui.set_next_item_width(130.0);
-                        ui.slider("Spacing", 0.0, 8.0, &mut self.btn_spacing);
-                        ui.checkbox("Button separators", &mut self.btn_seps);
-
-                        ui.spacing();
-                        ui.separator();
-                        ui.text("Behavior");
-                        ui.checkbox("Show toggle arrow", &mut self.show_toggle);
-                        ui.checkbox("Auto hide", &mut self.auto_hide);
-                        ui.checkbox("Auto show on hover", &mut self.auto_show);
-                        ui.checkbox("Animate", &mut self.animate);
-                        ui.set_next_item_width(130.0);
-                        ui.slider("Speed", 2.0, 20.0, &mut self.anim_speed);
-
-                        ui.spacing();
-                        ui.separator();
-                        ui.text("State");
-                        ui.text(format!("  visible: {}", self.nav_state.visible));
-                        ui.text(format!("  progress: {:.2}", self.nav_state.animation_progress));
-                        ui.text(format!("  active: {:?}", self.nav_state.active));
-
-                        ui.spacing();
-                        ui.separator();
-                        ui.text("Actions");
-                        if ui.button("Show") { self.nav_state.show(); }
-                        ui.same_line();
-                        if ui.button("Hide") { self.nav_state.hide(); }
-                        ui.same_line();
-                        if ui.button("+Badge") {
-                            self.notification += 1;
-                            self.push_log(format!("Badge: {}", self.notification));
-                        }
-                        ui.same_line();
-                        if ui.button("Clear") { self.notification = 0; }
-                    });
-
-                ui.same_line();
-
-                // Right: Page + Log
-                ui.child_window("##page")
-                    .size([0.0, avail[1]])
+                ui.child_window("##content")
+                    .size([content_w, content_h])
                     .border(false)
                     .build(ui, || {
-                        ui.text(format!("Page: {page}"));
-                        ui.separator();
-                        ui.spacing();
-                        match page {
-                            "home" => {
-                                ui.text_wrapped(
-                                    "NavPanel + StatusBar integration test. \
-                                     Use config panel to adjust all properties.",
-                                );
-                            }
-                            "search"  => ui.text("Search page"),
-                            "users"   => ui.text("Users page"),
-                            "files"   => ui.text("Files page"),
-                            "data"    => ui.text("Database page"),
-                            _ => { ui.text("Select a page."); }
-                        }
+                        let _pad = ui.push_style_var(StyleVar::WindowPadding([10.0, 6.0]));
+                        let _sp = ui.push_style_var(StyleVar::ItemSpacing([6.0, 4.0]));
 
-                        ui.spacing();
-                        ui.separator();
-                        ui.text("Event Log");
-                        ui.separator();
-                        let lh = ui.content_region_avail()[1];
-                        ui.child_window("##log")
-                            .size([0.0, lh])
+                        let page = self.nav_state.active.unwrap_or("none");
+                        let panel_w = 260.0_f32;
+                        let avail = ui.content_region_avail();
+
+                        // Left: Config panel
+                        ui.child_window("##cfg")
+                            .size([panel_w, avail[1]])
                             .border(true)
                             .build(ui, || {
-                                for entry in &self.log {
-                                    ui.text_wrapped(entry);
+                                ui.text("NavPanel Config");
+                                ui.separator();
+                                ui.spacing();
+
+                                // Position buttons
+                                ui.text("Position");
+                                for (i, label) in ["Left", "Right", "Top"].iter().enumerate() {
+                                    if i > 0 {
+                                        ui.same_line();
+                                    }
+                                    let active = self.position_idx == i as i32;
+                                    if active {
+                                        let _c = ui.push_style_color(
+                                            StyleColor::Button,
+                                            [0.3, 0.5, 0.9, 1.0],
+                                        );
+                                        ui.button(label);
+                                    } else if ui.button(label) {
+                                        self.position_idx = i as i32;
+                                        self.push_log(format!("Position: {label}"));
+                                    }
                                 }
-                                if ui.scroll_y() >= ui.scroll_max_y() {
-                                    ui.set_scroll_here_y(1.0);
+
+                                ui.spacing();
+                                ui.separator();
+                                ui.text("Dimensions");
+                                ui.set_next_item_width(130.0);
+                                ui.slider("Width", 20.0, 60.0, &mut self.width);
+                                ui.set_next_item_width(130.0);
+                                ui.slider("Height", 20.0, 60.0, &mut self.height);
+                                ui.set_next_item_width(130.0);
+                                ui.slider("Btn size", 18.0, 48.0, &mut self.button_size);
+                                ui.set_next_item_width(130.0);
+                                ui.slider("Indicator", 1.0, 6.0, &mut self.indicator);
+                                ui.set_next_item_width(130.0);
+                                ui.slider("Rounding", 0.0, 16.0, &mut self.btn_rounding);
+                                ui.set_next_item_width(130.0);
+                                ui.slider("Spacing", 0.0, 8.0, &mut self.btn_spacing);
+                                ui.checkbox("Button separators", &mut self.btn_seps);
+
+                                ui.spacing();
+                                ui.separator();
+                                ui.text("Behavior");
+                                ui.checkbox("Show toggle arrow", &mut self.show_toggle);
+                                ui.checkbox("Auto hide", &mut self.auto_hide);
+                                ui.checkbox("Auto show on hover", &mut self.auto_show);
+                                ui.checkbox("Animate", &mut self.animate);
+                                ui.set_next_item_width(130.0);
+                                ui.slider("Speed", 2.0, 20.0, &mut self.anim_speed);
+
+                                ui.spacing();
+                                ui.separator();
+                                ui.text("State");
+                                ui.text(format!("  visible: {}", self.nav_state.visible));
+                                ui.text(format!(
+                                    "  progress: {:.2}",
+                                    self.nav_state.animation_progress
+                                ));
+                                ui.text(format!("  active: {:?}", self.nav_state.active));
+
+                                ui.spacing();
+                                ui.separator();
+                                ui.text("Actions");
+                                if ui.button("Show") {
+                                    self.nav_state.show();
+                                }
+                                ui.same_line();
+                                if ui.button("Hide") {
+                                    self.nav_state.hide();
+                                }
+                                ui.same_line();
+                                if ui.button("+Badge") {
+                                    self.notification += 1;
+                                    self.push_log(format!("Badge: {}", self.notification));
+                                }
+                                ui.same_line();
+                                if ui.button("Clear") {
+                                    self.notification = 0;
                                 }
                             });
-                    });
-            }); // ##content
-        }); // ##main_zone
+
+                        ui.same_line();
+
+                        // Right: Page + Log
+                        ui.child_window("##page")
+                            .size([0.0, avail[1]])
+                            .border(false)
+                            .build(ui, || {
+                                ui.text(format!("Page: {page}"));
+                                ui.separator();
+                                ui.spacing();
+                                match page {
+                                    "home" => {
+                                        ui.text_wrapped(
+                                            "NavPanel + StatusBar integration test. \
+                                     Use config panel to adjust all properties.",
+                                        );
+                                    }
+                                    "search" => ui.text("Search page"),
+                                    "users" => ui.text("Users page"),
+                                    "files" => ui.text("Files page"),
+                                    "data" => ui.text("Database page"),
+                                    _ => {
+                                        ui.text("Select a page.");
+                                    }
+                                }
+
+                                ui.spacing();
+                                ui.separator();
+                                ui.text("Event Log");
+                                ui.separator();
+                                let lh = ui.content_region_avail()[1];
+                                ui.child_window("##log").size([0.0, lh]).border(true).build(
+                                    ui,
+                                    || {
+                                        for entry in &self.log {
+                                            ui.text_wrapped(entry);
+                                        }
+                                        if ui.scroll_y() >= ui.scroll_max_y() {
+                                            ui.set_scroll_here_y(1.0);
+                                        }
+                                    },
+                                );
+                            });
+                    }); // ##content
+            }); // ##main_zone
 
         // Handle nav events (after child_window scope)
         for event in &pending_events {
@@ -346,7 +374,8 @@ impl AppHandler for DemoApp {
                 .with_confirm_label("Close")
                 .with_cancel_label("Cancel")
                 .with_theme(Self::to_dialog_theme(&self.current_theme));
-            if let DialogResult::Confirmed = render_confirm_dialog(ui, &cfg, &mut self.show_confirm) {
+            if let DialogResult::Confirmed = render_confirm_dialog(ui, &cfg, &mut self.show_confirm)
+            {
                 state.exit();
             }
         }

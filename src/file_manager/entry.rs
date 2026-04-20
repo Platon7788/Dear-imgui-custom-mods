@@ -81,9 +81,7 @@ impl FsEntry {
         };
 
         let date_modified = meta.modified().ok();
-        let date_display = date_modified
-            .map(format_system_time)
-            .unwrap_or_default();
+        let date_display = date_modified.map(format_system_time).unwrap_or_default();
 
         let extension = if is_dir {
             String::new()
@@ -130,7 +128,12 @@ impl FsEntry {
 /// When `dirs_first` is `true`, directories are grouped before files.
 /// The Type column sorts by extension, with a secondary sort by name for entries
 /// sharing the same extension.
-pub(super) fn sort_entries(entries: &mut [FsEntry], column: SortColumn, order: SortOrder, dirs_first: bool) {
+pub(super) fn sort_entries(
+    entries: &mut [FsEntry],
+    column: SortColumn,
+    order: SortOrder,
+    dirs_first: bool,
+) {
     entries.sort_by(|a, b| {
         // Optionally group directories before files
         if dirs_first {

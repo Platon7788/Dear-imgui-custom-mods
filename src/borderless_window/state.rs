@@ -29,13 +29,19 @@ impl Default for TitlebarState {
 }
 
 impl TitlebarState {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Sync the maximized flag after toggling the OS window state.
-    pub fn set_maximized(&mut self, v: bool) { self.maximized = v; }
+    pub fn set_maximized(&mut self, v: bool) {
+        self.maximized = v;
+    }
 
     /// Sync the focused flag from the OS `WindowEvent::Focused` event.
-    pub fn set_focused(&mut self, v: bool) { self.focused = v; }
+    pub fn set_focused(&mut self, v: bool) {
+        self.focused = v;
+    }
 
     /// Signal that the user confirmed the close action.
     ///
@@ -52,8 +58,12 @@ impl TitlebarState {
     ///     state.confirm_close();
     /// }
     /// ```
-    pub fn confirm_close(&mut self) { self.confirmed_close = true; }
+    pub fn confirm_close(&mut self) {
+        self.confirmed_close = true;
+    }
 
     /// Cancel a pending close (reset after user dismisses the confirmation dialog).
-    pub fn cancel_close(&mut self) { self.confirmed_close = false; }
+    pub fn cancel_close(&mut self) {
+        self.confirmed_close = false;
+    }
 }

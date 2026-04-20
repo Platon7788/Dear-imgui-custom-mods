@@ -25,11 +25,7 @@ pub(crate) fn spring_force(
 ///
 /// Force magnitude: `repulsion / (dist² + epsilon)`.
 /// Returns `[f32; 2]` force to ADD to `a`'s velocity update (pointing away from `b`).
-pub(crate) fn repulsion_force(
-    pos_a: [f32; 2],
-    pos_b: [f32; 2],
-    repulsion: f32,
-) -> [f32; 2] {
+pub(crate) fn repulsion_force(pos_a: [f32; 2], pos_b: [f32; 2], repulsion: f32) -> [f32; 2] {
     const EPSILON: f32 = 100.0; // prevents division by zero at zero distance
     let dx = pos_a[0] - pos_b[0];
     let dy = pos_a[1] - pos_b[1];

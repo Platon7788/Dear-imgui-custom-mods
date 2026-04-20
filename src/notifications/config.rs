@@ -68,7 +68,10 @@ pub enum Placement {
 impl Placement {
     /// `true` if the stack grows upward (bottom anchors) vs downward.
     pub(crate) fn grows_up(self) -> bool {
-        matches!(self, Self::BottomRight | Self::BottomLeft | Self::BottomCenter)
+        matches!(
+            self,
+            Self::BottomRight | Self::BottomLeft | Self::BottomCenter
+        )
     }
     /// `true` if the slide-in direction is from the left edge.
     pub(crate) fn slides_from_left(self) -> bool {
@@ -127,23 +130,23 @@ pub struct NotificationAction {
 /// A single notification. Use the severity-named constructors + builder methods.
 #[derive(Debug, Clone)]
 pub struct Notification {
-    pub title:        String,
-    pub body:         String,
-    pub severity:     Severity,
-    pub duration:     Duration,
-    pub closable:     bool,
+    pub title: String,
+    pub body: String,
+    pub severity: Severity,
+    pub duration: Duration,
+    pub closable: bool,
     pub show_progress: bool,
-    pub show_icon:    bool,
-    pub actions:      Vec<NotificationAction>,
+    pub show_icon: bool,
+    pub actions: Vec<NotificationAction>,
     /// Overrides the severity accent color (icon, left strip, progress bar).
     pub custom_color: Option<[f32; 4]>,
 
     // ── runtime state (managed by NotificationCenter) ────────────────────────
-    pub(crate) id:          u64,
-    pub(crate) elapsed:     f32,
-    pub(crate) enter_t:     f32,   // 0..=1 appear-animation progress
-    pub(crate) exit_t:      f32,   // 0..=1 dismiss-animation progress (0 = not dismissing)
-    pub(crate) dismissing:  bool,
+    pub(crate) id: u64,
+    pub(crate) elapsed: f32,
+    pub(crate) enter_t: f32, // 0..=1 appear-animation progress
+    pub(crate) exit_t: f32,  // 0..=1 dismiss-animation progress (0 = not dismissing)
+    pub(crate) dismissing: bool,
 }
 
 impl Notification {
@@ -167,35 +170,69 @@ impl Notification {
     }
 
     /// Neutral info — default accent is blue.
-    pub fn info(title: impl Into<String>) -> Self { Self::base(Severity::Info, title) }
+    pub fn info(title: impl Into<String>) -> Self {
+        Self::base(Severity::Info, title)
+    }
     /// Success — default accent is green.
-    pub fn success(title: impl Into<String>) -> Self { Self::base(Severity::Success, title) }
+    pub fn success(title: impl Into<String>) -> Self {
+        Self::base(Severity::Success, title)
+    }
     /// Warning — default accent is amber.
-    pub fn warning(title: impl Into<String>) -> Self { Self::base(Severity::Warning, title) }
+    pub fn warning(title: impl Into<String>) -> Self {
+        Self::base(Severity::Warning, title)
+    }
     /// Error — default accent is red.
-    pub fn error(title: impl Into<String>) -> Self { Self::base(Severity::Error, title) }
+    pub fn error(title: impl Into<String>) -> Self {
+        Self::base(Severity::Error, title)
+    }
     /// Debug — default accent is gray.
-    pub fn debug(title: impl Into<String>) -> Self { Self::base(Severity::Debug, title) }
+    pub fn debug(title: impl Into<String>) -> Self {
+        Self::base(Severity::Debug, title)
+    }
 
     /// Set the body text (shown under the title, word-wrapped).
-    pub fn with_body(mut self, body: impl Into<String>) -> Self { self.body = body.into(); self }
+    pub fn with_body(mut self, body: impl Into<String>) -> Self {
+        self.body = body.into();
+        self
+    }
     /// Auto-dismiss after `secs` seconds.
-    pub fn with_duration_secs(mut self, secs: f32) -> Self { self.duration = Duration::Timed(secs); self }
+    pub fn with_duration_secs(mut self, secs: f32) -> Self {
+        self.duration = Duration::Timed(secs);
+        self
+    }
     /// Never auto-dismiss — user must click `×` or an action.
-    pub fn sticky(mut self) -> Self { self.duration = Duration::Sticky; self }
+    pub fn sticky(mut self) -> Self {
+        self.duration = Duration::Sticky;
+        self
+    }
     /// Add an action button — caller receives `ActionClicked { id, action_id: id }` on click.
     pub fn with_action(mut self, id: u32, label: impl Into<String>) -> Self {
-        self.actions.push(NotificationAction { id, label: label.into() });
+        self.actions.push(NotificationAction {
+            id,
+            label: label.into(),
+        });
         self
     }
     /// Override the severity's default accent color.
-    pub fn with_custom_color(mut self, color: [f32; 4]) -> Self { self.custom_color = Some(color); self }
+    pub fn with_custom_color(mut self, color: [f32; 4]) -> Self {
+        self.custom_color = Some(color);
+        self
+    }
     /// Disable the `×` close button (user can only dismiss via action / timeout).
-    pub fn not_closable(mut self) -> Self { self.closable = false; self }
+    pub fn not_closable(mut self) -> Self {
+        self.closable = false;
+        self
+    }
     /// Disable the leading severity icon.
-    pub fn without_icon(mut self) -> Self { self.show_icon = false; self }
+    pub fn without_icon(mut self) -> Self {
+        self.show_icon = false;
+        self
+    }
     /// Disable the bottom progress bar (still ticks toward auto-dismiss).
-    pub fn without_progress(mut self) -> Self { self.show_progress = false; self }
+    pub fn without_progress(mut self) -> Self {
+        self.show_progress = false;
+        self
+    }
 
     /// Effective accent color (custom override or severity default).
     pub(crate) fn resolved_accent(&self, c: &NotificationColors) -> [f32; 4] {
@@ -263,17 +300,49 @@ impl Default for CenterConfig {
 
 impl CenterConfig {
     /// Start from defaults and mutate via builder methods.
-    pub fn new() -> Self { Self::default() }
-    pub fn with_placement(mut self, p: Placement) -> Self { self.placement = p; self }
-    pub fn with_max_visible(mut self, n: usize) -> Self { self.max_visible = n.max(1); self }
-    pub fn with_spacing(mut self, s: f32) -> Self { self.spacing = s; self }
-    pub fn with_margin(mut self, mx: f32, my: f32) -> Self { self.margin = [mx, my]; self }
-    pub fn with_width(mut self, w: f32) -> Self { self.width = w; self }
-    pub fn with_padding(mut self, px: f32, py: f32) -> Self { self.padding = [px, py]; self }
-    pub fn with_rounding(mut self, r: f32) -> Self { self.rounding = r; self }
-    pub fn with_animation(mut self, a: AnimationKind) -> Self { self.animation = a; self }
-    pub fn with_animation_duration(mut self, secs: f32) -> Self { self.animation_duration = secs.max(0.0); self }
-    pub fn with_pause_on_hover(mut self, on: bool) -> Self { self.pause_on_hover = on; self }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn with_placement(mut self, p: Placement) -> Self {
+        self.placement = p;
+        self
+    }
+    pub fn with_max_visible(mut self, n: usize) -> Self {
+        self.max_visible = n.max(1);
+        self
+    }
+    pub fn with_spacing(mut self, s: f32) -> Self {
+        self.spacing = s;
+        self
+    }
+    pub fn with_margin(mut self, mx: f32, my: f32) -> Self {
+        self.margin = [mx, my];
+        self
+    }
+    pub fn with_width(mut self, w: f32) -> Self {
+        self.width = w;
+        self
+    }
+    pub fn with_padding(mut self, px: f32, py: f32) -> Self {
+        self.padding = [px, py];
+        self
+    }
+    pub fn with_rounding(mut self, r: f32) -> Self {
+        self.rounding = r;
+        self
+    }
+    pub fn with_animation(mut self, a: AnimationKind) -> Self {
+        self.animation = a;
+        self
+    }
+    pub fn with_animation_duration(mut self, secs: f32) -> Self {
+        self.animation_duration = secs.max(0.0);
+        self
+    }
+    pub fn with_pause_on_hover(mut self, on: bool) -> Self {
+        self.pause_on_hover = on;
+        self
+    }
     pub fn with_theme(mut self, t: Theme) -> Self {
         self.theme = t;
         self.colors_override = None;

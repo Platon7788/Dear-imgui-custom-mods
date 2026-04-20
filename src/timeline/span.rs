@@ -26,7 +26,11 @@ impl Span {
         let lbl = label.into();
         // Ensure start <= end and values are finite
         let (s, e) = if start.is_finite() && end.is_finite() {
-            if start <= end { (start, end) } else { (end, start) }
+            if start <= end {
+                (start, end)
+            } else {
+                (end, start)
+            }
         } else {
             (0.0, 0.0)
         };
@@ -80,7 +84,11 @@ pub struct Marker {
 
 impl Marker {
     pub fn new(time: f64, label: impl Into<String>) -> Self {
-        Self { time, label: label.into(), color: None }
+        Self {
+            time,
+            label: label.into(),
+            color: None,
+        }
     }
 
     pub fn with_color(mut self, c: [f32; 4]) -> Self {

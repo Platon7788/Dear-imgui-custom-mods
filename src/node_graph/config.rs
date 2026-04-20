@@ -391,7 +391,10 @@ mod tests {
     fn node_height_no_pins() {
         let cfg = NodeGraphConfig::default();
         let h = cfg.node_height(0, 0, true, true, None);
-        assert_eq!(h, cfg.node_header_height + cfg.node_body_height + cfg.node_padding_v);
+        assert_eq!(
+            h,
+            cfg.node_header_height + cfg.node_body_height + cfg.node_padding_v
+        );
     }
 
     #[test]
@@ -399,7 +402,11 @@ mod tests {
         let cfg = NodeGraphConfig::default();
         let h1 = cfg.node_height(1, 1, true, true, None);
         let h2 = cfg.node_height(1, 1, true, true, Some(100.0));
-        assert!(h2 > h1, "override 100.0 should be taller than default {}", cfg.node_body_height);
+        assert!(
+            h2 > h1,
+            "override 100.0 should be taller than default {}",
+            cfg.node_body_height
+        );
     }
 
     #[test]

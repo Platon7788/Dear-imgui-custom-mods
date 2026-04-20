@@ -182,12 +182,7 @@ impl DiffViewer {
         self.build_display_lines(&ops, &old_lines, &new_lines);
     }
 
-    fn build_display_lines(
-        &mut self,
-        ops: &[DiffOp],
-        old_lines: &[&str],
-        new_lines: &[&str],
-    ) {
+    fn build_display_lines(&mut self, ops: &[DiffOp], old_lines: &[&str], new_lines: &[&str]) {
         self.left_lines.clear();
         self.right_lines.clear();
 
@@ -387,7 +382,14 @@ impl DiffViewer {
                                 left_scroll_y = saved_sync_y;
                             }
                         }
-                        Self::render_panel_static(ui, &cfg, left_slice, true, char_advance, line_height);
+                        Self::render_panel_static(
+                            ui,
+                            &cfg,
+                            left_slice,
+                            true,
+                            char_advance,
+                            line_height,
+                        );
                     });
 
                 ui.same_line_with_spacing(0.0, 0.0);
@@ -400,7 +402,8 @@ impl DiffViewer {
                         cursor,
                         [cursor[0], cursor[1] + avail[1]],
                         col32(cfg.color_separator),
-                    ).build();
+                    )
+                    .build();
                 }
 
                 ui.same_line();
@@ -419,7 +422,14 @@ impl DiffViewer {
                                 right_scroll_y = saved_sync_y;
                             }
                         }
-                        Self::render_panel_static(ui, &cfg, right_slice, false, char_advance, line_height);
+                        Self::render_panel_static(
+                            ui,
+                            &cfg,
+                            right_slice,
+                            false,
+                            char_advance,
+                            line_height,
+                        );
                     });
 
                 // Update sync scroll position: whichever panel the user scrolled.
@@ -432,11 +442,9 @@ impl DiffViewer {
                 }
             }
             DiffMode::Unified => {
-                ui.child_window("##diff_unified")
-                    .size(avail)
-                    .build(ui, || {
-                        self.render_unified(ui, &cfg);
-                    });
+                ui.child_window("##diff_unified").size(avail).build(ui, || {
+                    self.render_unified(ui, &cfg);
+                });
             }
         }
 
@@ -451,22 +459,32 @@ impl DiffViewer {
     ) {
         // Navigation and stats
         let s = &self.stats;
-        ui.text_colored(cfg.color_header, format!(
-            "{} vs {}  |  +{} -{} ~{}  |  {} hunks",
-            self.old_label, self.new_label,
-            s.added, s.removed, s.modified,
-            self.hunks.len(),
-        ));
+        ui.text_colored(
+            cfg.color_header,
+            format!(
+                "{} vs {}  |  +{} -{} ~{}  |  {} hunks",
+                self.old_label,
+                self.new_label,
+                s.added,
+                s.removed,
+                s.modified,
+                self.hunks.len(),
+            ),
+        );
 
         ui.same_line();
         if ui.button("Prev (Shift+F7)") {
             self.prev_hunk();
-            events.push(DiffViewerEvent::HunkSelected { index: self.current_hunk });
+            events.push(DiffViewerEvent::HunkSelected {
+                index: self.current_hunk,
+            });
         }
         ui.same_line();
         if ui.button("Next (F7)") {
             self.next_hunk();
-            events.push(DiffViewerEvent::HunkSelected { index: self.current_hunk });
+            events.push(DiffViewerEvent::HunkSelected {
+                index: self.current_hunk,
+            });
         }
 
         if !self.hunks.is_empty() {
@@ -513,19 +531,25 @@ impl DiffViewer {
                     [win_pos[0], y],
                     [win_pos[0] + win_w, y + line_height],
                     col32(bg_color),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
             }
 
             // Hover row highlight
             let mouse_pos = ui.io().mouse_pos();
-            let row_hovered = mouse_pos[1] >= y && mouse_pos[1] < y + line_height
-                && mouse_pos[0] >= win_pos[0] && mouse_pos[0] < win_pos[0] + win_w;
+            let row_hovered = mouse_pos[1] >= y
+                && mouse_pos[1] < y + line_height
+                && mouse_pos[0] >= win_pos[0]
+                && mouse_pos[0] < win_pos[0] + win_w;
             if row_hovered {
                 draw.add_rect(
                     [win_pos[0], y],
                     [win_pos[0] + win_w, y + line_height],
                     col32([1.0, 1.0, 1.0, 0.04]),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
             }
 
             // Gutter background
@@ -534,7 +558,9 @@ impl DiffViewer {
                     [win_pos[0], y],
                     [win_pos[0] + gutter_w, y + line_height],
                     col32(cfg.color_gutter_bg),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
             }
 
             // Line number
@@ -612,27 +638,37 @@ impl DiffViewer {
                     [win_pos[0], y],
                     [win_pos[0] + win_w, y + self.line_height],
                     col32(bg_color),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
             }
 
             // Hover row highlight
             let mouse_pos = ui.io().mouse_pos();
-            let row_hovered = mouse_pos[1] >= y && mouse_pos[1] < y + self.line_height
-                && mouse_pos[0] >= win_pos[0] && mouse_pos[0] < win_pos[0] + win_w;
+            let row_hovered = mouse_pos[1] >= y
+                && mouse_pos[1] < y + self.line_height
+                && mouse_pos[0] >= win_pos[0]
+                && mouse_pos[0] < win_pos[0] + win_w;
             if row_hovered {
                 draw.add_rect(
                     [win_pos[0], y],
                     [win_pos[0] + win_w, y + self.line_height],
                     col32([1.0, 1.0, 1.0, 0.04]),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
             }
 
             // Current hunk accent bar
             if !self.hunks.is_empty() {
                 let hunk = &self.hunks[self.current_hunk];
                 let in_hunk = match (left.old_num, right.new_num) {
-                    (Some(n), _) if n > hunk.old_start && n <= hunk.old_start + hunk.old_count => true,
-                    (_, Some(n)) if n > hunk.new_start && n <= hunk.new_start + hunk.new_count => true,
+                    (Some(n), _) if n > hunk.old_start && n <= hunk.old_start + hunk.old_count => {
+                        true
+                    }
+                    (_, Some(n)) if n > hunk.new_start && n <= hunk.new_start + hunk.new_count => {
+                        true
+                    }
                     _ => false,
                 };
                 if in_hunk {
@@ -640,7 +676,9 @@ impl DiffViewer {
                         [win_pos[0], y],
                         [win_pos[0] + 3.0, y + self.line_height],
                         col32([0.40, 0.63, 0.88, 0.8]),
-                    ).filled(true).build();
+                    )
+                    .filled(true)
+                    .build();
                 }
             }
 
@@ -650,7 +688,9 @@ impl DiffViewer {
                     [win_pos[0], y],
                     [win_pos[0] + gutter_w, y + self.line_height],
                     col32(cfg.color_gutter_bg),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
 
                 if let Some(n) = left.old_num {
                     draw.add_text(
@@ -684,11 +724,7 @@ impl DiffViewer {
                 LineKind::Equal => cfg.color_text,
             };
             draw.add_text([text_x, y], col32(text_color), prefix);
-            draw.add_text(
-                [text_x + prefix_w, y],
-                col32(text_color),
-                text,
-            );
+            draw.add_text([text_x + prefix_w, y], col32(text_color), text);
         }
 
         let total_h = line_count as f32 * self.line_height;
@@ -775,7 +811,9 @@ mod tests {
         let new = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\nNEW\n12";
         dv.set_texts(old, new);
         // Should have fold markers for the long equal run
-        let fold_count = dv.left_lines.iter()
+        let fold_count = dv
+            .left_lines
+            .iter()
             .filter(|l| l.kind == LineKind::FoldMarker)
             .count();
         assert!(fold_count > 0, "Expected fold markers");

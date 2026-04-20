@@ -48,21 +48,17 @@ pub(crate) fn handle_drag(
     // Start drag when pressing LMB on a node.
     if ui.is_mouse_clicked(MouseButton::Left)
         && let Some(id) = hovered_node
-        && let Some(node) = graph.nodes.get(id) {
-            let world_mouse = camera.screen_to_world(mouse, canvas_min);
-            *drag_world_offset = [
-                node.pos[0] - world_mouse[0],
-                node.pos[1] - world_mouse[1],
-            ];
-            *dragging_node = Some(id);
+        && let Some(node) = graph.nodes.get(id)
+    {
+        let world_mouse = camera.screen_to_world(mouse, canvas_min);
+        *drag_world_offset = [node.pos[0] - world_mouse[0], node.pos[1] - world_mouse[1]];
+        *dragging_node = Some(id);
     }
 
     let dragging = *dragging_node;
 
     // Continue drag.
-    if lmb_down
-        && let Some(id) = dragging
-    {
+    if lmb_down && let Some(id) = dragging {
         let world_mouse = camera.screen_to_world(mouse, canvas_min);
         let new_pos = [
             world_mouse[0] + drag_world_offset[0],
@@ -77,9 +73,7 @@ pub(crate) fn handle_drag(
     }
 
     // End drag.
-    if lmb_released
-        && let Some(id) = *dragging_node
-    {
+    if lmb_released && let Some(id) = *dragging_node {
         *dragging_node = None;
         if let Some(node) = graph.nodes.get_mut(id) {
             let pos = node.pos;
@@ -138,9 +132,7 @@ pub(crate) fn handle_box_select(
     let active = box_select_start.is_some();
 
     // Complete box select on release.
-    if lmb_released
-        && let Some(start) = box_select_start.take()
-    {
+    if lmb_released && let Some(start) = box_select_start.take() {
         let end = camera.screen_to_world(mouse, canvas_min);
         let rect_min = [start[0].min(end[0]), start[1].min(end[1])];
         let rect_max = [start[0].max(end[0]), start[1].max(end[1])];
@@ -315,11 +307,25 @@ pub(crate) fn handle_keyboard(
     let mut panned = false;
 
     // Arrow key pan.
-    if ui.is_key_down(dear_imgui_rs::Key::LeftArrow)  { camera.pan([pan_speed, 0.0]);   panned = true; }
-    if ui.is_key_down(dear_imgui_rs::Key::RightArrow) { camera.pan([-pan_speed, 0.0]);  panned = true; }
-    if ui.is_key_down(dear_imgui_rs::Key::UpArrow)    { camera.pan([0.0, pan_speed]);   panned = true; }
-    if ui.is_key_down(dear_imgui_rs::Key::DownArrow)  { camera.pan([0.0, -pan_speed]);  panned = true; }
-    if panned { events.push(GraphEvent::CameraChanged); }
+    if ui.is_key_down(dear_imgui_rs::Key::LeftArrow) {
+        camera.pan([pan_speed, 0.0]);
+        panned = true;
+    }
+    if ui.is_key_down(dear_imgui_rs::Key::RightArrow) {
+        camera.pan([-pan_speed, 0.0]);
+        panned = true;
+    }
+    if ui.is_key_down(dear_imgui_rs::Key::UpArrow) {
+        camera.pan([0.0, pan_speed]);
+        panned = true;
+    }
+    if ui.is_key_down(dear_imgui_rs::Key::DownArrow) {
+        camera.pan([0.0, -pan_speed]);
+        panned = true;
+    }
+    if panned {
+        events.push(GraphEvent::CameraChanged);
+    }
 
     // + / = zoom in; - zoom out.
     if ui.is_key_down(dear_imgui_rs::Key::Equal) || ui.is_key_down(dear_imgui_rs::Key::KeypadAdd) {
@@ -327,7 +333,9 @@ pub(crate) fn handle_keyboard(
         camera.zoom_at(1.0 + 2.0 * dt, pivot, [0.0, 0.0]);
         events.push(GraphEvent::CameraChanged);
     }
-    if ui.is_key_down(dear_imgui_rs::Key::Minus) || ui.is_key_down(dear_imgui_rs::Key::KeypadSubtract) {
+    if ui.is_key_down(dear_imgui_rs::Key::Minus)
+        || ui.is_key_down(dear_imgui_rs::Key::KeypadSubtract)
+    {
         let pivot = [canvas_size[0] * 0.5, canvas_size[1] * 0.5];
         camera.zoom_at(1.0 - 2.0 * dt, pivot, [0.0, 0.0]);
         events.push(GraphEvent::CameraChanged);

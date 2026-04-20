@@ -97,7 +97,10 @@ pub(crate) fn render(
         _ => 220.0_f32,
     };
     let canvas_size = [avail[0] - sidebar_w, avail[1].max(100.0)];
-    let canvas_max = [canvas_min[0] + canvas_size[0], canvas_min[1] + canvas_size[1]];
+    let canvas_max = [
+        canvas_min[0] + canvas_size[0],
+        canvas_min[1] + canvas_size[1],
+    ];
 
     // 3. Tick physics simulation + advance camera animation.
     let dt = ui.io().delta_time();
@@ -116,7 +119,13 @@ pub(crate) fn render(
         .build();
 
     if config.background_grid {
-        draw_grid(&draw, ctx.camera, canvas_min, canvas_size, col(colors.grid_line));
+        draw_grid(
+            &draw,
+            ctx.camera,
+            canvas_min,
+            canvas_size,
+            col(colors.grid_line),
+        );
     }
 
     // 5. Invisible button over the canvas captures mouse input.
@@ -133,7 +142,11 @@ pub(crate) fn render(
     if canvas_hovered {
         let wheel = io.mouse_wheel();
         if wheel != 0.0 {
-            let factor = if wheel > 0.0 { 1.12_f32 } else { 1.0 / 1.12_f32 };
+            let factor = if wheel > 0.0 {
+                1.12_f32
+            } else {
+                1.0 / 1.12_f32
+            };
             ctx.camera.zoom_at(factor, mouse, canvas_min);
             events.push(GraphEvent::CameraChanged);
         }
@@ -225,15 +238,11 @@ pub(crate) fn render(
             }
         }
 
-        if lmb_double
-            && let Some(id) = hovered_node
-        {
+        if lmb_double && let Some(id) = hovered_node {
             events.push(GraphEvent::NodeDoubleClicked(id));
         }
 
-        if rmb_clicked
-            && let Some(id) = hovered_node
-        {
+        if rmb_clicked && let Some(id) = hovered_node {
             *ctx.ctx_menu_node = Some(id);
             events.push(GraphEvent::NodeContextMenu(id, mouse));
         }
@@ -263,7 +272,8 @@ pub(crate) fn render(
     if events.iter().any(|e| matches!(e, GraphEvent::FitToScreen)) {
         let bounds = graph_bounds(graph);
         if let Some(b) = bounds {
-            ctx.camera.fit_to_bounds(b[0], b[1], canvas_size, config.fit_padding);
+            ctx.camera
+                .fit_to_bounds(b[0], b[1], canvas_size, config.fit_padding);
             events.push(GraphEvent::CameraChanged);
         }
     }
@@ -289,8 +299,12 @@ pub(crate) fn render(
     // Hoist zoom-dependent constant out of the per-edge loop.
     let zoom_thickness = ctx.camera.zoom.clamp(0.5, 2.0) * config.edge_thickness_multiplier;
     for (_, edge) in graph.edges.iter() {
-        let Some(node_a) = graph.nodes.get(edge.from) else { continue };
-        let Some(node_b) = graph.nodes.get(edge.to) else { continue };
+        let Some(node_a) = graph.nodes.get(edge.from) else {
+            continue;
+        };
+        let Some(node_b) = graph.nodes.get(edge.to) else {
+            continue;
+        };
 
         // Skip if either endpoint is invisible.
         if !visible.contains(edge.from) || !visible.contains(edge.to) {
@@ -360,7 +374,11 @@ pub(crate) fn render(
 
         // Hover fade: dim non-neighbor nodes.
         let mut node_alpha = if hover_active {
-            if ctx.hover_neighbors.contains(&node_id) { 1.0 } else { config.hover_fade_opacity }
+            if ctx.hover_neighbors.contains(&node_id) {
+                1.0
+            } else {
+                config.hover_fade_opacity
+            }
         } else {
             1.0
         };
@@ -370,7 +388,11 @@ pub(crate) fn render(
             let q = ctx.filter.search_query.to_ascii_lowercase();
             let label_match = node.style.label.to_ascii_lowercase().contains(&q);
             let tag_match = ctx.filter.search_match_tags
-                && node.style.tags.iter().any(|t| t.to_ascii_lowercase().contains(&q));
+                && node
+                    .style
+                    .tags
+                    .iter()
+                    .any(|t| t.to_ascii_lowercase().contains(&q));
             if !label_match && !tag_match {
                 node_alpha *= 0.15;
             }
@@ -432,7 +454,11 @@ pub(crate) fn render(
         } else {
             with_alpha(colors.node_outline, node_alpha)
         };
-        let outline_thickness = if ctx.selection.contains(&node_id) { 2.5 } else { 1.0 };
+        let outline_thickness = if ctx.selection.contains(&node_id) {
+            2.5
+        } else {
+            1.0
+        };
         draw_node_outline(
             &draw,
             node.style.kind,
@@ -467,7 +493,11 @@ pub(crate) fn render(
                 screen_pos[0] - text_size[0] * 0.5,
                 screen_pos[1] - text_size[1] * 0.5,
             ];
-            draw.add_text(icon_pos, col(with_alpha([1.0, 1.0, 1.0, 0.9], node_alpha)), icon_str);
+            draw.add_text(
+                icon_pos,
+                col(with_alpha([1.0, 1.0, 1.0, 0.9], node_alpha)),
+                icon_str,
+            );
         }
 
         // Pinned indicator: small diamond at top-right.
@@ -500,15 +530,15 @@ pub(crate) fn render(
             node_alpha
         };
 
-        if show_label
-            && ctx.camera.zoom >= config.min_label_zoom
-            && !use_lod
-            && label_alpha > 0.02
+        if show_label && ctx.camera.zoom >= config.min_label_zoom && !use_lod && label_alpha > 0.02
         {
             labels::draw_label(
                 &draw,
                 &node.style.label,
-                [screen_pos[0] - screen_radius, screen_pos[1] + screen_radius + 2.0],
+                [
+                    screen_pos[0] - screen_radius,
+                    screen_pos[1] + screen_radius + 2.0,
+                ],
                 col(with_alpha(colors.label_text, label_alpha)),
                 ctx.camera.zoom,
                 config.min_label_zoom,
@@ -517,11 +547,7 @@ pub(crate) fn render(
 
         // Tooltip on hover.
         if *ctx.hovered == Some(node_id) {
-            let tip = node
-                .style
-                .tooltip
-                .as_deref()
-                .unwrap_or(&node.style.label);
+            let tip = node.style.tooltip.as_deref().unwrap_or(&node.style.label);
             if !tip.is_empty() {
                 ui.tooltip_text(tip);
             }
@@ -567,13 +593,9 @@ fn draw_node_shape(
         }
         // Tag → filled square.
         NodeKind::Tag => {
-            draw.add_rect(
-                [pos[0] - r, pos[1] - r],
-                [pos[0] + r, pos[1] + r],
-                fill,
-            )
-            .filled(true)
-            .build();
+            draw.add_rect([pos[0] - r, pos[1] - r], [pos[0] + r, pos[1] + r], fill)
+                .filled(true)
+                .build();
         }
         // Attachment → small filled circle (0.7× radius).
         NodeKind::Attachment => {
@@ -584,11 +606,13 @@ fn draw_node_shape(
         }
         // Unresolved → diamond (two filled triangles).
         NodeKind::Unresolved => {
-            let top   = [pos[0],       pos[1] - r];
-            let right = [pos[0] + r,   pos[1]    ];
-            let bot   = [pos[0],       pos[1] + r];
-            let left  = [pos[0] - r,   pos[1]    ];
-            draw.add_triangle(top, right, bot, fill).filled(true).build();
+            let top = [pos[0], pos[1] - r];
+            let right = [pos[0] + r, pos[1]];
+            let bot = [pos[0], pos[1] + r];
+            let left = [pos[0] - r, pos[1]];
+            draw.add_triangle(top, right, bot, fill)
+                .filled(true)
+                .build();
             draw.add_triangle(top, bot, left, fill).filled(true).build();
         }
         // Cluster → large circle with octagon approximation.
@@ -618,14 +642,18 @@ fn draw_node_outline(
                 .build();
         }
         NodeKind::Unresolved => {
-            let top   = [pos[0],     pos[1] - r];
-            let right = [pos[0] + r, pos[1]    ];
-            let bot   = [pos[0],     pos[1] + r];
-            let left  = [pos[0] - r, pos[1]    ];
-            draw.add_line(top,   right, color).thickness(thickness).build();
-            draw.add_line(right, bot,   color).thickness(thickness).build();
-            draw.add_line(bot,   left,  color).thickness(thickness).build();
-            draw.add_line(left,  top,   color).thickness(thickness).build();
+            let top = [pos[0], pos[1] - r];
+            let right = [pos[0] + r, pos[1]];
+            let bot = [pos[0], pos[1] + r];
+            let left = [pos[0] - r, pos[1]];
+            draw.add_line(top, right, color)
+                .thickness(thickness)
+                .build();
+            draw.add_line(right, bot, color)
+                .thickness(thickness)
+                .build();
+            draw.add_line(bot, left, color).thickness(thickness).build();
+            draw.add_line(left, top, color).thickness(thickness).build();
         }
         NodeKind::Attachment => {
             draw.add_circle(pos, r * 0.7, color)
@@ -665,16 +693,21 @@ fn draw_grid(
 
     let origin_x = canvas_min[0] + camera.offset[0] % grid_step;
     let origin_y = canvas_min[1] + camera.offset[1] % grid_step;
-    let canvas_max = [canvas_min[0] + canvas_size[0], canvas_min[1] + canvas_size[1]];
+    let canvas_max = [
+        canvas_min[0] + canvas_size[0],
+        canvas_min[1] + canvas_size[1],
+    ];
 
     let mut x = origin_x;
     while x < canvas_max[0] {
-        draw.add_line([x, canvas_min[1]], [x, canvas_max[1]], color).build();
+        draw.add_line([x, canvas_min[1]], [x, canvas_max[1]], color)
+            .build();
         x += grid_step;
     }
     let mut y = origin_y;
     while y < canvas_max[1] {
-        draw.add_line([canvas_min[0], y], [canvas_max[0], y], color).build();
+        draw.add_line([canvas_min[0], y], [canvas_max[0], y], color)
+            .build();
         y += grid_step;
     }
 }
@@ -715,12 +748,7 @@ fn hit_test_nearest(
 }
 
 /// Compute a node's base radius in world space.
-fn node_radius(
-    id: NodeId,
-    node: &super::data::Node,
-    graph: &GraphData,
-    fc: &ForceConfig,
-) -> f32 {
+fn node_radius(id: NodeId, node: &super::data::Node, graph: &GraphData, fc: &ForceConfig) -> f32 {
     if let Some(r) = node.style.radius {
         return r;
     }
@@ -755,11 +783,19 @@ fn resolve_node_color(
         ColorMode::ByCommunity => style.color.unwrap_or(colors.node_default),
         ColorMode::ByPageRank => {
             let score = graph.pagerank_for(id);
-            blend_color(colors.node_default, colors.node_selected, score.clamp(0.0, 1.0))
+            blend_color(
+                colors.node_default,
+                colors.node_selected,
+                score.clamp(0.0, 1.0),
+            )
         }
         ColorMode::ByBetweenness => {
             let score = graph.betweenness_for(id);
-            blend_color(colors.node_default, colors.node_selected, score.clamp(0.0, 1.0))
+            blend_color(
+                colors.node_default,
+                colors.node_selected,
+                score.clamp(0.0, 1.0),
+            )
         }
         ColorMode::Custom(f) => f(style, graph),
     };
@@ -799,8 +835,5 @@ fn fnv1a_hash(bytes: &[u8]) -> u32 {
 fn segment_visible(a: [f32; 2], b: [f32; 2], min: [f32; 2], max: [f32; 2]) -> bool {
     let seg_min = [a[0].min(b[0]), a[1].min(b[1])];
     let seg_max = [a[0].max(b[0]), a[1].max(b[1])];
-    seg_max[0] >= min[0]
-        && seg_min[0] <= max[0]
-        && seg_max[1] >= min[1]
-        && seg_min[1] <= max[1]
+    seg_max[0] >= min[0] && seg_min[0] <= max[0] && seg_max[1] >= min[1] && seg_min[1] <= max[1]
 }

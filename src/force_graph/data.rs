@@ -8,7 +8,7 @@
 //! `pos` / `vel` through interior-mutable paths — the public API here is
 //! purely structural.
 
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{SlotMap, new_key_type};
 use std::collections::{HashMap, HashSet};
 
 use super::style::{Edge, EdgeStyle, NodeStyle};
@@ -211,11 +211,7 @@ impl GraphData {
         }
 
         // Collect the edge IDs before mutating, to avoid borrow conflicts.
-        let incident: Vec<EdgeId> = self
-            .adjacency
-            .get(&id)
-            .cloned()
-            .unwrap_or_default();
+        let incident: Vec<EdgeId> = self.adjacency.get(&id).cloned().unwrap_or_default();
 
         for eid in incident {
             // Identify the *other* endpoint and remove `eid` from its list.
@@ -318,16 +314,13 @@ impl GraphData {
     /// A neighbour is any node that shares an edge with `id`, regardless of
     /// edge direction. Returns an empty iterator for invalid IDs.
     pub fn neighbors(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
-        self.adjacency
-            .get(&id)
-            .into_iter()
-            .flat_map(move |eids| {
-                eids.iter().filter_map(move |&eid| {
-                    self.edges.get(eid).map(|e| {
-                        if e.from == id { e.to } else { e.from }
-                    })
-                })
+        self.adjacency.get(&id).into_iter().flat_map(move |eids| {
+            eids.iter().filter_map(move |&eid| {
+                self.edges
+                    .get(eid)
+                    .map(|e| if e.from == id { e.to } else { e.from })
             })
+        })
     }
 
     /// Return the degree (number of incident edges) of node `id`.
@@ -378,23 +371,29 @@ impl GraphData {
             let (_, pr) = pagerank::compute(self, 0.85, 100, 1e-6);
             let bt = centrality::compute_with_adj(&node_order, &adj);
 
-            self.metrics = Some(MetricsCache { pagerank: pr, betweenness: bt, index });
+            self.metrics = Some(MetricsCache {
+                pagerank: pr,
+                betweenness: bt,
+                index,
+            });
             self.dirty_metrics = false;
         }
     }
 
     /// PageRank score for a specific node (0.0 if metrics not computed yet).
     pub fn pagerank_for(&self, id: NodeId) -> f32 {
-        self.metrics.as_ref().and_then(|m| {
-            m.index.get(&id).map(|&i| m.pagerank[i])
-        }).unwrap_or(0.0)
+        self.metrics
+            .as_ref()
+            .and_then(|m| m.index.get(&id).map(|&i| m.pagerank[i]))
+            .unwrap_or(0.0)
     }
 
     /// Betweenness centrality score for a specific node (0.0 if not computed).
     pub fn betweenness_for(&self, id: NodeId) -> f32 {
-        self.metrics.as_ref().and_then(|m| {
-            m.index.get(&id).map(|&i| m.betweenness[i])
-        }).unwrap_or(0.0)
+        self.metrics
+            .as_ref()
+            .and_then(|m| m.index.get(&id).map(|&i| m.betweenness[i]))
+            .unwrap_or(0.0)
     }
 
     /// Per-node community assignment (integer community ID).

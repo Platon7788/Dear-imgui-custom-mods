@@ -133,6 +133,8 @@ pub mod diff_viewer;
 pub mod disasm_view;
 #[cfg(feature = "file_manager")]
 pub mod file_manager;
+#[cfg(feature = "force_graph")]
+pub mod force_graph;
 #[cfg(feature = "hex_viewer")]
 pub mod hex_viewer;
 #[cfg(feature = "nav_panel")]
@@ -155,8 +157,6 @@ pub mod toolbar;
 pub mod virtual_table;
 #[cfg(feature = "virtual_tree")]
 pub mod virtual_tree;
-#[cfg(feature = "force_graph")]
-pub mod force_graph;
 #[cfg(feature = "force_graph")]
 pub use force_graph as knowledge_graph; // backwards-compat alias
 

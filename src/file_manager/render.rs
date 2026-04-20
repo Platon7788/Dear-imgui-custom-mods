@@ -29,10 +29,10 @@ use dear_imgui_rs::{
 
 use crate::{icons, theme};
 
+use super::Action;
 use super::config::{DialogMode, FileFilter, FileManagerConfig, FmStrings};
 use super::entry::{FsEntry, SortColumn, SortOrder};
 use super::favorites::FavoritesPanel;
-use super::Action;
 
 // ─── Theme-derived button color presets ──────────────────────────────────────
 
@@ -163,9 +163,7 @@ fn file_icon_for_ext(ext: &str) -> (&'static str, [f32; 4]) {
         "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico" | "webp" | "tiff" | "tif" | "tga"
         | "hdr" | "exr" => (icons::FILE_IMAGE, [0.45, 0.75, 0.45, 1.0]),
         "svg" => (icons::SVG, [0.90, 0.65, 0.20, 1.0]),
-        "psd" | "ai" | "sketch" | "fig" | "xd" => {
-            (icons::PALETTE, [0.35, 0.65, 0.95, 1.0])
-        }
+        "psd" | "ai" | "sketch" | "fig" | "xd" => (icons::PALETTE, [0.35, 0.65, 0.95, 1.0]),
         "blend" | "fbx" | "obj" | "stl" | "gltf" | "glb" | "3ds" | "dae" => {
             (icons::CUBE_OUTLINE, [0.80, 0.60, 0.40, 1.0])
         }
@@ -177,33 +175,28 @@ fn file_icon_for_ext(ext: &str) -> (&'static str, [f32; 4]) {
         "mid" | "midi" => (icons::PIANO, [0.55, 0.55, 0.70, 1.0]),
 
         // ── Video ──
-        "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg"
-        | "vob" => (icons::FILE_VIDEO, [0.85, 0.55, 0.35, 1.0]),
+        "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg" | "vob" => {
+            (icons::FILE_VIDEO, [0.85, 0.55, 0.35, 1.0])
+        }
         "srt" | "sub" | "ssa" | "ass" | "vtt" => {
             (icons::SUBTITLES_OUTLINE, [0.65, 0.65, 0.50, 1.0])
         }
 
         // ── Archives ──
-        "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "zst" | "lz" | "lzma"
-        | "cab" | "iso" | "dmg" | "img" => (icons::ZIP_BOX, [0.75, 0.65, 0.40, 1.0]),
+        "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "zst" | "lz" | "lzma" | "cab"
+        | "iso" | "dmg" | "img" => (icons::ZIP_BOX, [0.75, 0.65, 0.40, 1.0]),
         "deb" | "rpm" | "pkg" | "apk" | "snap" | "flatpak" | "appimage" => {
             (icons::PACKAGE_VARIANT_CLOSED, [0.50, 0.70, 0.50, 1.0])
         }
 
         // ── Executables / Libraries ──
         "exe" | "msi" | "com" => (icons::APPLICATION, [0.70, 0.70, 0.70, 1.0]),
-        "dll" | "so" | "dylib" | "a" | "lib" | "o" => {
-            (icons::PUZZLE, [0.60, 0.60, 0.70, 1.0])
-        }
+        "dll" | "so" | "dylib" | "a" | "lib" | "o" => (icons::PUZZLE, [0.60, 0.60, 0.70, 1.0]),
         "bin" | "dat" | "raw" => (icons::FILE, [0.55, 0.55, 0.55, 1.0]),
 
         // ── Shell scripts ──
-        "sh" | "bash" | "zsh" | "fish" => {
-            (icons::CONSOLE, [0.50, 0.75, 0.50, 1.0])
-        }
-        "bat" | "cmd" | "ps1" | "psm1" => {
-            (icons::POWERSHELL, [0.30, 0.45, 0.70, 1.0])
-        }
+        "sh" | "bash" | "zsh" | "fish" => (icons::CONSOLE, [0.50, 0.75, 0.50, 1.0]),
+        "bat" | "cmd" | "ps1" | "psm1" => (icons::POWERSHELL, [0.30, 0.45, 0.70, 1.0]),
 
         // ── DevOps / CI ──
         "dockerfile" | "containerfile" => (icons::DOCKER, [0.20, 0.60, 0.85, 1.0]),
@@ -211,9 +204,7 @@ fn file_icon_for_ext(ext: &str) -> (&'static str, [f32; 4]) {
         "nix" => (icons::SNOWFLAKE, [0.45, 0.60, 0.85, 1.0]),
 
         // ── Fonts ──
-        "ttf" | "otf" | "woff" | "woff2" | "eot" => {
-            (icons::FORMAT_FONT, [0.65, 0.65, 0.70, 1.0])
-        }
+        "ttf" | "otf" | "woff" | "woff2" | "eot" => (icons::FORMAT_FONT, [0.65, 0.65, 0.70, 1.0]),
 
         // ── Certificates / Keys ──
         "pem" | "crt" | "cer" | "key" | "p12" | "pfx" | "csr" => {
@@ -222,12 +213,8 @@ fn file_icon_for_ext(ext: &str) -> (&'static str, [f32; 4]) {
         "pub" | "gpg" | "asc" => (icons::KEY, [0.75, 0.65, 0.30, 1.0]),
 
         // ── Misc ──
-        "gitignore" | "gitattributes" | "gitmodules" => {
-            (icons::GIT, [0.90, 0.35, 0.20, 1.0])
-        }
-        "editorconfig" | "prettierrc" | "eslintrc" => {
-            (icons::COG_OUTLINE, theme::TEXT_SECONDARY)
-        }
+        "gitignore" | "gitattributes" | "gitmodules" => (icons::GIT, [0.90, 0.35, 0.20, 1.0]),
+        "editorconfig" | "prettierrc" | "eslintrc" => (icons::COG_OUTLINE, theme::TEXT_SECONDARY),
         "license" | "licence" => (icons::SCALE_BALANCE, [0.70, 0.70, 0.50, 1.0]),
 
         // ── Default ──
@@ -635,15 +622,9 @@ pub(crate) fn render_favorites_panel(
         let label = icon_label(buf, fav.icon, &fav.label);
 
         // Guard must live until after selectable_config().build()
-        let _bg = is_current
-            .then(|| ui.push_style_color(StyleColor::Header, theme::ACCENT_ACTIVE));
+        let _bg = is_current.then(|| ui.push_style_color(StyleColor::Header, theme::ACCENT_ACTIVE));
 
-        if ui
-            .selectable_config(label)
-            .selected(is_current)
-            .build()
-            && fav.path.is_dir()
-        {
+        if ui.selectable_config(label).selected(is_current).build() && fav.path.is_dir() {
             action = Some(Action::NavigateTo(fav.path.clone()));
         }
     }
@@ -755,12 +736,11 @@ pub(crate) fn render_file_table(
                 3 => SortColumn::Type,
                 _ => SortColumn::Name,
             };
-            let new_order =
-                if s.sort_direction == dear_imgui_rs::SortDirection::Ascending {
-                    SortOrder::Ascending
-                } else {
-                    SortOrder::Descending
-                };
+            let new_order = if s.sort_direction == dear_imgui_rs::SortDirection::Ascending {
+                SortOrder::Ascending
+            } else {
+                SortOrder::Descending
+            };
             *sort_column = new_col;
             *sort_order = new_order;
             result.action = Some(Action::SetSort(new_col));
@@ -910,7 +890,12 @@ pub(crate) fn render_file_table(
                 ui.same_line_with_spacing(0.0, 4.0);
                 if e.is_dir {
                     ui.text_colored(
-                        [CLR_FOLDER_TEXT[0], CLR_FOLDER_TEXT[1], CLR_FOLDER_TEXT[2], alpha],
+                        [
+                            CLR_FOLDER_TEXT[0],
+                            CLR_FOLDER_TEXT[1],
+                            CLR_FOLDER_TEXT[2],
+                            alpha,
+                        ],
                         &e.name,
                     );
                 } else if e.is_hidden {
@@ -1004,7 +989,9 @@ pub(crate) fn render_file_table(
 
     // Keyboard navigation (disabled when any text input is active)
     if !ui.is_any_item_active()
-        && ui.is_window_focused_with_flags(dear_imgui_rs::FocusedFlags::ROOT_WINDOW | dear_imgui_rs::FocusedFlags::CHILD_WINDOWS)
+        && ui.is_window_focused_with_flags(
+            dear_imgui_rs::FocusedFlags::ROOT_WINDOW | dear_imgui_rs::FocusedFlags::CHILD_WINDOWS,
+        )
     {
         if ui.is_key_pressed(Key::UpArrow) && !entries.is_empty() {
             let current = selected_indices.first().copied().unwrap_or(0);

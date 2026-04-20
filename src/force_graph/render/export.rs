@@ -32,9 +32,7 @@ pub(crate) fn export_svg(graph: &GraphData) -> String {
     let vw = (gmax[0] - gmin[0] + pad * 2.0).max(200.0);
     let vh = (gmax[1] - gmin[1] + pad * 2.0).max(200.0);
 
-    let proj = |p: [f32; 2]| -> [f32; 2] {
-        [p[0] - gmin[0] + pad, p[1] - gmin[1] + pad]
-    };
+    let proj = |p: [f32; 2]| -> [f32; 2] { [p[0] - gmin[0] + pad, p[1] - gmin[1] + pad] };
 
     let mut s = String::with_capacity(graph.node_count() * 128 + graph.edge_count() * 64);
     s.push_str(&format!(
@@ -44,8 +42,12 @@ pub(crate) fn export_svg(graph: &GraphData) -> String {
     // Edges.
     s.push_str(r##"<g stroke="#556" stroke-width="1" opacity="0.75">"##);
     for (_, edge) in graph.edges.iter() {
-        let Some(na) = graph.nodes.get(edge.from) else { continue };
-        let Some(nb) = graph.nodes.get(edge.to) else { continue };
+        let Some(na) = graph.nodes.get(edge.from) else {
+            continue;
+        };
+        let Some(nb) = graph.nodes.get(edge.to) else {
+            continue;
+        };
         let [ax, ay] = proj(na.pos);
         let [bx, by] = proj(nb.pos);
         if edge.directed {
@@ -71,10 +73,14 @@ pub(crate) fn export_svg(graph: &GraphData) -> String {
         let r = node.style.radius.unwrap_or(8.0).max(3.0);
         let fill = node.style.color.map_or_else(
             || "#6ab0f5".into(),
-            |[rv, g, b, _]| format!(
-                "#{:02x}{:02x}{:02x}",
-                (rv * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8
-            ),
+            |[rv, g, b, _]| {
+                format!(
+                    "#{:02x}{:02x}{:02x}",
+                    (rv * 255.0) as u8,
+                    (g * 255.0) as u8,
+                    (b * 255.0) as u8
+                )
+            },
         );
         s.push_str(&format!(
             r##"<circle cx="{cx:.1}" cy="{cy:.1}" r="{r:.1}" fill="{fill}" stroke="#fff" stroke-width="0.8"/>"##
@@ -103,7 +109,7 @@ pub(crate) fn export_dot(graph: &GraphData) -> String {
     let idx = move |id| node_ids.iter().position(|&x| x == id).unwrap_or(0);
 
     let directed = graph.edges().any(|(_, e)| e.directed);
-    let kw    = if directed { "digraph" } else { "graph" };
+    let kw = if directed { "digraph" } else { "graph" };
     let arrow = if directed { "->" } else { "--" };
 
     let mut s = String::with_capacity(graph.node_count() * 48 + graph.edge_count() * 32);
@@ -119,7 +125,10 @@ pub(crate) fn export_dot(graph: &GraphData) -> String {
     for (_, edge) in graph.edges() {
         let a = idx(edge.from);
         let b = idx(edge.to);
-        s.push_str(&format!("  n{a} {arrow} n{b} [weight={:.2}];\n", edge.weight));
+        s.push_str(&format!(
+            "  n{a} {arrow} n{b} [weight={:.2}];\n",
+            edge.weight
+        ));
     }
 
     s.push('}');
@@ -162,12 +171,12 @@ fn xml_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 4);
     for c in s.chars() {
         match c {
-            '&'  => out.push_str("&amp;"),
-            '<'  => out.push_str("&lt;"),
-            '>'  => out.push_str("&gt;"),
-            '"'  => out.push_str("&quot;"),
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&#39;"),
-            _    => out.push(c),
+            _ => out.push(c),
         }
     }
     out
@@ -212,7 +221,10 @@ mod tests {
         let b = g.add_node(NodeStyle::new("Y"));
         g.add_edge(a, b, EdgeStyle::new(), 1.0, false);
         let out = export_dot(&g);
-        assert!(out.starts_with("graph G"), "expected undirected, got: {out}");
+        assert!(
+            out.starts_with("graph G"),
+            "expected undirected, got: {out}"
+        );
         assert!(out.contains("n0 -- n1"));
     }
 

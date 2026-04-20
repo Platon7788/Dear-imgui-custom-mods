@@ -141,13 +141,19 @@ impl<T> TreeArena<T> {
             self.generations[i] = self.generations[i].wrapping_add(1);
             self.slots[i] = Some(slot);
             self.count += 1;
-            Some(NodeId { index: idx, generation: self.generations[i] })
+            Some(NodeId {
+                index: idx,
+                generation: self.generations[i],
+            })
         } else {
             let idx = self.slots.len() as u32;
             self.slots.push(Some(slot));
             self.generations.push(0);
             self.count += 1;
-            Some(NodeId { index: idx, generation: 0 })
+            Some(NodeId {
+                index: idx,
+                generation: 0,
+            })
         }
     }
 
@@ -209,9 +215,10 @@ impl<T> TreeArena<T> {
         // Detach from parent first — use position + swap_remove for O(1).
         if let Some(parent_id) = self.get(id)?.parent {
             if let Some(parent_slot) = self.slot_mut(parent_id)
-                && let Some(pos) = parent_slot.children.iter().position(|&c| c == id) {
-                    parent_slot.children.swap_remove(pos);
-                }
+                && let Some(pos) = parent_slot.children.iter().position(|&c| c == id)
+            {
+                parent_slot.children.swap_remove(pos);
+            }
         } else {
             // It's a root — swap_remove is OK since root order may change.
             if let Some(pos) = self.roots.iter().position(|&r| r == id) {
@@ -230,7 +237,11 @@ impl<T> TreeArena<T> {
                 stack.extend(children);
             }
             // Free the slot
-            if let Some(slot) = self.slots.get_mut(nid.index as usize).and_then(|s| s.take()) {
+            if let Some(slot) = self
+                .slots
+                .get_mut(nid.index as usize)
+                .and_then(|s| s.take())
+            {
                 self.free_list.push(nid.index);
                 self.count -= 1;
                 if nid == id {
@@ -389,17 +400,19 @@ impl<T> TreeArena<T> {
 
         // Prevent moving a node into its own subtree
         if let Some(np) = new_parent
-            && (np == id || self.is_ancestor_of(id, np)) {
-                return false;
-            }
+            && (np == id || self.is_ancestor_of(id, np))
+        {
+            return false;
+        }
 
         // Detach from old parent — position + remove to preserve sibling order.
         let old_parent = self.get(id).and_then(|s| s.parent);
         if let Some(op) = old_parent {
             if let Some(ps) = self.slot_mut(op)
-                && let Some(pos) = ps.children.iter().position(|&c| c == id) {
-                    ps.children.remove(pos);
-                }
+                && let Some(pos) = ps.children.iter().position(|&c| c == id)
+            {
+                ps.children.remove(pos);
+            }
         } else {
             if let Some(pos) = self.roots.iter().position(|&r| r == id) {
                 self.roots.remove(pos);
@@ -474,7 +487,11 @@ impl<T> TreeArena<T> {
     // ─── Sort siblings ──────────────────────────────────────────────
 
     /// Sort the children of a node (or roots if `parent` is None) using a comparator.
-    pub fn sort_children(&mut self, parent: Option<NodeId>, cmp: &mut impl FnMut(&T, &T) -> std::cmp::Ordering) {
+    pub fn sort_children(
+        &mut self,
+        parent: Option<NodeId>,
+        cmp: &mut impl FnMut(&T, &T) -> std::cmp::Ordering,
+    ) {
         // Take the children vec out to avoid borrow conflict with self.get_data().
         let mut children = if let Some(pid) = parent {
             match self.slot_mut(pid) {
@@ -508,16 +525,17 @@ impl<T> TreeArena<T> {
     pub fn sort_all_siblings(&mut self, cmp: &mut impl FnMut(&T, &T) -> std::cmp::Ordering) {
         // Collect all node ids that have children
         let parents: Vec<Option<NodeId>> = std::iter::once(None)
-            .chain(
-                self.slots.iter().enumerate().filter_map(|(i, slot)| {
-                    let s = slot.as_ref()?;
-                    if s.children.is_empty() {
-                        None
-                    } else {
-                        Some(Some(NodeId { index: i as u32, generation: self.generations[i] }))
-                    }
-                })
-            )
+            .chain(self.slots.iter().enumerate().filter_map(|(i, slot)| {
+                let s = slot.as_ref()?;
+                if s.children.is_empty() {
+                    None
+                } else {
+                    Some(Some(NodeId {
+                        index: i as u32,
+                        generation: self.generations[i],
+                    }))
+                }
+            }))
             .collect();
 
         for parent in parents {
@@ -531,7 +549,13 @@ impl<T> TreeArena<T> {
     pub fn iter(&self) -> impl Iterator<Item = (NodeId, &T)> {
         self.slots.iter().enumerate().filter_map(|(i, slot)| {
             let s = slot.as_ref()?;
-            Some((NodeId { index: i as u32, generation: self.generations[i] }, &s.data))
+            Some((
+                NodeId {
+                    index: i as u32,
+                    generation: self.generations[i],
+                },
+                &s.data,
+            ))
         })
     }
 }
@@ -765,7 +789,9 @@ mod tests {
         arena.insert_child(r, 20).unwrap();
 
         arena.sort_children(Some(r), &mut |a, b| a.cmp(b));
-        let sorted: Vec<_> = arena.children(r).iter()
+        let sorted: Vec<_> = arena
+            .children(r)
+            .iter()
             .filter_map(|&id| arena.get_data(id).copied())
             .collect();
         assert_eq!(sorted, vec![10, 20, 30]);
@@ -790,7 +816,9 @@ mod tests {
         arena.insert_root(3).unwrap();
         arena.insert_root_at(1, 2).unwrap(); // between 1 and 3
 
-        let root_vals: Vec<_> = arena.roots().iter()
+        let root_vals: Vec<_> = arena
+            .roots()
+            .iter()
             .filter_map(|&id| arena.get_data(id).copied())
             .collect();
         assert_eq!(root_vals, vec![1, 2, 3]);

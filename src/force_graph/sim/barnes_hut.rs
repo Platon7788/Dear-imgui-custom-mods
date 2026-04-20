@@ -38,7 +38,10 @@ impl Aabb {
             0 | 1 => self.center[1] - q, // north
             _ => self.center[1] + q,     // south
         };
-        Aabb { center: [cx, cy], half: q }
+        Aabb {
+            center: [cx, cy],
+            half: q,
+        }
     }
 }
 
@@ -65,7 +68,10 @@ impl QuadNode {
             QuadNode::Empty => {
                 *self = QuadNode::Leaf { pos, mass };
             }
-            QuadNode::Leaf { pos: lpos, mass: lmass } => {
+            QuadNode::Leaf {
+                pos: lpos,
+                mass: lmass,
+            } => {
                 // Promote this leaf to an internal node, re-insert the old
                 // leaf and the new particle into the appropriate children.
                 let old_pos = *lpos;
@@ -88,7 +94,12 @@ impl QuadNode {
                     children,
                 };
                 // Re-insert both particles into children.
-                if let QuadNode::Internal { aabb: iabb, children, .. } = self {
+                if let QuadNode::Internal {
+                    aabb: iabb,
+                    children,
+                    ..
+                } = self
+                {
                     let q_old = iabb.quadrant(old_pos);
                     let aabb_old = iabb.child_aabb(q_old);
                     children[q_old].insert(old_pos, old_mass, aabb_old);
@@ -105,10 +116,8 @@ impl QuadNode {
             } => {
                 // Update aggregate values.
                 let new_total = *total_mass + mass;
-                center_of_mass[0] =
-                    (center_of_mass[0] * (*total_mass) + pos[0] * mass) / new_total;
-                center_of_mass[1] =
-                    (center_of_mass[1] * (*total_mass) + pos[1] * mass) / new_total;
+                center_of_mass[0] = (center_of_mass[0] * (*total_mass) + pos[0] * mass) / new_total;
+                center_of_mass[1] = (center_of_mass[1] * (*total_mass) + pos[1] * mass) / new_total;
                 *total_mass = new_total;
                 // Recurse into the appropriate quadrant.
                 let q = iabb.quadrant(pos);
@@ -181,7 +190,10 @@ impl BarnesHutTree {
     /// reasonable default for interactive simulations.
     pub(crate) fn new(particles: &[([f32; 2], f32)], theta: f32) -> Self {
         if particles.is_empty() {
-            return Self { root: QuadNode::Empty, theta };
+            return Self {
+                root: QuadNode::Empty,
+                theta,
+            };
         }
 
         // Compute the axis-aligned bounding box of all particles.
@@ -190,17 +202,28 @@ impl BarnesHutTree {
         let mut min_y = f32::MAX;
         let mut max_y = f32::MIN;
         for (pos, _) in particles {
-            if pos[0] < min_x { min_x = pos[0]; }
-            if pos[0] > max_x { max_x = pos[0]; }
-            if pos[1] < min_y { min_y = pos[1]; }
-            if pos[1] > max_y { max_y = pos[1]; }
+            if pos[0] < min_x {
+                min_x = pos[0];
+            }
+            if pos[0] > max_x {
+                max_x = pos[0];
+            }
+            if pos[1] < min_y {
+                min_y = pos[1];
+            }
+            if pos[1] > max_y {
+                max_y = pos[1];
+            }
         }
 
         // Make it square with a small padding so boundary particles are inside.
         let cx = (min_x + max_x) / 2.0;
         let cy = (min_y + max_y) / 2.0;
         let half = ((max_x - min_x).max(max_y - min_y) / 2.0) + 1.0;
-        let root_aabb = Aabb { center: [cx, cy], half };
+        let root_aabb = Aabb {
+            center: [cx, cy],
+            half,
+        };
 
         let mut root = QuadNode::Empty;
         for &(pos, mass) in particles {
@@ -251,16 +274,8 @@ mod tests {
         let tree = BarnesHutTree::new(&particles, 0.9);
         let f = tree.force([0.0, 0.0], 100.0);
         // The x-components should cancel; y-components are already zero.
-        assert!(
-            f[0].abs() < 1e-3,
-            "fx should be near zero, got {}",
-            f[0]
-        );
-        assert!(
-            f[1].abs() < 1e-3,
-            "fy should be near zero, got {}",
-            f[1]
-        );
+        assert!(f[0].abs() < 1e-3, "fx should be near zero, got {}", f[0]);
+        assert!(f[1].abs() < 1e-3, "fy should be near zero, got {}", f[1]);
     }
 
     /// Building a tree with 100 particles does not panic, and every queried
@@ -275,8 +290,7 @@ mod tests {
             (state as f32 / u32::MAX as f32) * 1000.0 - 500.0
         };
 
-        let particles: Vec<([f32; 2], f32)> =
-            (0..100).map(|_| ([next(), next()], 1.0)).collect();
+        let particles: Vec<([f32; 2], f32)> = (0..100).map(|_| ([next(), next()], 1.0)).collect();
 
         let tree = BarnesHutTree::new(&particles, 0.9);
 

@@ -139,7 +139,13 @@ impl FlatView {
                     }
                     frame.visible_idx += 1;
                     let is_last = frame.visible_idx == frame.visible_total;
-                    found = Some((child_id, slot.depth, slot.data.has_children() || !slot.children.is_empty(), slot.expanded, is_last));
+                    found = Some((
+                        child_id,
+                        slot.depth,
+                        slot.data.has_children() || !slot.children.is_empty(),
+                        slot.expanded,
+                        is_last,
+                    ));
                     break;
                 }
             }
@@ -205,10 +211,13 @@ impl FlatView {
         start: usize,
         end: usize,
     ) -> usize {
-        self.children_buf[start..end].iter().filter(|&&id| {
-            arena.get(id).is_some_and(|s| s.visible)
-                && (!filter.active || filter.is_visible(id))
-        }).count()
+        self.children_buf[start..end]
+            .iter()
+            .filter(|&&id| {
+                arena.get(id).is_some_and(|s| s.visible)
+                    && (!filter.active || filter.is_visible(id))
+            })
+            .count()
     }
 
     /// Number of visible rows.
@@ -227,7 +236,11 @@ impl FlatView {
     #[inline]
     pub fn index_of(&self, id: NodeId) -> Option<usize> {
         let idx = *self.index_map.get(id.index as usize)?;
-        if idx == Self::NO_INDEX { None } else { Some(idx as usize) }
+        if idx == Self::NO_INDEX {
+            None
+        } else {
+            Some(idx as usize)
+        }
     }
 
     /// Mark as needing rebuild.
@@ -244,18 +257,26 @@ mod tests {
     use crate::virtual_tree::node::VirtualTreeNode;
 
     /// Minimal test node for flat view tests.
-    struct FvNode { name: &'static str, is_parent: bool }
+    struct FvNode {
+        name: &'static str,
+        is_parent: bool,
+    }
 
     impl VirtualTreeNode for FvNode {
         fn cell_value(&self, _col: usize) -> CellValue {
             CellValue::Text(self.name.to_string())
         }
         fn set_cell_value(&mut self, _col: usize, _value: &CellValue) {}
-        fn has_children(&self) -> bool { self.is_parent }
+        fn has_children(&self) -> bool {
+            self.is_parent
+        }
     }
 
     fn node(name: &'static str, parent: bool) -> FvNode {
-        FvNode { name, is_parent: parent }
+        FvNode {
+            name,
+            is_parent: parent,
+        }
     }
 
     #[test]
@@ -336,7 +357,10 @@ mod tests {
         let mut fv = FlatView::new();
         fv.rebuild(&arena, &filter);
 
-        let fake = NodeId { index: 42, generation: 0 };
+        let fake = NodeId {
+            index: 42,
+            generation: 0,
+        };
         assert!(fv.index_of(fake).is_none());
     }
 
@@ -380,6 +404,6 @@ mod tests {
         fv.rebuild(&arena, &filter);
 
         assert!(!fv.rows[1].is_last_child); // "a" is not last
-        assert!(fv.rows[2].is_last_child);  // "b" is last
+        assert!(fv.rows[2].is_last_child); // "b" is last
     }
 }

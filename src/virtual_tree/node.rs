@@ -15,8 +15,7 @@ use super::arena::NodeId;
 // ─── NodeIcon ───────────────────────────────────────────────────────────────
 
 /// Icon specification for the tree column (shown between expand arrow and text).
-#[derive(Clone, Debug)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub enum NodeIcon {
     /// No icon.
     #[default]
@@ -30,7 +29,6 @@ pub enum NodeIcon {
     /// User-rendered via [`VirtualTreeNode::render_icon()`].
     Custom,
 }
-
 
 // ─── VirtualTreeNode trait ──────────────────────────────────────────────────
 

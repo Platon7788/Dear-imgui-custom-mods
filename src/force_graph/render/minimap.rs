@@ -76,10 +76,7 @@ pub(crate) fn render_minimap(
         if sp[0] < mm_min[0] || sp[0] > mm_max[0] || sp[1] < mm_min[1] || sp[1] > mm_max[1] {
             continue;
         }
-        let dot_col = node
-            .style
-            .color
-            .unwrap_or([0.55, 0.70, 0.95, 0.85]);
+        let dot_col = node.style.color.unwrap_or([0.55, 0.70, 0.95, 0.85]);
         draw.add_circle(sp, 1.8, pack_color_f32(dot_col))
             .filled(true)
             .num_segments(4)
@@ -90,28 +87,33 @@ pub(crate) fn render_minimap(
     // The visible world region is what screen_to_world maps the canvas corners to.
     let vp_wmin = camera.screen_to_world(canvas_min, canvas_min);
     let vp_wmax = camera.screen_to_world(
-        [canvas_min[0] + canvas_size[0], canvas_min[1] + canvas_size[1]],
+        [
+            canvas_min[0] + canvas_size[0],
+            canvas_min[1] + canvas_size[1],
+        ],
         canvas_min,
     );
     let vp_mm_min = world_to_mm(vp_wmin);
     let vp_mm_max = world_to_mm(vp_wmax);
 
     // Clamp to minimap bounds for large zoom-outs.
-    let vp_mm_min = [
-        vp_mm_min[0].max(mm_min[0]),
-        vp_mm_min[1].max(mm_min[1]),
-    ];
-    let vp_mm_max = [
-        vp_mm_max[0].min(mm_max[0]),
-        vp_mm_max[1].min(mm_max[1]),
-    ];
+    let vp_mm_min = [vp_mm_min[0].max(mm_min[0]), vp_mm_min[1].max(mm_min[1])];
+    let vp_mm_max = [vp_mm_max[0].min(mm_max[0]), vp_mm_max[1].min(mm_max[1])];
 
-    draw.add_rect(vp_mm_min, vp_mm_max, pack_color_f32([0.95, 0.95, 0.95, 0.15]))
-        .filled(true)
-        .build();
-    draw.add_rect(vp_mm_min, vp_mm_max, pack_color_f32([0.95, 0.95, 0.95, 0.70]))
-        .filled(false)
-        .build();
+    draw.add_rect(
+        vp_mm_min,
+        vp_mm_max,
+        pack_color_f32([0.95, 0.95, 0.95, 0.15]),
+    )
+    .filled(true)
+    .build();
+    draw.add_rect(
+        vp_mm_min,
+        vp_mm_max,
+        pack_color_f32([0.95, 0.95, 0.95, 0.70]),
+    )
+    .filled(false)
+    .build();
 
     // ── Click / drag → pan main camera ────────────────────────────────────────
     let io = ui.io();

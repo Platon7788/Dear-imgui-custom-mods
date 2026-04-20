@@ -105,7 +105,11 @@ fn render_filters(ui: &Ui, filter: &mut FilterState, events: &mut Vec<GraphEvent
     ui.separator();
     ui.text("Time travel:");
     let is_inf = filter.time_threshold.is_infinite();
-    let mut t_val = if is_inf { 1000.0_f32 } else { filter.time_threshold };
+    let mut t_val = if is_inf {
+        1000.0_f32
+    } else {
+        filter.time_threshold
+    };
     if ui.slider("##time", 0.0_f32, 1000.0_f32, &mut t_val) {
         filter.time_threshold = if t_val >= 999.9 { f32::INFINITY } else { t_val };
         events.push(GraphEvent::FilterChanged);

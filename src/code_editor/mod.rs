@@ -59,11 +59,10 @@ pub mod tokenizer;
 pub mod undo;
 
 pub use config::{
-    code_editor_font_ptr, install_code_editor_font, install_code_editor_font_ex,
-    install_custom_code_editor_font, merge_mdi_icons, BuiltinFont, ContextMenuConfig,
-    EditorConfig, EditorTheme, Language, SyntaxColors, SyntaxDefinition,
-    CODE_EDITOR_FONT_PTR, HACK_FONT_DATA, JETBRAINS_MONO_FONT_DATA,
-    JETBRAINS_MONO_LIGATURES_FONT_DATA, MDI_FONT_DATA,
+    BuiltinFont, CODE_EDITOR_FONT_PTR, ContextMenuConfig, EditorConfig, EditorTheme,
+    HACK_FONT_DATA, JETBRAINS_MONO_FONT_DATA, JETBRAINS_MONO_LIGATURES_FONT_DATA, Language,
+    MDI_FONT_DATA, SyntaxColors, SyntaxDefinition, code_editor_font_ptr, install_code_editor_font,
+    install_code_editor_font_ex, install_custom_code_editor_font, merge_mdi_icons,
 };
 
 mod find_replace;
@@ -71,12 +70,12 @@ mod fold;
 mod helpers;
 mod wrap;
 use fold::{FoldRegion, detect_fold_regions};
-use wrap::compute_wrap_points;
 use helpers::{
-    calc_char_advance, closing_bracket, closing_quote, col32, col_to_x,
-    digit_count, get_clipboard, hash_line, is_closing_bracket, is_closing_quote,
-    parse_hex_color, read_input_chars, set_clipboard, title_case, x_to_col,
+    calc_char_advance, closing_bracket, closing_quote, col_to_x, col32, digit_count, get_clipboard,
+    hash_line, is_closing_bracket, is_closing_quote, parse_hex_color, read_input_chars,
+    set_clipboard, title_case, x_to_col,
 };
+use wrap::compute_wrap_points;
 
 pub use find_replace::{FindReplaceState, FindScope};
 
@@ -85,10 +84,10 @@ use lang::tokenize_line;
 use token::{Token, TokenKind};
 use undo::{UndoEntry, UndoStack};
 
-use std::collections::HashSet;
-use std::rc::Rc;
 use crate::icons;
 use dear_imgui_rs::{Key, MouseButton, StyleColor, Ui, WindowFlags};
+use std::collections::HashSet;
+use std::rc::Rc;
 
 // ── Error/warning markers ────────────────────────────────────────────────────
 
@@ -123,7 +122,6 @@ struct CachedLineTokens {
     /// Computed tokens (Rc avoids cloning on every frame).
     tokens: Rc<Vec<Token>>,
 }
-
 
 // ── The CodeEditor widget ────────────────────────────────────────────────────
 
@@ -361,7 +359,11 @@ impl CodeEditor {
 
     /// Set breakpoints.
     pub fn set_breakpoints(&mut self, bps: Vec<Breakpoint>) {
-        self.breakpoint_lines = bps.iter().filter(|bp| bp.enabled).map(|bp| bp.line).collect();
+        self.breakpoint_lines = bps
+            .iter()
+            .filter(|bp| bp.enabled)
+            .map(|bp| bp.line)
+            .collect();
         self.breakpoints = bps;
     }
 
@@ -497,10 +499,7 @@ impl CodeEditor {
         let base_font_size = unsafe { dear_imgui_rs::sys::igGetFontSize() };
         let scaled_font_size = base_font_size * self.config.font_size_scale;
         unsafe {
-            dear_imgui_rs::sys::igPushFont(
-                code_editor_font_ptr(),
-                scaled_font_size,
-            );
+            dear_imgui_rs::sys::igPushFont(code_editor_font_ptr(), scaled_font_size);
         }
 
         // Measure char advance using ImFont::CalcTextSizeA directly — the same
@@ -521,7 +520,11 @@ impl CodeEditor {
         }
         self.ensure_token_cache_size();
 
-        let fold_extra = if self.config.show_fold_indicators { 2.0 } else { 0.0 };
+        let fold_extra = if self.config.show_fold_indicators {
+            2.0
+        } else {
+            0.0
+        };
         let gutter_width = if self.config.show_line_numbers {
             let digits = digit_count(self.buffer.line_count());
             // Layout: | padding | line_numbers | [fold_icon] | gap | code
@@ -541,10 +544,7 @@ impl CodeEditor {
         let child_id = format!("##ce_{}", self.id);
 
         // Push style for the editor region (uses theme's editor_bg)
-        let _bg_token = ui.push_style_color(
-            StyleColor::ChildBg,
-            self.config.colors.editor_bg,
-        );
+        let _bg_token = ui.push_style_color(StyleColor::ChildBg, self.config.colors.editor_bg);
 
         // When word-wrap is active there is no horizontal content overflow,
         // so suppress the horizontal scrollbar entirely.  Keeping it visible
@@ -553,391 +553,511 @@ impl CodeEditor {
         let child_flags = if self.config.word_wrap {
             WindowFlags::NO_MOVE | WindowFlags::NO_SCROLL_WITH_MOUSE
         } else {
-            WindowFlags::HORIZONTAL_SCROLLBAR | WindowFlags::NO_MOVE | WindowFlags::NO_SCROLL_WITH_MOUSE
+            WindowFlags::HORIZONTAL_SCROLLBAR
+                | WindowFlags::NO_MOVE
+                | WindowFlags::NO_SCROLL_WITH_MOUSE
         };
 
         ui.child_window(&child_id)
             .size(avail)
             .flags(child_flags)
             .build(ui, || {
-            self.focused = ui.is_window_focused();
+                self.focused = ui.is_window_focused();
 
-            // ── Keyboard layout switching on focus change ────────────
-            self.handle_input_locale_switch();
+                // ── Keyboard layout switching on focus change ────────────
+                self.handle_input_locale_switch();
 
-            // Inner window size — the actual visible area of the child
-            // window (accounts for scrollbar, border, padding).
-            let inner_size = ui.window_size();
-            self.visible_height = inner_size[1];
+                // Inner window size — the actual visible area of the child
+                // window (accounts for scrollbar, border, padding).
+                let inner_size = ui.window_size();
+                self.visible_height = inner_size[1];
 
-            // ── Word wrap cache ───────────────────────────────────────
-            // Reserve the vertical scrollbar width so wrapped text never
-            // sneaks under the scrollbar on the right edge. ImGui's
-            // `content_region_avail()` already subtracts the scrollbar
-            // width when one is visible — but we want a STABLE wrap
-            // width regardless of scrollbar visibility, otherwise the
-            // wrap toggles on/off as content grows over the threshold
-            // (chicken-and-egg: wrap width depends on scrollbar, which
-            // depends on content height, which depends on wrap width).
-            // Always reserve `style.scrollbar_size` so the wrap is stable.
-            let scrollbar_reserve = ui.clone_style().scrollbar_size();
-            let text_area_w = (inner_size[0] - gutter_width - scrollbar_reserve).max(1.0);
-            self.update_wrap_cache(text_area_w);
+                // ── Word wrap cache ───────────────────────────────────────
+                // Reserve the vertical scrollbar width so wrapped text never
+                // sneaks under the scrollbar on the right edge. ImGui's
+                // `content_region_avail()` already subtracts the scrollbar
+                // width when one is visible — but we want a STABLE wrap
+                // width regardless of scrollbar visibility, otherwise the
+                // wrap toggles on/off as content grows over the threshold
+                // (chicken-and-egg: wrap width depends on scrollbar, which
+                // depends on content height, which depends on wrap width).
+                // Always reserve `style.scrollbar_size` so the wrap is stable.
+                let scrollbar_reserve = ui.clone_style().scrollbar_size();
+                let text_area_w = (inner_size[0] - gutter_width - scrollbar_reserve).max(1.0);
+                self.update_wrap_cache(text_area_w);
 
-            // ── Read ImGui scroll state first ───────────────────────
-            // This is the source of truth — user may have dragged the
-            // scrollbar or ImGui processed wheel events.
-            let imgui_scroll_y = ui.scroll_y();
-            self.scroll_x = ui.scroll_x();
+                // ── Read ImGui scroll state first ───────────────────────
+                // This is the source of truth — user may have dragged the
+                // scrollbar or ImGui processed wheel events.
+                let imgui_scroll_y = ui.scroll_y();
+                self.scroll_x = ui.scroll_x();
 
-            // Detect external scroll change (scrollbar drag) — if ImGui's
-            // scroll differs from what we wrote last frame, the user moved
-            // the scrollbar directly.  Adopt that position as the new target
-            // so smooth-scroll doesn't fight the scrollbar.
-            let external_scroll = (imgui_scroll_y - self.last_set_scroll_y).abs() > 0.5;
-            self.scroll_y = imgui_scroll_y;
-            if external_scroll {
-                self.target_scroll_y = imgui_scroll_y;
-            }
+                // Detect external scroll change (scrollbar drag) — if ImGui's
+                // scroll differs from what we wrote last frame, the user moved
+                // the scrollbar directly.  Adopt that position as the new target
+                // so smooth-scroll doesn't fight the scrollbar.
+                let external_scroll = (imgui_scroll_y - self.last_set_scroll_y).abs() > 0.5;
+                self.scroll_y = imgui_scroll_y;
+                if external_scroll {
+                    self.target_scroll_y = imgui_scroll_y;
+                }
 
-            // Update cursor blink
-            let dt = ui.io().delta_time();
-            self.update_blink(dt);
+                // Update cursor blink
+                let dt = ui.io().delta_time();
+                self.update_blink(dt);
 
-            // Smooth scrolling (modifies self.scroll_y toward target)
-            self.update_smooth_scroll(dt);
+                // Smooth scrolling (modifies self.scroll_y toward target)
+                self.update_smooth_scroll(dt);
 
-            // Snapshot cursor position BEFORE input so we can tell whether
-            // the cursor was actually moved this frame. `ensure_cursor_visible`
-            // should fire only when the cursor moves (typing, arrow keys,
-            // click) — NOT on every frame, otherwise any wheel-scroll that
-            // takes the cursor off-screen gets immediately reverted back
-            // because we force the cursor into the viewport.
-            let cursor_before = self.buffer.cursor();
+                // Snapshot cursor position BEFORE input so we can tell whether
+                // the cursor was actually moved this frame. `ensure_cursor_visible`
+                // should fire only when the cursor moves (typing, arrow keys,
+                // click) — NOT on every frame, otherwise any wheel-scroll that
+                // takes the cursor off-screen gets immediately reverted back
+                // because we force the cursor into the viewport.
+                let cursor_before = self.buffer.cursor();
 
-            // Handle input (may call ensure_cursor_visible → self.scroll_y)
-            if self.focused {
-                self.handle_keyboard(ui);
-            }
-            self.handle_mouse(ui, gutter_width, inner_size);
+                // Handle input (may call ensure_cursor_visible → self.scroll_y)
+                if self.focused {
+                    self.handle_keyboard(ui);
+                }
+                self.handle_mouse(ui, gutter_width, inner_size);
 
-            // Re-sync wrap cache after input — paste/Enter may have added
-            // lines, so the pre-input cache is stale.
-            self.update_wrap_cache(text_area_w);
+                // Re-sync wrap cache after input — paste/Enter may have added
+                // lines, so the pre-input cache is stale.
+                self.update_wrap_cache(text_area_w);
 
-            // Only pull scroll toward cursor when cursor itself moved.
-            // Wheel / scrollbar-drag scrolling is free to take the cursor
-            // out of view — the cursor stays clipped by the child window
-            // naturally until the user types or arrows back to it.
-            if self.buffer.cursor() != cursor_before {
-                self.ensure_cursor_visible();
-            }
+                // Only pull scroll toward cursor when cursor itself moved.
+                // Wheel / scrollbar-drag scrolling is free to take the cursor
+                // out of view — the cursor stays clipped by the child window
+                // naturally until the user types or arrows back to it.
+                if self.buffer.cursor() != cursor_before {
+                    self.ensure_cursor_visible();
+                }
 
-            // ── Sync scroll back to ImGui ───────────────────────────
-            // Input handling may have updated self.scroll_y (e.g.
-            // ensure_cursor_visible, smooth scroll, mouse wheel).
-            // Apply it so ImGui's scrollbar and cursor_screen_pos
-            // reflect the new state.
-            ui.set_scroll_y(self.scroll_y);
-            self.last_set_scroll_y = self.scroll_y;
+                // ── Sync scroll back to ImGui ───────────────────────────
+                // Input handling may have updated self.scroll_y (e.g.
+                // ensure_cursor_visible, smooth scroll, mouse wheel).
+                // Apply it so ImGui's scrollbar and cursor_screen_pos
+                // reflect the new state.
+                ui.set_scroll_y(self.scroll_y);
+                self.last_set_scroll_y = self.scroll_y;
 
-            let draw_list = ui.get_window_draw_list();
-            // cursor_screen_pos() includes the scroll offset (ImGui's
-            // DC.CursorPos = Pos + Pad − Scroll).  So `win_x`/`win_y`
-            // already have −scroll baked in — content drawn at
-            // `win_y + line*h` lands at the correct screen position and
-            // is automatically clipped by the child window.
-            let [win_x, win_y] = ui.cursor_screen_pos();
-            let scroll_y = ui.scroll_y();
-            let scroll_x = ui.scroll_x();
-            self.scroll_x = scroll_x;
-            self.scroll_y = scroll_y;
+                let draw_list = ui.get_window_draw_list();
+                // cursor_screen_pos() includes the scroll offset (ImGui's
+                // DC.CursorPos = Pos + Pad − Scroll).  So `win_x`/`win_y`
+                // already have −scroll baked in — content drawn at
+                // `win_y + line*h` lands at the correct screen position and
+                // is automatically clipped by the child window.
+                let [win_x, win_y] = ui.cursor_screen_pos();
+                let scroll_y = ui.scroll_y();
+                let scroll_x = ui.scroll_x();
+                self.scroll_x = scroll_x;
+                self.scroll_y = scroll_y;
 
-            // Scroll-independent origin: the fixed top-left of the
-            // content area in screen space.  Used for UI elements that
-            // must NOT scroll (gutter X position).
-            let origin_x = win_x + scroll_x;
-            let origin_y = win_y + scroll_y;
+                // Scroll-independent origin: the fixed top-left of the
+                // content area in screen space.  Used for UI elements that
+                // must NOT scroll (gutter X position).
+                let origin_x = win_x + scroll_x;
+                let origin_y = win_y + scroll_y;
 
-            // first/last visible: in VISUAL ROW space when wrapping.
-            let first_vrow = (scroll_y / self.line_height) as usize;
-            let visible_count = (self.visible_height / self.line_height) as usize + 2;
-            let last_vrow = first_vrow + visible_count;
+                // first/last visible: in VISUAL ROW space when wrapping.
+                let first_vrow = (scroll_y / self.line_height) as usize;
+                let visible_count = (self.visible_height / self.line_height) as usize + 2;
+                let last_vrow = first_vrow + visible_count;
 
-            // Map visual rows back to buffer lines for the rendering loop.
-            let (first_visible, _) = self.visual_row_to_line(first_vrow);
-            let (last_vis_line, _) = self.visual_row_to_line(last_vrow);
-            let last_visible = (last_vis_line + 1).min(self.buffer.line_count());
+                // Map visual rows back to buffer lines for the rendering loop.
+                let (first_visible, _) = self.visual_row_to_line(first_vrow);
+                let (last_vis_line, _) = self.visual_row_to_line(last_vrow);
+                let last_visible = (last_vis_line + 1).min(self.buffer.line_count());
 
-            // text_start_x: scrolls horizontally with content.
-            // win_x already contains −scroll_x, so no extra subtraction.
-            let text_start_x = win_x + gutter_width;
-            let cursor_pos = self.buffer.cursor();
-            let selection = self.buffer.selection();
-            let matching_bracket = if self.config.bracket_matching {
-                self.buffer.find_matching_bracket()
-            } else {
-                None
-            };
-
-            // ── Build visible line list (respecting folds) ──────────
-            let visible_lines = self.build_visible_lines(first_visible, last_visible);
-            let wrapping = self.config.word_wrap;
-
-            // Pre-populate token cache for all visible lines so the draw
-            // loop doesn't need &mut self (avoids per-line to_string() alloc).
-            for &(line_idx, _) in &visible_lines {
-                self.get_cached_tokens(line_idx);
-            }
-
-            // ── Draw lines (batched) ────────────────────────────────
-            for &(line_idx, _screen_row) in &visible_lines {
-                let line_str = self.buffer.line(line_idx);
-
-                // How many visual sub-rows does this line occupy?
-                let sub_row_count = if wrapping && line_idx < self.wrap_cols.len() {
-                    self.wrap_cols[line_idx].len() + 1
+                // text_start_x: scrolls horizontally with content.
+                // win_x already contains −scroll_x, so no extra subtraction.
+                let text_start_x = win_x + gutter_width;
+                let cursor_pos = self.buffer.cursor();
+                let selection = self.buffer.selection();
+                let matching_bracket = if self.config.bracket_matching {
+                    self.buffer.find_matching_bracket()
                 } else {
-                    1
+                    None
                 };
 
-                for sub_row in 0..sub_row_count {
-                    let vrow = if wrapping {
-                        self.visual_row_of(line_idx, if sub_row == 0 { 0 }
-                            else { self.wrap_cols[line_idx][sub_row - 1] })
-                    } else {
-                        line_idx
-                    };
-                    let y = win_y + (vrow as f32) * self.line_height;
+                // ── Build visible line list (respecting folds) ──────────
+                let visible_lines = self.build_visible_lines(first_visible, last_visible);
+                let wrapping = self.config.word_wrap;
 
-                    // Column range for this sub-row
-                    let (col_start, col_end) = if wrapping {
-                        self.sub_row_col_range(line_idx, sub_row)
+                // Pre-populate token cache for all visible lines so the draw
+                // loop doesn't need &mut self (avoids per-line to_string() alloc).
+                for &(line_idx, _) in &visible_lines {
+                    self.get_cached_tokens(line_idx);
+                }
+
+                // ── Draw lines (batched) ────────────────────────────────
+                for &(line_idx, _screen_row) in &visible_lines {
+                    let line_str = self.buffer.line(line_idx);
+
+                    // How many visual sub-rows does this line occupy?
+                    let sub_row_count = if wrapping && line_idx < self.wrap_cols.len() {
+                        self.wrap_cols[line_idx].len() + 1
                     } else {
-                        (0, line_str.chars().count())
+                        1
                     };
 
-                    // ── Per-line decorations (only on first sub-row) ──
-                    if sub_row == 0 {
-                        // Current line highlight — drawn BEFORE selection so
-                        // the selection overlay is visible on top.  Also skip
-                        // when there is an active selection touching this line
-                        // so the selection color isn't washed out.
-                        let sel_on_line = selection.is_some_and(|s| {
-                            let (a, b) = s.ordered();
-                            line_idx >= a.line && line_idx <= b.line
-                                && !(a.line == b.line && a.col == b.col)
-                        });
-                        if self.config.highlight_current_line
-                            && line_idx == cursor_pos.line
-                            && self.focused
-                            && !sel_on_line
+                    for sub_row in 0..sub_row_count {
+                        let vrow = if wrapping {
+                            self.visual_row_of(
+                                line_idx,
+                                if sub_row == 0 {
+                                    0
+                                } else {
+                                    self.wrap_cols[line_idx][sub_row - 1]
+                                },
+                            )
+                        } else {
+                            line_idx
+                        };
+                        let y = win_y + (vrow as f32) * self.line_height;
+
+                        // Column range for this sub-row
+                        let (col_start, col_end) = if wrapping {
+                            self.sub_row_col_range(line_idx, sub_row)
+                        } else {
+                            (0, line_str.chars().count())
+                        };
+
+                        // ── Per-line decorations (only on first sub-row) ──
+                        if sub_row == 0 {
+                            // Current line highlight — drawn BEFORE selection so
+                            // the selection overlay is visible on top.  Also skip
+                            // when there is an active selection touching this line
+                            // so the selection color isn't washed out.
+                            let sel_on_line = selection.is_some_and(|s| {
+                                let (a, b) = s.ordered();
+                                line_idx >= a.line
+                                    && line_idx <= b.line
+                                    && !(a.line == b.line && a.col == b.col)
+                            });
+                            if self.config.highlight_current_line
+                                && line_idx == cursor_pos.line
+                                && self.focused
+                                && !sel_on_line
+                            {
+                                let num_rows = sub_row_count as f32;
+                                draw_list
+                                    .add_rect(
+                                        [origin_x, y],
+                                        [origin_x + inner_size[0], y + self.line_height * num_rows],
+                                        col32(self.config.colors.current_line_bg),
+                                    )
+                                    .filled(true)
+                                    .build();
+                            }
+
+                            // Error marker background
+                            if self.error_lines.contains(&line_idx) {
+                                draw_list
+                                    .add_rect(
+                                        [origin_x, y],
+                                        [origin_x + inner_size[0], y + self.line_height],
+                                        col32([0.80, 0.20, 0.20, 0.15]),
+                                    )
+                                    .filled(true)
+                                    .build();
+                            }
+
+                            // Breakpoint marker in gutter
+                            if self.breakpoint_lines.contains(&line_idx) {
+                                let center =
+                                    [origin_x + gutter_width * 0.2, y + self.line_height * 0.5];
+                                let radius = self.line_height * 0.3;
+                                draw_list
+                                    .add_circle(center, radius, col32(crate::theme::DANGER))
+                                    .filled(true)
+                                    .build();
+                            }
+
+                            // Fold indicator in gutter
+                            if self.config.show_fold_indicators {
+                                self.draw_fold_indicator(
+                                    &draw_list,
+                                    line_idx,
+                                    origin_x,
+                                    gutter_width,
+                                    y,
+                                );
+                            }
+
+                            // Line number
+                            if self.config.show_line_numbers {
+                                let num_str = format!("{}", line_idx + 1);
+                                let num_color = if line_idx == cursor_pos.line {
+                                    self.config.colors.line_number_active
+                                } else {
+                                    self.config.colors.line_number
+                                };
+                                let right_pad = if self.config.show_fold_indicators {
+                                    2.5
+                                } else {
+                                    0.5
+                                };
+                                let num_x = origin_x + gutter_width
+                                    - (num_str.len() as f32 + right_pad) * self.char_advance;
+                                draw_list.add_text([num_x, y], col32(num_color), &num_str);
+                            }
+                        }
+
+                        // ── Selection & find highlights (every sub-row) ──
+                        // Drawn AFTER current-line-bg so the selection is on top.
+                        if let Some(sel) = selection {
+                            self.draw_selection(
+                                &draw_list,
+                                sel,
+                                line_idx,
+                                line_str,
+                                text_start_x,
+                                y,
+                                col_start,
+                                col_end,
+                            );
+                        }
+                        for sel in self
+                            .buffer
+                            .extra_selections()
+                            .iter()
+                            .filter_map(|s| s.as_ref())
                         {
-                            let num_rows = sub_row_count as f32;
-                            draw_list.add_rect(
-                                [origin_x, y],
-                                [origin_x + inner_size[0], y + self.line_height * num_rows],
-                                col32(self.config.colors.current_line_bg),
-                            ).filled(true).build();
+                            self.draw_selection(
+                                &draw_list,
+                                *sel,
+                                line_idx,
+                                line_str,
+                                text_start_x,
+                                y,
+                                col_start,
+                                col_end,
+                            );
+                        }
+                        self.draw_find_matches(
+                            &draw_list,
+                            line_idx,
+                            line_str,
+                            text_start_x,
+                            y,
+                            col_start,
+                            col_end,
+                        );
+
+                        // Gutter separator line (every sub-row)
+                        draw_list
+                            .add_line(
+                                [origin_x + gutter_width - self.char_advance * 0.5, y],
+                                [
+                                    origin_x + gutter_width - self.char_advance * 0.5,
+                                    y + self.line_height,
+                                ],
+                                col32(crate::theme::SEPARATOR),
+                            )
+                            .build();
+
+                        // ── Tokenized text ───────────────────────────────
+                        if !wrapping || sub_row_count == 1 {
+                            // No wrapping — draw full line as before.
+                            let tokens = self.cached_tokens(line_idx);
+                            self.draw_tokens_batched(
+                                &draw_list,
+                                &tokens,
+                                line_str,
+                                text_start_x,
+                                y,
+                            );
+                        } else {
+                            // Word wrap: draw only the columns for this sub-row.
+                            let tokens = self.cached_tokens(line_idx);
+                            self.draw_tokens_batched_range(
+                                &draw_list,
+                                &tokens,
+                                line_str,
+                                text_start_x,
+                                y,
+                                col_start,
+                                col_end,
+                            );
                         }
 
-                        // Error marker background
-                        if self.error_lines.contains(&line_idx) {
-                            draw_list.add_rect(
-                                [origin_x, y],
-                                [origin_x + inner_size[0], y + self.line_height],
-                                col32([0.80, 0.20, 0.20, 0.15]),
-                            ).filled(true).build();
+                        if sub_row == 0 && self.config.show_color_swatches {
+                            self.draw_hex_color_swatches(&draw_list, line_str, text_start_x, y);
                         }
 
-                        // Breakpoint marker in gutter
-                        if self.breakpoint_lines.contains(&line_idx) {
-                            let center = [origin_x + gutter_width * 0.2, y + self.line_height * 0.5];
-                            let radius = self.line_height * 0.3;
-                            draw_list.add_circle(center, radius, col32(crate::theme::DANGER))
-                                .filled(true)
+                        // Bracket match highlight (check all sub-rows)
+                        if let Some(match_pos) = matching_bracket {
+                            let col_start_x = col_to_x(
+                                line_str,
+                                col_start,
+                                self.char_advance,
+                                self.config.tab_size,
+                            );
+                            // Highlight the matched bracket
+                            if match_pos.line == line_idx
+                                && match_pos.col >= col_start
+                                && match_pos.col < col_end
+                            {
+                                let bx = text_start_x
+                                    + col_to_x(
+                                        line_str,
+                                        match_pos.col,
+                                        self.char_advance,
+                                        self.config.tab_size,
+                                    )
+                                    - col_start_x;
+                                draw_list
+                                    .add_rect(
+                                        [bx, y],
+                                        [bx + self.char_advance, y + self.line_height],
+                                        col32(self.config.colors.bracket_match_bg),
+                                    )
+                                    .filled(true)
+                                    .build();
+                            }
+                            // Highlight the cursor bracket
+                            if cursor_pos.line == line_idx
+                                && cursor_pos.col >= col_start
+                                && cursor_pos.col < col_end
+                            {
+                                let bx = text_start_x
+                                    + col_to_x(
+                                        line_str,
+                                        cursor_pos.col,
+                                        self.char_advance,
+                                        self.config.tab_size,
+                                    )
+                                    - col_start_x;
+                                draw_list
+                                    .add_rect(
+                                        [bx, y],
+                                        [bx + self.char_advance, y + self.line_height],
+                                        col32(self.config.colors.bracket_match_bg),
+                                    )
+                                    .filled(true)
+                                    .build();
+                            }
+                        }
+                    }
+                }
+
+                // ── Cursor (primary + extras) ──────────────────────────
+                if self.focused && self.cursor_visible && !self.config.read_only {
+                    let cursor_vrow = self.visual_row_of(cursor_pos.line, cursor_pos.col);
+                    let (col_start, _) = if wrapping {
+                        let (_, sub) = self.visual_row_to_line(cursor_vrow);
+                        self.sub_row_col_range(cursor_pos.line, sub)
+                    } else {
+                        (0usize, 0usize)
+                    };
+                    let cursor_line_str = self.buffer.line(cursor_pos.line);
+                    let cx = text_start_x
+                        + col_to_x(
+                            cursor_line_str,
+                            cursor_pos.col,
+                            self.char_advance,
+                            self.config.tab_size,
+                        )
+                        - col_to_x(
+                            cursor_line_str,
+                            col_start,
+                            self.char_advance,
+                            self.config.tab_size,
+                        )
+                        - 1.0;
+                    let cy = win_y + cursor_vrow as f32 * self.line_height;
+                    draw_list
+                        .add_line(
+                            [cx, cy],
+                            [cx, cy + self.line_height],
+                            col32(crate::theme::TEXT_PRIMARY),
+                        )
+                        .thickness(1.5)
+                        .build();
+
+                    // Draw extra cursors
+                    for extra in self.buffer.extra_cursors() {
+                        let ev = self.visual_row_of(extra.line, extra.col);
+                        let extra_line_str = self.buffer.line(extra.line);
+                        let extra_col_start = if wrapping {
+                            let (_, esub) = self.visual_row_to_line(ev);
+                            self.sub_row_col_range(extra.line, esub).0
+                        } else {
+                            0
+                        };
+                        let ex = text_start_x
+                            + col_to_x(
+                                extra_line_str,
+                                extra.col,
+                                self.char_advance,
+                                self.config.tab_size,
+                            )
+                            - col_to_x(
+                                extra_line_str,
+                                extra_col_start,
+                                self.char_advance,
+                                self.config.tab_size,
+                            )
+                            - 1.0;
+                        let ey = win_y + ev as f32 * self.line_height;
+                        if ey >= origin_y - self.line_height && ey <= origin_y + inner_size[1] {
+                            draw_list
+                                .add_line(
+                                    [ex, ey],
+                                    [ex, ey + self.line_height],
+                                    col32([0.6, 0.8, 1.0, 0.85]),
+                                )
+                                .thickness(1.5)
                                 .build();
                         }
-
-                        // Fold indicator in gutter
-                        if self.config.show_fold_indicators {
-                            self.draw_fold_indicator(&draw_list, line_idx, origin_x, gutter_width, y);
-                        }
-
-                        // Line number
-                        if self.config.show_line_numbers {
-                            let num_str = format!("{}", line_idx + 1);
-                            let num_color = if line_idx == cursor_pos.line {
-                                self.config.colors.line_number_active
-                            } else {
-                                self.config.colors.line_number
-                            };
-                            let right_pad = if self.config.show_fold_indicators { 2.5 } else { 0.5 };
-                            let num_x = origin_x + gutter_width
-                                - (num_str.len() as f32 + right_pad) * self.char_advance;
-                            draw_list.add_text([num_x, y], col32(num_color), &num_str);
-                        }
                     }
+                }
 
-                    // ── Selection & find highlights (every sub-row) ──
-                    // Drawn AFTER current-line-bg so the selection is on top.
-                    if let Some(sel) = selection {
-                        self.draw_selection(&draw_list, sel, line_idx, line_str,
-                                           text_start_x, y, col_start, col_end);
-                    }
-                    for sel in self.buffer.extra_selections().iter().filter_map(|s| s.as_ref()) {
-                        self.draw_selection(&draw_list, *sel, line_idx, line_str,
-                                           text_start_x, y, col_start, col_end);
-                    }
-                    self.draw_find_matches(&draw_list, line_idx, line_str,
-                                           text_start_x, y, col_start, col_end);
-
-                    // Gutter separator line (every sub-row)
-                    draw_list.add_line(
-                        [origin_x + gutter_width - self.char_advance * 0.5, y],
-                        [origin_x + gutter_width - self.char_advance * 0.5,
-                         y + self.line_height],
-                        col32(crate::theme::SEPARATOR),
-                    ).build();
-
-                    // ── Tokenized text ───────────────────────────────
-                    if !wrapping || sub_row_count == 1 {
-                        // No wrapping — draw full line as before.
-                        let tokens = self.cached_tokens(line_idx);
-                        self.draw_tokens_batched(
-                            &draw_list, &tokens, line_str, text_start_x, y,
-                        );
-                    } else {
-                        // Word wrap: draw only the columns for this sub-row.
-                        let tokens = self.cached_tokens(line_idx);
-                        self.draw_tokens_batched_range(
-                            &draw_list, &tokens, line_str,
-                            text_start_x, y, col_start, col_end,
-                        );
-                    }
-
-                    if sub_row == 0 && self.config.show_color_swatches {
-                        self.draw_hex_color_swatches(&draw_list, line_str, text_start_x, y);
-                    }
-
-                    // Bracket match highlight (check all sub-rows)
-                    if let Some(match_pos) = matching_bracket {
-                        let col_start_x = col_to_x(line_str, col_start, self.char_advance, self.config.tab_size);
-                        // Highlight the matched bracket
-                        if match_pos.line == line_idx
-                            && match_pos.col >= col_start && match_pos.col < col_end
-                        {
-                            let bx = text_start_x
-                                + col_to_x(line_str, match_pos.col, self.char_advance, self.config.tab_size)
-                                - col_start_x;
-                            draw_list.add_rect(
-                                [bx, y],
-                                [bx + self.char_advance, y + self.line_height],
-                                col32(self.config.colors.bracket_match_bg),
-                            ).filled(true).build();
-                        }
-                        // Highlight the cursor bracket
-                        if cursor_pos.line == line_idx
-                            && cursor_pos.col >= col_start && cursor_pos.col < col_end
-                        {
-                            let bx = text_start_x
-                                + col_to_x(line_str, cursor_pos.col, self.char_advance, self.config.tab_size)
-                                - col_start_x;
-                            draw_list.add_rect(
-                                [bx, y],
-                                [bx + self.char_advance, y + self.line_height],
-                                col32(self.config.colors.bracket_match_bg),
-                            ).filled(true).build();
+                // ── Error marker tooltips ───────────────────────────────
+                if ui.is_window_hovered() {
+                    let [_mx, my] = ui.io().mouse_pos();
+                    let hover_vrow = ((my - win_y) / self.line_height).max(0.0) as usize;
+                    let (hover_line, _) = self.visual_row_to_line(hover_vrow);
+                    for marker in &self.error_markers {
+                        if marker.line == hover_line {
+                            ui.tooltip_text(&marker.message);
+                            break;
                         }
                     }
                 }
-            }
 
-            // ── Cursor (primary + extras) ──────────────────────────
-            if self.focused && self.cursor_visible && !self.config.read_only {
-                let cursor_vrow = self.visual_row_of(cursor_pos.line, cursor_pos.col);
-                let (col_start, _) = if wrapping {
-                    let (_, sub) = self.visual_row_to_line(cursor_vrow);
-                    self.sub_row_col_range(cursor_pos.line, sub)
+                // Set dummy size for scrolling.
+                // The dummy must extend the content region so ImGui's scrollbar
+                // covers the full document.  Height = all visual rows + a small
+                // bottom margin so the last line is never clipped.
+                let total_height =
+                    self.total_visual_rows() as f32 * self.line_height + self.line_height; // extra row of padding at bottom
+                let total_width = if wrapping {
+                    inner_size[0]
                 } else {
-                    (0usize, 0usize)
+                    let max_line_len = (first_visible..last_visible)
+                        .map(|i| self.buffer.line(i).chars().count())
+                        .max()
+                        .unwrap_or(80);
+                    gutter_width + (max_line_len as f32 + 10.0) * self.char_advance
                 };
-                let cursor_line_str = self.buffer.line(cursor_pos.line);
-                let cx = text_start_x
-                    + col_to_x(cursor_line_str, cursor_pos.col, self.char_advance, self.config.tab_size)
-                    - col_to_x(cursor_line_str, col_start, self.char_advance, self.config.tab_size)
-                    - 1.0;
-                let cy = win_y + cursor_vrow as f32 * self.line_height;
-                draw_list.add_line(
-                    [cx, cy],
-                    [cx, cy + self.line_height],
-                    col32(crate::theme::TEXT_PRIMARY),
-                ).thickness(1.5).build();
+                // Place cursor at the very end of the content area and emit
+                // a 1px-tall dummy so ImGui registers the full scroll extent.
+                ui.set_cursor_pos([0.0, total_height]);
+                ui.dummy([total_width, 1.0]);
 
-                // Draw extra cursors
-                for extra in self.buffer.extra_cursors() {
-                    let ev = self.visual_row_of(extra.line, extra.col);
-                    let extra_line_str = self.buffer.line(extra.line);
-                    let extra_col_start = if wrapping {
-                        let (_, esub) = self.visual_row_to_line(ev);
-                        self.sub_row_col_range(extra.line, esub).0
-                    } else { 0 };
-                    let ex = text_start_x
-                        + col_to_x(extra_line_str, extra.col, self.char_advance, self.config.tab_size)
-                        - col_to_x(extra_line_str, extra_col_start, self.char_advance, self.config.tab_size)
-                        - 1.0;
-                    let ey = win_y + ev as f32 * self.line_height;
-                    if ey >= origin_y - self.line_height && ey <= origin_y + inner_size[1] {
-                        draw_list.add_line(
-                            [ex, ey],
-                            [ex, ey + self.line_height],
-                            col32([0.6, 0.8, 1.0, 0.85]),
-                        ).thickness(1.5).build();
-                    }
-                }
-            }
-
-            // ── Error marker tooltips ───────────────────────────────
-            if ui.is_window_hovered() {
-                let [_mx, my] = ui.io().mouse_pos();
-                let hover_vrow = ((my - win_y) / self.line_height).max(0.0) as usize;
-                let (hover_line, _) = self.visual_row_to_line(hover_vrow);
-                for marker in &self.error_markers {
-                    if marker.line == hover_line {
-                        ui.tooltip_text(&marker.message);
-                        break;
-                    }
-                }
-            }
-
-            // Set dummy size for scrolling.
-            // The dummy must extend the content region so ImGui's scrollbar
-            // covers the full document.  Height = all visual rows + a small
-            // bottom margin so the last line is never clipped.
-            let total_height =
-                self.total_visual_rows() as f32 * self.line_height
-                + self.line_height; // extra row of padding at bottom
-            let total_width = if wrapping {
-                inner_size[0]
-            } else {
-                let max_line_len = (first_visible..last_visible)
-                    .map(|i| self.buffer.line(i).chars().count())
-                    .max()
-                    .unwrap_or(80);
-                gutter_width + (max_line_len as f32 + 10.0) * self.char_advance
-            };
-            // Place cursor at the very end of the content area and emit
-            // a 1px-tall dummy so ImGui registers the full scroll extent.
-            ui.set_cursor_pos([0.0, total_height]);
-            ui.dummy([total_width, 1.0]);
-
-            // ── Right-click context menu ─────────────────────────────
-            self.render_context_menu(ui);
-        });
+                // ── Right-click context menu ─────────────────────────────
+                self.render_context_menu(ui);
+            });
 
         // ── Pop the font pushed at the start of render() ─────────────
         // SAFETY: balances the igPushFont call at the top of this function.
-        unsafe { dear_imgui_rs::sys::igPopFont(); }
+        unsafe {
+            dear_imgui_rs::sys::igPopFont();
+        }
     }
 
     // ── Input handling ───────────────────────────────────────────────
@@ -956,12 +1076,17 @@ impl CodeEditor {
             ($key:ident, $action:expr) => {
                 if ui.is_key_pressed(Key::$key) {
                     let anchor = if shift {
-                        Some(self.buffer.selection()
-                            .map_or(self.buffer.cursor(), |s| s.anchor))
+                        Some(
+                            self.buffer
+                                .selection()
+                                .map_or(self.buffer.cursor(), |s| s.anchor),
+                        )
                     } else {
                         None
                     };
-                    if !shift { self.buffer.clear_selection(); }
+                    if !shift {
+                        self.buffer.clear_selection();
+                    }
                     $action;
                     if let Some(a) = anchor {
                         self.buffer.set_selection(a, self.buffer.cursor());
@@ -980,7 +1105,9 @@ impl CodeEditor {
             ($key:ident, $move_action:expr, $collapse_end:expr) => {
                 if ui.is_key_pressed(Key::$key) {
                     if shift {
-                        let anchor = self.buffer.selection()
+                        let anchor = self
+                            .buffer
+                            .selection()
                             .map_or(self.buffer.cursor(), |s| s.anchor);
                         $move_action;
                         self.buffer.set_selection(anchor, self.buffer.cursor());
@@ -1000,13 +1127,29 @@ impl CodeEditor {
         }
 
         if ctrl {
-            nav_lr!(LeftArrow, self.buffer.move_word_left(), |start: CursorPos, _end: CursorPos| start);
-            nav_lr!(RightArrow, self.buffer.move_word_right(), |_start: CursorPos, end: CursorPos| end);
+            nav_lr!(
+                LeftArrow,
+                self.buffer.move_word_left(),
+                |start: CursorPos, _end: CursorPos| start
+            );
+            nav_lr!(
+                RightArrow,
+                self.buffer.move_word_right(),
+                |_start: CursorPos, end: CursorPos| end
+            );
             nav_key!(Home, self.buffer.move_doc_start());
             nav_key!(End, self.buffer.move_doc_end());
         } else {
-            nav_lr!(LeftArrow, self.buffer.move_left(), |start: CursorPos, _end: CursorPos| start);
-            nav_lr!(RightArrow, self.buffer.move_right(), |_start: CursorPos, end: CursorPos| end);
+            nav_lr!(
+                LeftArrow,
+                self.buffer.move_left(),
+                |start: CursorPos, _end: CursorPos| start
+            );
+            nav_lr!(
+                RightArrow,
+                self.buffer.move_right(),
+                |_start: CursorPos, end: CursorPos| end
+            );
             if !alt {
                 nav_key!(UpArrow, self.buffer.move_up());
                 nav_key!(DownArrow, self.buffer.move_down());
@@ -1020,12 +1163,17 @@ impl CodeEditor {
             if ui.is_key_pressed(key) {
                 let lines = sign * self.visible_lines() as isize;
                 let anchor = if shift {
-                    Some(self.buffer.selection()
-                        .map_or(self.buffer.cursor(), |s| s.anchor))
+                    Some(
+                        self.buffer
+                            .selection()
+                            .map_or(self.buffer.cursor(), |s| s.anchor),
+                    )
                 } else {
                     None
                 };
-                if !shift { self.buffer.clear_selection(); }
+                if !shift {
+                    self.buffer.clear_selection();
+                }
                 self.buffer.move_page(lines);
                 if let Some(a) = anchor {
                     self.buffer.set_selection(a, self.buffer.cursor());
@@ -1219,12 +1367,14 @@ impl CodeEditor {
                 if !needle.is_empty() {
                     // Find next occurrence after the last cursor
                     let all = self.buffer.all_cursors_sorted();
-                    let search_from = all.last().copied()
-                        .unwrap_or(self.buffer.cursor());
-                    if let Some((start, end)) = self.buffer
-                        .find_next_occurrence(&needle, search_from)
+                    let search_from = all.last().copied().unwrap_or(self.buffer.cursor());
+                    if let Some((start, end)) =
+                        self.buffer.find_next_occurrence(&needle, search_from)
                     {
-                        let sel = Selection { anchor: start, cursor: end };
+                        let sel = Selection {
+                            anchor: start,
+                            cursor: end,
+                        };
                         self.buffer.add_cursor_with_selection(end, sel);
                     }
                 }
@@ -1243,17 +1393,13 @@ impl CodeEditor {
         if !self.config.read_only {
             if ui.is_key_pressed(Key::Enter) || ui.is_key_pressed(Key::KeypadEnter) {
                 // Enforce max_lines limit
-                if self.config.max_lines > 0
-                    && self.buffer.line_count() >= self.config.max_lines
-                {
+                if self.config.max_lines > 0 && self.buffer.line_count() >= self.config.max_lines {
                     return;
                 }
                 self.snapshot_undo(true);
                 let split_line = self.buffer.cursor().line;
-                self.buffer.insert_newline(
-                    self.config.auto_indent,
-                    self.config.tab_size,
-                );
+                self.buffer
+                    .insert_newline(self.config.auto_indent, self.config.tab_size);
                 self.invalidate_token_cache_from(split_line);
                 self.reset_blink();
                 self.ensure_cursor_visible();
@@ -1300,10 +1446,8 @@ impl CodeEditor {
                     if start.line != end.line {
                         self.snapshot_undo(true);
                         if shift {
-                            self.buffer.unindent_lines(
-                                start.line..end.line + 1,
-                                self.config.tab_size,
-                            );
+                            self.buffer
+                                .unindent_lines(start.line..end.line + 1, self.config.tab_size);
                         } else {
                             self.buffer.indent_lines(
                                 start.line..end.line + 1,
@@ -1333,7 +1477,9 @@ impl CodeEditor {
             // ── Text input (typed characters) ───────────────────────
             let input_chars = read_input_chars();
             for raw_ch in input_chars {
-                if raw_ch < ' ' || raw_ch == '\x7f' { continue; }
+                if raw_ch < ' ' || raw_ch == '\x7f' {
+                    continue;
+                }
 
                 // Enforce max_line_length limit
                 if self.config.max_line_length > 0 {
@@ -1345,9 +1491,7 @@ impl CodeEditor {
                 }
 
                 // ── Hex input transforms ─────────────────────────────
-                let ch = if self.config.hex_auto_uppercase
-                    && raw_ch.is_ascii_hexdigit()
-                {
+                let ch = if self.config.hex_auto_uppercase && raw_ch.is_ascii_hexdigit() {
                     raw_ch.to_ascii_uppercase()
                 } else {
                     raw_ch
@@ -1390,8 +1534,8 @@ impl CodeEditor {
                             .take_while(|c| c.is_ascii_hexdigit())
                             .count();
                         if nibbles_before == 2 {
-                            let next_is_space = line.chars().nth(col)
-                                .is_none_or(|c| c == ' ' || c == '\t');
+                            let next_is_space =
+                                line.chars().nth(col).is_none_or(|c| c == ' ' || c == '\t');
                             if next_is_space {
                                 self.buffer.insert_char(' ');
                                 self.invalidate_token_cache_at(line_idx);
@@ -1415,8 +1559,7 @@ impl CodeEditor {
                     let line = self.buffer.line(self.buffer.cursor().line);
                     let col = self.buffer.cursor().col;
                     // Don't auto-close if preceded by a backslash (escape)
-                    let is_escaped = col >= 2
-                        && line.chars().nth(col - 2) == Some('\\');
+                    let is_escaped = col >= 2 && line.chars().nth(col - 2) == Some('\\');
                     if !is_escaped {
                         self.buffer.insert_char(close);
                         self.buffer.move_left();
@@ -1429,7 +1572,9 @@ impl CodeEditor {
     }
 
     fn handle_mouse(&mut self, ui: &Ui, gutter_width: f32, inner_size: [f32; 2]) {
-        if !ui.is_window_hovered() { return; }
+        if !ui.is_window_hovered() {
+            return;
+        }
 
         let io = ui.io();
         let [mx, my] = io.mouse_pos();
@@ -1451,8 +1596,10 @@ impl CodeEditor {
         // ── I-beam cursor ONLY inside the text content area ───────────────
         let content_max_x = origin_x + inner_size[0];
         let content_max_y = origin_y + inner_size[1];
-        if mx >= origin_x + gutter_width && mx < content_max_x
-            && my >= origin_y && my < content_max_y
+        if mx >= origin_x + gutter_width
+            && mx < content_max_x
+            && my >= origin_y
+            && my < content_max_y
         {
             // SAFETY: igSetMouseCursor is a standard ImGui call.
             unsafe {
@@ -1472,27 +1619,28 @@ impl CodeEditor {
 
         // For wrapped sub-rows, map into the column range.
         let (col_start, col_end) = self.sub_row_col_range(line, sub_row);
-        let sub_str: String = line_content.chars()
-            .skip(col_start).take(col_end - col_start).collect();
+        let sub_str: String = line_content
+            .chars()
+            .skip(col_start)
+            .take(col_end - col_start)
+            .collect();
 
-        let raw_col = col_start + x_to_col(
-            &sub_str,
-            (mx - text_x).max(0.0),
-            self.char_advance,
-            self.config.tab_size,
-        );
+        let raw_col = col_start
+            + x_to_col(
+                &sub_str,
+                (mx - text_x).max(0.0),
+                self.char_advance,
+                self.config.tab_size,
+            );
         let col = raw_col.min(line_content.chars().count());
         let click_pos = CursorPos::new(line, col);
 
         let time = ui.time();
 
         // Click in gutter area → toggle fold
-        if self.config.show_fold_indicators
-            && ui.is_mouse_clicked(MouseButton::Left)
-            && mx < text_x
+        if self.config.show_fold_indicators && ui.is_mouse_clicked(MouseButton::Left) && mx < text_x
         {
-            let has_fold = self.fold_regions.iter()
-                .any(|r| r.start_line == line);
+            let has_fold = self.fold_regions.iter().any(|r| r.start_line == line);
             if has_fold {
                 self.toggle_fold(line);
                 return;
@@ -1513,9 +1661,7 @@ impl CodeEditor {
             }
 
             // Detect double/triple click
-            if time - self.last_click_time < 0.4
-                && self.last_click_pos == click_pos
-            {
+            if time - self.last_click_time < 0.4 && self.last_click_pos == click_pos {
                 self.click_count = (self.click_count + 1).min(3);
             } else {
                 self.click_count = 1;
@@ -1526,7 +1672,9 @@ impl CodeEditor {
             match self.click_count {
                 1 => {
                     if ui.io().key_shift() {
-                        let anchor = self.buffer.selection()
+                        let anchor = self
+                            .buffer
+                            .selection()
                             .map_or(self.buffer.cursor(), |s| s.anchor);
                         self.buffer.set_selection(anchor, click_pos);
                     } else {
@@ -1548,7 +1696,9 @@ impl CodeEditor {
         }
 
         if ui.is_mouse_dragging(MouseButton::Left) && self.mouse_selecting {
-            let anchor = self.buffer.selection()
+            let anchor = self
+                .buffer
+                .selection()
                 .map_or(self.buffer.cursor(), |s| s.anchor);
             self.buffer.set_selection(anchor, click_pos);
         }
@@ -1579,14 +1729,11 @@ impl CodeEditor {
             // a tiny fraction of the actual document height and the scrollbar
             // appears stuck. Keep a one-row bottom margin for consistency with
             // the total_height used by the dummy element (see render()).
-            let max_scroll =
-                (self.total_visual_rows() as f32 * self.line_height).max(0.0);
+            let max_scroll = (self.total_visual_rows() as f32 * self.line_height).max(0.0);
             if self.config.smooth_scrolling {
-                self.target_scroll_y =
-                    (self.target_scroll_y + delta).clamp(0.0, max_scroll);
+                self.target_scroll_y = (self.target_scroll_y + delta).clamp(0.0, max_scroll);
             } else {
-                self.scroll_y =
-                    (self.scroll_y + delta).clamp(0.0, max_scroll);
+                self.scroll_y = (self.scroll_y + delta).clamp(0.0, max_scroll);
                 self.target_scroll_y = self.scroll_y;
                 ui.set_scroll_y(self.scroll_y);
             }
@@ -1605,7 +1752,9 @@ impl CodeEditor {
         text_start_x: f32,
         y: f32,
     ) {
-        if tokens.is_empty() { return; }
+        if tokens.is_empty() {
+            return;
+        }
 
         let mut batch_start_x = text_start_x;
         let mut batch_color = self.token_color(tokens[0].kind);
@@ -1616,9 +1765,7 @@ impl CodeEditor {
             let byte_end = (tok.start + tok.len).min(line_str.len());
             // Guard: skip any token whose byte range doesn't sit on UTF-8 char
             // boundaries (can happen with multi-byte chars in the fallback path).
-            if !line_str.is_char_boundary(tok.start)
-                || !line_str.is_char_boundary(byte_end)
-            {
+            if !line_str.is_char_boundary(tok.start) || !line_str.is_char_boundary(byte_end) {
                 // Advance x approximately so subsequent tokens stay aligned.
                 x += tok.len as f32 * self.char_advance;
                 continue;
@@ -1629,11 +1776,7 @@ impl CodeEditor {
             if tok.kind == TokenKind::Whitespace {
                 // Flush current batch before whitespace
                 if !batch_text.is_empty() {
-                    draw_list.add_text(
-                        [batch_start_x, y],
-                        col32(batch_color),
-                        &batch_text,
-                    );
+                    draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
                     batch_text.clear();
                 }
 
@@ -1647,17 +1790,19 @@ impl CodeEditor {
                         if ch == ' ' {
                             let cx = x + ch_w * 0.5;
                             let cy = y + self.line_height * 0.5;
-                            draw_list.add_circle(
-                                [cx, cy], 1.0,
-                                col32(crate::theme::TEXT_MUTED),
-                            ).filled(true).build();
+                            draw_list
+                                .add_circle([cx, cy], 1.0, col32(crate::theme::TEXT_MUTED))
+                                .filled(true)
+                                .build();
                         } else if ch == '\t' {
                             let arrow_y = y + self.line_height * 0.5;
-                            draw_list.add_line(
-                                [x + 2.0, arrow_y],
-                                [x + ch_w - 2.0, arrow_y],
-                                col32(crate::theme::TEXT_MUTED),
-                            ).build();
+                            draw_list
+                                .add_line(
+                                    [x + 2.0, arrow_y],
+                                    [x + ch_w - 2.0, arrow_y],
+                                    col32(crate::theme::TEXT_MUTED),
+                                )
+                                .build();
                         }
                         x += ch_w;
                     }
@@ -1687,11 +1832,7 @@ impl CodeEditor {
 
             // Different color → flush and start new batch
             if !batch_text.is_empty() {
-                draw_list.add_text(
-                    [batch_start_x, y],
-                    col32(batch_color),
-                    &batch_text,
-                );
+                draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
             }
 
             batch_text.clear();
@@ -1703,11 +1844,7 @@ impl CodeEditor {
 
         // Flush final batch
         if !batch_text.is_empty() {
-            draw_list.add_text(
-                [batch_start_x, y],
-                col32(batch_color),
-                &batch_text,
-            );
+            draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
         }
     }
 
@@ -1726,7 +1863,9 @@ impl CodeEditor {
         col_start: usize,
         col_end: usize,
     ) {
-        if tokens.is_empty() { return; }
+        if tokens.is_empty() {
+            return;
+        }
 
         // Build a char→byte mapping for the range.
         let chars: Vec<(usize, char)> = line_str.char_indices().collect();
@@ -1742,7 +1881,9 @@ impl CodeEditor {
         for tok in tokens {
             let tok_byte_end = (tok.start + tok.len).min(line_str.len());
             // Skip tokens entirely outside our column range.
-            if tok_byte_end <= byte_start || tok.start >= byte_end { continue; }
+            if tok_byte_end <= byte_start || tok.start >= byte_end {
+                continue;
+            }
             // Clip token to our range.
             let clip_start = tok.start.max(byte_start);
             let clip_end = tok_byte_end.min(byte_end);
@@ -1758,8 +1899,11 @@ impl CodeEditor {
                     batch_text.clear();
                 }
                 for ch in text.chars() {
-                    x += if ch == '\t' { self.char_advance * self.config.tab_size as f32 }
-                         else { self.char_advance };
+                    x += if ch == '\t' {
+                        self.char_advance * self.config.tab_size as f32
+                    } else {
+                        self.char_advance
+                    };
                 }
                 batch_start_x = x;
                 first_batch = true;
@@ -1805,31 +1949,32 @@ impl CodeEditor {
 
         while i < len {
             // Find start of a potential hex token
-            let (tok_start, tok_end) = if bytes[i] == b'#'
-                && i + 1 < len && bytes[i + 1].is_ascii_hexdigit()
-            {
-                let s = i;
-                i += 1;
-                while i < len && bytes[i].is_ascii_hexdigit() { i += 1; }
-                (s, i)
-            } else if i + 1 < len
-                && bytes[i] == b'0'
-                && (bytes[i + 1] == b'x' || bytes[i + 1] == b'X')
-            {
-                let s = i;
-                i += 2;
-                while i < len && bytes[i].is_ascii_hexdigit() { i += 1; }
-                (s, i)
-            } else {
-                // Advance safely over one Unicode scalar
-                i += line_str[i..].chars().next().map_or(1, |c| c.len_utf8());
-                continue;
-            };
+            let (tok_start, tok_end) =
+                if bytes[i] == b'#' && i + 1 < len && bytes[i + 1].is_ascii_hexdigit() {
+                    let s = i;
+                    i += 1;
+                    while i < len && bytes[i].is_ascii_hexdigit() {
+                        i += 1;
+                    }
+                    (s, i)
+                } else if i + 1 < len
+                    && bytes[i] == b'0'
+                    && (bytes[i + 1] == b'x' || bytes[i + 1] == b'X')
+                {
+                    let s = i;
+                    i += 2;
+                    while i < len && bytes[i].is_ascii_hexdigit() {
+                        i += 1;
+                    }
+                    (s, i)
+                } else {
+                    // Advance safely over one Unicode scalar
+                    i += line_str[i..].chars().next().map_or(1, |c| c.len_utf8());
+                    continue;
+                };
 
             // Safety: tok_start/tok_end are on ASCII boundaries
-            if !line_str.is_char_boundary(tok_start)
-                || !line_str.is_char_boundary(tok_end)
-            {
+            if !line_str.is_char_boundary(tok_start) || !line_str.is_char_boundary(tok_end) {
                 continue;
             }
             let token_text = &line_str[tok_start..tok_end];
@@ -1848,8 +1993,11 @@ impl CodeEditor {
                     .build();
                 // Dark border
                 draw_list
-                    .add_rect([sx, sy], [sx + swatch, sy + swatch],
-                              col32([0.0, 0.0, 0.0, 0.55]))
+                    .add_rect(
+                        [sx, sy],
+                        [sx + swatch, sy + swatch],
+                        col32([0.0, 0.0, 0.0, 0.55]),
+                    )
                     .filled(false)
                     .build();
             }
@@ -1869,36 +2017,43 @@ impl CodeEditor {
         col_end: usize,
     ) {
         let (start, end) = sel.ordered();
-        if line_idx < start.line || line_idx > end.line { return; }
+        if line_idx < start.line || line_idx > end.line {
+            return;
+        }
 
         let line_chars = line_str.chars().count();
         let sel_start = if line_idx == start.line { start.col } else { 0 };
-        let sel_end = if line_idx == end.line { end.col } else { line_chars + 1 };
+        let sel_end = if line_idx == end.line {
+            end.col
+        } else {
+            line_chars + 1
+        };
 
         // Clip to the sub-row column range
         let vis_start = sel_start.max(col_start);
         let vis_end = sel_end.min(col_end);
 
-        if vis_start >= vis_end { return; }
+        if vis_start >= vis_end {
+            return;
+        }
 
         // X positions are relative to col_start (the sub-row starts at text_start_x)
-        let x1 = text_start_x + col_to_x(line_str, vis_start, self.char_advance, self.config.tab_size)
+        let x1 = text_start_x
+            + col_to_x(line_str, vis_start, self.char_advance, self.config.tab_size)
             - col_to_x(line_str, col_start, self.char_advance, self.config.tab_size);
-        let x2 = text_start_x + col_to_x(line_str, vis_end, self.char_advance, self.config.tab_size)
+        let x2 = text_start_x
+            + col_to_x(line_str, vis_end, self.char_advance, self.config.tab_size)
             - col_to_x(line_str, col_start, self.char_advance, self.config.tab_size);
         let bg = self.config.colors.selection_bg;
-        draw_list.add_rect(
-            [x1, y],
-            [x2, y + self.line_height],
-            col32(bg),
-        ).filled(true).build();
+        draw_list
+            .add_rect([x1, y], [x2, y + self.line_height], col32(bg))
+            .filled(true)
+            .build();
         // Thin border for extra visibility
         let border_color = [bg[0], bg[1], bg[2], (bg[3] + 0.25).min(1.0)];
-        draw_list.add_rect(
-            [x1, y],
-            [x2, y + self.line_height],
-            col32(border_color),
-        ).build();
+        draw_list
+            .add_rect([x1, y], [x2, y + self.line_height], col32(border_color))
+            .build();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1912,7 +2067,9 @@ impl CodeEditor {
         col_start: usize,
         col_end: usize,
     ) {
-        if !self.find_replace.open { return; }
+        if !self.find_replace.open {
+            return;
+        }
         // Matches are stored in document order — binary-search the range
         // belonging to `line_idx` instead of scanning all M matches per
         // visible line. Previous implementation was O(V × M); on a 10 000-
@@ -1921,27 +2078,34 @@ impl CodeEditor {
         let matches = &self.find_replace.matches;
         let lo = matches.partition_point(|(ml, _, _)| *ml < line_idx);
         let hi = matches.partition_point(|(ml, _, _)| *ml <= line_idx);
-        if lo == hi { return; }
+        if lo == hi {
+            return;
+        }
 
         let col_start_x = col_to_x(line_str, col_start, self.char_advance, self.config.tab_size);
         for (i, &(_, cs, ce)) in matches.iter().enumerate().take(hi).skip(lo) {
             // Clip match to sub-row range
             let vis_start = cs.max(col_start);
             let vis_end = ce.min(col_end);
-            if vis_start >= vis_end { continue; }
+            if vis_start >= vis_end {
+                continue;
+            }
 
-            let x1 = text_start_x + col_to_x(line_str, vis_start, self.char_advance, self.config.tab_size) - col_start_x;
-            let x2 = text_start_x + col_to_x(line_str, vis_end, self.char_advance, self.config.tab_size) - col_start_x;
+            let x1 = text_start_x
+                + col_to_x(line_str, vis_start, self.char_advance, self.config.tab_size)
+                - col_start_x;
+            let x2 = text_start_x
+                + col_to_x(line_str, vis_end, self.char_advance, self.config.tab_size)
+                - col_start_x;
             let color = if i == self.find_replace.current_match {
                 self.config.colors.search_current_bg
             } else {
                 self.config.colors.search_match_bg
             };
-            draw_list.add_rect(
-                [x1, y],
-                [x2, y + self.line_height],
-                col32(color),
-            ).filled(true).build();
+            draw_list
+                .add_rect([x1, y], [x2, y + self.line_height], col32(color))
+                .filled(true)
+                .build();
         }
     }
 
@@ -1953,8 +2117,7 @@ impl CodeEditor {
         gutter_width: f32,
         y: f32,
     ) {
-        let region = self.fold_regions.iter()
-            .find(|r| r.start_line == line_idx);
+        let region = self.fold_regions.iter().find(|r| r.start_line == line_idx);
         if let Some(region) = region {
             // Position the icon in the gutter, right before line numbers.
             // Place fold icon at right edge of gutter, between line numbers and code
@@ -1965,9 +2128,9 @@ impl CodeEditor {
 
             // Use MDI chevron icons for crisp rendering at any size.
             let icon = if region.folded {
-                icons::CHEVRON_RIGHT  // ▸ collapsed
+                icons::CHEVRON_RIGHT // ▸ collapsed
             } else {
-                icons::CHEVRON_DOWN   // ▾ expanded
+                icons::CHEVRON_DOWN // ▾ expanded
             };
 
             // Highlight on hover (mouse in the fold icon area).
@@ -1994,16 +2157,23 @@ impl CodeEditor {
                     // Badge background
                     let bg = col32([0.20, 0.22, 0.28, 0.85]);
                     let border = col32([0.35, 0.38, 0.45, 0.6]);
-                    draw_list.add_rect(
-                        [badge_x, badge_y + 1.0],
-                        [badge_x + badge_w, badge_y + self.line_height - 1.0],
-                        bg,
-                    ).filled(true).rounding(3.0).build();
-                    draw_list.add_rect(
-                        [badge_x, badge_y + 1.0],
-                        [badge_x + badge_w, badge_y + self.line_height - 1.0],
-                        border,
-                    ).rounding(3.0).build();
+                    draw_list
+                        .add_rect(
+                            [badge_x, badge_y + 1.0],
+                            [badge_x + badge_w, badge_y + self.line_height - 1.0],
+                            bg,
+                        )
+                        .filled(true)
+                        .rounding(3.0)
+                        .build();
+                    draw_list
+                        .add_rect(
+                            [badge_x, badge_y + 1.0],
+                            [badge_x + badge_w, badge_y + self.line_height - 1.0],
+                            border,
+                        )
+                        .rounding(3.0)
+                        .build();
 
                     // Badge text
                     let text_col = col32([0.60, 0.65, 0.72, 1.0]);
@@ -2043,7 +2213,11 @@ impl CodeEditor {
         // non-empty selection; fall back to All otherwise.
         let bounds = match self.find_replace.scope {
             FindScope::Selection => self.buffer.selection().and_then(|sel| {
-                if sel.is_empty() { None } else { Some(sel.ordered()) }
+                if sel.is_empty() {
+                    None
+                } else {
+                    Some(sel.ordered())
+                }
             }),
             FindScope::All => None,
         };
@@ -2055,18 +2229,20 @@ impl CodeEditor {
     }
 
     fn find_next(&mut self) {
-        if self.find_replace.matches.is_empty() { return; }
+        if self.find_replace.matches.is_empty() {
+            return;
+        }
         self.find_replace.current_match =
-            (self.find_replace.current_match + 1)
-                % self.find_replace.matches.len();
+            (self.find_replace.current_match + 1) % self.find_replace.matches.len();
         self.jump_to_current_match();
     }
 
     fn find_prev(&mut self) {
-        if self.find_replace.matches.is_empty() { return; }
+        if self.find_replace.matches.is_empty() {
+            return;
+        }
         if self.find_replace.current_match == 0 {
-            self.find_replace.current_match =
-                self.find_replace.matches.len() - 1;
+            self.find_replace.current_match = self.find_replace.matches.len() - 1;
         } else {
             self.find_replace.current_match -= 1;
         }
@@ -2074,8 +2250,10 @@ impl CodeEditor {
     }
 
     fn jump_to_current_match(&mut self) {
-        if let Some(&(line, col_start, col_end)) =
-            self.find_replace.matches.get(self.find_replace.current_match)
+        if let Some(&(line, col_start, col_end)) = self
+            .find_replace
+            .matches
+            .get(self.find_replace.current_match)
         {
             self.buffer.set_selection(
                 CursorPos::new(line, col_start),
@@ -2090,15 +2268,18 @@ impl CodeEditor {
             return;
         }
         self.snapshot_undo(true);
-        if let Some(&(line, col_start, col_end)) =
-            self.find_replace.matches.get(self.find_replace.current_match)
+        if let Some(&(line, col_start, col_end)) = self
+            .find_replace
+            .matches
+            .get(self.find_replace.current_match)
         {
             self.buffer.set_selection(
                 CursorPos::new(line, col_start),
                 CursorPos::new(line, col_end),
             );
             self.buffer.backspace();
-            self.buffer.insert_text(&self.find_replace.replacement.clone());
+            self.buffer
+                .insert_text(&self.find_replace.replacement.clone());
             self.invalidate_token_cache_all();
             self.update_find_matches();
         }
@@ -2126,16 +2307,16 @@ impl CodeEditor {
     }
 
     fn render_context_menu(&mut self, ui: &Ui) {
-        let Some(_popup) = ui.begin_popup("##editor_ctx") else { return };
+        let Some(_popup) = ui.begin_popup("##editor_ctx") else {
+            return;
+        };
         let has_sel = self.buffer.selection().is_some();
         let ro = self.config.read_only;
         let cm = self.config.context_menu.clone();
 
         // ── Clipboard ────────────────────────────────────────────────────────
         if cm.show_clipboard {
-            if ui.menu_item_enabled_selected_with_shortcut(
-                "Cut", "Ctrl+X", false, has_sel && !ro,
-            ) {
+            if ui.menu_item_enabled_selected_with_shortcut("Cut", "Ctrl+X", false, has_sel && !ro) {
                 let text = self.buffer.selected_text();
                 if !text.is_empty() {
                     set_clipboard(&text);
@@ -2146,16 +2327,14 @@ impl CodeEditor {
                 }
                 ui.close_current_popup();
             }
-            if ui.menu_item_enabled_selected_with_shortcut(
-                "Copy", "Ctrl+C", false, has_sel,
-            ) {
+            if ui.menu_item_enabled_selected_with_shortcut("Copy", "Ctrl+C", false, has_sel) {
                 let text = self.buffer.selected_text();
-                if !text.is_empty() { set_clipboard(&text); }
+                if !text.is_empty() {
+                    set_clipboard(&text);
+                }
                 ui.close_current_popup();
             }
-            if ui.menu_item_enabled_selected_with_shortcut(
-                "Paste", "Ctrl+V", false, !ro,
-            ) {
+            if ui.menu_item_enabled_selected_with_shortcut("Paste", "Ctrl+V", false, !ro) {
                 if let Some(clip) = get_clipboard()
                     && !clip.is_empty()
                 {
@@ -2182,13 +2361,19 @@ impl CodeEditor {
         // ── Undo / Redo ──────────────────────────────────────────────────────
         if cm.show_undo_redo {
             if ui.menu_item_enabled_selected_with_shortcut(
-                "Undo", "Ctrl+Z", false, !ro && self.undo_stack.can_undo(),
+                "Undo",
+                "Ctrl+Z",
+                false,
+                !ro && self.undo_stack.can_undo(),
             ) {
                 self.undo();
                 ui.close_current_popup();
             }
             if ui.menu_item_enabled_selected_with_shortcut(
-                "Redo", "Ctrl+Y", false, !ro && self.undo_stack.can_redo(),
+                "Redo",
+                "Ctrl+Y",
+                false,
+                !ro && self.undo_stack.can_redo(),
             ) {
                 self.redo();
                 ui.close_current_popup();
@@ -2198,9 +2383,7 @@ impl CodeEditor {
 
         // ── Code actions ─────────────────────────────────────────────────────
         if cm.show_code_actions {
-            if ui.menu_item_enabled_selected_with_shortcut(
-                "Toggle Comment", "Ctrl+/", false, !ro,
-            ) {
+            if ui.menu_item_enabled_selected_with_shortcut("Toggle Comment", "Ctrl+/", false, !ro) {
                 self.snapshot_undo(true);
                 let (start, end) = if let Some(sel) = self.buffer.selection() {
                     let (s, e) = sel.ordered();
@@ -2214,7 +2397,10 @@ impl CodeEditor {
                 ui.close_current_popup();
             }
             if ui.menu_item_enabled_selected_with_shortcut(
-                "Duplicate Line", "Ctrl+Shift+D", false, !ro,
+                "Duplicate Line",
+                "Ctrl+Shift+D",
+                false,
+                !ro,
             ) {
                 self.snapshot_undo(true);
                 self.buffer.duplicate_line();
@@ -2223,7 +2409,10 @@ impl CodeEditor {
                 ui.close_current_popup();
             }
             if ui.menu_item_enabled_selected_with_shortcut(
-                "Delete Line", "Ctrl+Shift+K", false, !ro,
+                "Delete Line",
+                "Ctrl+Shift+K",
+                false,
+                !ro,
             ) {
                 self.snapshot_undo(true);
                 self.buffer.delete_line();
@@ -2262,7 +2451,9 @@ impl CodeEditor {
                     ui.close_current_popup();
                 }
                 if ui.menu_item("Trim Whitespace") {
-                    let t = self.buffer.selected_text()
+                    let t = self
+                        .buffer
+                        .selected_text()
                         .lines()
                         .map(str::trim_end)
                         .collect::<Vec<_>>()
@@ -2297,64 +2488,62 @@ impl CodeEditor {
         if cm.show_view_toggles
             && let Some(_m) = ui.begin_menu("View")
         {
-                macro_rules! toggle {
-                    ($label:expr, $field:expr) => {
-                        if ui.menu_item_enabled_selected_no_shortcut($label, $field, true) {
-                            $field = !$field;
-                        }
-                    };
-                }
-                toggle!("Word Wrap",              self.config.word_wrap);
-                toggle!("Line Numbers",           self.config.show_line_numbers);
-                toggle!("Highlight Current Line", self.config.highlight_current_line);
-                toggle!("Show Whitespace",        self.config.show_whitespace);
-                toggle!("Color Swatches",         self.config.show_color_swatches);
-                toggle!("Smooth Scrolling",       self.config.smooth_scrolling);
-                toggle!("English on Focus",       self.config.force_english_on_focus);
+            macro_rules! toggle {
+                ($label:expr, $field:expr) => {
+                    if ui.menu_item_enabled_selected_no_shortcut($label, $field, true) {
+                        $field = !$field;
+                    }
+                };
+            }
+            toggle!("Word Wrap", self.config.word_wrap);
+            toggle!("Line Numbers", self.config.show_line_numbers);
+            toggle!("Highlight Current Line", self.config.highlight_current_line);
+            toggle!("Show Whitespace", self.config.show_whitespace);
+            toggle!("Color Swatches", self.config.show_color_swatches);
+            toggle!("Smooth Scrolling", self.config.smooth_scrolling);
+            toggle!("English on Focus", self.config.force_english_on_focus);
         }
 
         // ── Language submenu ─────────────────────────────────────────────────
         if cm.show_language_selector
             && let Some(_m) = ui.begin_menu("Language")
         {
-                for (lang, name) in [
-                    (Language::Rust, "Rust"),
-                    (Language::Rhai, "Rhai"),
-                    (Language::Toml, "TOML"),
-                    (Language::Ron,  "RON"),
-                    (Language::Json, "JSON"),
-                    (Language::Yaml, "YAML"),
-                    (Language::Xml,  "XML / HTML"),
-                    (Language::Asm,  "Assembly (x86)"),
-                    (Language::Hex,  "Hex Bytes"),
-                    (Language::None, "Plain Text"),
-                ] {
-                    let selected = self.config.language == lang;
-                    if ui.menu_item_enabled_selected_no_shortcut(name, selected, true) {
-                        self.config.language = lang;
-                        self.invalidate_token_cache_all();
-                    }
+            for (lang, name) in [
+                (Language::Rust, "Rust"),
+                (Language::Rhai, "Rhai"),
+                (Language::Toml, "TOML"),
+                (Language::Ron, "RON"),
+                (Language::Json, "JSON"),
+                (Language::Yaml, "YAML"),
+                (Language::Xml, "XML / HTML"),
+                (Language::Asm, "Assembly (x86)"),
+                (Language::Hex, "Hex Bytes"),
+                (Language::None, "Plain Text"),
+            ] {
+                let selected = self.config.language == lang;
+                if ui.menu_item_enabled_selected_no_shortcut(name, selected, true) {
+                    self.config.language = lang;
+                    self.invalidate_token_cache_all();
                 }
-                // Show custom language name (read-only — can't switch away via menu)
-                if let Language::Custom(ref def) = self.config.language.clone() {
-                    ui.separator();
-                    ui.text_disabled(format!("Custom: {}", def.name()));
-                }
+            }
+            // Show custom language name (read-only — can't switch away via menu)
+            if let Language::Custom(ref def) = self.config.language.clone() {
+                ui.separator();
+                ui.text_disabled(format!("Custom: {}", def.name()));
+            }
         }
 
         // ── Theme submenu ─────────────────────────────────────────────────────
         if cm.show_theme_selector
             && let Some(_m) = ui.begin_menu("Theme")
         {
-                for &theme in EditorTheme::ALL {
-                    let selected = self.config.theme == theme;
-                    if ui.menu_item_enabled_selected_no_shortcut(
-                        theme.display_name(), selected, true,
-                    ) {
-                        self.config.set_theme(theme);
-                        self.invalidate_token_cache_all();
-                    }
+            for &theme in EditorTheme::ALL {
+                let selected = self.config.theme == theme;
+                if ui.menu_item_enabled_selected_no_shortcut(theme.display_name(), selected, true) {
+                    self.config.set_theme(theme);
+                    self.invalidate_token_cache_all();
                 }
+            }
             ui.separator();
         }
 
@@ -2364,19 +2553,21 @@ impl CodeEditor {
             ui.same_line();
             let dec_lbl = format!("{}##fsd", icons::FORMAT_FONT_SIZE_DECREASE);
             if ui.small_button(&dec_lbl) {
-                self.config.font_size_scale =
-                    (self.config.font_size_scale - 0.1).clamp(0.4, 4.0);
+                self.config.font_size_scale = (self.config.font_size_scale - 0.1).clamp(0.4, 4.0);
             }
-            if ui.is_item_hovered() { ui.tooltip_text("Decrease font size"); }
+            if ui.is_item_hovered() {
+                ui.tooltip_text("Decrease font size");
+            }
             ui.same_line();
             ui.text(format!("{:.0}%", self.config.font_size_scale * 100.0));
             ui.same_line();
             let inc_lbl = format!("{}##fsi", icons::FORMAT_FONT_SIZE_INCREASE);
             if ui.small_button(&inc_lbl) {
-                self.config.font_size_scale =
-                    (self.config.font_size_scale + 0.1).clamp(0.4, 4.0);
+                self.config.font_size_scale = (self.config.font_size_scale + 0.1).clamp(0.4, 4.0);
             }
-            if ui.is_item_hovered() { ui.tooltip_text("Increase font size"); }
+            if ui.is_item_hovered() {
+                ui.tooltip_text("Increase font size");
+            }
             ui.separator();
         }
 
@@ -2386,7 +2577,9 @@ impl CodeEditor {
             let total = self.buffer.line_count();
             ui.text_disabled(format!(
                 "Ln {}, Col {}  /  {} lines",
-                cur.line + 1, cur.col + 1, total
+                cur.line + 1,
+                cur.col + 1,
+                total
             ));
         }
     }
@@ -2394,8 +2587,8 @@ impl CodeEditor {
     fn render_find_replace_bar(&mut self, ui: &Ui) {
         let avail_w = ui.content_region_avail()[0];
         // Row height: search row + optional replace row + 2px separator
-        let row_h  = self.line_height + 8.0;
-        let bar_h  = if self.find_replace.show_replace && !self.config.read_only {
+        let row_h = self.line_height + 8.0;
+        let bar_h = if self.find_replace.show_replace && !self.config.read_only {
             row_h * 2.0 + 4.0
         } else {
             row_h
@@ -2407,152 +2600,166 @@ impl CodeEditor {
         ui.child_window("##find_bar")
             .size([avail_w, bar_h])
             .build(ui, || {
-            // ── Row 1: Find ──────────────────────────────────────────
-            ui.spacing();
+                // ── Row 1: Find ──────────────────────────────────────────
+                ui.spacing();
 
-            // Auto-focus the input field the frame the bar opens
-            if self.find_replace.just_opened {
-                // SAFETY: igSetKeyboardFocusHere sets focus on the next item.
-                unsafe { dear_imgui_rs::sys::igSetKeyboardFocusHere(0); }
-                self.find_replace.just_opened = false;
-            }
-
-            // Search icon + input
-            ui.text_disabled(icons::MAGNIFY);
-            ui.same_line();
-            let query_w = (avail_w * 0.38).clamp(140.0, 360.0);
-            ui.set_next_item_width(query_w);
-            let changed = ui
-                .input_text("##find_query", &mut self.find_replace.query)
-                .hint("Find…")
-                .build();
-            if changed {
-                self.update_find_matches();
-                self.find_replace.current_match = 0;
-            }
-
-            // Navigate with Enter / Shift+Enter in the search field
-            if ui.is_item_focused() {
-                let io = ui.io();
-                if ui.is_key_pressed(Key::Enter) || ui.is_key_pressed(Key::DownArrow) {
-                    self.find_next();
+                // Auto-focus the input field the frame the bar opens
+                if self.find_replace.just_opened {
+                    // SAFETY: igSetKeyboardFocusHere sets focus on the next item.
+                    unsafe {
+                        dear_imgui_rs::sys::igSetKeyboardFocusHere(0);
+                    }
+                    self.find_replace.just_opened = false;
                 }
-                if (io.key_shift() && ui.is_key_pressed(Key::Enter))
-                    || ui.is_key_pressed(Key::UpArrow)
-                {
+
+                // Search icon + input
+                ui.text_disabled(icons::MAGNIFY);
+                ui.same_line();
+                let query_w = (avail_w * 0.38).clamp(140.0, 360.0);
+                ui.set_next_item_width(query_w);
+                let changed = ui
+                    .input_text("##find_query", &mut self.find_replace.query)
+                    .hint("Find…")
+                    .build();
+                if changed {
+                    self.update_find_matches();
+                    self.find_replace.current_match = 0;
+                }
+
+                // Navigate with Enter / Shift+Enter in the search field
+                if ui.is_item_focused() {
+                    let io = ui.io();
+                    if ui.is_key_pressed(Key::Enter) || ui.is_key_pressed(Key::DownArrow) {
+                        self.find_next();
+                    }
+                    if (io.key_shift() && ui.is_key_pressed(Key::Enter))
+                        || ui.is_key_pressed(Key::UpArrow)
+                    {
+                        self.find_prev();
+                    }
+                }
+
+                ui.same_line();
+
+                // Match counter  "3 / 17"  or "No matches" in red
+                if self.find_replace.query.is_empty() {
+                    ui.text_disabled("…");
+                } else if self.find_replace.matches.is_empty() {
+                    ui.text_colored([0.9, 0.35, 0.35, 1.0], "No matches");
+                } else {
+                    ui.text_colored(
+                        [0.55, 0.85, 0.55, 1.0],
+                        format!(
+                            "{} / {}",
+                            self.find_replace.current_match + 1,
+                            self.find_replace.matches.len()
+                        ),
+                    );
+                }
+
+                ui.same_line();
+
+                // Prev / Next buttons
+                let prev_lbl = format!("{}##fp", icons::ARROW_UP_BOLD);
+                if ui.small_button(&prev_lbl) {
                     self.find_prev();
                 }
-            }
-
-            ui.same_line();
-
-            // Match counter  "3 / 17"  or "No matches" in red
-            if self.find_replace.query.is_empty() {
-                ui.text_disabled("…");
-            } else if self.find_replace.matches.is_empty() {
-                ui.text_colored([0.9, 0.35, 0.35, 1.0], "No matches");
-            } else {
-                ui.text_colored(
-                    [0.55, 0.85, 0.55, 1.0],
-                    format!(
-                        "{} / {}",
-                        self.find_replace.current_match + 1,
-                        self.find_replace.matches.len()
-                    ),
-                );
-            }
-
-            ui.same_line();
-
-            // Prev / Next buttons
-            let prev_lbl = format!("{}##fp", icons::ARROW_UP_BOLD);
-            if ui.small_button(&prev_lbl) {
-                self.find_prev();
-            }
-            if ui.is_item_hovered() { ui.tooltip_text("Previous match  Shift+F3"); }
-            ui.same_line();
-            let next_lbl = format!("{}##fn", icons::ARROW_DOWN_BOLD);
-            if ui.small_button(&next_lbl) {
-                self.find_next();
-            }
-            if ui.is_item_hovered() { ui.tooltip_text("Next match  F3"); }
-
-            ui.same_line();
-
-            // ── Toggle: case-sensitive ───────────────────────────────
-            let cs_col = if self.find_replace.case_sensitive {
-                [0.24, 0.52, 0.88, 0.90]
-            } else {
-                [0.28, 0.30, 0.36, 0.70]
-            };
-            let _c = ui.push_style_color(StyleColor::Button, cs_col);
-            let cs_lbl = format!("{}##fcs", icons::FORMAT_LETTER_CASE);
-            if ui.small_button(&cs_lbl) {
-                self.find_replace.case_sensitive = !self.find_replace.case_sensitive;
-                // Lowercase cache becomes meaningless in case-sensitive
-                // mode; invalidate so we don't hand out stale strings the
-                // next time the user toggles back.
-                self.find_replace.invalidate_lowercase_cache();
-                self.update_find_matches();
-            }
-            drop(_c);
-            if ui.is_item_hovered() { ui.tooltip_text("Case sensitive"); }
-
-            ui.same_line();
-
-            // ── Toggle: whole word ───────────────────────────────────
-            let ww_col = if self.find_replace.whole_word {
-                [0.24, 0.52, 0.88, 0.90]
-            } else {
-                [0.28, 0.30, 0.36, 0.70]
-            };
-            let _w = ui.push_style_color(StyleColor::Button, ww_col);
-            let ww_lbl = format!("{}##fww", icons::FORMAT_LETTER_MATCHES);
-            if ui.small_button(&ww_lbl) {
-                self.find_replace.whole_word = !self.find_replace.whole_word;
-                self.update_find_matches();
-            }
-            drop(_w);
-            if ui.is_item_hovered() { ui.tooltip_text("Whole word"); }
-
-            if !self.config.read_only {
-                ui.same_line();
-                // Toggle replace row
-                let rep_lbl = format!("{}##frep", icons::FIND_REPLACE);
-                if ui.small_button(&rep_lbl) {
-                    self.find_replace.show_replace = !self.find_replace.show_replace;
-                }
-                if ui.is_item_hovered() { ui.tooltip_text("Toggle replace  Ctrl+H"); }
-            }
-
-            ui.same_line();
-
-            // Close button
-            let close_lbl = format!("{}##fc", icons::CLOSE_THICK);
-            if ui.small_button(&close_lbl) {
-                self.find_replace.open = false;
-            }
-            if ui.is_item_hovered() { ui.tooltip_text("Close  Esc"); }
-
-            // ── Row 2: Replace (only in writable editors) ────────────
-            if self.find_replace.show_replace && !self.config.read_only {
-                ui.text_disabled(icons::FIND_REPLACE);
-                ui.same_line();
-                let rep_w = (avail_w * 0.38).clamp(140.0, 360.0);
-                ui.set_next_item_width(rep_w);
-                ui.input_text("##find_rep", &mut self.find_replace.replacement)
-                    .hint("Replace with…")
-                    .build();
-                ui.same_line();
-                if ui.small_button("Replace##r1") {
-                    self.replace_current();
+                if ui.is_item_hovered() {
+                    ui.tooltip_text("Previous match  Shift+F3");
                 }
                 ui.same_line();
-                if ui.small_button("All##ra") {
-                    self.replace_all();
+                let next_lbl = format!("{}##fn", icons::ARROW_DOWN_BOLD);
+                if ui.small_button(&next_lbl) {
+                    self.find_next();
                 }
-            }
-        });
+                if ui.is_item_hovered() {
+                    ui.tooltip_text("Next match  F3");
+                }
+
+                ui.same_line();
+
+                // ── Toggle: case-sensitive ───────────────────────────────
+                let cs_col = if self.find_replace.case_sensitive {
+                    [0.24, 0.52, 0.88, 0.90]
+                } else {
+                    [0.28, 0.30, 0.36, 0.70]
+                };
+                let _c = ui.push_style_color(StyleColor::Button, cs_col);
+                let cs_lbl = format!("{}##fcs", icons::FORMAT_LETTER_CASE);
+                if ui.small_button(&cs_lbl) {
+                    self.find_replace.case_sensitive = !self.find_replace.case_sensitive;
+                    // Lowercase cache becomes meaningless in case-sensitive
+                    // mode; invalidate so we don't hand out stale strings the
+                    // next time the user toggles back.
+                    self.find_replace.invalidate_lowercase_cache();
+                    self.update_find_matches();
+                }
+                drop(_c);
+                if ui.is_item_hovered() {
+                    ui.tooltip_text("Case sensitive");
+                }
+
+                ui.same_line();
+
+                // ── Toggle: whole word ───────────────────────────────────
+                let ww_col = if self.find_replace.whole_word {
+                    [0.24, 0.52, 0.88, 0.90]
+                } else {
+                    [0.28, 0.30, 0.36, 0.70]
+                };
+                let _w = ui.push_style_color(StyleColor::Button, ww_col);
+                let ww_lbl = format!("{}##fww", icons::FORMAT_LETTER_MATCHES);
+                if ui.small_button(&ww_lbl) {
+                    self.find_replace.whole_word = !self.find_replace.whole_word;
+                    self.update_find_matches();
+                }
+                drop(_w);
+                if ui.is_item_hovered() {
+                    ui.tooltip_text("Whole word");
+                }
+
+                if !self.config.read_only {
+                    ui.same_line();
+                    // Toggle replace row
+                    let rep_lbl = format!("{}##frep", icons::FIND_REPLACE);
+                    if ui.small_button(&rep_lbl) {
+                        self.find_replace.show_replace = !self.find_replace.show_replace;
+                    }
+                    if ui.is_item_hovered() {
+                        ui.tooltip_text("Toggle replace  Ctrl+H");
+                    }
+                }
+
+                ui.same_line();
+
+                // Close button
+                let close_lbl = format!("{}##fc", icons::CLOSE_THICK);
+                if ui.small_button(&close_lbl) {
+                    self.find_replace.open = false;
+                }
+                if ui.is_item_hovered() {
+                    ui.tooltip_text("Close  Esc");
+                }
+
+                // ── Row 2: Replace (only in writable editors) ────────────
+                if self.find_replace.show_replace && !self.config.read_only {
+                    ui.text_disabled(icons::FIND_REPLACE);
+                    ui.same_line();
+                    let rep_w = (avail_w * 0.38).clamp(140.0, 360.0);
+                    ui.set_next_item_width(rep_w);
+                    ui.input_text("##find_rep", &mut self.find_replace.replacement)
+                        .hint("Replace with…")
+                        .build();
+                    ui.same_line();
+                    if ui.small_button("Replace##r1") {
+                        self.replace_current();
+                    }
+                    ui.same_line();
+                    if ui.small_button("All##ra") {
+                        self.replace_all();
+                    }
+                }
+            });
     }
 
     // ── Token cache management ──────────────────────────────────────
@@ -2565,7 +2772,8 @@ impl CodeEditor {
     fn get_cached_tokens(&mut self, line_idx: usize) -> Rc<Vec<Token>> {
         let line_str = self.buffer.line(line_idx);
         let content_hash = hash_line(line_str);
-        let in_bc = self.block_comment_states
+        let in_bc = self
+            .block_comment_states
             .get(line_idx)
             .copied()
             .unwrap_or(false);
@@ -2579,8 +2787,7 @@ impl CodeEditor {
         }
 
         // Cache miss — tokenize
-        let (tokens, _ends_in_bc) =
-            tokenize_line(line_str, &self.config.language, in_bc);
+        let (tokens, _ends_in_bc) = tokenize_line(line_str, &self.config.language, in_bc);
         let rc = Rc::new(tokens);
 
         // Store in cache
@@ -2610,9 +2817,7 @@ impl CodeEditor {
             self.token_cache[line] = None;
         }
         // Mark bc state dirty from this line so incremental recompute starts here.
-        self.bc_dirty_from = Some(
-            self.bc_dirty_from.map_or(line, |old| old.min(line)),
-        );
+        self.bc_dirty_from = Some(self.bc_dirty_from.map_or(line, |old| old.min(line)));
         self.bc_version = u64::MAX;
     }
 
@@ -2621,7 +2826,8 @@ impl CodeEditor {
     fn invalidate_token_cache_from(&mut self, from_line: usize) {
         self.token_cache.truncate(from_line);
         self.bc_dirty_from = Some(
-            self.bc_dirty_from.map_or(from_line, |old| old.min(from_line)),
+            self.bc_dirty_from
+                .map_or(from_line, |old| old.min(from_line)),
         );
         self.bc_version = u64::MAX;
     }
@@ -2744,9 +2950,8 @@ impl CodeEditor {
         for i in 0..line_count {
             self.wrap_row_offsets[i] = cumulative;
             let line = self.buffer.line(i);
-            let wraps = compute_wrap_points(
-                line, text_width, self.char_advance, self.config.tab_size,
-            );
+            let wraps =
+                compute_wrap_points(line, text_width, self.char_advance, self.config.tab_size);
             let rows = wraps.len() + 1;
             self.wrap_cols[i] = wraps;
             cumulative += rows;
@@ -2781,9 +2986,7 @@ impl CodeEditor {
     fn visual_row_to_line(&self, vrow: usize) -> (usize, usize) {
         let line_count = self.buffer.line_count();
         // Fall back to identity when wrap is off or cache is stale/empty.
-        if !self.config.word_wrap
-            || self.wrap_row_offsets.len() < line_count + 1
-        {
+        if !self.config.word_wrap || self.wrap_row_offsets.len() < line_count + 1 {
             return (vrow.min(line_count.saturating_sub(1)), 0);
         }
         // Binary search: find largest line whose offset <= vrow.
@@ -2808,10 +3011,14 @@ impl CodeEditor {
             return (0, self.buffer.line(line).chars().count());
         }
         let wraps = &self.wrap_cols[line];
-        let start = if sub_row == 0 { 0 } else {
+        let start = if sub_row == 0 {
+            0
+        } else {
             wraps.get(sub_row - 1).copied().unwrap_or(0)
         };
-        let end = wraps.get(sub_row).copied()
+        let end = wraps
+            .get(sub_row)
+            .copied()
             .unwrap_or_else(|| self.buffer.line(line).chars().count());
         (start, end)
     }
@@ -2822,10 +3029,12 @@ impl CodeEditor {
     /// On focus loss: restore the previously saved layout.
     fn handle_input_locale_switch(&mut self) {
         let gained = self.focused && !self.was_focused;
-        let lost   = !self.focused && self.was_focused;
+        let lost = !self.focused && self.was_focused;
         self.was_focused = self.focused;
 
-        if !self.config.force_english_on_focus { return; }
+        if !self.config.force_english_on_focus {
+            return;
+        }
 
         #[cfg(target_os = "windows")]
         {
@@ -2842,9 +3051,13 @@ impl CodeEditor {
                 self.saved_input_locale = current;
                 // ActivateKeyboardLayout with 0 flags = KLF_SETFORPROCESS not set
                 // — applies only to the current thread.
-                unsafe { ActivateKeyboardLayout(EN_US, 0); }
+                unsafe {
+                    ActivateKeyboardLayout(EN_US, 0);
+                }
             } else if lost && self.saved_input_locale != 0 {
-                unsafe { ActivateKeyboardLayout(self.saved_input_locale, 0); }
+                unsafe {
+                    ActivateKeyboardLayout(self.saved_input_locale, 0);
+                }
                 self.saved_input_locale = 0;
             }
         }
@@ -2858,7 +3071,9 @@ impl CodeEditor {
     // ── Smooth scrolling ────────────────────────────────────────────
 
     fn update_smooth_scroll(&mut self, dt: f32) {
-        if !self.config.smooth_scrolling { return; }
+        if !self.config.smooth_scrolling {
+            return;
+        }
 
         let diff = self.target_scroll_y - self.scroll_y;
         if diff.abs() < 0.5 {
@@ -2893,9 +3108,7 @@ impl CodeEditor {
         // Vertical
         let target = if cursor_y < self.scroll_y {
             cursor_y
-        } else if cursor_y + self.line_height
-            > self.scroll_y + self.visible_height
-        {
+        } else if cursor_y + self.line_height > self.scroll_y + self.visible_height {
             cursor_y + self.line_height - self.visible_height
         } else {
             return;
@@ -2920,10 +3133,9 @@ impl CodeEditor {
 
         for (i, line) in text.split('\n').enumerate() {
             // Check line count budget
-            if max_lines > 0 && i > 0
-                && current_lines + added_newlines >= max_lines {
-                    break;
-                }
+            if max_lines > 0 && i > 0 && current_lines + added_newlines >= max_lines {
+                break;
+            }
             if i > 0 {
                 result.push('\n');
                 added_newlines += 1;
@@ -2942,7 +3154,9 @@ impl CodeEditor {
 
     fn update_block_comment_states(&mut self) {
         let version = self.buffer.edit_version();
-        if self.bc_version == version { return; }
+        if self.bc_version == version {
+            return;
+        }
         self.bc_version = version;
 
         let count = self.buffer.line_count();
@@ -2967,11 +3181,7 @@ impl CodeEditor {
 
         for i in start_from..count {
             self.block_comment_states[i] = in_bc;
-            let (_, still_in) = tokenize_line(
-                self.buffer.line(i),
-                &self.config.language,
-                in_bc,
-            );
+            let (_, still_in) = tokenize_line(self.buffer.line(i), &self.config.language, in_bc);
             in_bc = still_in;
 
             // Early exit: if the bc state entering the next line matches
@@ -2986,13 +3196,17 @@ impl CodeEditor {
 
     fn update_fold_regions(&mut self) {
         let version = self.buffer.edit_version();
-        if self.fold_version == version { return; }
+        if self.fold_version == version {
+            return;
+        }
         self.fold_version = version;
 
         let new_regions = detect_fold_regions(self.buffer.lines());
 
         // Preserve fold state from existing regions — HashMap for O(1) lookup
-        let was_folded: std::collections::HashMap<usize, bool> = self.fold_regions.iter()
+        let was_folded: std::collections::HashMap<usize, bool> = self
+            .fold_regions
+            .iter()
             .map(|r| (r.start_line, r.folded))
             .collect();
 
@@ -3099,13 +3313,11 @@ mod tests {
     #[test]
     fn test_error_markers() {
         let mut editor = CodeEditor::new("test");
-        editor.set_error_markers(vec![
-            LineMarker {
-                line: 5,
-                message: "error here".into(),
-                is_error: true,
-            },
-        ]);
+        editor.set_error_markers(vec![LineMarker {
+            line: 5,
+            message: "error here".into(),
+            is_error: true,
+        }]);
         assert_eq!(editor.error_markers.len(), 1);
     }
 

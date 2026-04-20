@@ -9,9 +9,7 @@ use dear_imgui_custom_mod::borderless_window::{
     BorderlessConfig, ButtonConfig, CloseMode, TitleAlign,
 };
 use dear_imgui_custom_mod::confirm_dialog::{ConfirmStyle, DialogConfig, DialogIcon};
-use dear_imgui_custom_mod::nav_panel::{
-    DockPosition, NavButton, NavPanelConfig,
-};
+use dear_imgui_custom_mod::nav_panel::{DockPosition, NavButton, NavPanelConfig};
 use dear_imgui_custom_mod::theme::Theme;
 
 // ── BorderlessConfig ────────────────────────────────────────────────────────
@@ -34,7 +32,10 @@ fn borderless_config_with_theme_clears_override() {
     // with_theme after with_colors should clear the override so the new
     // theme's palette is used (documented contract).
     assert_eq!(cfg.theme, Theme::Midnight);
-    assert!(cfg.colors_override.is_none(), "with_theme should clear override");
+    assert!(
+        cfg.colors_override.is_none(),
+        "with_theme should clear override"
+    );
 }
 
 #[test]

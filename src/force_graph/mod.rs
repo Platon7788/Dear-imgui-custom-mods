@@ -62,7 +62,7 @@ use config::{ForceConfig, SidebarKind, ViewerConfig};
 use data::{GraphData, NodeId};
 use event::GraphEvent;
 use filter::FilterState;
-use render::{camera::Camera, RenderCtx};
+use render::{RenderCtx, camera::Camera};
 use sim::Simulation;
 // ─── GraphViewer ─────────────────────────────────────────────────────────────
 
@@ -163,14 +163,16 @@ impl GraphViewer {
     pub fn render(&mut self, ui: &Ui, graph: &mut GraphData) -> Vec<GraphEvent> {
         // Resolve pending focus now that we know canvas size.
         if let Some(id) = self.pending_focus.take()
-            && let Some(node) = graph.nodes.get(id) {
-                let sidebar_w = match &self.sidebar {
-                    SidebarKind::None => 0.0_f32,
-                    _ => 220.0_f32,
-                };
-                let avail = ui.content_region_avail();
-                let canvas_size = [avail[0] - sidebar_w, avail[1].max(100.0)];
-                self.camera.animate_to_node(node.pos, canvas_size, self.camera.zoom);
+            && let Some(node) = graph.nodes.get(id)
+        {
+            let sidebar_w = match &self.sidebar {
+                SidebarKind::None => 0.0_f32,
+                _ => 220.0_f32,
+            };
+            let avail = ui.content_region_avail();
+            let canvas_size = [avail[0] - sidebar_w, avail[1].max(100.0)];
+            self.camera
+                .animate_to_node(node.pos, canvas_size, self.camera.zoom);
         }
 
         let mut events = {

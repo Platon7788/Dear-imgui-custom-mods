@@ -12,14 +12,11 @@
 pub mod config;
 
 pub use config::{
-    ByteCategory, ByteGrouping, BytesPerRow, ColorRegion, CopyFormat, Endianness,
-    HexDataProvider, HexSearchMode, HexViewerConfig, NavHistory, UndoEntry, UndoStack,
-    VecDataProvider,
+    ByteCategory, ByteGrouping, BytesPerRow, ColorRegion, CopyFormat, Endianness, HexDataProvider,
+    HexSearchMode, HexViewerConfig, NavHistory, UndoEntry, UndoStack, VecDataProvider,
 };
 
-use crate::utils::clipboard::{
-    self, set_clipboard, vk_down, VK_A, VK_C, VK_F, VK_G, VK_Y, VK_Z,
-};
+use crate::utils::clipboard::{self, VK_A, VK_C, VK_F, VK_G, VK_Y, VK_Z, set_clipboard, vk_down};
 use crate::utils::color::rgba_f32;
 use crate::utils::text::calc_text_size;
 
@@ -38,7 +35,9 @@ pub struct Selection {
 }
 
 impl Selection {
-    pub fn is_empty(&self) -> bool { self.start == self.end }
+    pub fn is_empty(&self) -> bool {
+        self.start == self.end
+    }
     pub fn contains(&self, offset: usize) -> bool {
         let (lo, hi) = self.ordered();
         offset >= lo && offset < hi
@@ -91,7 +90,9 @@ fn find_pattern_masked(data: &[u8], pattern: &[PatternByte]) -> Vec<usize> {
             match pb {
                 PatternByte::Any => {}
                 PatternByte::Exact(b) => {
-                    if data[i + j] != *b { continue 'outer; }
+                    if data[i + j] != *b {
+                        continue 'outer;
+                    }
                 }
             }
         }
@@ -102,34 +103,71 @@ fn find_pattern_masked(data: &[u8], pattern: &[PatternByte]) -> Vec<usize> {
 
 fn format_bytes(bytes: &[u8], format: CopyFormat, uppercase: bool) -> String {
     match format {
-        CopyFormat::HexSpaced => bytes.iter()
-            .map(|b| if uppercase { format!("{:02X}", b) } else { format!("{:02x}", b) })
-            .collect::<Vec<_>>().join(" "),
-        CopyFormat::HexCompact => bytes.iter()
-            .map(|b| if uppercase { format!("{:02X}", b) } else { format!("{:02x}", b) })
+        CopyFormat::HexSpaced => bytes
+            .iter()
+            .map(|b| {
+                if uppercase {
+                    format!("{:02X}", b)
+                } else {
+                    format!("{:02x}", b)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        CopyFormat::HexCompact => bytes
+            .iter()
+            .map(|b| {
+                if uppercase {
+                    format!("{:02X}", b)
+                } else {
+                    format!("{:02x}", b)
+                }
+            })
             .collect::<String>(),
         CopyFormat::CArray => {
-            let inner: String = bytes.iter()
-                .map(|b| if uppercase { format!("0x{:02X}", b) } else { format!("0x{:02x}", b) })
-                .collect::<Vec<_>>().join(", ");
+            let inner: String = bytes
+                .iter()
+                .map(|b| {
+                    if uppercase {
+                        format!("0x{:02X}", b)
+                    } else {
+                        format!("0x{:02x}", b)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
             format!("{{ {} }}", inner)
         }
         CopyFormat::RustArray => {
-            let inner: String = bytes.iter()
-                .map(|b| if uppercase { format!("0x{:02X}", b) } else { format!("0x{:02x}", b) })
-                .collect::<Vec<_>>().join(", ");
+            let inner: String = bytes
+                .iter()
+                .map(|b| {
+                    if uppercase {
+                        format!("0x{:02X}", b)
+                    } else {
+                        format!("0x{:02x}", b)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
             format!("[{}]", inner)
         }
         CopyFormat::Base64 => base64_encode(bytes),
-        CopyFormat::Ascii => bytes.iter()
-            .map(|&b| if (0x20..0x7F).contains(&b) { b as char } else { '.' })
+        CopyFormat::Ascii => bytes
+            .iter()
+            .map(|&b| {
+                if (0x20..0x7F).contains(&b) {
+                    b as char
+                } else {
+                    '.'
+                }
+            })
             .collect(),
     }
 }
 
 fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
@@ -140,10 +178,14 @@ fn base64_encode(data: &[u8]) -> String {
         out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
         if chunk.len() > 1 {
             out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
-        } else { out.push('='); }
+        } else {
+            out.push('=');
+        }
         if chunk.len() > 2 {
             out.push(ALPHABET[(n & 0x3F) as usize] as char);
-        } else { out.push('='); }
+        } else {
+            out.push('=');
+        }
     }
     out
 }
@@ -240,22 +282,38 @@ impl HexViewer {
         self.selection = Selection::default();
     }
 
-    pub fn data(&self) -> &[u8] { &self.data }
-    pub fn data_mut(&mut self) -> &mut Vec<u8> { &mut self.data }
-    pub fn data_len(&self) -> usize { self.data.len() }
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+    pub fn data_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.data
+    }
+    pub fn data_len(&self) -> usize {
+        self.data.len()
+    }
 
     pub fn set_reference(&mut self, reference: &[u8]) {
         self.reference = reference.to_vec();
     }
-    pub fn clear_reference(&mut self) { self.reference.clear(); }
+    pub fn clear_reference(&mut self) {
+        self.reference.clear();
+    }
 
-    pub fn set_regions(&mut self, regions: Vec<ColorRegion>) { self.regions = regions; }
-    pub fn add_region(&mut self, region: ColorRegion) { self.regions.push(region); }
-    pub fn clear_regions(&mut self) { self.regions.clear(); }
+    pub fn set_regions(&mut self, regions: Vec<ColorRegion>) {
+        self.regions = regions;
+    }
+    pub fn add_region(&mut self, region: ColorRegion) {
+        self.regions.push(region);
+    }
+    pub fn clear_regions(&mut self) {
+        self.regions.clear();
+    }
 
     // ── Cursor & Selection ───────────────────────────────────────────
 
-    pub fn cursor(&self) -> usize { self.cursor }
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
 
     pub fn set_cursor(&mut self, offset: usize) {
         let old = self.cursor;
@@ -267,17 +325,23 @@ impl HexViewer {
         self.scroll_to_row = Some(self.cursor / bpr);
     }
 
-    pub fn selection(&self) -> Selection { self.selection }
+    pub fn selection(&self) -> Selection {
+        self.selection
+    }
 
     pub fn selected_bytes(&self) -> &[u8] {
-        if self.selection.is_empty() { return &[]; }
+        if self.selection.is_empty() {
+            return &[];
+        }
         let (lo, hi) = self.selection.ordered();
         let lo = lo.min(self.data.len());
         let hi = hi.min(self.data.len());
         &self.data[lo..hi]
     }
 
-    pub fn goto(&mut self, offset: usize) { self.set_cursor(offset); }
+    pub fn goto(&mut self, offset: usize) {
+        self.set_cursor(offset);
+    }
 
     pub fn nav_back(&mut self) {
         let current = self.config.base_address + self.cursor as u64;
@@ -297,11 +361,21 @@ impl HexViewer {
         }
     }
 
-    pub fn is_focused(&self) -> bool { self.focused }
-    pub fn config(&self) -> &HexViewerConfig { &self.config }
-    pub fn config_mut(&mut self) -> &mut HexViewerConfig { &mut self.config }
-    pub fn undo_stack(&self) -> &UndoStack { &self.undo }
-    pub fn nav_history(&self) -> &NavHistory { &self.nav }
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
+    pub fn config(&self) -> &HexViewerConfig {
+        &self.config
+    }
+    pub fn config_mut(&mut self) -> &mut HexViewerConfig {
+        &mut self.config
+    }
+    pub fn undo_stack(&self) -> &UndoStack {
+        &self.undo
+    }
+    pub fn nav_history(&self) -> &NavHistory {
+        &self.nav
+    }
 
     // ── Undo / Redo ──────────────────────────────────────────────────
 
@@ -353,7 +427,9 @@ impl HexViewer {
     // ── Rendering ────────────────────────────────────────────────────
 
     pub fn render(&mut self, ui: &dear_imgui_rs::Ui) {
-        if self.data.is_empty() { return; }
+        if self.data.is_empty() {
+            return;
+        }
 
         if self.config.auto_refresh_frames > 0 {
             self.frame_count += 1;
@@ -370,7 +446,11 @@ impl HexViewer {
         self.render_search_popup(ui);
 
         let avail = ui.content_region_avail();
-        let inspector_h = if self.config.show_inspector { self.line_height * 5.0 } else { 0.0 };
+        let inspector_h = if self.config.show_inspector {
+            self.line_height * 5.0
+        } else {
+            0.0
+        };
         let child_h = avail[1] - inspector_h;
 
         let child_id = format!("##hv_child_{}", self.id);
@@ -400,7 +480,11 @@ impl HexViewer {
                 let visible_count = (visible_h / self.line_height) as usize + 2;
                 let last_row = (first_row + visible_count).min(total_rows);
 
-                let header_offset = if self.config.show_column_headers { 1 } else { 0 };
+                let header_offset = if self.config.show_column_headers {
+                    1
+                } else {
+                    0
+                };
 
                 // Column header — draw at fixed position relative to window.
                 if self.config.show_column_headers && first_row == 0 {
@@ -417,8 +501,16 @@ impl HexViewer {
                     let row_end = (offset + bpr).min(self.data.len());
 
                     self.draw_row(
-                        ui, &draw_list, win_x, y, offset, row_end, bpr,
-                        mouse_pos, [win_x, win_y], avail[0],
+                        ui,
+                        &draw_list,
+                        win_x,
+                        y,
+                        offset,
+                        row_end,
+                        bpr,
+                        mouse_pos,
+                        [win_x, win_y],
+                        avail[0],
                     );
                 }
 
@@ -435,7 +527,11 @@ impl HexViewer {
     // ── Drawing helpers ──────────────────────────────────────────────
 
     fn offset_col_width(&self) -> f32 {
-        if self.config.show_offsets { self.char_advance * 10.0 } else { 0.0 }
+        if self.config.show_offsets {
+            self.char_advance * 10.0
+        } else {
+            0.0
+        }
     }
 
     fn hex_col_width(&self) -> f32 {
@@ -535,11 +631,14 @@ impl HexViewer {
                 };
 
                 if let Some(bg_col) = bg {
-                    draw_list.add_rect(
-                        [x - 1.0, y],
-                        [x + self.char_advance * 2.0 + 1.0, y + self.line_height],
-                        bg_col,
-                    ).filled(true).build();
+                    draw_list
+                        .add_rect(
+                            [x - 1.0, y],
+                            [x + self.char_advance * 2.0 + 1.0, y + self.line_height],
+                            bg_col,
+                        )
+                        .filled(true)
+                        .build();
                 }
 
                 // Foreground color.
@@ -564,11 +663,14 @@ impl HexViewer {
                         };
                         draw_list.add_text([x, y], col32([1.0, 1.0, 0.5, 1.0]), &txt);
                         // Underline to indicate edit mode.
-                        draw_list.add_line(
-                            [x, y + self.line_height - 1.0],
-                            [x + self.char_advance * 2.0, y + self.line_height - 1.0],
-                            col32([1.0, 0.8, 0.3, 1.0]),
-                        ).thickness(1.5).build();
+                        draw_list
+                            .add_line(
+                                [x, y + self.line_height - 1.0],
+                                [x + self.char_advance * 2.0, y + self.line_height - 1.0],
+                                col32([1.0, 0.8, 0.3, 1.0]),
+                            )
+                            .thickness(1.5)
+                            .build();
                     }
                 } else {
                     let txt = if cfg.uppercase {
@@ -585,15 +687,21 @@ impl HexViewer {
                     && mouse_pos[1] >= y
                     && mouse_pos[1] < y + self.line_height;
                 if byte_hovered && !is_editing {
-                    draw_list.add_rect(
-                        [x - 1.0, y],
-                        [x + self.char_advance * 2.0 + 1.0, y + self.line_height],
-                        col32([0.4, 0.63, 0.88, 0.18]),
-                    ).filled(true).build();
+                    draw_list
+                        .add_rect(
+                            [x - 1.0, y],
+                            [x + self.char_advance * 2.0 + 1.0, y + self.line_height],
+                            col32([0.4, 0.63, 0.88, 0.18]),
+                        )
+                        .filled(true)
+                        .build();
                     ui.tooltip(|| {
                         let addr = cfg.base_address + i as u64;
                         ui.text(format!("Offset: 0x{:08X} ({})", addr, i));
-                        ui.text(format!("Hex: 0x{:02X}  Dec: {}  Oct: 0o{:03o}", byte, byte, byte));
+                        ui.text(format!(
+                            "Hex: 0x{:02X}  Dec: {}  Oct: 0o{:03o}",
+                            byte, byte, byte
+                        ));
                         ui.text(format!("Bin: {:08b}", byte));
                         ui.text(format!("Category: {:?}", ByteCategory::of(byte)));
                         if byte.is_ascii_graphic() || byte == b' ' {
@@ -628,23 +736,32 @@ impl HexViewer {
 
                 // Background highlight.
                 if is_ascii_editing {
-                    draw_list.add_rect(
-                        [ax, y],
-                        [ax + self.char_advance, y + self.line_height],
-                        col32([0.50, 0.30, 0.10, 0.85]),
-                    ).filled(true).build();
+                    draw_list
+                        .add_rect(
+                            [ax, y],
+                            [ax + self.char_advance, y + self.line_height],
+                            col32([0.50, 0.30, 0.10, 0.85]),
+                        )
+                        .filled(true)
+                        .build();
                 } else if is_cursor {
-                    draw_list.add_rect(
-                        [ax, y],
-                        [ax + self.char_advance, y + self.line_height],
-                        col32(cfg.color_cursor_bg),
-                    ).filled(true).build();
+                    draw_list
+                        .add_rect(
+                            [ax, y],
+                            [ax + self.char_advance, y + self.line_height],
+                            col32(cfg.color_cursor_bg),
+                        )
+                        .filled(true)
+                        .build();
                 } else if is_selected {
-                    draw_list.add_rect(
-                        [ax, y],
-                        [ax + self.char_advance, y + self.line_height],
-                        col32(cfg.color_selection_bg),
-                    ).filled(true).build();
+                    draw_list
+                        .add_rect(
+                            [ax, y],
+                            [ax + self.char_advance, y + self.line_height],
+                            col32(cfg.color_selection_bg),
+                        )
+                        .filled(true)
+                        .build();
                 }
 
                 let color = if is_ascii_editing {
@@ -661,11 +778,14 @@ impl HexViewer {
 
                 // Underline for ASCII edit mode.
                 if is_ascii_editing {
-                    draw_list.add_line(
-                        [ax, y + self.line_height - 1.0],
-                        [ax + self.char_advance, y + self.line_height - 1.0],
-                        col32([1.0, 0.8, 0.3, 1.0]),
-                    ).thickness(1.5).build();
+                    draw_list
+                        .add_line(
+                            [ax, y + self.line_height - 1.0],
+                            [ax + self.char_advance, y + self.line_height - 1.0],
+                            col32([1.0, 0.8, 0.3, 1.0]),
+                        )
+                        .thickness(1.5)
+                        .build();
                 }
 
                 ax += self.char_advance;
@@ -679,7 +799,9 @@ impl HexViewer {
             return false;
         }
         let plen = self.search_pattern.len();
-        self.search_results.iter().any(|&start| offset >= start && offset < start + plen)
+        self.search_results
+            .iter()
+            .any(|&start| offset >= start && offset < start + plen)
     }
 
     /// Get foreground color with diff/region overrides.
@@ -687,7 +809,8 @@ impl HexViewer {
         let cfg = &self.config;
 
         // Changed byte (diff).
-        if cfg.highlight_changes && !self.reference.is_empty()
+        if cfg.highlight_changes
+            && !self.reference.is_empty()
             && offset < self.reference.len()
             && self.data[offset] != self.reference[offset]
         {
@@ -716,7 +839,9 @@ impl HexViewer {
 
         let bpr = self.config.bytes_per_row.value();
         let len = self.data.len();
-        if len == 0 { return; }
+        if len == 0 {
+            return;
+        }
 
         let shift = ui.io().key_shift();
         // Use physical Ctrl detection (works with any keyboard layout).
@@ -771,7 +896,8 @@ impl HexViewer {
         // F3 = next/prev search result.
         if ui.is_key_pressed(Key::F3) && !self.search_results.is_empty() {
             if shift {
-                self.search_idx = self.search_idx
+                self.search_idx = self
+                    .search_idx
                     .checked_sub(1)
                     .unwrap_or(self.search_results.len() - 1);
             } else {
@@ -804,27 +930,47 @@ impl HexViewer {
         // Navigation (not while in active popup).
         if !ctrl && !alt {
             if ui.is_key_pressed(Key::LeftArrow) {
-                if self.cursor > 0 { self.cursor -= 1; }
-                if shift { self.selection.end = self.cursor; }
-                else { self.selection = Selection::default(); }
+                if self.cursor > 0 {
+                    self.cursor -= 1;
+                }
+                if shift {
+                    self.selection.end = self.cursor;
+                } else {
+                    self.selection = Selection::default();
+                }
                 self.scroll_to_cursor();
             }
             if ui.is_key_pressed(Key::RightArrow) {
-                if self.cursor < len - 1 { self.cursor += 1; }
-                if shift { self.selection.end = self.cursor; }
-                else { self.selection = Selection::default(); }
+                if self.cursor < len - 1 {
+                    self.cursor += 1;
+                }
+                if shift {
+                    self.selection.end = self.cursor;
+                } else {
+                    self.selection = Selection::default();
+                }
                 self.scroll_to_cursor();
             }
             if ui.is_key_pressed(Key::UpArrow) {
-                if self.cursor >= bpr { self.cursor -= bpr; }
-                if shift { self.selection.end = self.cursor; }
-                else { self.selection = Selection::default(); }
+                if self.cursor >= bpr {
+                    self.cursor -= bpr;
+                }
+                if shift {
+                    self.selection.end = self.cursor;
+                } else {
+                    self.selection = Selection::default();
+                }
                 self.scroll_to_cursor();
             }
             if ui.is_key_pressed(Key::DownArrow) {
-                if self.cursor + bpr < len { self.cursor += bpr; }
-                if shift { self.selection.end = self.cursor; }
-                else { self.selection = Selection::default(); }
+                if self.cursor + bpr < len {
+                    self.cursor += bpr;
+                }
+                if shift {
+                    self.selection.end = self.cursor;
+                } else {
+                    self.selection = Selection::default();
+                }
                 self.scroll_to_cursor();
             }
             if ui.is_key_pressed(Key::PageUp) {
@@ -900,7 +1046,9 @@ impl HexViewer {
         let chars = read_input_chars();
         for ch in chars {
             // Accept any printable character (any language/case).
-            if ch.is_control() { continue; }
+            if ch.is_control() {
+                continue;
+            }
             let mut buf = [0u8; 4];
             let encoded = ch.encode_utf8(&mut buf);
             // Only write the first byte (ASCII-compatible for most cases).
@@ -921,7 +1069,9 @@ impl HexViewer {
     }
 
     fn handle_mouse(&mut self, ui: &dear_imgui_rs::Ui, _win_w: f32) {
-        if !ui.is_window_hovered() { return; }
+        if !ui.is_window_hovered() {
+            return;
+        }
 
         // Mouse wheel scroll.
         let wheel = ui.io().mouse_wheel();
@@ -949,18 +1099,27 @@ impl HexViewer {
                     self.selection = Selection::default();
                 } else if self.selection.is_empty() {
                     // If no selection, start one.
-                    self.selection = Selection { start: offset, end: offset + 1 };
+                    self.selection = Selection {
+                        start: offset,
+                        end: offset + 1,
+                    };
                 } else {
                     // Extend to include this byte.
                     let (lo, hi) = self.selection.ordered();
                     let new_lo = lo.min(offset);
                     let new_hi = hi.max(offset + 1);
-                    self.selection = Selection { start: new_lo, end: new_hi };
+                    self.selection = Selection {
+                        start: new_lo,
+                        end: new_hi,
+                    };
                 }
                 self.cursor = offset;
             } else {
                 self.cursor = offset;
-                self.selection = Selection { start: offset, end: offset };
+                self.selection = Selection {
+                    start: offset,
+                    end: offset,
+                };
 
                 // Start editing if editable.
                 if self.config.editable {
@@ -984,11 +1143,17 @@ impl HexViewer {
         let [mx, my] = ui.io().mouse_pos();
         let [win_x, win_y] = ui.cursor_screen_pos();
         let scroll_y = ui.scroll_y();
-        let header_offset = if self.config.show_column_headers { 1 } else { 0 };
+        let header_offset = if self.config.show_column_headers {
+            1
+        } else {
+            0
+        };
 
         let rel_y = my - win_y + scroll_y;
         let row = (rel_y / self.line_height) as isize - header_offset as isize;
-        if row < 0 { return None; }
+        if row < 0 {
+            return None;
+        }
         let row = row as usize;
 
         let bpr = self.config.bytes_per_row.value();
@@ -1009,13 +1174,17 @@ impl HexViewer {
 
         // Hex column.
         let rel_x = mx - hex_x;
-        if rel_x < 0.0 { return None; }
+        if rel_x < 0.0 {
+            return None;
+        }
 
         let mut col = 0usize;
         let mut x = 0.0f32;
         while col < bpr {
             let next_x = x + self.char_advance * 3.0;
-            if rel_x < next_x { break; }
+            if rel_x < next_x {
+                break;
+            }
             x = next_x;
             col += 1;
             if group > 0 && col.is_multiple_of(group) && col < bpr {
@@ -1024,7 +1193,11 @@ impl HexViewer {
         }
 
         let offset = row * bpr + col;
-        if offset < self.data.len() { Some((offset, EditColumn::Hex)) } else { None }
+        if offset < self.data.len() {
+            Some((offset, EditColumn::Hex))
+        } else {
+            None
+        }
     }
 
     fn scroll_to_cursor(&mut self) {
@@ -1038,7 +1211,9 @@ impl HexViewer {
         if bytes.is_empty() {
             if self.cursor < self.data.len() {
                 let s = format_bytes(
-                    &[self.data[self.cursor]], self.config.copy_format, self.config.uppercase,
+                    &[self.data[self.cursor]],
+                    self.config.copy_format,
+                    self.config.uppercase,
                 );
                 set_clipboard(&s);
             }
@@ -1051,7 +1226,9 @@ impl HexViewer {
     // ── Goto popup ───────────────────────────────────────────────────
 
     fn render_goto_popup(&mut self, ui: &dear_imgui_rs::Ui) {
-        if !self.show_goto { return; }
+        if !self.show_goto {
+            return;
+        }
 
         let label = format!("##goto_{}", self.id);
         ui.open_popup(&label);
@@ -1078,7 +1255,9 @@ impl HexViewer {
     // ── Search popup ─────────────────────────────────────────────────
 
     fn render_search_popup(&mut self, ui: &dear_imgui_rs::Ui) {
-        if !self.show_search { return; }
+        if !self.show_search {
+            return;
+        }
 
         let label = format!("##search_{}", self.id);
         ui.open_popup(&label);
@@ -1099,11 +1278,14 @@ impl HexViewer {
                 HexSearchMode::Ascii => "ASCII string:",
             };
             ui.text(hint);
-            ui.input_text("##search_input", &mut self.search_buf).build();
+            ui.input_text("##search_input", &mut self.search_buf)
+                .build();
 
             if !self.search_results.is_empty() {
                 ui.text(format!(
-                    "Result {}/{}", self.search_idx + 1, self.search_results.len()
+                    "Result {}/{}",
+                    self.search_idx + 1,
+                    self.search_results.len()
                 ));
             }
 
@@ -1127,7 +1309,9 @@ impl HexViewer {
             HexSearchMode::Hex => parse_hex_pattern_masked(&self.search_buf),
             HexSearchMode::Ascii => parse_ascii_pattern(&self.search_buf),
         };
-        if self.search_pattern.is_empty() { return; }
+        if self.search_pattern.is_empty() {
+            return;
+        }
 
         self.search_results = find_pattern_masked(&self.data, &self.search_pattern);
         self.search_idx = 0;
@@ -1145,7 +1329,9 @@ impl HexViewer {
     // ── Data inspector ───────────────────────────────────────────────
 
     fn render_inspector(&self, ui: &dear_imgui_rs::Ui) {
-        if self.cursor >= self.data.len() { return; }
+        if self.cursor >= self.data.len() {
+            return;
+        }
 
         ui.separator();
         let offset = self.cursor;
@@ -1167,21 +1353,38 @@ impl HexViewer {
             ("u8", format!("{}", bytes[0])),
             ("i8", format!("{}", bytes[0] as i8)),
             if remaining >= 2 {
-                let v = if le { u16::from_le_bytes([bytes[0], bytes[1]]) }
-                        else  { u16::from_be_bytes([bytes[0], bytes[1]]) };
+                let v = if le {
+                    u16::from_le_bytes([bytes[0], bytes[1]])
+                } else {
+                    u16::from_be_bytes([bytes[0], bytes[1]])
+                };
                 ("u16", format!("{}", v))
-            } else { ("u16", "\u{2014}".into()) },
+            } else {
+                ("u16", "\u{2014}".into())
+            },
             if remaining >= 4 {
                 let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
-                let v = if le { u32::from_le_bytes(arr) } else { u32::from_be_bytes(arr) };
+                let v = if le {
+                    u32::from_le_bytes(arr)
+                } else {
+                    u32::from_be_bytes(arr)
+                };
                 ("u32", format!("{}", v))
-            } else { ("u32", "\u{2014}".into()) },
+            } else {
+                ("u32", "\u{2014}".into())
+            },
             if remaining >= 8 {
                 let mut arr = [0u8; 8];
                 arr.copy_from_slice(&bytes[..8]);
-                let v = if le { u64::from_le_bytes(arr) } else { u64::from_be_bytes(arr) };
+                let v = if le {
+                    u64::from_le_bytes(arr)
+                } else {
+                    u64::from_be_bytes(arr)
+                };
                 ("u64", format!("{}", v))
-            } else { ("u64", "\u{2014}".into()) },
+            } else {
+                ("u64", "\u{2014}".into())
+            },
         ];
 
         for (label, value) in &items_r1 {
@@ -1197,15 +1400,27 @@ impl HexViewer {
         let items_r2: Vec<(&str, String)> = vec![
             if remaining >= 4 {
                 let arr = [bytes[0], bytes[1], bytes[2], bytes[3]];
-                let v = if le { f32::from_le_bytes(arr) } else { f32::from_be_bytes(arr) };
+                let v = if le {
+                    f32::from_le_bytes(arr)
+                } else {
+                    f32::from_be_bytes(arr)
+                };
                 ("f32", format!("{:.6e}", v))
-            } else { ("f32", "\u{2014}".into()) },
+            } else {
+                ("f32", "\u{2014}".into())
+            },
             if remaining >= 8 {
                 let mut arr = [0u8; 8];
                 arr.copy_from_slice(&bytes[..8]);
-                let v = if le { f64::from_le_bytes(arr) } else { f64::from_be_bytes(arr) };
+                let v = if le {
+                    f64::from_le_bytes(arr)
+                } else {
+                    f64::from_be_bytes(arr)
+                };
                 ("f64", format!("{:.6e}", v))
-            } else { ("f64", "\u{2014}".into()) },
+            } else {
+                ("f64", "\u{2014}".into())
+            },
             ("hex", format!("0x{:02X}", bytes[0])),
             ("char", {
                 let ch = bytes[0];
@@ -1227,7 +1442,11 @@ impl HexViewer {
         // Row 3: offset info
         let y3 = y2 + lh;
         let undo_info = if self.undo.can_undo() || self.undo.can_redo() {
-            format!("  Undo: {} / Redo: {}", self.undo.undo_count(), self.undo.redo_count())
+            format!(
+                "  Undo: {} / Redo: {}",
+                self.undo.undo_count(),
+                self.undo.redo_count()
+            )
         } else {
             String::new()
         };
@@ -1266,9 +1485,14 @@ fn read_input_chars() -> Vec<char> {
     let io = unsafe { &*dear_imgui_rs::sys::igGetIO_Nil() };
     let data = io.InputQueueCharacters.Data;
     let size = io.InputQueueCharacters.Size;
-    if data.is_null() || size <= 0 { return Vec::new(); }
+    if data.is_null() || size <= 0 {
+        return Vec::new();
+    }
     let slice = unsafe { std::slice::from_raw_parts(data as *const u16, size as usize) };
-    slice.iter().filter_map(|&c| char::from_u32(c as u32)).collect()
+    slice
+        .iter()
+        .filter_map(|&c| char::from_u32(c as u32))
+        .collect()
 }
 
 fn parse_address(s: &str) -> Option<u64> {
@@ -1393,7 +1617,9 @@ mod tests {
         let mut stack = UndoStack::new(10);
         assert!(!stack.can_undo());
         stack.push(UndoEntry {
-            offset: 0, old_bytes: vec![0xAA], new_bytes: vec![0xBB],
+            offset: 0,
+            old_bytes: vec![0xAA],
+            new_bytes: vec![0xBB],
         });
         assert!(stack.can_undo());
         let entry = stack.undo().unwrap();
@@ -1413,17 +1639,26 @@ mod tests {
 
     #[test]
     fn test_format_bytes_hex_spaced() {
-        assert_eq!(format_bytes(&[0x4D, 0x5A, 0x90], CopyFormat::HexSpaced, true), "4D 5A 90");
+        assert_eq!(
+            format_bytes(&[0x4D, 0x5A, 0x90], CopyFormat::HexSpaced, true),
+            "4D 5A 90"
+        );
     }
 
     #[test]
     fn test_format_bytes_c_array() {
-        assert_eq!(format_bytes(&[0x4D, 0x5A], CopyFormat::CArray, true), "{ 0x4D, 0x5A }");
+        assert_eq!(
+            format_bytes(&[0x4D, 0x5A], CopyFormat::CArray, true),
+            "{ 0x4D, 0x5A }"
+        );
     }
 
     #[test]
     fn test_format_bytes_base64() {
-        assert_eq!(format_bytes(&[0x4D, 0x5A, 0x90], CopyFormat::Base64, true), "TVqQ");
+        assert_eq!(
+            format_bytes(&[0x4D, 0x5A, 0x90], CopyFormat::Base64, true),
+            "TVqQ"
+        );
     }
 
     #[test]
@@ -1477,7 +1712,8 @@ mod tests {
         let mut v = HexViewer::new("test");
         v.set_data(&[0; 16]);
         v.config.category_colors = false;
-        v.regions.push(ColorRegion::new(4, 4, [1.0, 0.0, 0.0, 1.0], "magic"));
+        v.regions
+            .push(ColorRegion::new(4, 4, [1.0, 0.0, 0.0, 1.0], "magic"));
         let fg = v.byte_fg_with_overrides(5, 0);
         assert_eq!(fg, col32([1.0, 0.0, 0.0, 1.0]));
     }

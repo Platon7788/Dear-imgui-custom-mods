@@ -31,23 +31,37 @@ impl Default for NavPanelState {
 }
 
 impl NavPanelState {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Set the active button by ID.
-    pub fn set_active(&mut self, id: &'static str) { self.active = Some(id); }
+    pub fn set_active(&mut self, id: &'static str) {
+        self.active = Some(id);
+    }
 
     /// Clear the active button.
-    pub fn clear_active(&mut self) { self.active = None; }
+    pub fn clear_active(&mut self) {
+        self.active = None;
+    }
 
     /// Show the panel (useful with auto-hide).
-    pub fn show(&mut self) { self.visible = true; }
+    pub fn show(&mut self) {
+        self.visible = true;
+    }
 
     /// Hide the panel (useful with auto-hide).
-    pub fn hide(&mut self) { self.visible = false; }
+    pub fn hide(&mut self) {
+        self.visible = false;
+    }
 
     /// Toggle panel visibility.
-    pub fn toggle(&mut self) { self.visible = !self.visible; }
+    pub fn toggle(&mut self) {
+        self.visible = !self.visible;
+    }
 
     /// Close any open submenu.
-    pub fn close_submenu(&mut self) { self.open_submenu = None; }
+    pub fn close_submenu(&mut self) {
+        self.open_submenu = None;
+    }
 }

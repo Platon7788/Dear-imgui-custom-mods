@@ -50,23 +50,45 @@ pub enum SubMenuItem {
 
 impl SubMenuItem {
     pub fn new(id: &'static str, label: &'static str) -> Self {
-        Self::Item { id, label, icon: None, shortcut: None }
+        Self::Item {
+            id,
+            label,
+            icon: None,
+            shortcut: None,
+        }
     }
     pub fn with_icon(self, icon: &'static str) -> Self {
         match self {
-            Self::Item { id, label, shortcut, .. } =>
-                Self::Item { id, label, icon: Some(icon), shortcut },
+            Self::Item {
+                id,
+                label,
+                shortcut,
+                ..
+            } => Self::Item {
+                id,
+                label,
+                icon: Some(icon),
+                shortcut,
+            },
             s => s,
         }
     }
     pub fn with_shortcut(self, sc: &'static str) -> Self {
         match self {
-            Self::Item { id, label, icon, .. } =>
-                Self::Item { id, label, icon, shortcut: Some(sc) },
+            Self::Item {
+                id, label, icon, ..
+            } => Self::Item {
+                id,
+                label,
+                icon,
+                shortcut: Some(sc),
+            },
             s => s,
         }
     }
-    pub fn separator() -> Self { Self::Separator }
+    pub fn separator() -> Self {
+        Self::Separator
+    }
 }
 
 // ── Nav button ───────────────────────────────────────────────────────────────
@@ -111,12 +133,25 @@ impl NavButton {
             show_tooltip: true,
         }
     }
-    pub fn with_color(mut self, c: [f32; 4]) -> Self { self.color = Some(c); self }
-    pub fn add_item(mut self, item: SubMenuItem) -> Self { self.submenu.push(item); self }
-    pub fn add_separator(mut self) -> Self { self.submenu.push(SubMenuItem::Separator); self }
-    pub fn without_tooltip(mut self) -> Self { self.show_tooltip = false; self }
+    pub fn with_color(mut self, c: [f32; 4]) -> Self {
+        self.color = Some(c);
+        self
+    }
+    pub fn add_item(mut self, item: SubMenuItem) -> Self {
+        self.submenu.push(item);
+        self
+    }
+    pub fn add_separator(mut self) -> Self {
+        self.submenu.push(SubMenuItem::Separator);
+        self
+    }
+    pub fn without_tooltip(mut self) -> Self {
+        self.show_tooltip = false;
+        self
+    }
     pub fn with_badge(mut self, text: impl Into<String>) -> Self {
-        self.badge = Some(text.into()); self
+        self.badge = Some(text.into());
+        self
     }
     /// Builder: update the tooltip (useful when rebuilding the config each
     /// frame with freshly localised strings).
@@ -260,7 +295,10 @@ impl NavPanelConfig {
     /// **Left/Right** (vertical): width=28, button_size=24.
     /// **Top** (horizontal): height=20, button_size=18.
     pub fn new(position: DockPosition) -> Self {
-        let mut cfg = Self { position, ..Self::default() };
+        let mut cfg = Self {
+            position,
+            ..Self::default()
+        };
         match position {
             DockPosition::Left | DockPosition::Right => {
                 cfg.width = 28.0;
@@ -294,30 +332,83 @@ impl NavPanelConfig {
             self.theme.nav()
         }
     }
-    pub fn with_width(mut self, w: f32) -> Self { self.width = w.max(16.0); self }
-    pub fn with_height(mut self, h: f32) -> Self { self.height = h.max(16.0); self }
-    pub fn with_button_size(mut self, s: f32) -> Self { self.button_size = s.max(14.0); self }
+    pub fn with_width(mut self, w: f32) -> Self {
+        self.width = w.max(16.0);
+        self
+    }
+    pub fn with_height(mut self, h: f32) -> Self {
+        self.height = h.max(16.0);
+        self
+    }
+    pub fn with_button_size(mut self, s: f32) -> Self {
+        self.button_size = s.max(14.0);
+        self
+    }
     /// Set spacing between buttons (px).
-    pub fn with_button_spacing(mut self, s: f32) -> Self { self.button_spacing = s.max(0.0); self }
-    pub fn with_button_style(mut self, s: ButtonStyle) -> Self { self.button_style = s; self }
-    pub fn with_indicator_thickness(mut self, t: f32) -> Self { self.indicator_thickness = t; self }
-    pub fn with_button_rounding(mut self, r: f32) -> Self { self.button_rounding = r; self }
-    pub fn with_separator_padding(mut self, p: f32) -> Self { self.separator_padding = p; self }
+    pub fn with_button_spacing(mut self, s: f32) -> Self {
+        self.button_spacing = s.max(0.0);
+        self
+    }
+    pub fn with_button_style(mut self, s: ButtonStyle) -> Self {
+        self.button_style = s;
+        self
+    }
+    pub fn with_indicator_thickness(mut self, t: f32) -> Self {
+        self.indicator_thickness = t;
+        self
+    }
+    pub fn with_button_rounding(mut self, r: f32) -> Self {
+        self.button_rounding = r;
+        self
+    }
+    pub fn with_separator_padding(mut self, p: f32) -> Self {
+        self.separator_padding = p;
+        self
+    }
     /// Show thin separator lines between every button (not just NavItem::Separator).
-    pub fn with_button_separators(mut self, v: bool) -> Self { self.show_button_separators = v; self }
-    pub fn with_toggle_button(mut self, v: bool) -> Self { self.show_toggle = v; self }
-    pub fn with_auto_hide(mut self, v: bool) -> Self { self.auto_hide = v; self }
-    pub fn with_auto_show_on_hover(mut self, v: bool) -> Self { self.auto_show_on_hover = v; self }
-    pub fn with_animate(mut self, v: bool) -> Self { self.animate = v; self }
-    pub fn with_animation_speed(mut self, s: f32) -> Self { self.animation_speed = s; self }
-    pub fn without_tooltips(mut self) -> Self { self.show_tooltips = false; self }
-    pub fn with_content_offset_y(mut self, y: f32) -> Self { self.content_offset_y = y; self }
-    pub fn with_content_offset_x(mut self, x: f32) -> Self { self.content_offset_x = x; self }
+    pub fn with_button_separators(mut self, v: bool) -> Self {
+        self.show_button_separators = v;
+        self
+    }
+    pub fn with_toggle_button(mut self, v: bool) -> Self {
+        self.show_toggle = v;
+        self
+    }
+    pub fn with_auto_hide(mut self, v: bool) -> Self {
+        self.auto_hide = v;
+        self
+    }
+    pub fn with_auto_show_on_hover(mut self, v: bool) -> Self {
+        self.auto_show_on_hover = v;
+        self
+    }
+    pub fn with_animate(mut self, v: bool) -> Self {
+        self.animate = v;
+        self
+    }
+    pub fn with_animation_speed(mut self, s: f32) -> Self {
+        self.animation_speed = s;
+        self
+    }
+    pub fn without_tooltips(mut self) -> Self {
+        self.show_tooltips = false;
+        self
+    }
+    pub fn with_content_offset_y(mut self, y: f32) -> Self {
+        self.content_offset_y = y;
+        self
+    }
+    pub fn with_content_offset_x(mut self, x: f32) -> Self {
+        self.content_offset_x = x;
+        self
+    }
 
     pub fn add_button(mut self, btn: NavButton) -> Self {
-        self.items.push(NavItem::Button(btn)); self
+        self.items.push(NavItem::Button(btn));
+        self
     }
     pub fn add_separator(mut self) -> Self {
-        self.items.push(NavItem::Separator); self
+        self.items.push(NavItem::Separator);
+        self
     }
 }

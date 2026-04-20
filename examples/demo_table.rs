@@ -34,11 +34,11 @@ struct TestRow {
     id: usize,
     active: bool,
     name: String,
-    category: usize,  // index into CATEGORIES
+    category: usize, // index into CATEGORIES
     value: f32,
-    progress: f32,     // 0.0..1.0
+    progress: f32, // 0.0..1.0
     color: [f32; 4],
-    status: usize,     // index into STATUSES
+    status: usize, // index into STATUSES
 }
 
 impl VirtualTableRow for TestRow {
@@ -142,11 +142,11 @@ impl VirtualTableRow for TestRow {
     fn cell_style(&self, col: usize) -> Option<CellStyle> {
         if col == 7 {
             let color = match self.status {
-                0 => [0.3, 0.85, 0.45, 1.0],  // Active — green
-                1 => [0.9, 0.7, 0.2, 1.0],    // Pending — yellow
-                2 => [0.5, 0.5, 0.5, 1.0],    // Inactive — gray
-                3 => [1.0, 0.35, 0.35, 1.0],  // Critical — red
-                4 => [0.3, 0.7, 1.0, 1.0],    // Complete — blue
+                0 => [0.3, 0.85, 0.45, 1.0], // Active — green
+                1 => [0.9, 0.7, 0.2, 1.0],   // Pending — yellow
+                2 => [0.5, 0.5, 0.5, 1.0],   // Inactive — gray
+                3 => [1.0, 0.35, 0.35, 1.0], // Critical — red
+                4 => [0.3, 0.7, 1.0, 1.0],   // Complete — blue
                 _ => return None,
             };
             Some(CellStyle {
@@ -165,7 +165,10 @@ impl VirtualTableRow for TestRow {
             1 => self.active.cmp(&other.active),
             2 => self.name.cmp(&other.name),
             3 => self.category.cmp(&other.category),
-            4 => self.value.partial_cmp(&other.value).unwrap_or(Ordering::Equal),
+            4 => self
+                .value
+                .partial_cmp(&other.value)
+                .unwrap_or(Ordering::Equal),
             5 => self
                 .progress
                 .partial_cmp(&other.progress)
@@ -354,7 +357,8 @@ impl DemoState {
                 // Confirmation popup
                 if let Some(row_idx) = self.pending_delete {
                     ui.open_popup("Confirm Delete");
-                    if let Some(_popup) = ui.begin_modal_popup_config("Confirm Delete")
+                    if let Some(_popup) = ui
+                        .begin_modal_popup_config("Confirm Delete")
                         .flags(dear_imgui_rs::WindowFlags::ALWAYS_AUTO_RESIZE)
                         .begin()
                     {
@@ -420,9 +424,7 @@ impl ApplicationHandler for App {
             backends: wgpu::Backends::PRIMARY,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
-        let surface = instance
-            .create_surface(window.clone())
-            .expect("surface");
+        let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
@@ -430,8 +432,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -463,24 +464,28 @@ impl ApplicationHandler for App {
             let font_data = std::fs::read(segoe_path).expect("read font");
             // Leak the data so it lives for 'static — acceptable for a demo
             let font_data: &'static [u8] = Box::leak(font_data.into_boxed_slice());
-            context.fonts().add_font(&[dear_imgui_rs::FontSource::TtfData {
-                data: font_data,
-                size_pixels: Some(font_size),
-                config: Some(
-                    dear_imgui_rs::FontConfig::new()
-                        .size_pixels(font_size)
-                        .oversample_h(2),
-                ),
-            }]);
+            context
+                .fonts()
+                .add_font(&[dear_imgui_rs::FontSource::TtfData {
+                    data: font_data,
+                    size_pixels: Some(font_size),
+                    config: Some(
+                        dear_imgui_rs::FontConfig::new()
+                            .size_pixels(font_size)
+                            .oversample_h(2),
+                    ),
+                }]);
         } else {
-            context.fonts().add_font(&[dear_imgui_rs::FontSource::DefaultFontData {
-                config: Some(
-                    dear_imgui_rs::FontConfig::new()
-                        .size_pixels(font_size)
-                        .oversample_h(2),
-                ),
-                size_pixels: Some(font_size),
-            }]);
+            context
+                .fonts()
+                .add_font(&[dear_imgui_rs::FontSource::DefaultFontData {
+                    config: Some(
+                        dear_imgui_rs::FontConfig::new()
+                            .size_pixels(font_size)
+                            .oversample_h(2),
+                    ),
+                    size_pixels: Some(font_size),
+                }]);
         }
 
         apply_dark_theme(context.style_mut());
@@ -537,8 +542,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -552,8 +556,7 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                gpu.platform
-                    .prepare_frame(&gpu.window, &mut gpu.context);
+                gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
 
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);
@@ -683,7 +686,10 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::TableRowBgAlt, [1.0, 1.0, 1.0, 0.025]);
 
     // Selection & text
-    style.set_color(StyleColor::TextSelectedBg, [accent[0], accent[1], accent[2], 0.30]);
+    style.set_color(
+        StyleColor::TextSelectedBg,
+        [accent[0], accent[1], accent[2], 0.30],
+    );
     style.set_color(StyleColor::Text, [0.92, 0.93, 0.95, 1.0]);
     style.set_color(StyleColor::TextDisabled, [0.42, 0.45, 0.52, 1.0]);
 
@@ -705,7 +711,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use dear_imgui_custom_mod::virtual_table::ring_buffer::{RingBuffer, MAX_TABLE_ROWS};
+    use dear_imgui_custom_mod::virtual_table::ring_buffer::{MAX_TABLE_ROWS, RingBuffer};
 
     // ── RingBuffer unit tests ────────────────────────────────────────
 
@@ -855,7 +861,10 @@ mod tests {
                 rb.push(i);
             }
             let push_ms = elapsed_ms(t);
-            println!("[RING PUSH {size}]  {push_ms:.1} ms ({:.0} ns/op)", push_ms * 1_000_000.0 / size as f64);
+            println!(
+                "[RING PUSH {size}]  {push_ms:.1} ms ({:.0} ns/op)",
+                push_ms * 1_000_000.0 / size as f64
+            );
 
             // Random access
             let t = Instant::now();

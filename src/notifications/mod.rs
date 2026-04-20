@@ -89,33 +89,47 @@ pub enum NotificationEvent {
 #[derive(Debug)]
 pub struct NotificationCenter {
     /// Active notifications, oldest first.
-    queue:   Vec<Notification>,
+    queue: Vec<Notification>,
     /// Configuration.
-    config:  CenterConfig,
+    config: CenterConfig,
     /// Monotonic id counter.
     next_id: u64,
 }
 
 impl Default for NotificationCenter {
     fn default() -> Self {
-        Self { queue: Vec::new(), config: CenterConfig::default(), next_id: 1 }
+        Self {
+            queue: Vec::new(),
+            config: CenterConfig::default(),
+            next_id: 1,
+        }
     }
 }
 
 impl NotificationCenter {
     /// Create a center with default config (top-right, fade, 5 visible).
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Create a center from an explicit config.
     pub fn with_config(config: CenterConfig) -> Self {
-        Self { queue: Vec::new(), config, next_id: 1 }
+        Self {
+            queue: Vec::new(),
+            config,
+            next_id: 1,
+        }
     }
 
     /// Mutable access to the configuration — changes take effect next frame.
-    pub fn config_mut(&mut self) -> &mut CenterConfig { &mut self.config }
+    pub fn config_mut(&mut self) -> &mut CenterConfig {
+        &mut self.config
+    }
 
     /// Read-only view of the configuration.
-    pub fn config(&self) -> &CenterConfig { &self.config }
+    pub fn config(&self) -> &CenterConfig {
+        &self.config
+    }
 
     /// Push a notification onto the stack and return its id.
     pub fn push(&mut self, mut n: Notification) -> u64 {
@@ -143,7 +157,9 @@ impl NotificationCenter {
     }
 
     /// Number of notifications currently on the stack (including fading-out).
-    pub fn count(&self) -> usize { self.queue.len() }
+    pub fn count(&self) -> usize {
+        self.queue.len()
+    }
 
     /// Advance state and draw the stack. Returns events that fired this frame.
     pub fn render(&mut self, ui: &Ui, dt: f32) -> Vec<NotificationEvent> {
@@ -172,11 +188,15 @@ impl NotificationCenter {
         let [dw, dh] = ui.io().display_size();
         let anchor_x = match cfg.placement {
             Placement::TopRight | Placement::BottomRight => dw - cfg.margin[0] - cfg.width,
-            Placement::TopLeft | Placement::BottomLeft   => cfg.margin[0],
+            Placement::TopLeft | Placement::BottomLeft => cfg.margin[0],
             Placement::TopCenter | Placement::BottomCenter => (dw - cfg.width) * 0.5,
         };
         let grows_up = cfg.placement.grows_up();
-        let base_y = if grows_up { dh - cfg.margin[1] } else { cfg.margin[1] };
+        let base_y = if grows_up {
+            dh - cfg.margin[1]
+        } else {
+            cfg.margin[1]
+        };
 
         // ── Determine visible slice: the newest `max_visible` ────────────────
         let visible_count = self.queue.len().min(cfg.max_visible);
@@ -209,7 +229,10 @@ impl NotificationCenter {
                 to_dismiss.push(n.id);
             }
             if let Some(aid) = outcome.action_clicked {
-                events.push(NotificationEvent::ActionClicked { id: n.id, action_id: aid });
+                events.push(NotificationEvent::ActionClicked {
+                    id: n.id,
+                    action_id: aid,
+                });
                 to_dismiss.push(n.id);
             }
             if outcome.body_clicked {
@@ -221,10 +244,13 @@ impl NotificationCenter {
 
         // ── Pass 3: advance elapsed timers (paused while hovered) ───────────
         for n in &mut self.queue {
-            if n.dismissing { continue; }
-            let hovered = cfg.pause_on_hover
-                && hover_flags.iter().any(|&(id, h)| id == n.id && h);
-            if hovered { continue; }
+            if n.dismissing {
+                continue;
+            }
+            let hovered = cfg.pause_on_hover && hover_flags.iter().any(|&(id, h)| id == n.id && h);
+            if hovered {
+                continue;
+            }
 
             if let Duration::Timed(secs) = n.duration {
                 n.elapsed += dt;
@@ -243,7 +269,9 @@ impl NotificationCenter {
         let none_anim = matches!(cfg.animation, AnimationKind::None);
         self.queue.retain(|n| {
             let done = n.dismissing && (none_anim || n.exit_t >= 1.0);
-            if done { events.push(NotificationEvent::Dismissed(n.id)); }
+            if done {
+                events.push(NotificationEvent::Dismissed(n.id));
+            }
             !done
         });
 
@@ -254,10 +282,10 @@ impl NotificationCenter {
 // ─── Per-toast render result ─────────────────────────────────────────────────
 
 struct ToastOutcome {
-    hovered:        bool,
-    close_clicked:  bool,
+    hovered: bool,
+    close_clicked: bool,
     action_clicked: Option<u32>,
-    body_clicked:   bool,
+    body_clicked: bool,
 }
 
 // ─── Rendering helpers ───────────────────────────────────────────────────────
@@ -286,7 +314,9 @@ fn estimate_height(n: &Notification, cfg: &CenterConfig) -> f32 {
     let actions_h = if n.actions.is_empty() { 0.0 } else { 28.0 };
     let progress_h = if n.show_progress && matches!(n.duration, Duration::Timed(_)) {
         cfg.progress_height + 2.0
-    } else { 0.0 };
+    } else {
+        0.0
+    };
 
     pad_y * 2.0 + title_h + body_h + actions_h + progress_h
 }
@@ -301,11 +331,17 @@ fn animated_pos(
     est_h: f32,
     grows_up: bool,
 ) -> (f32, f32, f32) {
-    let t_in  = n.enter_t;
+    let t_in = n.enter_t;
     let t_out = 1.0 - n.exit_t;
 
     let alpha = match cfg.animation {
-        AnimationKind::None => if n.dismissing { 0.0 } else { 1.0 },
+        AnimationKind::None => {
+            if n.dismissing {
+                0.0
+            } else {
+                1.0
+            }
+        }
         AnimationKind::Fade | AnimationKind::SlideIn => t_in * t_out,
     };
 
@@ -324,7 +360,11 @@ fn animated_pos(
     };
 
     let px = anchor_x + slide_dx;
-    let py = if grows_up { base_y - cum_y - est_h } else { base_y + cum_y };
+    let py = if grows_up {
+        base_y - cum_y - est_h
+    } else {
+        base_y + cum_y
+    };
     (px, py, alpha)
 }
 
@@ -346,10 +386,10 @@ fn render_toast(
     };
 
     let _a = ui.push_style_var(StyleVar::Alpha(alpha));
-    let _rnd  = ui.push_style_var(StyleVar::WindowRounding(cfg.rounding));
-    let _brd  = ui.push_style_var(StyleVar::WindowBorderSize(1.0));
-    let _pad  = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0])); // manual inner layout
-    let _bg   = ui.push_style_color(StyleColor::WindowBg, c.bg);
+    let _rnd = ui.push_style_var(StyleVar::WindowRounding(cfg.rounding));
+    let _brd = ui.push_style_var(StyleVar::WindowBorderSize(1.0));
+    let _pad = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0])); // manual inner layout
+    let _bg = ui.push_style_color(StyleColor::WindowBg, c.bg);
     let _brdc = ui.push_style_color(StyleColor::Border, c.border);
 
     let win_id = format!("##toast_{}", n.id);
@@ -369,8 +409,8 @@ fn render_toast(
                 | WindowFlags::NO_NAV,
         )
         .build(|| {
-            let win_pos  = ui.window_pos();
-            let accent   = n.resolved_accent(c);
+            let win_pos = ui.window_pos();
+            let accent = n.resolved_accent(c);
 
             // ── Accent strip (left edge) ────────────────────────────────────
             {
@@ -379,7 +419,9 @@ fn render_toast(
                     [win_pos[0], win_pos[1]],
                     [win_pos[0] + cfg.accent_strip, win_pos[1] + est_h],
                     rgba_f32(accent[0], accent[1], accent[2], accent[3] * alpha),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
 
                 // ── Severity icon ───────────────────────────────────────────
                 if n.show_icon {
@@ -387,7 +429,11 @@ fn render_toast(
                     let icon_cx = win_pos[0] + cfg.accent_strip + cfg.padding[0] + icon_r;
                     let icon_cy = win_pos[1] + cfg.padding[1] + icon_r + 1.0;
                     icons::draw_severity(
-                        &wdl, n.severity, icon_cx, icon_cy, icon_r,
+                        &wdl,
+                        n.severity,
+                        icon_cx,
+                        icon_cy,
+                        icon_r,
                         rgba_f32(accent[0], accent[1], accent[2], accent[3] * alpha),
                         rgba_f32(c.bg[0], c.bg[1], c.bg[2], alpha),
                     );
@@ -404,21 +450,30 @@ fn render_toast(
                     let py0 = win_pos[1] + est_h - cfg.progress_height;
                     let py1 = win_pos[1] + est_h;
                     wdl.add_rect(
-                        [px0, py0], [px1, py1],
-                        rgba_f32(c.progress_bg[0], c.progress_bg[1], c.progress_bg[2],
-                                 c.progress_bg[3] * alpha),
-                    ).filled(true).build();
+                        [px0, py0],
+                        [px1, py1],
+                        rgba_f32(
+                            c.progress_bg[0],
+                            c.progress_bg[1],
+                            c.progress_bg[2],
+                            c.progress_bg[3] * alpha,
+                        ),
+                    )
+                    .filled(true)
+                    .build();
                     wdl.add_rect(
                         [px0, py0],
                         [px0 + (px1 - px0) * frac, py1],
                         rgba_f32(accent[0], accent[1], accent[2], accent[3] * alpha),
-                    ).filled(true).build();
+                    )
+                    .filled(true)
+                    .build();
                 }
             } // wdl dropped
 
             // ── Inner content laid out with manual cursor positioning ────────
-            let content_left = cfg.accent_strip + cfg.padding[0]
-                + if n.show_icon { 22.0 } else { 0.0 };
+            let content_left =
+                cfg.accent_strip + cfg.padding[0] + if n.show_icon { 22.0 } else { 0.0 };
             let content_right = cfg.width - cfg.padding[0] - if n.closable { 18.0 } else { 0.0 };
             let content_w = (content_right - content_left).max(1.0);
 
@@ -432,28 +487,31 @@ fn render_toast(
             if !n.body.is_empty() {
                 ui.set_cursor_pos([content_left, cfg.padding[1] + calc_text_size("Mg")[1] + 2.0]);
                 let _bc = ui.push_style_color(StyleColor::Text, c.body);
-                let _wrap = ui.push_text_wrap_pos(
-                    ui.window_pos()[0] + content_left + content_w,
-                );
+                let _wrap = ui.push_text_wrap_pos(ui.window_pos()[0] + content_left + content_w);
                 ui.text_wrapped(&n.body);
                 drop(_bc);
             }
 
             // Action buttons row (below body) — anchored near bottom.
             if !n.actions.is_empty() {
-                let row_y = est_h - cfg.padding[1]
+                let row_y = est_h
+                    - cfg.padding[1]
                     - if n.show_progress && matches!(n.duration, Duration::Timed(_)) {
                         cfg.progress_height + 2.0 + 22.0
-                    } else { 22.0 };
+                    } else {
+                        22.0
+                    };
                 ui.set_cursor_pos([content_left, row_y]);
 
-                let _bc  = ui.push_style_color(StyleColor::Button, c.btn_action);
+                let _bc = ui.push_style_color(StyleColor::Button, c.btn_action);
                 let _bch = ui.push_style_color(StyleColor::ButtonHovered, c.btn_action_hover);
                 let _bca = ui.push_style_color(StyleColor::ButtonActive, c.btn_action_active);
                 let _btc = ui.push_style_color(StyleColor::Text, c.btn_action_text);
 
                 for (idx, act) in n.actions.iter().enumerate() {
-                    if idx > 0 { ui.same_line(); }
+                    if idx > 0 {
+                        ui.same_line();
+                    }
                     let label = format!("{}##act_{}_{}", act.label, n.id, act.id);
                     if ui.button(&label) {
                         outcome.action_clicked = Some(act.id);
@@ -464,24 +522,24 @@ fn render_toast(
             // ── Close button (invisible hit target + custom × glyph) ────────
             if n.closable {
                 let close_size = 14.0;
-                ui.set_cursor_pos([
-                    cfg.width - cfg.padding[0] - close_size,
-                    cfg.padding[1],
-                ]);
-                let clicked = ui.invisible_button(
-                    format!("##close_{}", n.id),
-                    [close_size, close_size],
-                );
+                ui.set_cursor_pos([cfg.width - cfg.padding[0] - close_size, cfg.padding[1]]);
+                let clicked =
+                    ui.invisible_button(format!("##close_{}", n.id), [close_size, close_size]);
                 let hov = ui.is_item_hovered();
                 let col = if hov { c.close_hover } else { c.close };
                 let cx = win_pos[0] + cfg.width - cfg.padding[0] - close_size * 0.5;
                 let cy = win_pos[1] + cfg.padding[1] + close_size * 0.5;
                 let wdl = ui.get_window_draw_list();
                 icons::draw_close_x(
-                    &wdl, cx, cy, close_size * 0.30,
+                    &wdl,
+                    cx,
+                    cy,
+                    close_size * 0.30,
                     rgba_f32(col[0], col[1], col[2], col[3] * alpha),
                 );
-                if clicked { outcome.close_clicked = true; }
+                if clicked {
+                    outcome.close_clicked = true;
+                }
             }
 
             // ── Whole-toast hover + click detection ─────────────────────────

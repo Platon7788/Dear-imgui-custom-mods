@@ -40,7 +40,9 @@ pub(crate) fn c_key_down_physical() -> bool {
 pub(crate) fn set_clipboard(text: &str) {
     let sanitized: String = text.chars().filter(|&c| c != '\0').collect();
     if let Ok(c_str) = std::ffi::CString::new(sanitized) {
-        unsafe { dear_imgui_rs::sys::igSetClipboardText(c_str.as_ptr()); }
+        unsafe {
+            dear_imgui_rs::sys::igSetClipboardText(c_str.as_ptr());
+        }
     }
 }
 
@@ -63,7 +65,9 @@ pub(crate) fn activate_english_layout() {
         SAVED_LAYOUT.store(current as isize, std::sync::atomic::Ordering::Relaxed);
         // 0x0409 = English (US). Low word is LANGID.
         let en_us: usize = 0x0409_0409;
-        unsafe { ActivateKeyboardLayout(en_us, 0); }
+        unsafe {
+            ActivateKeyboardLayout(en_us, 0);
+        }
     }
 }
 
@@ -76,7 +80,9 @@ pub(crate) fn restore_keyboard_layout() {
         }
         let saved = SAVED_LAYOUT.load(std::sync::atomic::Ordering::Relaxed);
         if saved != 0 {
-            unsafe { ActivateKeyboardLayout(saved as usize, 0); }
+            unsafe {
+                ActivateKeyboardLayout(saved as usize, 0);
+            }
             SAVED_LAYOUT.store(0, std::sync::atomic::Ordering::Relaxed);
         }
     }

@@ -50,7 +50,9 @@ pub fn hwnd_of(window: &winit::window::Window) -> Option<isize> {
 /// Extract the HWND from a winit window (no-op on non-Windows).
 #[cfg(not(windows))]
 #[allow(unused_variables)]
-pub fn hwnd_of(_window: &winit::window::Window) -> Option<isize> { None }
+pub fn hwnd_of(_window: &winit::window::Window) -> Option<isize> {
+    None
+}
 
 // ── DWM dark title bar ────────────────────────────────────────────────────────
 
@@ -64,9 +66,7 @@ pub fn hwnd_of(_window: &winit::window::Window) -> Option<isize> { None }
 /// Only available on Windows. On other platforms this is a no-op that compiles away.
 #[cfg(windows)]
 pub fn set_titlebar_dark_mode(hwnd: isize, dark: bool) {
-    use windows_sys::Win32::Graphics::Dwm::{
-        DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE,
-    };
+    use windows_sys::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
     if hwnd == 0 {
         return;
     }
@@ -136,7 +136,9 @@ pub fn set_rounded_corners(hwnd: isize, radius: i32) -> bool {
 #[cfg(not(windows))]
 #[allow(unused_variables)]
 /// No-op on non-Windows platforms.
-pub fn set_rounded_corners(_hwnd: isize, _radius: i32) -> bool { false }
+pub fn set_rounded_corners(_hwnd: isize, _radius: i32) -> bool {
+    false
+}
 
 /// Re-apply the rounded window region after a resize (Win10-only path).
 ///
@@ -164,7 +166,12 @@ fn apply_rounded_region_raw(hwnd: isize, radius: i32) {
     use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
     use windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect;
 
-    let mut rect: RECT = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut rect: RECT = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
     // SAFETY: GetClientRect writes into our stack-allocated RECT. hwnd is the caller's responsibility.
     let ok = unsafe { GetClientRect(hwnd as _, &mut rect) };
     if ok == 0 {
@@ -202,11 +209,11 @@ fn apply_rounded_region_raw(hwnd: isize, radius: i32) {
 pub fn cursor_icon_for_edge(edge: Option<ResizeEdge>) -> winit::window::CursorIcon {
     use winit::window::CursorIcon;
     match edge {
-        None                        => CursorIcon::Default,
-        Some(ResizeEdge::North)     => CursorIcon::NResize,
-        Some(ResizeEdge::South)     => CursorIcon::SResize,
-        Some(ResizeEdge::East)      => CursorIcon::EResize,
-        Some(ResizeEdge::West)      => CursorIcon::WResize,
+        None => CursorIcon::Default,
+        Some(ResizeEdge::North) => CursorIcon::NResize,
+        Some(ResizeEdge::South) => CursorIcon::SResize,
+        Some(ResizeEdge::East) => CursorIcon::EResize,
+        Some(ResizeEdge::West) => CursorIcon::WResize,
         Some(ResizeEdge::NorthEast) => CursorIcon::NeResize,
         Some(ResizeEdge::NorthWest) => CursorIcon::NwResize,
         Some(ResizeEdge::SouthEast) => CursorIcon::SeResize,
@@ -221,10 +228,10 @@ pub fn cursor_icon_for_edge(edge: Option<ResizeEdge>) -> winit::window::CursorIc
 pub fn resize_direction_of(edge: ResizeEdge) -> winit::window::ResizeDirection {
     use winit::window::ResizeDirection;
     match edge {
-        ResizeEdge::North     => ResizeDirection::North,
-        ResizeEdge::South     => ResizeDirection::South,
-        ResizeEdge::East      => ResizeDirection::East,
-        ResizeEdge::West      => ResizeDirection::West,
+        ResizeEdge::North => ResizeDirection::North,
+        ResizeEdge::South => ResizeDirection::South,
+        ResizeEdge::East => ResizeDirection::East,
+        ResizeEdge::West => ResizeDirection::West,
         ResizeEdge::NorthEast => ResizeDirection::NorthEast,
         ResizeEdge::NorthWest => ResizeDirection::NorthWest,
         ResizeEdge::SouthEast => ResizeDirection::SouthEast,
@@ -245,8 +252,8 @@ pub fn set_os_resize_cursor(edge: Option<ResizeEdge>) {
     };
     let id = match edge {
         None => return,
-        Some(ResizeEdge::North) | Some(ResizeEdge::South)         => IDC_SIZENS,
-        Some(ResizeEdge::East)  | Some(ResizeEdge::West)          => IDC_SIZEWE,
+        Some(ResizeEdge::North) | Some(ResizeEdge::South) => IDC_SIZENS,
+        Some(ResizeEdge::East) | Some(ResizeEdge::West) => IDC_SIZEWE,
         Some(ResizeEdge::NorthWest) | Some(ResizeEdge::SouthEast) => IDC_SIZENWSE,
         Some(ResizeEdge::NorthEast) | Some(ResizeEdge::SouthWest) => IDC_SIZENESW,
     };
@@ -279,26 +286,74 @@ mod tests {
 
     #[test]
     fn cursor_icon_covers_all_edges() {
-        assert_eq!(cursor_icon_for_edge(Some(ResizeEdge::North)),     CursorIcon::NResize);
-        assert_eq!(cursor_icon_for_edge(Some(ResizeEdge::South)),     CursorIcon::SResize);
-        assert_eq!(cursor_icon_for_edge(Some(ResizeEdge::East)),      CursorIcon::EResize);
-        assert_eq!(cursor_icon_for_edge(Some(ResizeEdge::West)),      CursorIcon::WResize);
-        assert_eq!(cursor_icon_for_edge(Some(ResizeEdge::NorthEast)), CursorIcon::NeResize);
-        assert_eq!(cursor_icon_for_edge(Some(ResizeEdge::NorthWest)), CursorIcon::NwResize);
-        assert_eq!(cursor_icon_for_edge(Some(ResizeEdge::SouthEast)), CursorIcon::SeResize);
-        assert_eq!(cursor_icon_for_edge(Some(ResizeEdge::SouthWest)), CursorIcon::SwResize);
+        assert_eq!(
+            cursor_icon_for_edge(Some(ResizeEdge::North)),
+            CursorIcon::NResize
+        );
+        assert_eq!(
+            cursor_icon_for_edge(Some(ResizeEdge::South)),
+            CursorIcon::SResize
+        );
+        assert_eq!(
+            cursor_icon_for_edge(Some(ResizeEdge::East)),
+            CursorIcon::EResize
+        );
+        assert_eq!(
+            cursor_icon_for_edge(Some(ResizeEdge::West)),
+            CursorIcon::WResize
+        );
+        assert_eq!(
+            cursor_icon_for_edge(Some(ResizeEdge::NorthEast)),
+            CursorIcon::NeResize
+        );
+        assert_eq!(
+            cursor_icon_for_edge(Some(ResizeEdge::NorthWest)),
+            CursorIcon::NwResize
+        );
+        assert_eq!(
+            cursor_icon_for_edge(Some(ResizeEdge::SouthEast)),
+            CursorIcon::SeResize
+        );
+        assert_eq!(
+            cursor_icon_for_edge(Some(ResizeEdge::SouthWest)),
+            CursorIcon::SwResize
+        );
     }
 
     #[test]
     fn resize_direction_covers_all_edges() {
-        assert!(matches!(resize_direction_of(ResizeEdge::North),     ResizeDirection::North));
-        assert!(matches!(resize_direction_of(ResizeEdge::South),     ResizeDirection::South));
-        assert!(matches!(resize_direction_of(ResizeEdge::East),      ResizeDirection::East));
-        assert!(matches!(resize_direction_of(ResizeEdge::West),      ResizeDirection::West));
-        assert!(matches!(resize_direction_of(ResizeEdge::NorthEast), ResizeDirection::NorthEast));
-        assert!(matches!(resize_direction_of(ResizeEdge::NorthWest), ResizeDirection::NorthWest));
-        assert!(matches!(resize_direction_of(ResizeEdge::SouthEast), ResizeDirection::SouthEast));
-        assert!(matches!(resize_direction_of(ResizeEdge::SouthWest), ResizeDirection::SouthWest));
+        assert!(matches!(
+            resize_direction_of(ResizeEdge::North),
+            ResizeDirection::North
+        ));
+        assert!(matches!(
+            resize_direction_of(ResizeEdge::South),
+            ResizeDirection::South
+        ));
+        assert!(matches!(
+            resize_direction_of(ResizeEdge::East),
+            ResizeDirection::East
+        ));
+        assert!(matches!(
+            resize_direction_of(ResizeEdge::West),
+            ResizeDirection::West
+        ));
+        assert!(matches!(
+            resize_direction_of(ResizeEdge::NorthEast),
+            ResizeDirection::NorthEast
+        ));
+        assert!(matches!(
+            resize_direction_of(ResizeEdge::NorthWest),
+            ResizeDirection::NorthWest
+        ));
+        assert!(matches!(
+            resize_direction_of(ResizeEdge::SouthEast),
+            ResizeDirection::SouthEast
+        ));
+        assert!(matches!(
+            resize_direction_of(ResizeEdge::SouthWest),
+            ResizeDirection::SouthWest
+        ));
     }
 
     // Platform-gated smoke tests: must not panic on a null HWND.

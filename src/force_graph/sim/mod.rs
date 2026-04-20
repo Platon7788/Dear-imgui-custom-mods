@@ -23,9 +23,9 @@ pub(crate) struct Simulation {
 
     // ── Scratch buffers reused across ticks (avoids per-tick heap allocs) ─────
     // After the first few ticks these have stable capacity and never reallocate.
-    scratch_data:      Vec<(NodeId, [f32; 2], f32, bool)>,
-    scratch_index:     HashMap<NodeId, usize>,
-    scratch_forces:    Vec<[f32; 2]>,
+    scratch_data: Vec<(NodeId, [f32; 2], f32, bool)>,
+    scratch_index: HashMap<NodeId, usize>,
+    scratch_forces: Vec<[f32; 2]>,
     scratch_particles: Vec<([f32; 2], f32)>,
 }
 
@@ -41,9 +41,9 @@ impl Simulation {
             iter_count: 0,
             sleep_counter: 0,
             asleep: false,
-            scratch_data:      Vec::new(),
-            scratch_index:     HashMap::new(),
-            scratch_forces:    Vec::new(),
+            scratch_data: Vec::new(),
+            scratch_index: HashMap::new(),
+            scratch_forces: Vec::new(),
             scratch_particles: Vec::new(),
         }
     }
@@ -85,7 +85,8 @@ impl Simulation {
             self.scratch_index.insert(*id, i);
         }
         self.scratch_forces.clear();
-        self.scratch_forces.resize(self.scratch_data.len(), [0.0_f32; 2]);
+        self.scratch_forces
+            .resize(self.scratch_data.len(), [0.0_f32; 2]);
 
         // Repulsion: Barnes-Hut O(N log N) for large graphs, O(N²) otherwise.
         let use_bh = self.scratch_data.len() > 50 && config.barnes_hut_theta > 0.0;
@@ -93,7 +94,8 @@ impl Simulation {
             self.scratch_particles.clear();
             self.scratch_particles
                 .extend(self.scratch_data.iter().map(|(_, pos, _, _)| (*pos, 1.0)));
-            let tree = barnes_hut::BarnesHutTree::new(&self.scratch_particles, config.barnes_hut_theta);
+            let tree =
+                barnes_hut::BarnesHutTree::new(&self.scratch_particles, config.barnes_hut_theta);
             for (i, (_, pos, _, _)) in self.scratch_data.iter().enumerate() {
                 let f = tree.force(*pos, config.repulsion);
                 self.scratch_forces[i][0] += f[0];
@@ -124,7 +126,13 @@ impl Simulation {
                 Some(n) => n.pos,
                 None => continue,
             };
-            let f = spring::spring_force(pos_a, pos_b, config.attraction, edge.weight, config.link_distance);
+            let f = spring::spring_force(
+                pos_a,
+                pos_b,
+                config.attraction,
+                edge.weight,
+                config.link_distance,
+            );
             if let Some(&ia) = self.scratch_index.get(&edge.from) {
                 self.scratch_forces[ia][0] += f[0];
                 self.scratch_forces[ia][1] += f[1];
@@ -181,7 +189,11 @@ impl Simulation {
                 node.vel = [0.0, 0.0];
                 continue;
             }
-            let f = self.scratch_index.get(&id).map(|&i| self.scratch_forces[i]).unwrap_or([0.0, 0.0]);
+            let f = self
+                .scratch_index
+                .get(&id)
+                .map(|&i| self.scratch_forces[i])
+                .unwrap_or([0.0, 0.0]);
             let decay_factor = (1.0 - config.velocity_decay * dt).max(0.0);
             node.vel[0] = (node.vel[0] + f[0] * dt) * decay_factor;
             node.vel[1] = (node.vel[1] + f[1] * dt) * decay_factor;
@@ -260,30 +272,22 @@ mod tests {
         let dy = pos_b[1] - pos_a[1];
         let dist = (dx * dx + dy * dy).sqrt();
         // Nodes should be closer to the 80-unit rest length than to 400.
-        assert!(
-            dist < 250.0,
-            "Expected nodes to converge, dist={dist:.1}"
-        );
+        assert!(dist < 250.0, "Expected nodes to converge, dist={dist:.1}");
     }
 
     /// A cycle of 4 nodes forms a roughly symmetric layout (all positions finite).
     #[test]
     fn cycle_of_4_forms_regular_polygon() {
         let mut graph = GraphData::new();
-        let ids: Vec<_> = [
-            [-10.0_f32, 0.0_f32],
-            [10.0, 0.0],
-            [0.0, -10.0],
-            [0.0, 10.0],
-        ]
-        .iter()
-        .enumerate()
-        .map(|(i, pos)| {
-            let id = graph.add_node(NodeStyle::new(format!("n{i}")));
-            graph.nodes.get_mut(id).unwrap().pos = *pos;
-            id
-        })
-        .collect();
+        let ids: Vec<_> = [[-10.0_f32, 0.0_f32], [10.0, 0.0], [0.0, -10.0], [0.0, 10.0]]
+            .iter()
+            .enumerate()
+            .map(|(i, pos)| {
+                let id = graph.add_node(NodeStyle::new(format!("n{i}")));
+                graph.nodes.get_mut(id).unwrap().pos = *pos;
+                id
+            })
+            .collect();
 
         let n = ids.len();
         for i in 0..n {

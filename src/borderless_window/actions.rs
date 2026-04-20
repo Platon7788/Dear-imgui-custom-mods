@@ -60,7 +60,10 @@ pub struct TitlebarResult {
 
 impl TitlebarResult {
     pub(crate) fn none() -> Self {
-        Self { action: WindowAction::None, hover_edge: None }
+        Self {
+            action: WindowAction::None,
+            hover_edge: None,
+        }
     }
 }
 

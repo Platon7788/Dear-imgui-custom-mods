@@ -323,17 +323,17 @@ impl Default for GraphColors {
     /// Dark-mode defaults (NxT palette, consistent with `theme::dark`).
     fn default() -> Self {
         Self {
-            background:       [0.11, 0.12, 0.15, 1.00],
-            grid_line:        [0.20, 0.22, 0.27, 0.50],
-            node_default:     [0.28, 0.46, 0.68, 1.00],
-            node_hover:       [0.38, 0.60, 0.85, 1.00],
-            node_selected:    [0.55, 0.80, 1.00, 1.00],
-            node_outline:     [0.18, 0.20, 0.26, 1.00],
-            edge_default:     [0.35, 0.40, 0.48, 0.80],
-            edge_highlight:   [0.55, 0.70, 0.90, 1.00],
-            label_text:       [0.88, 0.90, 0.92, 1.00],
-            selection_fill:   [0.35, 0.55, 0.80, 0.15],
-            selection_outline:[0.35, 0.55, 0.80, 0.70],
+            background: [0.11, 0.12, 0.15, 1.00],
+            grid_line: [0.20, 0.22, 0.27, 0.50],
+            node_default: [0.28, 0.46, 0.68, 1.00],
+            node_hover: [0.38, 0.60, 0.85, 1.00],
+            node_selected: [0.55, 0.80, 1.00, 1.00],
+            node_outline: [0.18, 0.20, 0.26, 1.00],
+            edge_default: [0.35, 0.40, 0.48, 0.80],
+            edge_highlight: [0.55, 0.70, 0.90, 1.00],
+            label_text: [0.88, 0.90, 0.92, 1.00],
+            selection_fill: [0.35, 0.55, 0.80, 0.15],
+            selection_outline: [0.35, 0.55, 0.80, 0.70],
         }
     }
 }

@@ -141,10 +141,7 @@ impl Camera {
             .clamp(self.zoom_min, self.zoom_max);
         let cx = (bounds_min[0] + bounds_max[0]) * 0.5;
         let cy = (bounds_min[1] + bounds_max[1]) * 0.5;
-        let target_offset = [
-            canvas_size[0] * 0.5 - cx * z,
-            canvas_size[1] * 0.5 - cy * z,
-        ];
+        let target_offset = [canvas_size[0] * 0.5 - cx * z, canvas_size[1] * 0.5 - cy * z];
         self.animate_to(target_offset, z);
     }
 

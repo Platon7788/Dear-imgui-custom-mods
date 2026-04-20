@@ -44,5 +44,12 @@ fn bench_next(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_titlebar, bench_nav, bench_dialog, bench_statusbar, bench_next);
+criterion_group!(
+    benches,
+    bench_titlebar,
+    bench_nav,
+    bench_dialog,
+    bench_statusbar,
+    bench_next
+);
 criterion_main!(benches);

@@ -16,18 +16,32 @@ use crate::code_editor::token::{Token, TokenKind};
 pub struct HexLang;
 
 impl SyntaxDefinition for HexLang {
-    fn name(&self) -> &str { "Hex" }
+    fn name(&self) -> &str {
+        "Hex"
+    }
 
     fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
         (tokenize(line), false)
     }
 
-    fn line_comment_prefix(&self) -> Option<&str> { Some("//") }
-    fn block_comment_delimiters(&self) -> Option<(&str, &str)> { None }
-    fn bracket_pairs(&self) -> &[(char, char)] { &[] }
-    fn auto_indent_after(&self) -> &[char] { &[] }
-    fn auto_dedent_on(&self) -> &[char] { &[] }
-    fn auto_close_pairs(&self) -> &[(&str, &str)] { &[] }
+    fn line_comment_prefix(&self) -> Option<&str> {
+        Some("//")
+    }
+    fn block_comment_delimiters(&self) -> Option<(&str, &str)> {
+        None
+    }
+    fn bracket_pairs(&self) -> &[(char, char)] {
+        &[]
+    }
+    fn auto_indent_after(&self) -> &[char] {
+        &[]
+    }
+    fn auto_dedent_on(&self) -> &[char] {
+        &[]
+    }
+    fn auto_close_pairs(&self) -> &[(&str, &str)] {
+        &[]
+    }
 
     fn is_word_char(&self, c: char) -> bool {
         c.is_ascii_hexdigit() || c == ' '
@@ -57,15 +71,25 @@ fn tokenize(line: &str) -> Vec<Token> {
     while i < len {
         // ── Line comment ─────────────────────────────────────────────────
         if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'/' {
-            tokens.push(Token { kind: TokenKind::Comment, start: i, len: len - i });
+            tokens.push(Token {
+                kind: TokenKind::Comment,
+                start: i,
+                len: len - i,
+            });
             return tokens;
         }
 
         // ── Whitespace ───────────────────────────────────────────────────
         if bytes[i] == b' ' || bytes[i] == b'\t' {
             let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') { i += 1; }
-            tokens.push(Token { kind: TokenKind::Whitespace, start, len: i - start });
+            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Whitespace,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
@@ -82,21 +106,29 @@ fn tokenize(line: &str) -> Vec<Token> {
                 let lo = hex_nibble(bytes[start + 1]);
                 let val = (hi << 4) | lo;
                 match val {
-                    0x00       => TokenKind::HexNull,
-                    0xFF       => TokenKind::HexFF,
+                    0x00 => TokenKind::HexNull,
+                    0xFF => TokenKind::HexFF,
                     0x20..=0x7E => TokenKind::HexPrintable,
-                    _          => TokenKind::HexDefault,
+                    _ => TokenKind::HexDefault,
                 }
             } else {
                 TokenKind::Attribute // lone nibble — amber warning
             };
-            tokens.push(Token { kind, start, len: i - start });
+            tokens.push(Token {
+                kind,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // ── Invalid character ────────────────────────────────────────────
         let ch_len = line[i..].chars().next().map_or(1, |c| c.len_utf8());
-        tokens.push(Token { kind: TokenKind::Operator, start: i, len: ch_len });
+        tokens.push(Token {
+            kind: TokenKind::Operator,
+            start: i,
+            len: ch_len,
+        });
         i += ch_len;
     }
 
@@ -113,15 +145,18 @@ mod tests {
 
     fn tok(line: &str) -> Vec<(TokenKind, String)> {
         let (tokens, _) = tokenize_line(line, &Language::Hex, false);
-        tokens.iter().map(|t| (t.kind, line[t.start..t.start + t.len].to_string())).collect()
+        tokens
+            .iter()
+            .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
+            .collect()
     }
 
     #[test]
     fn byte_values() {
         let toks = tok("00 41 FF");
-        assert_eq!(toks[0].0, TokenKind::HexNull);      // 00
-        assert_eq!(toks[2].0, TokenKind::HexPrintable);  // 41 = 'A'
-        assert_eq!(toks[4].0, TokenKind::HexFF);         // FF
+        assert_eq!(toks[0].0, TokenKind::HexNull); // 00
+        assert_eq!(toks[2].0, TokenKind::HexPrintable); // 41 = 'A'
+        assert_eq!(toks[4].0, TokenKind::HexFF); // FF
     }
 
     #[test]

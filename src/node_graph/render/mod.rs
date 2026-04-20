@@ -90,21 +90,25 @@ pub(crate) fn render_graph<T>(
 
     // Snapshot draw order into scratch buffer (zero alloc after first frame).
     state.scratch_draw_order.clear();
-    state.scratch_draw_order.extend_from_slice(&state.draw_order);
+    state
+        .scratch_draw_order
+        .extend_from_slice(&state.draw_order);
 
     // ── Frustum culling ──────────────────────────────────────────────────
     let vp = &state.viewport;
     let zoom = vp.zoom;
     let margin = 50.0;
-    let vp_left   = -vp.offset[0] / zoom - margin;
-    let vp_top    = -vp.offset[1] / zoom - margin;
-    let vp_right  = vp_left + canvas_size[0] / zoom + margin * 2.0;
-    let vp_bottom = vp_top  + canvas_size[1] / zoom + margin * 2.0;
+    let vp_left = -vp.offset[0] / zoom - margin;
+    let vp_top = -vp.offset[1] / zoom - margin;
+    let vp_right = vp_left + canvas_size[0] / zoom + margin * 2.0;
+    let vp_bottom = vp_top + canvas_size[1] / zoom + margin * 2.0;
 
     state.scratch_visible.clear();
     for &id in &state.scratch_draw_order {
         if let Some(node) = graph.get_node(id) {
-            let nw = viewer.node_width(&node.value).unwrap_or(config.node_min_width);
+            let nw = viewer
+                .node_width(&node.value)
+                .unwrap_or(config.node_min_width);
             let nh = config.node_height(
                 viewer.inputs(&node.value),
                 viewer.outputs(&node.value),
@@ -112,8 +116,10 @@ pub(crate) fn render_graph<T>(
                 node.open,
                 viewer.body_height(&node.value),
             );
-            if node.pos[0] + nw > vp_left && node.pos[0] < vp_right
-                && node.pos[1] + nh > vp_top && node.pos[1] < vp_bottom
+            if node.pos[0] + nw > vp_left
+                && node.pos[0] < vp_right
+                && node.pos[1] + nh > vp_top
+                && node.pos[1] < vp_bottom
             {
                 state.scratch_visible.push(id);
             }
@@ -145,20 +151,42 @@ pub(crate) fn render_graph<T>(
 
         // Wires behind nodes (default).
         if draw_wires && wire_layer == WireLayer::BehindNodes {
-            wires::render_wires(&draw, graph, state, config, viewer, ui.time() as f32, &aabb_buf);
+            wires::render_wires(
+                &draw,
+                graph,
+                state,
+                config,
+                viewer,
+                ui.time() as f32,
+                &aabb_buf,
+            );
         }
 
         // ── Nodes ────────────────────────────────────────────────────────
         for &node_id in &state.scratch_visible {
             nodes::render_node_immutable(
-                &draw, graph, state, config, viewer, node_id,
-                font, base_font_size,
+                &draw,
+                graph,
+                state,
+                config,
+                viewer,
+                node_id,
+                font,
+                base_font_size,
             );
         }
 
         // Wires above nodes
         if draw_wires && wire_layer == WireLayer::AboveNodes {
-            wires::render_wires(&draw, graph, state, config, viewer, ui.time() as f32, &aabb_buf);
+            wires::render_wires(
+                &draw,
+                graph,
+                state,
+                config,
+                viewer,
+                ui.time() as f32,
+                &aabb_buf,
+            );
         }
 
         // ── Dragging wire ────────────────────────────────────────────────
@@ -169,9 +197,13 @@ pub(crate) fn render_graph<T>(
         // ── Rectangle selection ──────────────────────────────────────────
         if let Some(ref rect_sel) = state.rect_select {
             let r = rect_sel.rect();
-            draw.add_rect([r[0], r[1]], [r[2], r[3]], c32(colors.selection_rect_fill, 30))
-                .filled(true)
-                .build();
+            draw.add_rect(
+                [r[0], r[1]],
+                [r[2], r[3]],
+                c32(colors.selection_rect_fill, 30),
+            )
+            .filled(true)
+            .build();
             draw.add_rect([r[0], r[1]], [r[2], r[3]], c32(colors.selection_rect, 180))
                 .filled(false)
                 .thickness(1.0)
@@ -200,8 +232,14 @@ pub(crate) fn render_graph<T>(
         ui.with_clip_rect(canvas_pos, canvas_max, true, || {
             for &node_id in &state.scratch_visible {
                 nodes::render_node_body(
-                    graph, state, config, viewer, ui, node_id,
-                    body_base_font_size, body_item_spacing,
+                    graph,
+                    state,
+                    config,
+                    viewer,
+                    ui,
+                    node_id,
+                    body_base_font_size,
+                    body_item_spacing,
                 );
             }
         });
@@ -209,9 +247,16 @@ pub(crate) fn render_graph<T>(
 
     // ── Input handling (sets state.hovered via hit testing) ────────────
     input::handle_input(
-        graph, state, config, viewer, ui,
-        canvas_pos, canvas_size, canvas_hovered,
-        &aabb_buf, &mut actions,
+        graph,
+        state,
+        config,
+        viewer,
+        ui,
+        canvas_pos,
+        canvas_size,
+        canvas_hovered,
+        &aabb_buf,
+        &mut actions,
     );
 
     // ── Tooltip hover tracking (MUST run after handle_input) ─────────

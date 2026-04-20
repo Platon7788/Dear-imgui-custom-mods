@@ -8,8 +8,8 @@
 //! [`ForceConfig`] controls Barnes-Hut force-directed physics separately so
 //! callers can tweak the simulation without touching visual settings.
 
-use crate::theme::Theme;
 use super::style::GraphColors;
+use crate::theme::Theme;
 
 /// Heap-allocated custom node-colour function for [`ColorMode::Custom`].
 pub type NodeColorFn =
@@ -54,7 +54,12 @@ pub struct ColorGroup {
 impl ColorGroup {
     /// Create a new enabled color group.
     pub fn new(name: impl Into<String>, query: ColorGroupQuery, color: [f32; 4]) -> Self {
-        Self { name: name.into(), query, color, enabled: true }
+        Self {
+            name: name.into(),
+            query,
+            color,
+            enabled: true,
+        }
     }
 }
 
@@ -209,16 +214,16 @@ pub struct ForceConfig {
 impl Default for ForceConfig {
     fn default() -> Self {
         Self {
-            barnes_hut_theta:  0.9,
-            repulsion:         120.0,
-            attraction:        0.04,
-            center_pull:       0.002,
-            collision_radius:  20.0,
-            link_distance:     80.0,
-            velocity_decay:    0.6,
-            gravity_strength:  0.0,
-            radius_by_degree:  true,
-            radius_base:       4.0,
+            barnes_hut_theta: 0.9,
+            repulsion: 120.0,
+            attraction: 0.04,
+            center_pull: 0.002,
+            collision_radius: 20.0,
+            link_distance: 80.0,
+            velocity_decay: 0.6,
+            gravity_strength: 0.0,
+            radius_by_degree: true,
+            radius_base: 4.0,
             radius_per_degree: 1.5,
         }
     }
@@ -286,7 +291,6 @@ pub struct ViewerConfig {
     pub color_mode: ColorMode,
 
     // ── Interaction ───────────────────────────────────────────────────────────
-
     /// When `true`, nodes can be dragged with the mouse.
     pub drag_enabled: bool,
     /// When `true`, a right-click context menu is shown on nodes.
@@ -296,7 +300,6 @@ pub struct ViewerConfig {
     pub pin_on_drag: bool,
 
     // ── Hover appearance ─────────────────────────────────────────────────────
-
     /// Opacity applied to nodes/edges that are NOT the hovered node or its
     /// direct neighbours. `0.0` = fully hidden, `1.0` = no fade. Default `0.15`.
     pub hover_fade_opacity: f32,
@@ -304,7 +307,6 @@ pub struct ViewerConfig {
     pub glow_on_hover: bool,
 
     // ── Label control ─────────────────────────────────────────────────────────
-
     /// Controls label visibility relative to zoom. `0.0` = default (labels
     /// appear as you zoom in). Negative = labels visible even when zoomed out.
     /// Positive = labels only visible when significantly zoomed in.
@@ -312,13 +314,11 @@ pub struct ViewerConfig {
     pub text_fade_threshold: f32,
 
     // ── Node size ────────────────────────────────────────────────────────────
-
     /// Global multiplier applied to all node radii after per-node calculation.
     /// `1.0` = no change. Default `1.0`.
     pub node_size_multiplier: f32,
 
     // ── Edge style ────────────────────────────────────────────────────────────
-
     /// Global multiplier applied to all edge line thicknesses. Default `1.0`.
     pub edge_thickness_multiplier: f32,
     /// Bézier curve amount. `0.0` = straight lines. `1.0` = fully curved.
@@ -326,13 +326,11 @@ pub struct ViewerConfig {
     pub edge_curve: f32,
 
     // ── Color groups ─────────────────────────────────────────────────────────
-
     /// Ordered list of color groups. The first matching group determines a
     /// node's fill color; non-matching nodes use [`Self::color_mode`].
     pub color_groups: Vec<ColorGroup>,
 
     // ── Visibility filters ────────────────────────────────────────────────────
-
     /// Show nodes with no edges (degree = 0). Default `true`.
     pub show_orphans: bool,
     /// Show [`super::style::NodeKind::Unresolved`] ghost nodes. Default `true`.
@@ -341,7 +339,6 @@ pub struct ViewerConfig {
     pub show_tags: bool,
 
     // ── Layout ────────────────────────────────────────────────────────────────
-
     /// Directional gravity vector applied in addition to center pull.
     /// `[0.0, 0.0]` = disabled. Example: `[0.0, 0.002]` gives a downward pull
     /// useful for hierarchical / call-graph layouts.
@@ -350,13 +347,11 @@ pub struct ViewerConfig {
     pub fit_padding: f32,
 
     // ── Depth filter ─────────────────────────────────────────────────────────
-
     /// When `true`, nodes beyond [`Self::depth_fade`] hops from the focused
     /// node are rendered more transparent (alpha multiplied by distance).
     pub depth_fade: bool,
 
     // ── Cluster visualisation (Phase C prep) ─────────────────────────────────
-
     /// Draw a convex-hull outline around nodes in the same Louvain community.
     /// Requires the metrics pass to have run. Phase C.
     pub cluster_hulls: bool,
@@ -369,37 +364,37 @@ pub struct ViewerConfig {
 impl Default for ViewerConfig {
     fn default() -> Self {
         Self {
-            theme:                     Theme::Dark,
-            colors_override:           None,
-            show_labels:               LabelVisibility::HoverOnly,
-            min_label_zoom:            0.6,
-            show_edge_labels:          false,
-            edge_arrow:                true,
-            edge_bundling:             false,
-            background_grid:           true,
-            minimap:                   false,
-            selection_mode:            SelectionMode::Additive,
-            lod_threshold:             5000,
-            time_travel:               None,
-            color_mode:                ColorMode::Static,
-            drag_enabled:              true,
-            context_menu_enabled:      true,
-            pin_on_drag:               true,
-            hover_fade_opacity:        0.15,
-            glow_on_hover:             true,
-            text_fade_threshold:       0.0,
-            node_size_multiplier:      1.0,
+            theme: Theme::Dark,
+            colors_override: None,
+            show_labels: LabelVisibility::HoverOnly,
+            min_label_zoom: 0.6,
+            show_edge_labels: false,
+            edge_arrow: true,
+            edge_bundling: false,
+            background_grid: true,
+            minimap: false,
+            selection_mode: SelectionMode::Additive,
+            lod_threshold: 5000,
+            time_travel: None,
+            color_mode: ColorMode::Static,
+            drag_enabled: true,
+            context_menu_enabled: true,
+            pin_on_drag: true,
+            hover_fade_opacity: 0.15,
+            glow_on_hover: true,
+            text_fade_threshold: 0.0,
+            node_size_multiplier: 1.0,
             edge_thickness_multiplier: 1.0,
-            edge_curve:                0.0,
-            color_groups:              Vec::new(),
-            show_orphans:              true,
-            show_unresolved:           true,
-            show_tags:                 true,
-            gravity_direction:         [0.0, 0.0],
-            fit_padding:               40.0,
-            depth_fade:                false,
-            cluster_hulls:             false,
-            search_highlight_mode:     true,
+            edge_curve: 0.0,
+            color_groups: Vec::new(),
+            show_orphans: true,
+            show_unresolved: true,
+            show_tags: true,
+            gravity_direction: [0.0, 0.0],
+            fit_padding: 40.0,
+            depth_fade: false,
+            cluster_hulls: false,
+            search_highlight_mode: true,
         }
     }
 }

@@ -95,7 +95,8 @@ impl<T> Graph<T> {
         }
 
         // Remove all wires connected to this node
-        self.wires.retain(|w| w.out_pin.node != id && w.in_pin.node != id);
+        self.wires
+            .retain(|w| w.out_pin.node != id && w.in_pin.node != id);
 
         let old = std::mem::replace(&mut self.nodes[idx], SlabEntry::Vacant(self.free_head));
         self.free_head = Some(id.0);
@@ -309,8 +310,14 @@ mod tests {
         let a = g.insert_node("a", [0.0, 0.0]);
         let b = g.insert_node("b", [100.0, 0.0]);
         let c = g.insert_node("c", [200.0, 0.0]);
-        g.connect(OutPinId { node: a, output: 0 }, InPinId { node: b, input: 0 });
-        g.connect(OutPinId { node: b, output: 0 }, InPinId { node: c, input: 0 });
+        g.connect(
+            OutPinId { node: a, output: 0 },
+            InPinId { node: b, input: 0 },
+        );
+        g.connect(
+            OutPinId { node: b, output: 0 },
+            InPinId { node: c, input: 0 },
+        );
         assert_eq!(g.wire_count(), 2);
         g.remove_node(b);
         assert_eq!(g.wire_count(), 0);
@@ -375,7 +382,10 @@ mod tests {
         g.insert_node("a", [0.0, 0.0]);
         let b = g.insert_node("b", [100.0, 0.0]);
         g.connect(
-            OutPinId { node: NodeId(0), output: 0 },
+            OutPinId {
+                node: NodeId(0),
+                output: 0,
+            },
             InPinId { node: b, input: 0 },
         );
         g.clear();

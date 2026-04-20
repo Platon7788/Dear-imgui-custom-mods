@@ -342,26 +342,27 @@ impl<T: PageItem> PageControl<T> {
     pub fn scroll_to_active(&mut self) {
         self.ensure_tab_widths();
         if let Some(active_id) = self.active
-            && let Some(idx) = self.pages.iter().position(|p| p.id == active_id) {
-                let cfg = &self.config;
-                let mut tx: f32 = 0.0;
-                for w in self.tab_widths_cache.iter().take(idx) {
-                    tx += w + cfg.tab_gap;
-                }
-                let tw = self.tab_widths_cache.get(idx).copied().unwrap_or(0.0);
-                // Set scroll target so that the active tab is visible
-                if tx < self.scroll_target {
-                    self.scroll_target = tx;
-                } else {
-                    // We don't know scroll_area_w here, so just set target to tx
-                    // The render pass will clamp it appropriately
-                    let total_tabs_w: f32 = self.tab_widths_cache.iter().sum::<f32>()
-                        + cfg.tab_gap * (self.tab_widths_cache.len() as f32 - 1.0).max(0.0);
-                    if tx + tw > self.scroll_target + total_tabs_w * 0.5 {
-                        self.scroll_target = (tx + tw - total_tabs_w * 0.3).max(0.0);
-                    }
+            && let Some(idx) = self.pages.iter().position(|p| p.id == active_id)
+        {
+            let cfg = &self.config;
+            let mut tx: f32 = 0.0;
+            for w in self.tab_widths_cache.iter().take(idx) {
+                tx += w + cfg.tab_gap;
+            }
+            let tw = self.tab_widths_cache.get(idx).copied().unwrap_or(0.0);
+            // Set scroll target so that the active tab is visible
+            if tx < self.scroll_target {
+                self.scroll_target = tx;
+            } else {
+                // We don't know scroll_area_w here, so just set target to tx
+                // The render pass will clamp it appropriately
+                let total_tabs_w: f32 = self.tab_widths_cache.iter().sum::<f32>()
+                    + cfg.tab_gap * (self.tab_widths_cache.len() as f32 - 1.0).max(0.0);
+                if tx + tw > self.scroll_target + total_tabs_w * 0.5 {
+                    self.scroll_target = (tx + tw - total_tabs_w * 0.3).max(0.0);
                 }
             }
+        }
     }
 
     /// Set the active page. No-op if `id` doesn't exist.
@@ -370,9 +371,10 @@ impl<T: PageItem> PageControl<T> {
             // Notify old page
             if let Some(old_id) = self.active
                 && old_id != id
-                    && let Some(old) = self.pages.iter_mut().find(|p| p.id == old_id) {
-                        old.item.on_deactivated();
-                    }
+                && let Some(old) = self.pages.iter_mut().find(|p| p.id == old_id)
+            {
+                old.item.on_deactivated();
+            }
             self.active = Some(id);
             if let Some(entry) = self.pages.iter_mut().find(|p| p.id == id) {
                 entry.item.on_activated();
@@ -495,10 +497,7 @@ pub fn draw_mini_tile(
     let [w, h] = size;
 
     let mouse = ui.io().mouse_pos();
-    let hovered = mouse[0] >= x
-        && mouse[0] < x + w
-        && mouse[1] >= y
-        && mouse[1] < y + h;
+    let hovered = mouse[0] >= x && mouse[0] < x + w && mouse[1] >= y && mouse[1] < y + h;
     let clicked = hovered && ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left);
 
     let draw = ui.get_window_draw_list();

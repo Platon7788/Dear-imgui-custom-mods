@@ -149,10 +149,7 @@ fn render_empty_placeholder(ui: &Ui, config: &PageControlConfig) {
 
 // ─── Dashboard (tile grid) ──────────────────────────────────────────────────
 
-fn render_dashboard<T: PageItem>(
-    pc: &mut PageControl<T>,
-    ui: &Ui,
-) -> Option<PageAction> {
+fn render_dashboard<T: PageItem>(pc: &mut PageControl<T>, ui: &Ui) -> Option<PageAction> {
     let cfg = &pc.config;
     let colors = &cfg.colors;
     let tile_w = cfg.tile_width;
@@ -187,9 +184,9 @@ fn render_dashboard<T: PageItem>(
     let origin_y = win_pos[1] + cursor_start[1];
 
     let grid_w = avail[0];
-    let cols = cfg.dashboard_columns.unwrap_or_else(|| {
-        ((grid_w + tile_gap) / (tile_w + tile_gap)).floor().max(1.0) as usize
-    });
+    let cols = cfg
+        .dashboard_columns
+        .unwrap_or_else(|| ((grid_w + tile_gap) / (tile_w + tile_gap)).floor().max(1.0) as usize);
 
     let mut action: Option<PageAction> = None;
 
@@ -222,8 +219,10 @@ fn render_dashboard<T: PageItem>(
         let close_hovered = if hovered && can_close_tiles && pc.pages[i].item.is_closable() {
             let cbx = tx + tile_w - tile_pad - close_btn_sz;
             let cby = ty + tile_pad;
-            mouse[0] >= cbx && mouse[0] < cbx + close_btn_sz
-                && mouse[1] >= cby && mouse[1] < cby + close_btn_sz
+            mouse[0] >= cbx
+                && mouse[0] < cbx + close_btn_sz
+                && mouse[1] >= cby
+                && mouse[1] < cby + close_btn_sz
         } else {
             false
         };
@@ -236,9 +235,23 @@ fn render_dashboard<T: PageItem>(
             tile_w - tile_pad * 2.0,
             tile_h - header_h - 2.0 - tile_pad,
         ];
-        let tile_area = [tx + tile_pad, ty + tile_pad, tile_w - tile_pad * 2.0, tile_h - tile_pad * 2.0];
+        let tile_area = [
+            tx + tile_pad,
+            ty + tile_pad,
+            tile_w - tile_pad * 2.0,
+            tile_h - tile_pad * 2.0,
+        ];
 
-        pc.tile_scratch.push((i, tx, ty, hovered, close_hovered, body_area, custom_tile, tile_area));
+        pc.tile_scratch.push((
+            i,
+            tx,
+            ty,
+            hovered,
+            close_hovered,
+            body_area,
+            custom_tile,
+            tile_area,
+        ));
     }
 
     let time = ui.time() as f32;
@@ -253,7 +266,11 @@ fn render_dashboard<T: PageItem>(
             let ty = if hovered { ty - 1.0 } else { ty };
 
             // Tile background
-            let bg = if hovered { colors.tile_hover } else { colors.tile_bg };
+            let bg = if hovered {
+                colors.tile_hover
+            } else {
+                colors.tile_bg
+            };
             draw.add_rect([tx, ty], [tx + tile_w, ty + tile_h], c32(bg, 255))
                 .rounding(tile_r)
                 .filled(true)
@@ -262,21 +279,29 @@ fn render_dashboard<T: PageItem>(
             // Hover border + subtle shadow
             if hovered {
                 // Shadow (slightly offset, low alpha)
-                draw.add_rect([tx + 1.0, ty + 2.0], [tx + tile_w + 1.0, ty + tile_h + 2.0], c32([0x00, 0x00, 0x00], 40))
-                    .rounding(tile_r)
-                    .filled(true)
-                    .build();
+                draw.add_rect(
+                    [tx + 1.0, ty + 2.0],
+                    [tx + tile_w + 1.0, ty + tile_h + 2.0],
+                    c32([0x00, 0x00, 0x00], 40),
+                )
+                .rounding(tile_r)
+                .filled(true)
+                .build();
                 // Re-draw background over shadow
                 draw.add_rect([tx, ty], [tx + tile_w, ty + tile_h], c32(bg, 255))
                     .rounding(tile_r)
                     .filled(true)
                     .build();
                 // Accent border
-                draw.add_rect([tx, ty], [tx + tile_w, ty + tile_h], c32(colors.accent, 180))
-                    .rounding(tile_r)
-                    .filled(false)
-                    .thickness(1.5)
-                    .build();
+                draw.add_rect(
+                    [tx, ty],
+                    [tx + tile_w, ty + tile_h],
+                    c32(colors.accent, 180),
+                )
+                .rounding(tile_r)
+                .filled(false)
+                .thickness(1.5)
+                .build();
             }
 
             // Close button (always rendered, regardless of custom_tile)
@@ -299,7 +324,13 @@ fn render_dashboard<T: PageItem>(
                 let close_icon = icons::CLOSE;
                 let csz = calc_text_size(close_icon);
                 // Hide close button on non-hovered tiles
-                let close_alpha = if close_hovered { 255 } else if hovered { 150 } else { 0 };
+                let close_alpha = if close_hovered {
+                    255
+                } else if hovered {
+                    150
+                } else {
+                    0
+                };
                 if close_alpha > 0 {
                     draw.add_text(
                         [
@@ -353,11 +384,7 @@ fn render_dashboard<T: PageItem>(
                     let mut line_y = sub_y;
                     for line in sub.split('\n') {
                         let line_h = calc_text_size(line)[1];
-                        draw.add_text(
-                            [tx + tile_pad, line_y],
-                            c32(colors.text_muted, 200),
-                            line,
-                        );
+                        draw.add_text([tx + tile_pad, line_y], c32(colors.text_muted, 200), line);
                         line_y += line_h + 1.0;
                     }
                 }
@@ -422,22 +449,32 @@ fn render_dashboard<T: PageItem>(
 
         if aty + tile_h >= win_pos[1] && aty <= win_bottom {
             let add_hovered = accept_clicks
-                && mouse[0] >= atx && mouse[0] < atx + tile_w
-                && mouse[1] >= aty && mouse[1] < aty + tile_h;
+                && mouse[0] >= atx
+                && mouse[0] < atx + tile_w
+                && mouse[1] >= aty
+                && mouse[1] < aty + tile_h;
 
             let draw = ui.get_window_draw_list();
-            let bg = if add_hovered { colors.tile_hover } else { colors.tile_bg };
+            let bg = if add_hovered {
+                colors.tile_hover
+            } else {
+                colors.tile_bg
+            };
             draw.add_rect([atx, aty], [atx + tile_w, aty + tile_h], c32(bg, 180))
                 .rounding(tile_r)
                 .filled(true)
                 .build();
 
             // Dashed border
-            draw.add_rect([atx, aty], [atx + tile_w, aty + tile_h], c32(colors.separator, if add_hovered { 200 } else { 120 }))
-                .rounding(tile_r)
-                .filled(false)
-                .thickness(1.0)
-                .build();
+            draw.add_rect(
+                [atx, aty],
+                [atx + tile_w, aty + tile_h],
+                c32(colors.separator, if add_hovered { 200 } else { 120 }),
+            )
+            .rounding(tile_r)
+            .filled(false)
+            .thickness(1.0)
+            .build();
 
             // "+" icon centered
             let plus = icons::PLUS;
@@ -460,7 +497,11 @@ fn render_dashboard<T: PageItem>(
     }
 
     // Reserve space for the grid so scrolling works
-    let total_items = if cfg.show_add_tile { pc.pages.len() + 1 } else { pc.pages.len() };
+    let total_items = if cfg.show_add_tile {
+        pc.pages.len() + 1
+    } else {
+        pc.pages.len()
+    };
     let total_rows = total_items.div_ceil(cols);
     let total_h = total_rows as f32 * (tile_h + tile_gap);
     ui.set_cursor_pos([cursor_start[0], cursor_start[1] + total_h]);
@@ -471,10 +512,7 @@ fn render_dashboard<T: PageItem>(
 
 // ─── Tab strip + content ────────────────────────────────────────────────────
 
-fn render_tabs<T: PageItem>(
-    pc: &mut PageControl<T>,
-    ui: &Ui,
-) -> Option<PageAction> {
+fn render_tabs<T: PageItem>(pc: &mut PageControl<T>, ui: &Ui) -> Option<PageAction> {
     let mut action: Option<PageAction> = None;
 
     // Ensure tab width cache is up to date
@@ -495,10 +533,22 @@ fn render_tabs<T: PageItem>(
     let tab_widths = &pc.tab_widths_cache;
 
     // Account for "+" button width when computing layout
-    let add_btn_w = if cfg.show_add_button { cfg.scroll_btn_width } else { 0.0 };
-    let view_toggle_w = if cfg.show_view_toggle { cfg.scroll_btn_width } else { 0.0 };
+    let add_btn_w = if cfg.show_add_button {
+        cfg.scroll_btn_width
+    } else {
+        0.0
+    };
+    let view_toggle_w = if cfg.show_view_toggle {
+        cfg.scroll_btn_width
+    } else {
+        0.0
+    };
     // Reserve space for overflow dropdown when it will be shown
-    let overflow_reserve = if cfg.show_overflow_dropdown { cfg.scroll_btn_width } else { 0.0 };
+    let overflow_reserve = if cfg.show_overflow_dropdown {
+        cfg.scroll_btn_width
+    } else {
+        0.0
+    };
     let effective_avail_w = avail_w - add_btn_w - view_toggle_w - overflow_reserve;
 
     let total_tabs_w: f32 =
@@ -582,11 +632,19 @@ fn render_tabs<T: PageItem>(
             && mouse[1] >= add_y0
             && mouse[1] < add_y1;
 
-        let add_bg = if add_hovered { colors.tab_hover } else { colors.strip_bg };
-        draw.add_rect([add_x, add_y0], [add_x + add_btn_w, add_y1], c32(add_bg, 255))
-            .rounding(cfg.tab_rounding)
-            .filled(true)
-            .build();
+        let add_bg = if add_hovered {
+            colors.tab_hover
+        } else {
+            colors.strip_bg
+        };
+        draw.add_rect(
+            [add_x, add_y0],
+            [add_x + add_btn_w, add_y1],
+            c32(add_bg, 255),
+        )
+        .rounding(cfg.tab_rounding)
+        .filled(true)
+        .build();
 
         let plus = icons::PLUS;
         let psz = calc_text_size(plus);
@@ -607,25 +665,44 @@ fn render_tabs<T: PageItem>(
     // ── Overflow dropdown ───────────────────────────────────────────────
     if needs_scroll && cfg.show_overflow_dropdown {
         let overflow_w = cfg.scroll_btn_width;
-        let overflow_x = strip_x + avail_w - add_btn_w - overflow_w
-            - (if cfg.show_view_toggle { cfg.scroll_btn_width } else { 0.0 });
+        let overflow_x = strip_x + avail_w
+            - add_btn_w
+            - overflow_w
+            - (if cfg.show_view_toggle {
+                cfg.scroll_btn_width
+            } else {
+                0.0
+            });
         let ov_y0 = strip_y + cfg.strip_padding_v;
         let ov_y1 = ov_y0 + cfg.tab_height;
 
         let ov_hovered = accept_clicks
-            && mouse[0] >= overflow_x && mouse[0] < overflow_x + overflow_w
-            && mouse[1] >= ov_y0 && mouse[1] < ov_y1;
+            && mouse[0] >= overflow_x
+            && mouse[0] < overflow_x + overflow_w
+            && mouse[1] >= ov_y0
+            && mouse[1] < ov_y1;
 
-        let ov_bg = if ov_hovered { colors.tab_hover } else { colors.strip_bg };
-        draw.add_rect([overflow_x, ov_y0], [overflow_x + overflow_w, ov_y1], c32(ov_bg, 255))
-            .rounding(cfg.tab_rounding)
-            .filled(true)
-            .build();
+        let ov_bg = if ov_hovered {
+            colors.tab_hover
+        } else {
+            colors.strip_bg
+        };
+        draw.add_rect(
+            [overflow_x, ov_y0],
+            [overflow_x + overflow_w, ov_y1],
+            c32(ov_bg, 255),
+        )
+        .rounding(cfg.tab_rounding)
+        .filled(true)
+        .build();
 
         let dots = icons::DOTS_HORIZONTAL;
         let dsz = calc_text_size(dots);
         draw.add_text(
-            [overflow_x + (overflow_w - dsz[0]) * 0.5, ov_y0 + (cfg.tab_height - dsz[1]) * 0.5],
+            [
+                overflow_x + (overflow_w - dsz[0]) * 0.5,
+                ov_y0 + (cfg.tab_height - dsz[1]) * 0.5,
+            ],
             c32(colors.text, if ov_hovered { 255 } else { 150 }),
             dots,
         );
@@ -651,15 +728,20 @@ fn render_tabs<T: PageItem>(
                 let _ = write!(pc.fmt_buf, "{} ", icon);
             }
             let _ = write!(pc.fmt_buf, "{}", page.item.title());
-            if ui.selectable_config(&pc.fmt_buf).selected(is_active).build()
-                && !is_active {
-                    focus_id = Some(page_id);
-                }
+            if ui
+                .selectable_config(&pc.fmt_buf)
+                .selected(is_active)
+                .build()
+                && !is_active
+            {
+                focus_id = Some(page_id);
+            }
         }
         if let Some(id) = focus_id
-            && let Some(entry) = pc.pages.iter_mut().find(|p| p.id == id) {
-                entry.request_focus = true;
-            }
+            && let Some(entry) = pc.pages.iter_mut().find(|p| p.id == id)
+        {
+            entry.request_focus = true;
+        }
     }
 
     // ── View toggle button ──────────────────────────────────────────────
@@ -670,10 +752,16 @@ fn render_tabs<T: PageItem>(
         let vt_y1 = vt_y0 + cfg.tab_height;
 
         let vt_hovered = accept_clicks
-            && mouse[0] >= vt_x && mouse[0] < vt_x + vt_w
-            && mouse[1] >= vt_y0 && mouse[1] < vt_y1;
+            && mouse[0] >= vt_x
+            && mouse[0] < vt_x + vt_w
+            && mouse[1] >= vt_y0
+            && mouse[1] < vt_y1;
 
-        let vt_bg = if vt_hovered { colors.tab_hover } else { colors.strip_bg };
+        let vt_bg = if vt_hovered {
+            colors.tab_hover
+        } else {
+            colors.strip_bg
+        };
         draw.add_rect([vt_x, vt_y0], [vt_x + vt_w, vt_y1], c32(vt_bg, 255))
             .rounding(cfg.tab_rounding)
             .filled(true)
@@ -682,7 +770,10 @@ fn render_tabs<T: PageItem>(
         let vt_icon = icons::VIEW_DASHBOARD_OUTLINE;
         let vtsz = calc_text_size(vt_icon);
         draw.add_text(
-            [vt_x + (vt_w - vtsz[0]) * 0.5, vt_y0 + (cfg.tab_height - vtsz[1]) * 0.5],
+            [
+                vt_x + (vt_w - vtsz[0]) * 0.5,
+                vt_y0 + (cfg.tab_height - vtsz[1]) * 0.5,
+            ],
             c32(colors.text, if vt_hovered { 255 } else { 150 }),
             vt_icon,
         );
@@ -738,10 +829,16 @@ fn render_tabs<T: PageItem>(
     draw.with_clip_rect(clip_min, clip_max, || {
         let mut tx = tabs_origin_x - pc.scroll_offset;
         for (i, page) in pc.pages.iter().enumerate() {
-            let Some(&base_tw) = tab_widths.get(i) else { break };
+            let Some(&base_tw) = tab_widths.get(i) else {
+                break;
+            };
             // Animated close: shrink tab width during closing animation
             let tw = if let Some((closing_id, frac)) = pc.closing_tab {
-                if page.id == closing_id { base_tw * frac.max(0.0) } else { base_tw }
+                if page.id == closing_id {
+                    base_tw * frac.max(0.0)
+                } else {
+                    base_tw
+                }
             } else {
                 base_tw
             };
@@ -763,12 +860,22 @@ fn render_tabs<T: PageItem>(
 
             // Compute close hover for visual feedback
             let can_close = cfg.closable && page.item.is_closable();
-            let close_hovered = can_close && tab_hovered
+            let close_hovered = can_close
+                && tab_hovered
                 && is_close_hovered(mouse, x1, y0, cfg, clip_min[0], clip_max[0]);
 
             render_single_tab(
-                &draw, &page.item, is_active, tab_hovered, close_hovered,
-                x0, y0, x1, y1, cfg, ui.time() as f32,
+                &draw,
+                &page.item,
+                is_active,
+                tab_hovered,
+                close_hovered,
+                x0,
+                y0,
+                x1,
+                y1,
+                cfg,
+                ui.time() as f32,
             );
 
             tx += tw + cfg.tab_gap;
@@ -785,9 +892,15 @@ fn render_tabs<T: PageItem>(
 
         let mut tx = tabs_origin_x - pc.scroll_offset;
         for i in 0..pc.pages.len() {
-            let Some(&base_tw) = tab_widths.get(i) else { break };
+            let Some(&base_tw) = tab_widths.get(i) else {
+                break;
+            };
             let tw = if let Some((closing_id, frac)) = pc.closing_tab {
-                if pc.pages[i].id == closing_id { base_tw * frac.max(0.0) } else { base_tw }
+                if pc.pages[i].id == closing_id {
+                    base_tw * frac.max(0.0)
+                } else {
+                    base_tw
+                }
             } else {
                 base_tw
             };
@@ -805,8 +918,8 @@ fn render_tabs<T: PageItem>(
                 let page = &pc.pages[i];
                 let can_close = cfg.closable && page.item.is_closable();
 
-                let close_hit = can_close
-                    && is_close_hovered(mouse, x1, y0, cfg, clip_min[0], clip_max[0]);
+                let close_hit =
+                    can_close && is_close_hovered(mouse, x1, y0, cfg, clip_min[0], clip_max[0]);
 
                 if clicked {
                     if close_hit {
@@ -843,9 +956,7 @@ fn render_tabs<T: PageItem>(
                     context_target = Some(page.id);
                 }
 
-                if !clicked && !middle_clicked && !right_clicked
-                    && page.item.tooltip().is_some()
-                {
+                if !clicked && !middle_clicked && !right_clicked && page.item.tooltip().is_some() {
                     tooltip_idx = Some(i);
                 }
             }
@@ -886,9 +997,10 @@ fn render_tabs<T: PageItem>(
         }
 
         if let Some(idx) = tooltip_idx
-            && let Some(tip) = pc.pages[idx].item.tooltip() {
-                ui.tooltip_text(tip);
-            }
+            && let Some(tip) = pc.pages[idx].item.tooltip()
+        {
+            ui.tooltip_text(tip);
+        }
     }
 
     // ── Drag-and-drop reorder ───────────────────────────────────────────
@@ -930,7 +1042,12 @@ fn render_tabs<T: PageItem>(
                         pc.drag_source_idx = Some(src_idx + 1);
                     }
                     pc.tab_gen += 1; // invalidate tab widths (can't call method due to cfg borrow)
-                    let moved_id = pc.pages[if target < src_idx { src_idx - 1 } else { src_idx + 1 }].id;
+                    let moved_id = pc.pages[if target < src_idx {
+                        src_idx - 1
+                    } else {
+                        src_idx + 1
+                    }]
+                    .id;
                     action = Some(PageAction::Reordered(moved_id));
                 }
 
@@ -952,22 +1069,21 @@ fn render_tabs<T: PageItem>(
                     let ghost_y1 = ghost_y0 + cfg.tab_height;
                     let ghost_alpha = 0.45_f32;
                     // Background pill
-                    let accent = pc.pages[src_idx].item.tab_color()
-                        .unwrap_or_else(|| cfg.colors.status_color(pc.pages[src_idx].item.status()));
+                    let accent = pc.pages[src_idx].item.tab_color().unwrap_or_else(|| {
+                        cfg.colors.status_color(pc.pages[src_idx].item.status())
+                    });
                     let bg = c32(
-                        [accent[0].saturating_add(40),
-                         accent[1].saturating_add(40),
-                         accent[2].saturating_add(40)],
+                        [
+                            accent[0].saturating_add(40),
+                            accent[1].saturating_add(40),
+                            accent[2].saturating_add(40),
+                        ],
                         (220.0 * ghost_alpha) as u8,
                     );
-                    draw.add_rect(
-                        [ghost_x0, ghost_y0],
-                        [ghost_x1, ghost_y1],
-                        bg,
-                    )
-                    .filled(true)
-                    .rounding(cfg.tab_rounding)
-                    .build();
+                    draw.add_rect([ghost_x0, ghost_y0], [ghost_x1, ghost_y1], bg)
+                        .filled(true)
+                        .rounding(cfg.tab_rounding)
+                        .build();
                     // Ghost title (centered)
                     let title = pc.pages[src_idx].item.title();
                     let ts = calc_text_size(title);
@@ -1011,7 +1127,9 @@ fn render_tabs<T: PageItem>(
         }
 
         if ctrl_w && let Some(active_id) = pc.active {
-            let can_close = pc.pages.iter()
+            let can_close = pc
+                .pages
+                .iter()
                 .find(|p| p.id == active_id)
                 .is_some_and(|p| cfg.closable && p.item.is_closable());
             if can_close {
@@ -1063,13 +1181,67 @@ fn render_single_tab<T: PageItem>(
     time: f32,
 ) {
     let colors = &cfg.colors;
-    let tab_accent = item.tab_color().unwrap_or_else(|| colors.status_color(item.status()));
+    let tab_accent = item
+        .tab_color()
+        .unwrap_or_else(|| colors.status_color(item.status()));
 
     match cfg.tab_style {
-        TabStyle::Pill => render_tab_pill(draw, item, is_active, hovered, close_hovered, x0, y0, x1, y1, cfg, tab_accent, time),
-        TabStyle::Underline => render_tab_underline(draw, item, is_active, hovered, close_hovered, x0, y0, x1, y1, cfg, tab_accent, time),
-        TabStyle::Card => render_tab_card(draw, item, is_active, hovered, close_hovered, x0, y0, x1, y1, cfg, tab_accent, time),
-        TabStyle::Square => render_tab_square(draw, item, is_active, hovered, close_hovered, x0, y0, x1, y1, cfg, tab_accent, time),
+        TabStyle::Pill => render_tab_pill(
+            draw,
+            item,
+            is_active,
+            hovered,
+            close_hovered,
+            x0,
+            y0,
+            x1,
+            y1,
+            cfg,
+            tab_accent,
+            time,
+        ),
+        TabStyle::Underline => render_tab_underline(
+            draw,
+            item,
+            is_active,
+            hovered,
+            close_hovered,
+            x0,
+            y0,
+            x1,
+            y1,
+            cfg,
+            tab_accent,
+            time,
+        ),
+        TabStyle::Card => render_tab_card(
+            draw,
+            item,
+            is_active,
+            hovered,
+            close_hovered,
+            x0,
+            y0,
+            x1,
+            y1,
+            cfg,
+            tab_accent,
+            time,
+        ),
+        TabStyle::Square => render_tab_square(
+            draw,
+            item,
+            is_active,
+            hovered,
+            close_hovered,
+            x0,
+            y0,
+            x1,
+            y1,
+            cfg,
+            tab_accent,
+            time,
+        ),
     }
 }
 
@@ -1162,7 +1334,10 @@ fn render_tab_content<T: PageItem>(
             let pad = 2.0;
             draw.add_rect(
                 [close_x0 - pad, close_y0 - pad],
-                [close_x0 + cfg.close_btn_size + pad, close_y0 + cfg.close_btn_size + pad],
+                [
+                    close_x0 + cfg.close_btn_size + pad,
+                    close_y0 + cfg.close_btn_size + pad,
+                ],
                 c32(colors.close_hover, 120),
             )
             .rounding(4.0)
@@ -1173,7 +1348,13 @@ fn render_tab_content<T: PageItem>(
         let close_icon = icons::CLOSE;
         let csz = calc_text_size(close_icon);
         // Hide close button on non-hovered inactive tabs (VS Code style)
-        let close_alpha = if close_hovered { 255 } else if hovered || is_active { 150 } else { 0 };
+        let close_alpha = if close_hovered {
+            255
+        } else if hovered || is_active {
+            150
+        } else {
+            0
+        };
         if close_alpha > 0 {
             draw.add_text(
                 [
@@ -1196,7 +1377,10 @@ fn render_tab_pill<T: PageItem>(
     is_active: bool,
     hovered: bool,
     close_hovered: bool,
-    x0: f32, y0: f32, x1: f32, y1: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
     cfg: &PageControlConfig,
     tab_accent: [u8; 3],
     time: f32,
@@ -1205,21 +1389,35 @@ fn render_tab_pill<T: PageItem>(
 
     // Active tab glow (subtle shadow beneath)
     if is_active {
-        draw.add_rect([x0 + 1.0, y0 + 1.0], [x1 + 1.0, y1 + 1.0], c32(tab_accent, 30))
-            .rounding(cfg.tab_rounding)
-            .filled(true)
-            .build();
+        draw.add_rect(
+            [x0 + 1.0, y0 + 1.0],
+            [x1 + 1.0, y1 + 1.0],
+            c32(tab_accent, 30),
+        )
+        .rounding(cfg.tab_rounding)
+        .filled(true)
+        .build();
     }
 
     // Fully rounded background
-    let bg = if is_active { colors.tab_active } else if hovered { colors.tab_hover } else { colors.tab_bg };
+    let bg = if is_active {
+        colors.tab_active
+    } else if hovered {
+        colors.tab_hover
+    } else {
+        colors.tab_bg
+    };
     draw.add_rect([x0, y0], [x1, y1], c32(bg, 255))
         .rounding(cfg.tab_rounding)
         .filled(true)
         .build();
 
     if is_active {
-        let alpha = if item.status() == PageStatus::Active { 200 } else { 120 };
+        let alpha = if item.status() == PageStatus::Active {
+            200
+        } else {
+            120
+        };
         draw.add_rect([x0, y0], [x1, y1], c32(tab_accent, alpha))
             .rounding(cfg.tab_rounding)
             .filled(false)
@@ -1228,11 +1426,24 @@ fn render_tab_pill<T: PageItem>(
 
         if cfg.show_tab_underline {
             draw.add_rect([x0 + 4.0, y1 - 2.0], [x1 - 4.0, y1], c32(tab_accent, 255))
-                .rounding(1.0).filled(true).build();
+                .rounding(1.0)
+                .filled(true)
+                .build();
         }
     }
 
-    render_tab_content(draw, item, is_active, hovered, close_hovered, x0, y0, x1, cfg, time);
+    render_tab_content(
+        draw,
+        item,
+        is_active,
+        hovered,
+        close_hovered,
+        x0,
+        y0,
+        x1,
+        cfg,
+        time,
+    );
 }
 
 // ─── Underline style (Material Design) ─────────────────────────────────────
@@ -1244,7 +1455,10 @@ fn render_tab_underline<T: PageItem>(
     is_active: bool,
     hovered: bool,
     close_hovered: bool,
-    x0: f32, y0: f32, x1: f32, y1: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
     cfg: &PageControlConfig,
     tab_accent: [u8; 3],
     time: f32,
@@ -1268,7 +1482,18 @@ fn render_tab_underline<T: PageItem>(
             .build();
     }
 
-    render_tab_content(draw, item, is_active, hovered, close_hovered, x0, y0, x1, cfg, time);
+    render_tab_content(
+        draw,
+        item,
+        is_active,
+        hovered,
+        close_hovered,
+        x0,
+        y0,
+        x1,
+        cfg,
+        time,
+    );
 }
 
 // ─── Card style (Chrome/browser) ────────────────────────────────────────────
@@ -1280,7 +1505,10 @@ fn render_tab_card<T: PageItem>(
     is_active: bool,
     hovered: bool,
     close_hovered: bool,
-    x0: f32, y0: f32, x1: f32, y1: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
     cfg: &PageControlConfig,
     tab_accent: [u8; 3],
     time: f32,
@@ -1313,7 +1541,18 @@ fn render_tab_card<T: PageItem>(
             .build();
     }
 
-    render_tab_content(draw, item, is_active, hovered, close_hovered, x0, y0, x1, cfg, time);
+    render_tab_content(
+        draw,
+        item,
+        is_active,
+        hovered,
+        close_hovered,
+        x0,
+        y0,
+        x1,
+        cfg,
+        time,
+    );
 }
 
 // ─── Square style (classic) ─────────────────────────────────────────────────
@@ -1325,7 +1564,10 @@ fn render_tab_square<T: PageItem>(
     is_active: bool,
     hovered: bool,
     close_hovered: bool,
-    x0: f32, y0: f32, x1: f32, y1: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
     cfg: &PageControlConfig,
     tab_accent: [u8; 3],
     time: f32,
@@ -1333,7 +1575,13 @@ fn render_tab_square<T: PageItem>(
     let colors = &cfg.colors;
 
     // Top-rounded body + flat bottom
-    let bg = if is_active { colors.tab_active } else if hovered { colors.tab_hover } else { colors.tab_bg };
+    let bg = if is_active {
+        colors.tab_active
+    } else if hovered {
+        colors.tab_hover
+    } else {
+        colors.tab_bg
+    };
     draw.add_rect([x0, y0], [x1, y1 - 2.0], c32(bg, 255))
         .rounding(4.0)
         .filled(true)
@@ -1346,19 +1594,33 @@ fn render_tab_square<T: PageItem>(
         // Border on three sides (left, top, right)
         let border_col = c32(tab_accent, 150);
         draw.add_line([x0, y1], [x0, y0 + 4.0], border_col).build();
-        draw.add_line([x0 + 4.0, y0], [x1 - 4.0, y0], border_col).build();
+        draw.add_line([x0 + 4.0, y0], [x1 - 4.0, y0], border_col)
+            .build();
         draw.add_line([x1, y0 + 4.0], [x1, y1], border_col).build();
 
         if cfg.show_tab_underline {
             draw.add_rect([x0 + 2.0, y1 - 2.0], [x1 - 2.0, y1], c32(tab_accent, 255))
-                .filled(true).build();
+                .filled(true)
+                .build();
         }
     } else {
         // Bottom border for inactive tabs
-        draw.add_line([x0, y1], [x1, y1], c32(colors.separator, 100)).build();
+        draw.add_line([x0, y1], [x1, y1], c32(colors.separator, 100))
+            .build();
     }
 
-    render_tab_content(draw, item, is_active, hovered, close_hovered, x0, y0, x1, cfg, time);
+    render_tab_content(
+        draw,
+        item,
+        is_active,
+        hovered,
+        close_hovered,
+        x0,
+        y0,
+        x1,
+        cfg,
+        time,
+    );
 }
 
 // ─── Scroll buttons ─────────────────────────────────────────────────────────
@@ -1389,10 +1651,18 @@ fn render_scroll_buttons(
         && mouse[1] >= strip_y
         && mouse[1] < strip_y + strip_h;
 
-    let lbg = if lhover { colors.tab_hover } else { colors.strip_bg };
-    draw.add_rect([lx, strip_y], [lx + btn_w, strip_y + strip_h], c32(lbg, 255))
-        .filled(true)
-        .build();
+    let lbg = if lhover {
+        colors.tab_hover
+    } else {
+        colors.strip_bg
+    };
+    draw.add_rect(
+        [lx, strip_y],
+        [lx + btn_w, strip_y + strip_h],
+        c32(lbg, 255),
+    )
+    .filled(true)
+    .build();
     let arrow = icons::CHEVRON_LEFT;
     let asz = calc_text_size(arrow);
     draw.add_text(
@@ -1415,10 +1685,18 @@ fn render_scroll_buttons(
         && mouse[1] >= strip_y
         && mouse[1] < strip_y + strip_h;
 
-    let rbg = if rhover { colors.tab_hover } else { colors.strip_bg };
-    draw.add_rect([rx, strip_y], [rx + btn_w, strip_y + strip_h], c32(rbg, 255))
-        .filled(true)
-        .build();
+    let rbg = if rhover {
+        colors.tab_hover
+    } else {
+        colors.strip_bg
+    };
+    draw.add_rect(
+        [rx, strip_y],
+        [rx + btn_w, strip_y + strip_h],
+        c32(rbg, 255),
+    )
+    .filled(true)
+    .build();
     let arrow_r = icons::CHEVRON_RIGHT;
     let arsz = calc_text_size(arrow_r);
     draw.add_text(

@@ -1,8 +1,8 @@
 //! Configuration types for [`CodeEditor`].
 
+use super::token::Token;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use super::token::Token;
 
 // ── Font re-exports for backward compatibility ───────────────────────────────
 //
@@ -11,12 +11,8 @@ use super::token::Token;
 // callers like `code_editor::{BuiltinFont, HACK_FONT_DATA, ...}` working.
 
 pub use crate::fonts::{
-    BuiltinFont,
-    HACK_FONT_DATA,
-    JETBRAINS_MONO_FONT_DATA,
-    JETBRAINS_MONO_LIGATURES_FONT_DATA,
-    MDI_FONT_DATA,
-    merge_mdi_icons,
+    BuiltinFont, HACK_FONT_DATA, JETBRAINS_MONO_FONT_DATA, JETBRAINS_MONO_LIGATURES_FONT_DATA,
+    MDI_FONT_DATA, merge_mdi_icons,
 };
 
 // ── Global code-editor font ───────────────────────────────────────────────────
@@ -64,10 +60,7 @@ pub fn code_editor_font_ptr() -> *mut dear_imgui_rs::sys::ImFont {
 /// // … create renderer (builds font atlas) …
 /// // CodeEditor now uses JetBrains Mono + MDI icons automatically.
 /// ```
-pub fn install_code_editor_font(
-    ctx: &mut dear_imgui_rs::Context,
-    size_pixels: f32,
-) {
+pub fn install_code_editor_font(ctx: &mut dear_imgui_rs::Context, size_pixels: f32) {
     install_code_editor_font_ex(ctx, size_pixels, BuiltinFont::default());
 }
 
@@ -216,17 +209,17 @@ pub enum Language {
 impl std::fmt::Debug for Language {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Language::None         => write!(f, "Language::None"),
-            Language::Rust         => write!(f, "Language::Rust"),
-            Language::Toml         => write!(f, "Language::Toml"),
-            Language::Ron          => write!(f, "Language::Ron"),
-            Language::Hex          => write!(f, "Language::Hex"),
-            Language::Rhai         => write!(f, "Language::Rhai"),
-            Language::Json         => write!(f, "Language::Json"),
-            Language::Yaml         => write!(f, "Language::Yaml"),
-            Language::Xml          => write!(f, "Language::Xml"),
-            Language::Asm          => write!(f, "Language::Asm"),
-            Language::Custom(def)  => write!(f, "Language::Custom(\"{}\")", def.name()),
+            Language::None => write!(f, "Language::None"),
+            Language::Rust => write!(f, "Language::Rust"),
+            Language::Toml => write!(f, "Language::Toml"),
+            Language::Ron => write!(f, "Language::Ron"),
+            Language::Hex => write!(f, "Language::Hex"),
+            Language::Rhai => write!(f, "Language::Rhai"),
+            Language::Json => write!(f, "Language::Json"),
+            Language::Yaml => write!(f, "Language::Yaml"),
+            Language::Xml => write!(f, "Language::Xml"),
+            Language::Asm => write!(f, "Language::Asm"),
+            Language::Custom(def) => write!(f, "Language::Custom(\"{}\")", def.name()),
         }
     }
 }
@@ -236,16 +229,15 @@ impl PartialEq for Language {
         matches!(
             (self, other),
             (Language::None, Language::None)
-            | (Language::Rust, Language::Rust)
-            | (Language::Toml, Language::Toml)
-            | (Language::Ron,  Language::Ron)
-            | (Language::Hex,  Language::Hex)
-            | (Language::Rhai, Language::Rhai)
-            | (Language::Json, Language::Json)
-            | (Language::Yaml, Language::Yaml)
-            | (Language::Xml,  Language::Xml)
-            | (Language::Asm,  Language::Asm)
-            // Two Custom variants are distinct (no identity comparison).
+                | (Language::Rust, Language::Rust)
+                | (Language::Toml, Language::Toml)
+                | (Language::Ron, Language::Ron)
+                | (Language::Hex, Language::Hex)
+                | (Language::Rhai, Language::Rhai)
+                | (Language::Json, Language::Json)
+                | (Language::Yaml, Language::Yaml)
+                | (Language::Xml, Language::Xml)
+                | (Language::Asm, Language::Asm) // Two Custom variants are distinct (no identity comparison).
         )
     }
 }
@@ -286,24 +278,24 @@ impl EditorTheme {
     /// Display name shown in the Theme submenu.
     pub fn display_name(self) -> &'static str {
         match self {
-            EditorTheme::DarkDefault    => "Dark Default",
-            EditorTheme::Monokai        => "Monokai",
-            EditorTheme::OneDark        => "One Dark",
-            EditorTheme::SolarizedDark  => "Solarized Dark",
+            EditorTheme::DarkDefault => "Dark Default",
+            EditorTheme::Monokai => "Monokai",
+            EditorTheme::OneDark => "One Dark",
+            EditorTheme::SolarizedDark => "Solarized Dark",
             EditorTheme::SolarizedLight => "Solarized Light",
-            EditorTheme::GithubLight    => "GitHub Light",
+            EditorTheme::GithubLight => "GitHub Light",
         }
     }
 
     /// Return the [`SyntaxColors`] palette for this theme.
     pub fn colors(self) -> SyntaxColors {
         match self {
-            EditorTheme::DarkDefault    => SyntaxColors::dark_default(),
-            EditorTheme::Monokai        => SyntaxColors::monokai(),
-            EditorTheme::OneDark        => SyntaxColors::one_dark(),
-            EditorTheme::SolarizedDark  => SyntaxColors::solarized_dark(),
+            EditorTheme::DarkDefault => SyntaxColors::dark_default(),
+            EditorTheme::Monokai => SyntaxColors::monokai(),
+            EditorTheme::OneDark => SyntaxColors::one_dark(),
+            EditorTheme::SolarizedDark => SyntaxColors::solarized_dark(),
             EditorTheme::SolarizedLight => SyntaxColors::solarized_light(),
-            EditorTheme::GithubLight    => SyntaxColors::github_light(),
+            EditorTheme::GithubLight => SyntaxColors::github_light(),
         }
     }
 }
@@ -345,18 +337,18 @@ pub struct ContextMenuConfig {
 impl Default for ContextMenuConfig {
     fn default() -> Self {
         Self {
-            enabled:                true,
-            show_clipboard:         true,
-            show_select_all:        true,
-            show_undo_redo:         true,
-            show_code_actions:      true,
-            show_transform:         true,
-            show_find:              true,
-            show_view_toggles:      true,
+            enabled: true,
+            show_clipboard: true,
+            show_select_all: true,
+            show_undo_redo: true,
+            show_code_actions: true,
+            show_transform: true,
+            show_find: true,
+            show_view_toggles: true,
             show_language_selector: true,
-            show_theme_selector:    true,
-            show_font_size:         true,
-            show_cursor_info:       true,
+            show_theme_selector: true,
+            show_font_size: true,
+            show_cursor_info: true,
         }
     }
 }
@@ -370,40 +362,40 @@ impl Default for ContextMenuConfig {
 /// individual fields for custom overrides.
 #[derive(Debug, Clone)]
 pub struct SyntaxColors {
-    pub keyword:           [f32; 4],
-    pub type_name:         [f32; 4],
-    pub lifetime:          [f32; 4],
-    pub string:            [f32; 4],
-    pub char_lit:          [f32; 4],
-    pub number:            [f32; 4],
-    pub comment:           [f32; 4],
-    pub attribute:         [f32; 4],
-    pub macro_call:        [f32; 4],
-    pub operator:          [f32; 4],
-    pub punctuation:       [f32; 4],
-    pub identifier:        [f32; 4],
-    pub user_code_marker:  [f32; 4],
+    pub keyword: [f32; 4],
+    pub type_name: [f32; 4],
+    pub lifetime: [f32; 4],
+    pub string: [f32; 4],
+    pub char_lit: [f32; 4],
+    pub number: [f32; 4],
+    pub comment: [f32; 4],
+    pub attribute: [f32; 4],
+    pub macro_call: [f32; 4],
+    pub operator: [f32; 4],
+    pub punctuation: [f32; 4],
+    pub identifier: [f32; 4],
+    pub user_code_marker: [f32; 4],
     // ── Hex-mode value-based colors (NxT palette) ─────────────────
     /// Null byte `00` — red.
-    pub hex_null:          [f32; 4],
+    pub hex_null: [f32; 4],
     /// `FF` byte — amber.
-    pub hex_ff:            [f32; 4],
+    pub hex_ff: [f32; 4],
     /// Control chars `01–1F`, `7F` and high bytes `80–FE` — silver/default.
-    pub hex_default:       [f32; 4],
+    pub hex_default: [f32; 4],
     /// Printable ASCII `20–7E` — green.
-    pub hex_printable:     [f32; 4],
-    pub current_line_bg:   [f32; 4],
-    pub selection_bg:      [f32; 4],
-    pub search_match_bg:   [f32; 4],
+    pub hex_printable: [f32; 4],
+    pub current_line_bg: [f32; 4],
+    pub selection_bg: [f32; 4],
+    pub search_match_bg: [f32; 4],
     pub search_current_bg: [f32; 4],
-    pub line_number:       [f32; 4],
-    pub line_number_active:[f32; 4],
-    pub bracket_match_bg:  [f32; 4],
-    pub error_underline:   [f32; 4],
+    pub line_number: [f32; 4],
+    pub line_number_active: [f32; 4],
+    pub bracket_match_bg: [f32; 4],
+    pub error_underline: [f32; 4],
     pub warning_underline: [f32; 4],
-    pub gutter_bg:         [f32; 4],
+    pub gutter_bg: [f32; 4],
     /// Editor text-area background (used for the child-window fill).
-    pub editor_bg:         [f32; 4],
+    pub editor_bg: [f32; 4],
 }
 
 impl Default for SyntaxColors {
@@ -419,34 +411,34 @@ impl SyntaxColors {
     pub fn dark_default() -> Self {
         use crate::theme;
         Self {
-            keyword:           theme::ACCENT,
-            type_name:         [0.56, 0.84, 0.62, 1.0],
-            lifetime:          [0.85, 0.60, 0.85, 1.0],
-            string:            [0.80, 0.88, 0.52, 1.0],
-            char_lit:          [0.80, 0.88, 0.52, 1.0],
-            number:            [0.78, 0.58, 0.95, 1.0],
-            comment:           [0.47, 0.53, 0.60, 1.0],
-            attribute:         [0.82, 0.72, 0.36, 1.0],
-            macro_call:        [0.90, 0.75, 0.35, 1.0],
-            operator:          [0.72, 0.88, 0.98, 1.0],
-            punctuation:       [0.60, 0.62, 0.68, 1.0],
-            identifier:        theme::TEXT_PRIMARY,
-            user_code_marker:  theme::WARNING,
-            hex_null:          [0.95, 0.42, 0.47, 1.0],  // red  (NxT CLR_ZERO)
-            hex_ff:            [1.00, 0.78, 0.30, 1.0],  // amber (NxT CLR_FF)
-            hex_default:       [0.82, 0.86, 0.93, 1.0],  // silver (NxT CLR_DEFAULT)
-            hex_printable:     [0.65, 0.92, 0.73, 1.0],  // green (NxT CLR_ASCII)
-            current_line_bg:   [0.18, 0.20, 0.26, 1.0],
-            selection_bg:      [0.26, 0.52, 0.86, 0.55],
-            search_match_bg:   [0.62, 0.52, 0.10, 0.30],
+            keyword: theme::ACCENT,
+            type_name: [0.56, 0.84, 0.62, 1.0],
+            lifetime: [0.85, 0.60, 0.85, 1.0],
+            string: [0.80, 0.88, 0.52, 1.0],
+            char_lit: [0.80, 0.88, 0.52, 1.0],
+            number: [0.78, 0.58, 0.95, 1.0],
+            comment: [0.47, 0.53, 0.60, 1.0],
+            attribute: [0.82, 0.72, 0.36, 1.0],
+            macro_call: [0.90, 0.75, 0.35, 1.0],
+            operator: [0.72, 0.88, 0.98, 1.0],
+            punctuation: [0.60, 0.62, 0.68, 1.0],
+            identifier: theme::TEXT_PRIMARY,
+            user_code_marker: theme::WARNING,
+            hex_null: [0.95, 0.42, 0.47, 1.0], // red  (NxT CLR_ZERO)
+            hex_ff: [1.00, 0.78, 0.30, 1.0],   // amber (NxT CLR_FF)
+            hex_default: [0.82, 0.86, 0.93, 1.0], // silver (NxT CLR_DEFAULT)
+            hex_printable: [0.65, 0.92, 0.73, 1.0], // green (NxT CLR_ASCII)
+            current_line_bg: [0.18, 0.20, 0.26, 1.0],
+            selection_bg: [0.26, 0.52, 0.86, 0.55],
+            search_match_bg: [0.62, 0.52, 0.10, 0.30],
             search_current_bg: [0.62, 0.52, 0.10, 0.62],
-            line_number:       theme::TEXT_MUTED,
-            line_number_active:theme::TEXT_PRIMARY,
-            bracket_match_bg:  [0.38, 0.44, 0.58, 0.45],
-            error_underline:   theme::DANGER,
+            line_number: theme::TEXT_MUTED,
+            line_number_active: theme::TEXT_PRIMARY,
+            bracket_match_bg: [0.38, 0.44, 0.58, 0.45],
+            error_underline: theme::DANGER,
             warning_underline: theme::WARNING,
-            gutter_bg:         [0.09, 0.10, 0.13, 1.0],
-            editor_bg:         [0.11, 0.12, 0.16, 1.0],
+            gutter_bg: [0.09, 0.10, 0.13, 1.0],
+            editor_bg: [0.11, 0.12, 0.16, 1.0],
         }
     }
 
@@ -455,34 +447,34 @@ impl SyntaxColors {
     /// Monokai — classic dark theme, warm accent tones.
     pub fn monokai() -> Self {
         Self {
-            keyword:           [0.976, 0.149, 0.447, 1.0],  // #F92672 pink-red
-            type_name:         [0.400, 0.851, 0.910, 1.0],  // #66D9E8 cyan
-            lifetime:          [0.651, 0.886, 0.180, 1.0],  // #A6E22E green
-            string:            [0.902, 0.863, 0.455, 1.0],  // #E6DB74 yellow
-            char_lit:          [0.902, 0.863, 0.455, 1.0],
-            number:            [0.682, 0.506, 1.000, 1.0],  // #AE81FF purple
-            comment:           [0.459, 0.443, 0.369, 1.0],  // #75715E warm grey
-            attribute:         [0.651, 0.886, 0.180, 1.0],  // #A6E22E green
-            macro_call:        [0.651, 0.886, 0.180, 1.0],
-            operator:          [0.976, 0.149, 0.447, 1.0],  // same as keyword
-            punctuation:       [0.973, 0.973, 0.949, 1.0],  // #F8F8F2 near-white
-            identifier:        [0.973, 0.973, 0.949, 1.0],
-            user_code_marker:  [0.976, 0.149, 0.447, 1.0],
-            hex_null:          [0.95, 0.42, 0.47, 1.0],  // red
-            hex_ff:            [1.00, 0.78, 0.30, 1.0],  // amber
-            hex_default:       [0.82, 0.86, 0.93, 1.0],  // silver
-            hex_printable:     [0.65, 0.92, 0.73, 1.0],  // green
-            current_line_bg:   [0.243, 0.239, 0.196, 1.0],  // #3E3D32
-            selection_bg:      [0.350, 0.340, 0.280, 0.75],
-            search_match_bg:   [0.651, 0.886, 0.180, 0.25],
+            keyword: [0.976, 0.149, 0.447, 1.0],   // #F92672 pink-red
+            type_name: [0.400, 0.851, 0.910, 1.0], // #66D9E8 cyan
+            lifetime: [0.651, 0.886, 0.180, 1.0],  // #A6E22E green
+            string: [0.902, 0.863, 0.455, 1.0],    // #E6DB74 yellow
+            char_lit: [0.902, 0.863, 0.455, 1.0],
+            number: [0.682, 0.506, 1.000, 1.0],  // #AE81FF purple
+            comment: [0.459, 0.443, 0.369, 1.0], // #75715E warm grey
+            attribute: [0.651, 0.886, 0.180, 1.0], // #A6E22E green
+            macro_call: [0.651, 0.886, 0.180, 1.0],
+            operator: [0.976, 0.149, 0.447, 1.0], // same as keyword
+            punctuation: [0.973, 0.973, 0.949, 1.0], // #F8F8F2 near-white
+            identifier: [0.973, 0.973, 0.949, 1.0],
+            user_code_marker: [0.976, 0.149, 0.447, 1.0],
+            hex_null: [0.95, 0.42, 0.47, 1.0],           // red
+            hex_ff: [1.00, 0.78, 0.30, 1.0],             // amber
+            hex_default: [0.82, 0.86, 0.93, 1.0],        // silver
+            hex_printable: [0.65, 0.92, 0.73, 1.0],      // green
+            current_line_bg: [0.243, 0.239, 0.196, 1.0], // #3E3D32
+            selection_bg: [0.350, 0.340, 0.280, 0.75],
+            search_match_bg: [0.651, 0.886, 0.180, 0.25],
             search_current_bg: [0.651, 0.886, 0.180, 0.55],
-            line_number:       [0.459, 0.443, 0.369, 1.0],
-            line_number_active:[0.973, 0.973, 0.949, 1.0],
-            bracket_match_bg:  [0.400, 0.851, 0.910, 0.30],
-            error_underline:   [0.976, 0.149, 0.447, 1.0],
+            line_number: [0.459, 0.443, 0.369, 1.0],
+            line_number_active: [0.973, 0.973, 0.949, 1.0],
+            bracket_match_bg: [0.400, 0.851, 0.910, 0.30],
+            error_underline: [0.976, 0.149, 0.447, 1.0],
             warning_underline: [0.902, 0.863, 0.455, 1.0],
-            gutter_bg:         [0.118, 0.122, 0.110, 1.0],  // #1E1F1C
-            editor_bg:         [0.153, 0.157, 0.133, 1.0],  // #272822
+            gutter_bg: [0.118, 0.122, 0.110, 1.0], // #1E1F1C
+            editor_bg: [0.153, 0.157, 0.133, 1.0], // #272822
         }
     }
 
@@ -491,34 +483,34 @@ impl SyntaxColors {
     /// One Dark — Atom editor's dark theme.
     pub fn one_dark() -> Self {
         Self {
-            keyword:           [0.776, 0.471, 0.867, 1.0],  // #C678DD purple
-            type_name:         [0.898, 0.753, 0.482, 1.0],  // #E5C07B tan
-            lifetime:          [0.820, 0.604, 0.400, 1.0],  // #D19A66 orange
-            string:            [0.596, 0.765, 0.475, 1.0],  // #98C379 green
-            char_lit:          [0.596, 0.765, 0.475, 1.0],
-            number:            [0.820, 0.604, 0.400, 1.0],  // #D19A66 orange
-            comment:           [0.361, 0.388, 0.439, 1.0],  // #5C6370 grey
-            attribute:         [0.878, 0.424, 0.459, 1.0],  // #E06C75 red/pink
-            macro_call:        [0.380, 0.686, 0.937, 1.0],  // #61AFEF blue
-            operator:          [0.337, 0.714, 0.761, 1.0],  // #56B6C2 cyan
-            punctuation:       [0.671, 0.698, 0.749, 1.0],  // #ABB2BF grey
-            identifier:        [0.671, 0.698, 0.749, 1.0],
-            user_code_marker:  [0.898, 0.753, 0.482, 1.0],
-            hex_null:          [0.95, 0.42, 0.47, 1.0],  // red
-            hex_ff:            [1.00, 0.78, 0.30, 1.0],  // amber
-            hex_default:       [0.82, 0.86, 0.93, 1.0],  // silver
-            hex_printable:     [0.65, 0.92, 0.73, 1.0],  // green
-            current_line_bg:   [0.173, 0.192, 0.235, 1.0],  // #2C313C
-            selection_bg:      [0.28, 0.38, 0.60, 0.55],
-            search_match_bg:   [0.380, 0.686, 0.937, 0.25],
+            keyword: [0.776, 0.471, 0.867, 1.0],   // #C678DD purple
+            type_name: [0.898, 0.753, 0.482, 1.0], // #E5C07B tan
+            lifetime: [0.820, 0.604, 0.400, 1.0],  // #D19A66 orange
+            string: [0.596, 0.765, 0.475, 1.0],    // #98C379 green
+            char_lit: [0.596, 0.765, 0.475, 1.0],
+            number: [0.820, 0.604, 0.400, 1.0],  // #D19A66 orange
+            comment: [0.361, 0.388, 0.439, 1.0], // #5C6370 grey
+            attribute: [0.878, 0.424, 0.459, 1.0], // #E06C75 red/pink
+            macro_call: [0.380, 0.686, 0.937, 1.0], // #61AFEF blue
+            operator: [0.337, 0.714, 0.761, 1.0], // #56B6C2 cyan
+            punctuation: [0.671, 0.698, 0.749, 1.0], // #ABB2BF grey
+            identifier: [0.671, 0.698, 0.749, 1.0],
+            user_code_marker: [0.898, 0.753, 0.482, 1.0],
+            hex_null: [0.95, 0.42, 0.47, 1.0],           // red
+            hex_ff: [1.00, 0.78, 0.30, 1.0],             // amber
+            hex_default: [0.82, 0.86, 0.93, 1.0],        // silver
+            hex_printable: [0.65, 0.92, 0.73, 1.0],      // green
+            current_line_bg: [0.173, 0.192, 0.235, 1.0], // #2C313C
+            selection_bg: [0.28, 0.38, 0.60, 0.55],
+            search_match_bg: [0.380, 0.686, 0.937, 0.25],
             search_current_bg: [0.380, 0.686, 0.937, 0.55],
-            line_number:       [0.271, 0.294, 0.341, 1.0],
-            line_number_active:[0.671, 0.698, 0.749, 1.0],
-            bracket_match_bg:  [0.337, 0.714, 0.761, 0.30],
-            error_underline:   [0.878, 0.424, 0.459, 1.0],
+            line_number: [0.271, 0.294, 0.341, 1.0],
+            line_number_active: [0.671, 0.698, 0.749, 1.0],
+            bracket_match_bg: [0.337, 0.714, 0.761, 0.30],
+            error_underline: [0.878, 0.424, 0.459, 1.0],
             warning_underline: [0.820, 0.604, 0.400, 1.0],
-            gutter_bg:         [0.129, 0.145, 0.169, 1.0],  // #21252B
-            editor_bg:         [0.157, 0.173, 0.204, 1.0],  // #282C34
+            gutter_bg: [0.129, 0.145, 0.169, 1.0], // #21252B
+            editor_bg: [0.157, 0.173, 0.204, 1.0], // #282C34
         }
     }
 
@@ -527,34 +519,34 @@ impl SyntaxColors {
     /// Solarized Dark — Ethan Schoonover's precise dark variant.
     pub fn solarized_dark() -> Self {
         Self {
-            keyword:           [0.522, 0.600, 0.000, 1.0],  // #859900 olive
-            type_name:         [0.149, 0.545, 0.824, 1.0],  // #268BD2 blue
-            lifetime:          [0.827, 0.212, 0.510, 1.0],  // #D33682 magenta
-            string:            [0.165, 0.631, 0.596, 1.0],  // #2AA198 cyan
-            char_lit:          [0.165, 0.631, 0.596, 1.0],
-            number:            [0.827, 0.212, 0.510, 1.0],  // #D33682 magenta
-            comment:           [0.345, 0.431, 0.459, 1.0],  // #586E75 base01
-            attribute:         [0.796, 0.294, 0.086, 1.0],  // #CB4B16 orange
-            macro_call:        [0.710, 0.537, 0.000, 1.0],  // #B58900 yellow
-            operator:          [0.514, 0.580, 0.588, 1.0],  // #839496 base0
-            punctuation:       [0.396, 0.482, 0.514, 1.0],  // #657B83 base00
-            identifier:        [0.514, 0.580, 0.588, 1.0],
-            user_code_marker:  [0.710, 0.537, 0.000, 1.0],
-            hex_null:          [0.86, 0.20, 0.18, 1.0],  // solarized red
-            hex_ff:            [0.71, 0.54, 0.00, 1.0],  // solarized yellow
-            hex_default:       [0.51, 0.58, 0.59, 1.0],  // solarized base0
-            hex_printable:     [0.52, 0.60, 0.00, 1.0],  // solarized green
-            current_line_bg:   [0.027, 0.212, 0.259, 1.0],  // #073642 base02
-            selection_bg:      [0.149, 0.545, 0.824, 0.50],
-            search_match_bg:   [0.710, 0.537, 0.000, 0.25],
+            keyword: [0.522, 0.600, 0.000, 1.0],   // #859900 olive
+            type_name: [0.149, 0.545, 0.824, 1.0], // #268BD2 blue
+            lifetime: [0.827, 0.212, 0.510, 1.0],  // #D33682 magenta
+            string: [0.165, 0.631, 0.596, 1.0],    // #2AA198 cyan
+            char_lit: [0.165, 0.631, 0.596, 1.0],
+            number: [0.827, 0.212, 0.510, 1.0],  // #D33682 magenta
+            comment: [0.345, 0.431, 0.459, 1.0], // #586E75 base01
+            attribute: [0.796, 0.294, 0.086, 1.0], // #CB4B16 orange
+            macro_call: [0.710, 0.537, 0.000, 1.0], // #B58900 yellow
+            operator: [0.514, 0.580, 0.588, 1.0], // #839496 base0
+            punctuation: [0.396, 0.482, 0.514, 1.0], // #657B83 base00
+            identifier: [0.514, 0.580, 0.588, 1.0],
+            user_code_marker: [0.710, 0.537, 0.000, 1.0],
+            hex_null: [0.86, 0.20, 0.18, 1.0],      // solarized red
+            hex_ff: [0.71, 0.54, 0.00, 1.0],        // solarized yellow
+            hex_default: [0.51, 0.58, 0.59, 1.0],   // solarized base0
+            hex_printable: [0.52, 0.60, 0.00, 1.0], // solarized green
+            current_line_bg: [0.027, 0.212, 0.259, 1.0], // #073642 base02
+            selection_bg: [0.149, 0.545, 0.824, 0.50],
+            search_match_bg: [0.710, 0.537, 0.000, 0.25],
             search_current_bg: [0.710, 0.537, 0.000, 0.55],
-            line_number:       [0.345, 0.431, 0.459, 1.0],
-            line_number_active:[0.514, 0.580, 0.588, 1.0],
-            bracket_match_bg:  [0.149, 0.545, 0.824, 0.25],
-            error_underline:   [0.863, 0.196, 0.184, 1.0],  // #DC322F red
+            line_number: [0.345, 0.431, 0.459, 1.0],
+            line_number_active: [0.514, 0.580, 0.588, 1.0],
+            bracket_match_bg: [0.149, 0.545, 0.824, 0.25],
+            error_underline: [0.863, 0.196, 0.184, 1.0], // #DC322F red
             warning_underline: [0.796, 0.294, 0.086, 1.0],
-            gutter_bg:         [0.027, 0.212, 0.259, 1.0],  // #073642
-            editor_bg:         [0.000, 0.169, 0.212, 1.0],  // #002B36 base03
+            gutter_bg: [0.027, 0.212, 0.259, 1.0], // #073642
+            editor_bg: [0.000, 0.169, 0.212, 1.0], // #002B36 base03
         }
     }
 
@@ -563,34 +555,34 @@ impl SyntaxColors {
     /// Solarized Light — Ethan Schoonover's light variant.
     pub fn solarized_light() -> Self {
         Self {
-            keyword:           [0.522, 0.600, 0.000, 1.0],  // #859900 olive
-            type_name:         [0.149, 0.545, 0.824, 1.0],  // #268BD2 blue
-            lifetime:          [0.827, 0.212, 0.510, 1.0],  // #D33682 magenta
-            string:            [0.165, 0.631, 0.596, 1.0],  // #2AA198 cyan
-            char_lit:          [0.165, 0.631, 0.596, 1.0],
-            number:            [0.827, 0.212, 0.510, 1.0],
-            comment:           [0.576, 0.631, 0.631, 1.0],  // #93A1A1 base1
-            attribute:         [0.796, 0.294, 0.086, 1.0],  // #CB4B16 orange
-            macro_call:        [0.710, 0.537, 0.000, 1.0],  // #B58900 yellow
-            operator:          [0.396, 0.482, 0.514, 1.0],  // #657B83 base00
-            punctuation:       [0.514, 0.580, 0.588, 1.0],  // #839496 base0
-            identifier:        [0.396, 0.482, 0.514, 1.0],
-            user_code_marker:  [0.710, 0.537, 0.000, 1.0],
-            hex_null:          [0.86, 0.20, 0.18, 1.0],  // solarized red
-            hex_ff:            [0.71, 0.54, 0.00, 1.0],  // solarized yellow
-            hex_default:       [0.40, 0.48, 0.51, 1.0],  // solarized base00
-            hex_printable:     [0.52, 0.60, 0.00, 1.0],  // solarized green
-            current_line_bg:   [0.933, 0.910, 0.835, 1.0],  // #EEE8D5 base2
-            selection_bg:      [0.149, 0.545, 0.824, 0.40],
-            search_match_bg:   [0.710, 0.537, 0.000, 0.20],
+            keyword: [0.522, 0.600, 0.000, 1.0],   // #859900 olive
+            type_name: [0.149, 0.545, 0.824, 1.0], // #268BD2 blue
+            lifetime: [0.827, 0.212, 0.510, 1.0],  // #D33682 magenta
+            string: [0.165, 0.631, 0.596, 1.0],    // #2AA198 cyan
+            char_lit: [0.165, 0.631, 0.596, 1.0],
+            number: [0.827, 0.212, 0.510, 1.0],
+            comment: [0.576, 0.631, 0.631, 1.0], // #93A1A1 base1
+            attribute: [0.796, 0.294, 0.086, 1.0], // #CB4B16 orange
+            macro_call: [0.710, 0.537, 0.000, 1.0], // #B58900 yellow
+            operator: [0.396, 0.482, 0.514, 1.0], // #657B83 base00
+            punctuation: [0.514, 0.580, 0.588, 1.0], // #839496 base0
+            identifier: [0.396, 0.482, 0.514, 1.0],
+            user_code_marker: [0.710, 0.537, 0.000, 1.0],
+            hex_null: [0.86, 0.20, 0.18, 1.0],      // solarized red
+            hex_ff: [0.71, 0.54, 0.00, 1.0],        // solarized yellow
+            hex_default: [0.40, 0.48, 0.51, 1.0],   // solarized base00
+            hex_printable: [0.52, 0.60, 0.00, 1.0], // solarized green
+            current_line_bg: [0.933, 0.910, 0.835, 1.0], // #EEE8D5 base2
+            selection_bg: [0.149, 0.545, 0.824, 0.40],
+            search_match_bg: [0.710, 0.537, 0.000, 0.20],
             search_current_bg: [0.710, 0.537, 0.000, 0.45],
-            line_number:       [0.576, 0.631, 0.631, 1.0],
-            line_number_active:[0.396, 0.482, 0.514, 1.0],
-            bracket_match_bg:  [0.149, 0.545, 0.824, 0.20],
-            error_underline:   [0.863, 0.196, 0.184, 1.0],
+            line_number: [0.576, 0.631, 0.631, 1.0],
+            line_number_active: [0.396, 0.482, 0.514, 1.0],
+            bracket_match_bg: [0.149, 0.545, 0.824, 0.20],
+            error_underline: [0.863, 0.196, 0.184, 1.0],
             warning_underline: [0.796, 0.294, 0.086, 1.0],
-            gutter_bg:         [0.933, 0.910, 0.835, 1.0],  // #EEE8D5 base2
-            editor_bg:         [0.992, 0.965, 0.890, 1.0],  // #FDF6E3 base3
+            gutter_bg: [0.933, 0.910, 0.835, 1.0], // #EEE8D5 base2
+            editor_bg: [0.992, 0.965, 0.890, 1.0], // #FDF6E3 base3
         }
     }
 
@@ -599,34 +591,34 @@ impl SyntaxColors {
     /// GitHub Light — matches github.com code view.
     pub fn github_light() -> Self {
         Self {
-            keyword:           [0.843, 0.227, 0.286, 1.0],  // #D73A49 red
-            type_name:         [0.435, 0.259, 0.757, 1.0],  // #6F42C1 purple
-            lifetime:          [0.435, 0.259, 0.757, 1.0],
-            string:            [0.012, 0.184, 0.384, 1.0],  // #032F62 dark blue
-            char_lit:          [0.012, 0.184, 0.384, 1.0],
-            number:            [0.000, 0.361, 0.773, 1.0],  // #005CC5 blue
-            comment:           [0.416, 0.451, 0.490, 1.0],  // #6A737D grey
-            attribute:         [0.435, 0.259, 0.757, 1.0],
-            macro_call:        [0.843, 0.227, 0.286, 1.0],
-            operator:          [0.843, 0.227, 0.286, 1.0],
-            punctuation:       [0.141, 0.161, 0.180, 1.0],  // #24292E near-black
-            identifier:        [0.141, 0.161, 0.180, 1.0],
-            user_code_marker:  [0.639, 0.353, 0.000, 1.0],
-            hex_null:          [0.82, 0.18, 0.15, 1.0],  // github red
-            hex_ff:            [0.73, 0.55, 0.00, 1.0],  // github amber
-            hex_default:       [0.35, 0.40, 0.46, 1.0],  // github gray
-            hex_printable:     [0.12, 0.50, 0.28, 1.0],  // github green
-            current_line_bg:   [0.945, 0.973, 1.000, 1.0],  // #F1F8FF
-            selection_bg:      [0.012, 0.400, 0.839, 0.38],
-            search_match_bg:   [1.000, 0.847, 0.000, 0.30],
+            keyword: [0.843, 0.227, 0.286, 1.0],   // #D73A49 red
+            type_name: [0.435, 0.259, 0.757, 1.0], // #6F42C1 purple
+            lifetime: [0.435, 0.259, 0.757, 1.0],
+            string: [0.012, 0.184, 0.384, 1.0], // #032F62 dark blue
+            char_lit: [0.012, 0.184, 0.384, 1.0],
+            number: [0.000, 0.361, 0.773, 1.0],  // #005CC5 blue
+            comment: [0.416, 0.451, 0.490, 1.0], // #6A737D grey
+            attribute: [0.435, 0.259, 0.757, 1.0],
+            macro_call: [0.843, 0.227, 0.286, 1.0],
+            operator: [0.843, 0.227, 0.286, 1.0],
+            punctuation: [0.141, 0.161, 0.180, 1.0], // #24292E near-black
+            identifier: [0.141, 0.161, 0.180, 1.0],
+            user_code_marker: [0.639, 0.353, 0.000, 1.0],
+            hex_null: [0.82, 0.18, 0.15, 1.0],      // github red
+            hex_ff: [0.73, 0.55, 0.00, 1.0],        // github amber
+            hex_default: [0.35, 0.40, 0.46, 1.0],   // github gray
+            hex_printable: [0.12, 0.50, 0.28, 1.0], // github green
+            current_line_bg: [0.945, 0.973, 1.000, 1.0], // #F1F8FF
+            selection_bg: [0.012, 0.400, 0.839, 0.38],
+            search_match_bg: [1.000, 0.847, 0.000, 0.30],
             search_current_bg: [1.000, 0.847, 0.000, 0.60],
-            line_number:       [0.729, 0.733, 0.741, 1.0],  // #BABBBD
-            line_number_active:[0.141, 0.161, 0.180, 1.0],
-            bracket_match_bg:  [0.012, 0.400, 0.839, 0.15],
-            error_underline:   [0.843, 0.227, 0.286, 1.0],
+            line_number: [0.729, 0.733, 0.741, 1.0], // #BABBBD
+            line_number_active: [0.141, 0.161, 0.180, 1.0],
+            bracket_match_bg: [0.012, 0.400, 0.839, 0.15],
+            error_underline: [0.843, 0.227, 0.286, 1.0],
             warning_underline: [0.639, 0.353, 0.000, 1.0],
-            gutter_bg:         [0.965, 0.973, 0.980, 1.0],  // #F6F8FA
-            editor_bg:         [1.000, 1.000, 1.000, 1.0],  // #FFFFFF
+            gutter_bg: [0.965, 0.973, 0.980, 1.0], // #F6F8FA
+            editor_bg: [1.000, 1.000, 1.000, 1.0], // #FFFFFF
         }
     }
 }
@@ -703,32 +695,32 @@ pub struct EditorConfig {
 impl Default for EditorConfig {
     fn default() -> Self {
         Self {
-            tab_size:               4,
-            insert_spaces:          true,
-            auto_indent:            true,
-            auto_close_brackets:    true,
-            auto_close_quotes:      true,
-            show_line_numbers:      true,
+            tab_size: 4,
+            insert_spaces: true,
+            auto_indent: true,
+            auto_close_brackets: true,
+            auto_close_quotes: true,
+            show_line_numbers: true,
             highlight_current_line: true,
-            bracket_matching:       true,
-            show_whitespace:        false,
-            show_color_swatches:    true,
-            hex_auto_space:         false,
-            hex_auto_uppercase:     false,
+            bracket_matching: true,
+            show_whitespace: false,
+            show_color_swatches: true,
+            hex_auto_space: false,
+            hex_auto_uppercase: false,
             force_english_on_focus: false,
-            read_only:              false,
-            show_fold_indicators:   true,
-            word_wrap:              false,
-            smooth_scrolling:       true,
-            language:               Language::Rust,
-            theme:                  EditorTheme::DarkDefault,
-            colors:                 SyntaxColors::dark_default(),
-            cursor_blink_rate:      0.53,
-            scroll_speed:           3.0,
-            font_size_scale:        1.0,
-            context_menu:           ContextMenuConfig::default(),
-            max_lines:              0,
-            max_line_length:        0,
+            read_only: false,
+            show_fold_indicators: true,
+            word_wrap: false,
+            smooth_scrolling: true,
+            language: Language::Rust,
+            theme: EditorTheme::DarkDefault,
+            colors: SyntaxColors::dark_default(),
+            cursor_blink_rate: 0.53,
+            scroll_speed: 3.0,
+            font_size_scale: 1.0,
+            context_menu: ContextMenuConfig::default(),
+            max_lines: 0,
+            max_line_length: 0,
         }
     }
 }

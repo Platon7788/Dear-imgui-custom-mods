@@ -68,13 +68,14 @@ pub(crate) fn compute_with_adj(node_order: &[NodeId], adj: &[Vec<usize>]) -> Vec
     let mut sigma: Vec<f64> = vec![0.0_f64; n];
     let mut dist: Vec<i64> = vec![-1_i64; n];
     let mut delta: Vec<f64> = vec![0.0_f64; n];
-    let mut queue: std::collections::VecDeque<usize> =
-        std::collections::VecDeque::with_capacity(n);
+    let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::with_capacity(n);
 
     for s in 0..n {
         // Reset buffers for this source node.
         stack.clear();
-        for p in &mut pred { p.clear(); }
+        for p in &mut pred {
+            p.clear();
+        }
         sigma.iter_mut().for_each(|x| *x = 0.0);
         dist.fill(-1);
         delta.iter_mut().for_each(|x| *x = 0.0);
@@ -162,14 +163,8 @@ mod tests {
             (sb - 1.0).abs() < 1e-5,
             "B should have betweenness 1.0, got {sb}"
         );
-        assert!(
-            sa.abs() < 1e-5,
-            "A should have betweenness 0.0, got {sa}"
-        );
-        assert!(
-            sc.abs() < 1e-5,
-            "C should have betweenness 0.0, got {sc}"
-        );
+        assert!(sa.abs() < 1e-5, "A should have betweenness 0.0, got {sa}");
+        assert!(sc.abs() < 1e-5, "C should have betweenness 0.0, got {sc}");
     }
 
     /// Star graph (center + N spokes): center should have maximum betweenness
@@ -198,7 +193,10 @@ mod tests {
             );
         }
         // Center betweenness must be strictly positive in a star with >= 3 spokes.
-        assert!(center_score > 0.0, "center should have positive betweenness");
+        assert!(
+            center_score > 0.0,
+            "center should have positive betweenness"
+        );
     }
 
     /// Single node: must not panic and returns zero score.

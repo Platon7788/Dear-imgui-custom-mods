@@ -52,7 +52,6 @@ pub struct FilterState {
     pub min_edge_weight: f32,
 
     // ── Depth / focus filter ──────────────────────────────────────────────────
-
     /// Hop depth limit from `focused_node`. `None` = show all nodes.
     /// When `Some(n)`, only nodes reachable within n hops from `focused_node`
     /// are visible (BFS through undirected adjacency).
@@ -63,13 +62,11 @@ pub struct FilterState {
     pub focused_node: Option<NodeId>,
 
     // ── Degree filter ─────────────────────────────────────────────────────────
-
     /// Hide nodes whose edge count (degree) is strictly less than this value.
     /// `0` = no filtering (default).
     pub min_degree: u32,
 
     // ── Node type visibility ──────────────────────────────────────────────────
-
     /// Show nodes with no edges (degree = 0). Default `true`.
     pub show_orphans: bool,
 
@@ -83,7 +80,6 @@ pub struct FilterState {
     pub hide_attachments: bool,
 
     // ── Search options ────────────────────────────────────────────────────────
-
     /// When `true`, the `search_query` is also matched against node tags.
     /// Default `true`.
     pub search_match_tags: bool,

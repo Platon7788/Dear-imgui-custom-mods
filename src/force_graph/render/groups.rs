@@ -38,7 +38,10 @@ fn matches_query(style: &NodeStyle, query: &ColorGroupQuery) -> bool {
         ColorGroupQuery::Kind(s) => kind_name_matches(style.kind, s),
         ColorGroupQuery::Regex(s) => {
             crate::utils::glob::glob_match(s, &style.label)
-                || style.tags.iter().any(|t| crate::utils::glob::glob_match(s, t))
+                || style
+                    .tags
+                    .iter()
+                    .any(|t| crate::utils::glob::glob_match(s, t))
         }
         ColorGroupQuery::All => true,
     }
@@ -63,10 +66,8 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
     }
     let h = haystack.as_bytes();
     let n = needle.as_bytes();
-    h.windows(n.len())
-        .any(|w| w.eq_ignore_ascii_case(n))
+    h.windows(n.len()).any(|w| w.eq_ignore_ascii_case(n))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -103,7 +104,11 @@ mod tests {
     #[test]
     fn first_match_wins() {
         let style = mk("alpha");
-        let g1 = ColorGroup::new("g1", ColorGroupQuery::Label("alp".into()), [1.0, 0.0, 0.0, 1.0]);
+        let g1 = ColorGroup::new(
+            "g1",
+            ColorGroupQuery::Label("alp".into()),
+            [1.0, 0.0, 0.0, 1.0],
+        );
         let g2 = ColorGroup::new("g2", ColorGroupQuery::All, [0.0, 1.0, 0.0, 1.0]);
         let result = resolve_group_color(&style, &[g1, g2]);
         assert_eq!(result, Some([1.0, 0.0, 0.0, 1.0]));
@@ -112,8 +117,15 @@ mod tests {
     #[test]
     fn kind_match() {
         let style = mk("tag_node").with_kind(NodeKind::Tag);
-        let g = ColorGroup::new("tags", ColorGroupQuery::Kind("tag".into()), [0.8, 0.2, 0.2, 1.0]);
-        assert_eq!(resolve_group_color(&style, &[g]), Some([0.8, 0.2, 0.2, 1.0]));
+        let g = ColorGroup::new(
+            "tags",
+            ColorGroupQuery::Kind("tag".into()),
+            [0.8, 0.2, 0.2, 1.0],
+        );
+        assert_eq!(
+            resolve_group_color(&style, &[g]),
+            Some([0.8, 0.2, 0.2, 1.0])
+        );
     }
 
     #[test]

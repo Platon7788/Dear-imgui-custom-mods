@@ -264,10 +264,7 @@ impl TextBuffer {
         // Tab vs spaces detection: scan first N indented lines. If any
         // non-empty line begins with `\t`, mark as tabs. This is the same
         // heuristic VSCode / Sublime use before falling back to config.
-        self.detected_uses_tabs = text
-            .lines()
-            .take(256)
-            .any(|l| l.starts_with('\t'));
+        self.detected_uses_tabs = text.lines().take(256).any(|l| l.starts_with('\t'));
 
         // `str::lines()` strips both `\n` and `\r\n` — no need to do it
         // ourselves. The line ending is preserved separately in
@@ -405,7 +402,11 @@ impl TextBuffer {
         // Smart home: first press → first non-whitespace, second → col 0
         let line = self.line(self.cursor.line);
         let first_non_ws = line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
-        self.cursor.col = if self.cursor.col == first_non_ws { 0 } else { first_non_ws };
+        self.cursor.col = if self.cursor.col == first_non_ws {
+            0
+        } else {
+            first_non_ws
+        };
         self.sticky_col = None;
     }
 
@@ -436,13 +437,17 @@ impl TextBuffer {
         let mut iter = line.chars().skip(col).peekable();
         // Skip current word
         while let Some(&c) = iter.peek() {
-            if !is_word_char(c) { break; }
+            if !is_word_char(c) {
+                break;
+            }
             iter.next();
             col += 1;
         }
         // Skip whitespace / non-word
         while let Some(&c) = iter.peek() {
-            if is_word_char(c) { break; }
+            if is_word_char(c) {
+                break;
+            }
             iter.next();
             col += 1;
         }
@@ -473,13 +478,17 @@ impl TextBuffer {
         let mut iter = line[..byte_col].chars().rev().peekable();
         // Back up over whitespace / non-word
         while let Some(&c) = iter.peek() {
-            if is_word_char(c) { break; }
+            if is_word_char(c) {
+                break;
+            }
             iter.next();
             col -= 1;
         }
         // Back up over word
         while let Some(&c) = iter.peek() {
-            if !is_word_char(c) { break; }
+            if !is_word_char(c) {
+                break;
+            }
             iter.next();
             col -= 1;
         }
@@ -514,8 +523,8 @@ impl TextBuffer {
         if lines < 0 {
             self.cursor.line = self.cursor.line.saturating_sub(lines.unsigned_abs());
         } else {
-            self.cursor.line = (self.cursor.line + lines as usize)
-                .min(self.lines.len().saturating_sub(1));
+            self.cursor.line =
+                (self.cursor.line + lines as usize).min(self.lines.len().saturating_sub(1));
         }
         self.cursor.col = target_col.min(self.line_char_count(self.cursor.line));
         self.sticky_col = Some(target_col);
@@ -565,7 +574,8 @@ impl TextBuffer {
             for (j, &mid) in insert_lines[1..insert_lines.len() - 1].iter().enumerate() {
                 self.lines.insert(pos.line + 1 + j, mid.to_string());
             }
-            self.lines.insert(pos.line + insert_lines.len() - 1, last.clone());
+            self.lines
+                .insert(pos.line + insert_lines.len() - 1, last.clone());
             self.cursor.line = pos.line + insert_lines.len() - 1;
             self.cursor.col = insert_lines[insert_lines.len() - 1].chars().count();
         }
@@ -739,7 +749,10 @@ impl TextBuffer {
         let end_line = self.lines.len().saturating_sub(1);
         let end_col = self.line_char_count(end_line);
         let end = CursorPos::new(end_line, end_col);
-        self.selection = Some(Selection { anchor: start, cursor: end });
+        self.selection = Some(Selection {
+            anchor: start,
+            cursor: end,
+        });
         self.cursor = end;
     }
 
@@ -749,7 +762,10 @@ impl TextBuffer {
         let start = CursorPos::new(line, 0);
         let end_col = self.line_char_count(line);
         let end = CursorPos::new(line, end_col);
-        self.selection = Some(Selection { anchor: start, cursor: end });
+        self.selection = Some(Selection {
+            anchor: start,
+            cursor: end,
+        });
         self.cursor = end;
     }
 
@@ -759,14 +775,20 @@ impl TextBuffer {
         let chars: Vec<char> = line.chars().collect();
         let col = self.cursor.col;
 
-        if col >= chars.len() { return; }
+        if col >= chars.len() {
+            return;
+        }
 
         let mut start = col;
         let mut end = col;
 
         if is_word_char(chars[col]) {
-            while start > 0 && is_word_char(chars[start - 1]) { start -= 1; }
-            while end < chars.len() && is_word_char(chars[end]) { end += 1; }
+            while start > 0 && is_word_char(chars[start - 1]) {
+                start -= 1;
+            }
+            while end < chars.len() && is_word_char(chars[end]) {
+                end += 1;
+            }
         }
 
         self.selection = Some(Selection {
@@ -795,7 +817,9 @@ impl TextBuffer {
     /// Unindent selected lines (Shift+Tab).
     pub fn unindent_lines(&mut self, range: Range<usize>, tab_size: u8) {
         for i in range {
-            if i >= self.lines.len() { continue; }
+            if i >= self.lines.len() {
+                continue;
+            }
             let line = &self.lines[i];
             let mut remove = 0usize;
             for ch in line.chars() {
@@ -831,7 +855,9 @@ impl TextBuffer {
     /// Move the current line up (Alt+Up).
     pub fn move_line_up(&mut self) {
         let line = self.cursor.line;
-        if line == 0 { return; }
+        if line == 0 {
+            return;
+        }
         self.lines.swap(line, line - 1);
         self.cursor.line -= 1;
         self.modified = true;
@@ -841,7 +867,9 @@ impl TextBuffer {
     /// Move the current line down (Alt+Down).
     pub fn move_line_down(&mut self) {
         let line = self.cursor.line;
-        if line + 1 >= self.lines.len() { return; }
+        if line + 1 >= self.lines.len() {
+            return;
+        }
         self.lines.swap(line, line + 1);
         self.cursor.line += 1;
         self.modified = true;
@@ -852,12 +880,16 @@ impl TextBuffer {
     pub fn toggle_line_comment(&mut self, range: Range<usize>) {
         // Check if ALL lines in range are commented
         let all_commented = range.clone().all(|i| {
-            if i >= self.lines.len() { return false; }
+            if i >= self.lines.len() {
+                return false;
+            }
             self.lines[i].trim_start().starts_with("//")
         });
 
         for i in range {
-            if i >= self.lines.len() { continue; }
+            if i >= self.lines.len() {
+                continue;
+            }
             if all_commented {
                 // Remove comment prefix — but only if the `//` we remove is
                 // the one that STARTS the line's non-whitespace content.
@@ -923,7 +955,9 @@ impl TextBuffer {
         let line = self.line(self.cursor.line);
         let col = self.cursor.col;
         let line_len = line.chars().count();
-        if col >= line_len { return None; }
+        if col >= line_len {
+            return None;
+        }
 
         // Get the bracket char at col via one chars().nth — cheaper than
         // a full Vec<char> allocation when the char turns out not to be a
@@ -946,7 +980,9 @@ impl TextBuffer {
             while l < self.lines.len() {
                 let line = self.line(l);
                 for (i, ch) in line.chars().enumerate().skip(c) {
-                    if ch == open { depth += 1; }
+                    if ch == open {
+                        depth += 1;
+                    }
                     if ch == close {
                         depth -= 1;
                         if depth == 0 {
@@ -971,17 +1007,23 @@ impl TextBuffer {
                 // count down from `c`.
                 let mut pos = c;
                 for ch in prefix.chars().rev() {
-                    if ch == close { depth += 1; }
+                    if ch == close {
+                        depth += 1;
+                    }
                     if ch == open {
                         depth -= 1;
                         if depth == 0 {
                             return Some(CursorPos::new(l, pos));
                         }
                     }
-                    if pos == 0 { break; }
+                    if pos == 0 {
+                        break;
+                    }
                     pos -= 1;
                 }
-                if l == 0 { break; }
+                if l == 0 {
+                    break;
+                }
                 l -= 1;
                 c = self.line_char_count(l).saturating_sub(1);
             }
@@ -1208,7 +1250,6 @@ impl TextBuffer {
             }
         }
     }
-
 }
 
 // ── Utility functions ────────────────────────────────────────────────────────

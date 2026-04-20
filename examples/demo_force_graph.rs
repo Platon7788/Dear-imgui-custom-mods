@@ -17,11 +17,14 @@
 //! Run: cargo run --example demo_force_graph --features force_graph,app_window
 
 use dear_imgui_custom_mod::force_graph::{
-    config::{ColorGroup, ColorGroupQuery, ColorMode, ForceConfig, LabelVisibility, SidebarKind, ViewerConfig},
+    GraphViewer,
+    config::{
+        ColorGroup, ColorGroupQuery, ColorMode, ForceConfig, LabelVisibility, SidebarKind,
+        ViewerConfig,
+    },
     data::GraphData,
     event::GraphEvent,
     style::{EdgeStyle, NodeKind, NodeStyle},
-    GraphViewer,
 };
 use dear_imgui_rs::{Condition, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
@@ -41,32 +44,47 @@ use winit::{
 const TAGS: &[&str] = &["core", "api", "ui", "data", "infra", "test"];
 
 const TAG_META: &[(&str, char, [f32; 4])] = &[
-    ("core",  '\u{25CF}', [0.40, 0.70, 1.00, 1.0]),
-    ("api",   '\u{25B6}', [0.40, 0.90, 0.60, 1.0]),
-    ("ui",    '\u{25C6}', [0.95, 0.60, 0.20, 1.0]),
-    ("data",  '\u{25A0}', [0.80, 0.40, 0.90, 1.0]),
+    ("core", '\u{25CF}', [0.40, 0.70, 1.00, 1.0]),
+    ("api", '\u{25B6}', [0.40, 0.90, 0.60, 1.0]),
+    ("ui", '\u{25C6}', [0.95, 0.60, 0.20, 1.0]),
+    ("data", '\u{25A0}', [0.80, 0.40, 0.90, 1.0]),
     ("infra", '\u{25B2}', [0.90, 0.30, 0.30, 1.0]),
-    ("test",  '\u{2714}', [0.60, 0.85, 0.85, 1.0]),
+    ("test", '\u{2714}', [0.60, 0.85, 0.85, 1.0]),
 ];
 
 fn tag_icon(tag: &str) -> char {
-    TAG_META.iter().find(|(t, _, _)| *t == tag).map_or('\u{25CF}', |m| m.1)
+    TAG_META
+        .iter()
+        .find(|(t, _, _)| *t == tag)
+        .map_or('\u{25CF}', |m| m.1)
 }
 fn tag_color(tag: &str) -> [f32; 4] {
-    TAG_META.iter().find(|(t, _, _)| *t == tag).map_or([0.65, 0.65, 0.70, 1.0], |m| m.2)
+    TAG_META
+        .iter()
+        .find(|(t, _, _)| *t == tag)
+        .map_or([0.65, 0.65, 0.70, 1.0], |m| m.2)
 }
 
 // ─── LCG RNG ──────────────────────────────────────────────────────────────────
 
 struct Lcg(u64);
 impl Lcg {
-    fn new(seed: u64) -> Self { Self(seed) }
+    fn new(seed: u64) -> Self {
+        Self(seed)
+    }
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 33
     }
-    fn next_f32(&mut self) -> f32 { (self.next() & 0x7FFF_FFFF) as f32 / 0x7FFF_FFFF_u32 as f32 }
-    fn next_usize(&mut self, max: usize) -> usize { (self.next() as usize) % max.max(1) }
+    fn next_f32(&mut self) -> f32 {
+        (self.next() & 0x7FFF_FFFF) as f32 / 0x7FFF_FFFF_u32 as f32
+    }
+    fn next_usize(&mut self, max: usize) -> usize {
+        (self.next() as usize) % max.max(1)
+    }
 }
 
 // ─── Graph construction ───────────────────────────────────────────────────────
@@ -76,13 +94,56 @@ fn build_graph(seed: u64) -> GraphData {
     let mut graph = GraphData::with_capacity(80, 120);
 
     let names = [
-        "Alpha","Beta","Gamma","Delta","Epsilon","Zeta","Eta","Theta",
-        "Iota","Kappa","Lambda","Mu","Nu","Xi","Omicron","Pi","Rho",
-        "Sigma","Tau","Upsilon","Phi","Chi","Psi","Omega","Andromeda",
-        "Cassiopeia","Cygnus","Perseus","Orion","Lyra","Aquila","Vega",
-        "Sirius","Altair","Deneb","Rigel","Betelgeuse","Aldebaran",
-        "Pollux","Castor","Procyon","Regulus","Spica","Arcturus",
-        "Antares","Fomalhaut","Acrux","Mimosa","Hadar","Canopus",
+        "Alpha",
+        "Beta",
+        "Gamma",
+        "Delta",
+        "Epsilon",
+        "Zeta",
+        "Eta",
+        "Theta",
+        "Iota",
+        "Kappa",
+        "Lambda",
+        "Mu",
+        "Nu",
+        "Xi",
+        "Omicron",
+        "Pi",
+        "Rho",
+        "Sigma",
+        "Tau",
+        "Upsilon",
+        "Phi",
+        "Chi",
+        "Psi",
+        "Omega",
+        "Andromeda",
+        "Cassiopeia",
+        "Cygnus",
+        "Perseus",
+        "Orion",
+        "Lyra",
+        "Aquila",
+        "Vega",
+        "Sirius",
+        "Altair",
+        "Deneb",
+        "Rigel",
+        "Betelgeuse",
+        "Aldebaran",
+        "Pollux",
+        "Castor",
+        "Procyon",
+        "Regulus",
+        "Spica",
+        "Arcturus",
+        "Antares",
+        "Fomalhaut",
+        "Acrux",
+        "Mimosa",
+        "Hadar",
+        "Canopus",
     ];
 
     // ── 50 Regular nodes — spread across time 0..100 ──────────────────────────
@@ -91,14 +152,16 @@ fn build_graph(seed: u64) -> GraphData {
         let tag = TAGS[rng.next_usize(TAGS.len())];
         let created_at = i as f32 * 2.0 + rng.next_f32() * 1.5; // 0 .. ~100
         let tooltip = format!("{name} — #{tag}\ncreated_at: {created_at:.1}");
-        ids.push(graph.add_node(
-            NodeStyle::new(*name)
-                .with_tag(tag)
-                .with_icon(tag_icon(tag))
-                .with_color(tag_color(tag))
-                .with_tooltip(tooltip)
-                .with_timestamp(created_at),
-        ));
+        ids.push(
+            graph.add_node(
+                NodeStyle::new(*name)
+                    .with_tag(tag)
+                    .with_icon(tag_icon(tag))
+                    .with_color(tag_color(tag))
+                    .with_tooltip(tooltip)
+                    .with_timestamp(created_at),
+            ),
+        );
     }
 
     // ── 6 Tag hub nodes (NodeKind::Tag = square, large, pinned) ───────────────
@@ -119,22 +182,26 @@ fn build_graph(seed: u64) -> GraphData {
 
     // ── 4 Unresolved stub nodes (NodeKind::Unresolved = diamond) ─────────────
     for name in &["???mod_x", "???dep_y", "???ext_z", "???todo"] {
-        ids.push(graph.add_node(
-            NodeStyle::new(*name)
-                .with_kind(NodeKind::Unresolved)
-                .with_color([0.55, 0.55, 0.55, 1.0])
-                .with_timestamp(80.0 + rng.next_f32() * 20.0),
-        ));
+        ids.push(
+            graph.add_node(
+                NodeStyle::new(*name)
+                    .with_kind(NodeKind::Unresolved)
+                    .with_color([0.55, 0.55, 0.55, 1.0])
+                    .with_timestamp(80.0 + rng.next_f32() * 20.0),
+            ),
+        );
     }
 
     // ── 4 Attachment nodes (NodeKind::Attachment = small circle) ──────────────
     for name in &["attach_A", "attach_B", "attach_C", "attach_D"] {
-        ids.push(graph.add_node(
-            NodeStyle::new(*name)
-                .with_kind(NodeKind::Attachment)
-                .with_color([0.70, 0.70, 0.50, 1.0])
-                .with_timestamp(50.0 + rng.next_f32() * 30.0),
-        ));
+        ids.push(
+            graph.add_node(
+                NodeStyle::new(*name)
+                    .with_kind(NodeKind::Attachment)
+                    .with_color([0.70, 0.70, 0.50, 1.0])
+                    .with_timestamp(50.0 + rng.next_f32() * 30.0),
+            ),
+        );
     }
 
     // ── 2 Cluster nodes (NodeKind::Cluster = large octagon) ───────────────────
@@ -161,9 +228,11 @@ fn build_graph(seed: u64) -> GraphData {
         let w = 0.3 + rng.next_f32() * 0.7;
         let created_at = i as f32 * 2.0;
         let _ = graph.add_edge(
-            ids[i], ids[j],
+            ids[i],
+            ids[j],
             EdgeStyle::new().with_timestamp(created_at),
-            w, false,
+            w,
+            false,
         );
     }
     // Extra random edges.
@@ -181,9 +250,11 @@ fn build_graph(seed: u64) -> GraphData {
         for &target in ids[..50].iter() {
             if graph.node(target).is_some_and(|n| n.tags.contains(&tag)) {
                 let _ = graph.add_edge(
-                    hub, target,
+                    hub,
+                    target,
                     EdgeStyle::new().with_color([0.7, 0.7, 0.7, 0.5]),
-                    0.7, true, // directed = true → arrowhead
+                    0.7,
+                    true, // directed = true → arrowhead
                 );
             }
         }
@@ -214,7 +285,11 @@ fn build_graph(seed: u64) -> GraphData {
 // ─── Demo state ───────────────────────────────────────────────────────────────
 
 const COLOR_MODES: &[&str] = &[
-    "Static", "By Tag", "By Community", "By PageRank", "By Betweenness",
+    "Static",
+    "By Tag",
+    "By Community",
+    "By PageRank",
+    "By Betweenness",
 ];
 
 struct DemoState {
@@ -237,8 +312,8 @@ impl DemoState {
             color_mode: ColorMode::Static,
             show_labels: LabelVisibility::BySize,
             min_label_zoom: 0.45,
-            minimap: true,                // Phase D: minimap overlay enabled
-            search_highlight_mode: true,  // Phase D: dim non-matches instead of hiding
+            minimap: true,               // Phase D: minimap overlay enabled
+            search_highlight_mode: true, // Phase D: dim non-matches instead of hiding
             ..ViewerConfig::default()
         };
 
@@ -255,7 +330,13 @@ impl DemoState {
             .with_force_config(ForceConfig::default())
             .with_sidebar(SidebarKind::Built);
 
-        Self { viewer, graph, event_log: Vec::new(), seed, color_mode_idx: 0 }
+        Self {
+            viewer,
+            graph,
+            event_log: Vec::new(),
+            seed,
+            color_mode_idx: 0,
+        }
     }
 
     fn regenerate(&mut self) {
@@ -279,7 +360,9 @@ impl DemoState {
             .size([1440.0, 900.0], Condition::FirstUseEver)
             .build(|| {
                 // ── Toolbar ──────────────────────────────────────────────────
-                if ui.button("Regenerate") { self.regenerate(); }
+                if ui.button("Regenerate") {
+                    self.regenerate();
+                }
                 ui.same_line();
                 if ui.button("Fit [F]") {
                     self.viewer.filter_mut().focused_node = None;
@@ -311,9 +394,18 @@ impl DemoState {
                                 self.viewer.config.color_mode = match i {
                                     0 => ColorMode::Static,
                                     1 => ColorMode::ByTag,
-                                    2 => { self.graph.recompute_metrics_if_needed(); ColorMode::ByCommunity }
-                                    3 => { self.graph.recompute_metrics_if_needed(); ColorMode::ByPageRank }
-                                    _ => { self.graph.recompute_metrics_if_needed(); ColorMode::ByBetweenness }
+                                    2 => {
+                                        self.graph.recompute_metrics_if_needed();
+                                        ColorMode::ByCommunity
+                                    }
+                                    3 => {
+                                        self.graph.recompute_metrics_if_needed();
+                                        ColorMode::ByPageRank
+                                    }
+                                    _ => {
+                                        self.graph.recompute_metrics_if_needed();
+                                        ColorMode::ByBetweenness
+                                    }
                                 };
                             }
                         }
@@ -343,19 +435,31 @@ impl DemoState {
                         for ev in &events {
                             let msg = match ev {
                                 GraphEvent::NodeClicked(id) => {
-                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self
+                                        .graph
+                                        .node(*id)
+                                        .map(|s| s.label.as_str())
+                                        .unwrap_or("?");
                                     format!("Click: {lbl}")
                                 }
                                 GraphEvent::NodeDoubleClicked(id) => {
                                     // Double-click → smooth camera focus via viewer.focus()
                                     self.viewer.focus(*id);
-                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self
+                                        .graph
+                                        .node(*id)
+                                        .map(|s| s.label.as_str())
+                                        .unwrap_or("?");
                                     format!("Focus→ {lbl}")
                                 }
                                 GraphEvent::NodeHovered(_) => return,
                                 GraphEvent::CameraChanged => return,
                                 GraphEvent::NodeContextMenu(id, _) => {
-                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self
+                                        .graph
+                                        .node(*id)
+                                        .map(|s| s.label.as_str())
+                                        .unwrap_or("?");
                                     format!("RClick: {lbl}")
                                 }
                                 GraphEvent::SelectionChanged(sel) => {
@@ -365,15 +469,27 @@ impl DemoState {
                                 GraphEvent::SearchChanged(q) => format!("Search: \"{q}\""),
                                 GraphEvent::GroupChanged => "Color groups changed".into(),
                                 GraphEvent::NodeMoved(id, _) => {
-                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self
+                                        .graph
+                                        .node(*id)
+                                        .map(|s| s.label.as_str())
+                                        .unwrap_or("?");
                                     format!("Dragged: {lbl}")
                                 }
                                 GraphEvent::NodePinned(id, p) => {
-                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self
+                                        .graph
+                                        .node(*id)
+                                        .map(|s| s.label.as_str())
+                                        .unwrap_or("?");
                                     format!("{} {lbl}", if *p { "Pinned:" } else { "Unpinned:" })
                                 }
                                 GraphEvent::NodeActivated(id) => {
-                                    let lbl = self.graph.node(*id).map(|s| s.label.as_str()).unwrap_or("?");
+                                    let lbl = self
+                                        .graph
+                                        .node(*id)
+                                        .map(|s| s.label.as_str())
+                                        .unwrap_or("?");
                                     format!("Activated: {lbl}")
                                 }
                                 GraphEvent::SelectionDeleteRequested(sel) => {
@@ -456,12 +572,20 @@ struct GpuState {
     demo: DemoState,
 }
 
-struct App { gpu: Option<GpuState> }
-impl App { fn new() -> Self { Self { gpu: None } } }
+struct App {
+    gpu: Option<GpuState>,
+}
+impl App {
+    fn new() -> Self {
+        Self { gpu: None }
+    }
+}
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gpu.is_some() { return; }
+        if self.gpu.is_some() {
+            return;
+        }
 
         let window = Arc::new(
             event_loop
@@ -482,9 +606,10 @@ impl ApplicationHandler for App {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
-        })).expect("adapter");
-        let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("device");
+        }))
+        .expect("adapter");
+        let (device, queue) =
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -511,16 +636,28 @@ impl ApplicationHandler for App {
         let segoe = "C:\\Windows\\Fonts\\segoeui.ttf";
         if std::path::Path::new(segoe).exists() {
             let data: &'static [u8] = Box::leak(std::fs::read(segoe).unwrap().into_boxed_slice());
-            context.fonts().add_font(&[dear_imgui_rs::FontSource::TtfData {
-                data,
-                size_pixels: Some(font_size),
-                config: Some(dear_imgui_rs::FontConfig::new().size_pixels(font_size).oversample_h(2)),
-            }]);
+            context
+                .fonts()
+                .add_font(&[dear_imgui_rs::FontSource::TtfData {
+                    data,
+                    size_pixels: Some(font_size),
+                    config: Some(
+                        dear_imgui_rs::FontConfig::new()
+                            .size_pixels(font_size)
+                            .oversample_h(2),
+                    ),
+                }]);
         } else {
-            context.fonts().add_font(&[dear_imgui_rs::FontSource::DefaultFontData {
-                config: Some(dear_imgui_rs::FontConfig::new().size_pixels(font_size).oversample_h(2)),
-                size_pixels: Some(font_size),
-            }]);
+            context
+                .fonts()
+                .add_font(&[dear_imgui_rs::FontSource::DefaultFontData {
+                    config: Some(
+                        dear_imgui_rs::FontConfig::new()
+                            .size_pixels(font_size)
+                            .oversample_h(2),
+                    ),
+                    size_pixels: Some(font_size),
+                }]);
         }
 
         apply_dark_theme(context.style_mut());
@@ -528,19 +665,37 @@ impl ApplicationHandler for App {
         let renderer = WgpuRenderer::new(
             WgpuInitInfo::new(device.clone(), queue.clone(), surface_cfg.format),
             &mut context,
-        ).expect("renderer");
+        )
+        .expect("renderer");
 
-        self.gpu = Some(GpuState { device, queue, window, surface_cfg, surface,
-            context, platform, renderer, demo: DemoState::new() });
+        self.gpu = Some(GpuState {
+            device,
+            queue,
+            window,
+            surface_cfg,
+            surface,
+            context,
+            platform,
+            renderer,
+            demo: DemoState::new(),
+        });
     }
 
     fn window_event(
-        &mut self, event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId, event: WindowEvent,
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
     ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
-        gpu.platform.handle_event::<()>(&mut gpu.context, &gpu.window,
-            &Event::WindowEvent { window_id, event: event.clone() });
+        gpu.platform.handle_event::<()>(
+            &mut gpu.context,
+            &gpu.window,
+            &Event::WindowEvent {
+                window_id,
+                event: event.clone(),
+            },
+        );
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(s) => {
@@ -557,16 +712,24 @@ impl ApplicationHandler for App {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
-                    other => { eprintln!("Surface error: {other:?}"); return; }
+                    other => {
+                        eprintln!("Surface error: {other:?}");
+                        return;
+                    }
                 };
-                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);
                 gpu.platform.prepare_render_with_ui(ui, &gpu.window);
                 let draw_data = gpu.context.render();
-                let mut enc = gpu.device.create_command_encoder(
-                    &wgpu::CommandEncoderDescriptor { label: Some("imgui") });
+                let mut enc = gpu
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("imgui"),
+                    });
                 {
                     let mut rpass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("imgui_pass"),
@@ -575,7 +738,12 @@ impl ApplicationHandler for App {
                             resolve_target: None,
                             depth_slice: None,
                             ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color { r:0.10, g:0.11, b:0.14, a:1.0 }),
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.10,
+                                    g: 0.11,
+                                    b: 0.14,
+                                    a: 1.0,
+                                }),
                                 store: wgpu::StoreOp::Store,
                             },
                         })],
@@ -585,7 +753,9 @@ impl ApplicationHandler for App {
                         multiview_mask: None,
                     });
                     if draw_data.total_vtx_count > 0 {
-                        gpu.renderer.render_draw_data(draw_data, &mut rpass).expect("render");
+                        gpu.renderer
+                            .render_draw_data(draw_data, &mut rpass)
+                            .expect("render");
                     }
                 }
                 gpu.queue.submit(std::iter::once(enc.finish()));
@@ -597,25 +767,27 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _: &ActiveEventLoop) {
-        if let Some(gpu) = self.gpu.as_ref() { gpu.window.request_redraw(); }
+        if let Some(gpu) = self.gpu.as_ref() {
+            gpu.window.request_redraw();
+        }
     }
 }
 
 fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
-    style.set_color(StyleColor::WindowBg,      [0.11, 0.12, 0.15, 1.0]);
-    style.set_color(StyleColor::ChildBg,       [0.13, 0.14, 0.18, 1.0]);
-    style.set_color(StyleColor::FrameBg,       [0.16, 0.18, 0.22, 1.0]);
+    style.set_color(StyleColor::WindowBg, [0.11, 0.12, 0.15, 1.0]);
+    style.set_color(StyleColor::ChildBg, [0.13, 0.14, 0.18, 1.0]);
+    style.set_color(StyleColor::FrameBg, [0.16, 0.18, 0.22, 1.0]);
     style.set_color(StyleColor::TitleBgActive, [0.18, 0.20, 0.26, 1.0]);
-    style.set_color(StyleColor::Header,        [0.24, 0.28, 0.38, 1.0]);
+    style.set_color(StyleColor::Header, [0.24, 0.28, 0.38, 1.0]);
     style.set_color(StyleColor::HeaderHovered, [0.30, 0.35, 0.48, 1.0]);
-    style.set_color(StyleColor::Button,        [0.22, 0.26, 0.36, 1.0]);
+    style.set_color(StyleColor::Button, [0.22, 0.26, 0.36, 1.0]);
     style.set_color(StyleColor::ButtonHovered, [0.30, 0.35, 0.48, 1.0]);
-    style.set_color(StyleColor::ButtonActive,  [0.36, 0.42, 0.60, 1.0]);
-    style.set_color(StyleColor::SliderGrab,    [0.36, 0.42, 0.60, 1.0]);
-    style.set_color(StyleColor::CheckMark,     [0.50, 0.85, 0.50, 1.0]);
-    style.set_color(StyleColor::Text,          [0.88, 0.90, 0.92, 1.0]);
-    style.set_color(StyleColor::TextDisabled,  [0.50, 0.53, 0.60, 1.0]);
-    style.set_color(StyleColor::Border,        [0.24, 0.27, 0.33, 1.0]);
+    style.set_color(StyleColor::ButtonActive, [0.36, 0.42, 0.60, 1.0]);
+    style.set_color(StyleColor::SliderGrab, [0.36, 0.42, 0.60, 1.0]);
+    style.set_color(StyleColor::CheckMark, [0.50, 0.85, 0.50, 1.0]);
+    style.set_color(StyleColor::Text, [0.88, 0.90, 0.92, 1.0]);
+    style.set_color(StyleColor::TextDisabled, [0.50, 0.53, 0.60, 1.0]);
+    style.set_color(StyleColor::Border, [0.24, 0.27, 0.33, 1.0]);
     style.set_window_rounding(5.0);
     style.set_frame_rounding(3.0);
     style.set_scrollbar_rounding(3.0);

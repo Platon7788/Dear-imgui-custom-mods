@@ -119,7 +119,11 @@ mod tests {
     use super::*;
 
     fn entry(text: &str, version: u64) -> UndoEntry {
-        UndoEntry { text: text.to_string(), cursor: CursorPos::default(), version }
+        UndoEntry {
+            text: text.to_string(),
+            cursor: CursorPos::default(),
+            version,
+        }
     }
 
     #[test]

@@ -11,21 +11,31 @@ const KEYWORDS: &[&str] = &["true", "false"];
 pub struct TomlLang;
 
 impl SyntaxDefinition for TomlLang {
-    fn name(&self) -> &str { "TOML" }
+    fn name(&self) -> &str {
+        "TOML"
+    }
 
     fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
         (tokenize(line), false)
     }
 
-    fn line_comment_prefix(&self) -> Option<&str> { Some("#") }
-    fn block_comment_delimiters(&self) -> Option<(&str, &str)> { None }
+    fn line_comment_prefix(&self) -> Option<&str> {
+        Some("#")
+    }
+    fn block_comment_delimiters(&self) -> Option<(&str, &str)> {
+        None
+    }
 
     fn bracket_pairs(&self) -> &[(char, char)] {
         &[('[', ']'), ('{', '}')]
     }
 
-    fn auto_indent_after(&self) -> &[char] { &[] }
-    fn auto_dedent_on(&self) -> &[char] { &[] }
+    fn auto_indent_after(&self) -> &[char] {
+        &[]
+    }
+    fn auto_dedent_on(&self) -> &[char] {
+        &[]
+    }
 
     fn auto_close_pairs(&self) -> &[(&str, &str)] {
         &[("[", "]"), ("{", "}"), ("\"", "\""), ("'", "'")]
@@ -45,14 +55,24 @@ fn tokenize(line: &str) -> Vec<Token> {
 
         if b == b' ' || b == b'\t' {
             let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') { i += 1; }
-            tokens.push(Token { kind: TokenKind::Whitespace, start, len: i - start });
+            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Whitespace,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // Comment
         if b == b'#' {
-            tokens.push(Token { kind: TokenKind::Comment, start: i, len: len - i });
+            tokens.push(Token {
+                kind: TokenKind::Comment,
+                start: i,
+                len: len - i,
+            });
             return tokens;
         }
 
@@ -66,14 +86,20 @@ fn tokenize(line: &str) -> Vec<Token> {
                     b']' => {
                         depth = depth.saturating_sub(1);
                         i += 1;
-                        if depth == 0 { break; }
+                        if depth == 0 {
+                            break;
+                        }
                         continue;
                     }
                     _ => {}
                 }
                 i += 1;
             }
-            tokens.push(Token { kind: TokenKind::Attribute, start, len: i - start });
+            tokens.push(Token {
+                kind: TokenKind::Attribute,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
@@ -83,54 +109,86 @@ fn tokenize(line: &str) -> Vec<Token> {
             let start = i;
             i += 1;
             while i < len && bytes[i] != quote {
-                if bytes[i] == b'\\' && i + 1 < len { i += 1; }
+                if bytes[i] == b'\\' && i + 1 < len {
+                    i += 1;
+                }
                 i += 1;
             }
-            if i < len { i += 1; }
-            tokens.push(Token { kind: TokenKind::String, start, len: i - start });
+            if i < len {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::String,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // Number
         if b.is_ascii_digit() || (b == b'-' && i + 1 < len && bytes[i + 1].is_ascii_digit()) {
             let start = i;
-            if b == b'-' { i += 1; }
+            if b == b'-' {
+                i += 1;
+            }
             consume_decimal(&mut i, bytes);
-            tokens.push(Token { kind: TokenKind::Number, start, len: i - start });
+            tokens.push(Token {
+                kind: TokenKind::Number,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // Identifier / keyword (bare keys can contain `-`)
         if is_ident_start(b) {
             let start = i;
-            while i < len && (is_ident_continue(bytes[i]) || bytes[i] == b'-') { i += 1; }
+            while i < len && (is_ident_continue(bytes[i]) || bytes[i] == b'-') {
+                i += 1;
+            }
             let word = &line[start..i];
             let kind = if KEYWORDS.contains(&word) {
                 TokenKind::Keyword
             } else {
                 TokenKind::Identifier
             };
-            tokens.push(Token { kind, start, len: i - start });
+            tokens.push(Token {
+                kind,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // Operator (=)
         if b == b'=' {
-            tokens.push(Token { kind: TokenKind::Operator, start: i, len: 1 });
+            tokens.push(Token {
+                kind: TokenKind::Operator,
+                start: i,
+                len: 1,
+            });
             i += 1;
             continue;
         }
 
         // Punctuation
         if matches!(b, b'{' | b'}' | b',' | b'.' | b']') {
-            tokens.push(Token { kind: TokenKind::Punctuation, start: i, len: 1 });
+            tokens.push(Token {
+                kind: TokenKind::Punctuation,
+                start: i,
+                len: 1,
+            });
             i += 1;
             continue;
         }
 
         // Fallback
         let ch_len = line[i..].chars().next().map_or(1, |c| c.len_utf8());
-        tokens.push(Token { kind: TokenKind::Identifier, start: i, len: ch_len });
+        tokens.push(Token {
+            kind: TokenKind::Identifier,
+            start: i,
+            len: ch_len,
+        });
         i += ch_len;
     }
 

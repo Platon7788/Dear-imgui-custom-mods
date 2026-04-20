@@ -10,10 +10,14 @@
 //! user action so you can see the different severities, placements, custom
 //! colors, actions, sticky toasts, and pause-on-hover behavior live.
 
-use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow, StartPosition};
-use dear_imgui_custom_mod::confirm_dialog::{DialogConfig, DialogIcon, DialogResult, render_confirm_dialog};
+use dear_imgui_custom_mod::app_window::{
+    AppConfig, AppHandler, AppState, AppWindow, StartPosition,
+};
+use dear_imgui_custom_mod::confirm_dialog::{
+    DialogConfig, DialogIcon, DialogResult, render_confirm_dialog,
+};
 use dear_imgui_custom_mod::notifications::{
-    AnimationKind, NotificationCenter, NotificationEvent, Notification, Placement,
+    AnimationKind, Notification, NotificationCenter, NotificationEvent, Placement,
 };
 use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_rs::Ui;
@@ -21,15 +25,15 @@ use dear_imgui_rs::Ui;
 // ── Application state ─────────────────────────────────────────────────────────
 
 struct DemoApp {
-    counter:      i32,
+    counter: i32,
     show_confirm: bool,
-    log:          Vec<String>,
+    log: Vec<String>,
     current_theme: Theme,
 
     // Notification center — persists across frames.
-    center:       NotificationCenter,
+    center: NotificationCenter,
     // Simulation time — fed into `center.render(ui, dt)`.
-    last_time:    std::time::Instant,
+    last_time: std::time::Instant,
     // Combo selections for the demo toolbar.
     placement_idx: usize,
     animation_idx: usize,
@@ -48,8 +52,8 @@ impl Default for DemoApp {
             current_theme: Theme::default(),
             center,
             last_time: std::time::Instant::now(),
-            placement_idx: 0,  // TopRight
-            animation_idx: 0,  // Fade
+            placement_idx: 0, // TopRight
+            animation_idx: 0, // Fade
         }
     }
 }
@@ -65,17 +69,17 @@ impl DemoApp {
 
 // Helpers mapping combo indices → enum variants.
 const PLACEMENTS: &[(&str, Placement)] = &[
-    ("TopRight",     Placement::TopRight),
-    ("TopLeft",      Placement::TopLeft),
-    ("BottomRight",  Placement::BottomRight),
-    ("BottomLeft",   Placement::BottomLeft),
-    ("TopCenter",    Placement::TopCenter),
+    ("TopRight", Placement::TopRight),
+    ("TopLeft", Placement::TopLeft),
+    ("BottomRight", Placement::BottomRight),
+    ("BottomLeft", Placement::BottomLeft),
+    ("TopCenter", Placement::TopCenter),
     ("BottomCenter", Placement::BottomCenter),
 ];
 const ANIMATIONS: &[(&str, AnimationKind)] = &[
-    ("Fade",    AnimationKind::Fade),
+    ("Fade", AnimationKind::Fade),
     ("SlideIn", AnimationKind::SlideIn),
-    ("None",    AnimationKind::None),
+    ("None", AnimationKind::None),
 ];
 
 // ── AppHandler implementation ─────────────────────────────────────────────────
@@ -155,8 +159,7 @@ impl AppHandler for DemoApp {
 
                 if ui.button("Info") {
                     self.center.push(
-                        Notification::info("New message")
-                            .with_body("Click an action to respond."),
+                        Notification::info("New message").with_body("Click an action to respond."),
                     );
                 }
                 ui.same_line();
@@ -257,9 +260,9 @@ impl AppHandler for DemoApp {
                             // borderless titlebar; bottom-anchored can hug
                             // the edge closely.
                             cfg.margin[1] = match *p {
-                                Placement::TopRight
-                                | Placement::TopLeft
-                                | Placement::TopCenter => 44.0,
+                                Placement::TopRight | Placement::TopLeft | Placement::TopCenter => {
+                                    44.0
+                                }
                                 _ => 16.0,
                             };
                         }
@@ -303,11 +306,11 @@ impl AppHandler for DemoApp {
                 // Theme picker
                 ui.text("Theme");
                 let themes = [
-                    ("Dark",      Theme::Dark),
-                    ("Light",     Theme::Light),
-                    ("Midnight",  Theme::Midnight),
+                    ("Dark", Theme::Dark),
+                    ("Light", Theme::Light),
+                    ("Midnight", Theme::Midnight),
                     ("Solarized", Theme::Solarized),
-                    ("Monokai",   Theme::Monokai),
+                    ("Monokai", Theme::Monokai),
                 ];
                 for (label, theme) in &themes {
                     let active = std::mem::discriminant(&self.current_theme)

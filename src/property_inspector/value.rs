@@ -47,7 +47,10 @@ impl PropertyValue {
             Self::Vec2(v) => format!("[{:.2}, {:.2}]", v[0], v[1]),
             Self::Vec3(v) => format!("[{:.2}, {:.2}, {:.2}]", v[0], v[1], v[2]),
             Self::Vec4(v) => format!("[{:.2}, {:.2}, {:.2}, {:.2}]", v[0], v[1], v[2], v[3]),
-            Self::Enum(idx, opts) => opts.get(*idx).cloned().unwrap_or_else(|| format!("#{}", idx)),
+            Self::Enum(idx, opts) => opts
+                .get(*idx)
+                .cloned()
+                .unwrap_or_else(|| format!("#{}", idx)),
             Self::Flags(val, _names) => format!("0x{:X}", val),
             Self::Object => "{...}".to_string(),
             Self::Array(n) => format!("[{} items]", n),

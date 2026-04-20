@@ -39,14 +39,12 @@ pub const JETBRAINS_MONO_LIGATURES_FONT_DATA: &[u8] =
 
 /// Hack Regular — a typeface designed for source code, highly legible at
 /// common sizes. License: MIT + Bitstream Vera. ~302 KB.
-pub const HACK_FONT_DATA: &[u8] =
-    include_bytes!("../../assets/fonts/Hack-Regular.ttf");
+pub const HACK_FONT_DATA: &[u8] = include_bytes!("../../assets/fonts/Hack-Regular.ttf");
 
 /// Material Design Icons (MDI v7.4) — 7447 icons in the Private Use Area
 /// (U+F0000–U+F1FFF). Merge this via [`merge_mdi_icons`] or the `merge_mdi`
 /// flag on the install helpers below. ~1.3 MB.
-pub const MDI_FONT_DATA: &[u8] =
-    include_bytes!("../../assets/materialdesignicons-webfont.ttf");
+pub const MDI_FONT_DATA: &[u8] = include_bytes!("../../assets/materialdesignicons-webfont.ttf");
 
 /// MDI glyph range for ImGui font merging: `[start, end, 0]` (null-terminated).
 ///
@@ -70,11 +68,8 @@ pub enum BuiltinFont {
 
 impl BuiltinFont {
     /// All built-in font variants.
-    pub const ALL: &'static [BuiltinFont] = &[
-        Self::Hack,
-        Self::JetBrainsMonoNL,
-        Self::JetBrainsMono,
-    ];
+    pub const ALL: &'static [BuiltinFont] =
+        &[Self::Hack, Self::JetBrainsMonoNL, Self::JetBrainsMono];
 
     /// Raw TTF bytes for this font variant.
     pub fn data(self) -> &'static [u8] {

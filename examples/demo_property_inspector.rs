@@ -5,9 +5,7 @@
 //!
 //! Run: cargo run --example demo_property_inspector
 
-use dear_imgui_custom_mod::property_inspector::{
-    PropertyInspector, PropertyNode, PropertyValue,
-};
+use dear_imgui_custom_mod::property_inspector::{PropertyInspector, PropertyNode, PropertyValue};
 use dear_imgui_rs::{Condition, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
@@ -43,9 +41,13 @@ impl DemoState {
         inspector.add_category("Material");
         inspector.add("color", PropertyValue::Color4([1.0, 0.42, 0.21, 1.0]));
         inspector.add("opacity", PropertyValue::F32(0.80));
-        inspector.add("shader", PropertyValue::Enum(
-            0, vec!["PBR Standard".into(), "Unlit".into(), "Toon".into()],
-        ));
+        inspector.add(
+            "shader",
+            PropertyValue::Enum(
+                0,
+                vec!["PBR Standard".into(), "Unlit".into(), "Toon".into()],
+            ),
+        );
         inspector.add("double_sided", PropertyValue::Bool(true));
         inspector.add("emission", PropertyValue::Color3([0.0, 0.0, 0.0]));
 
@@ -56,9 +58,18 @@ impl DemoState {
         inspector.add("is_static", PropertyValue::Bool(false));
         inspector.add("friction", PropertyValue::F32(0.6));
         inspector.add("restitution", PropertyValue::F32(0.3));
-        inspector.add("collision_layer", PropertyValue::Flags(
-            0x03, vec!["Default".into(), "Player".into(), "Trigger".into(), "Static".into()],
-        ));
+        inspector.add(
+            "collision_layer",
+            PropertyValue::Flags(
+                0x03,
+                vec![
+                    "Default".into(),
+                    "Player".into(),
+                    "Trigger".into(),
+                    "Static".into(),
+                ],
+            ),
+        );
 
         // Debug category
         inspector.add_category("Debug");
@@ -72,21 +83,26 @@ impl DemoState {
                 .with_changed(true),
         );
         inspector.add_node(
-            PropertyNode::new("triangles", PropertyValue::I64(1_250_000))
-                .with_readonly(true),
+            PropertyNode::new("triangles", PropertyValue::I64(1_250_000)).with_readonly(true),
         );
-        inspector.add_node(
-            PropertyNode::new("fps", PropertyValue::F64(61.5))
-                .with_readonly(true),
-        );
+        inspector.add_node(PropertyNode::new("fps", PropertyValue::F64(61.5)).with_readonly(true));
 
         // Metadata category
         inspector.add_category("Metadata");
         inspector.add("name", PropertyValue::String("Player Character".into()));
         inspector.add("tag", PropertyValue::String("hero".into()));
-        inspector.add("layer", PropertyValue::Enum(
-            1, vec!["Default".into(), "Player".into(), "Enemy".into(), "UI".into()],
-        ));
+        inspector.add(
+            "layer",
+            PropertyValue::Enum(
+                1,
+                vec![
+                    "Default".into(),
+                    "Player".into(),
+                    "Enemy".into(),
+                    "UI".into(),
+                ],
+            ),
+        );
         inspector.add("active", PropertyValue::Bool(true));
         inspector.add("id", PropertyValue::I64(42));
 
@@ -157,8 +173,14 @@ impl DemoState {
         ui.text("Display");
 
         ui.checkbox("Show Filter", &mut self.inspector.config.show_filter);
-        ui.checkbox("Show Categories", &mut self.inspector.config.show_categories);
-        ui.checkbox("Highlight Changes", &mut self.inspector.config.highlight_changes);
+        ui.checkbox(
+            "Show Categories",
+            &mut self.inspector.config.show_categories,
+        );
+        ui.checkbox(
+            "Highlight Changes",
+            &mut self.inspector.config.highlight_changes,
+        );
 
         ui.spacing();
         ui.separator();
@@ -177,37 +199,60 @@ impl DemoState {
 // ─── wgpu + winit boilerplate ────────────────────────────────────────────────
 
 struct GpuState {
-    device: wgpu::Device, queue: wgpu::Queue, window: Arc<Window>,
-    surface_cfg: wgpu::SurfaceConfiguration, surface: wgpu::Surface<'static>,
-    context: dear_imgui_rs::Context, platform: WinitPlatform,
-    renderer: WgpuRenderer, demo: DemoState,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    window: Arc<Window>,
+    surface_cfg: wgpu::SurfaceConfiguration,
+    surface: wgpu::Surface<'static>,
+    context: dear_imgui_rs::Context,
+    platform: WinitPlatform,
+    renderer: WgpuRenderer,
+    demo: DemoState,
 }
-struct App { gpu: Option<GpuState> }
-impl App { fn new() -> Self { Self { gpu: None } } }
+struct App {
+    gpu: Option<GpuState>,
+}
+impl App {
+    fn new() -> Self {
+        Self { gpu: None }
+    }
+}
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gpu.is_some() { return; }
-        let window = Arc::new(event_loop.create_window(
-            Window::default_attributes()
-                .with_inner_size(LogicalSize::new(700.0, 650.0))
-                .with_title("PropertyInspector Demo"),
-        ).expect("window"));
+        if self.gpu.is_some() {
+            return;
+        }
+        let window = Arc::new(
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_inner_size(LogicalSize::new(700.0, 650.0))
+                        .with_title("PropertyInspector Demo"),
+                )
+                .expect("window"),
+        );
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY, ..wgpu::InstanceDescriptor::new_without_display_handle()
+            backends: wgpu::Backends::PRIMARY,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface), force_fallback_adapter: false,
-        })).expect("adapter");
-        let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        }))
+        .expect("adapter");
+        let (device, queue) =
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            width: phys.width.max(1), height: phys.height.max(1),
-            present_mode: wgpu::PresentMode::Fifo, desired_maximum_frame_latency: 2,
+            width: phys.width.max(1),
+            height: phys.height.max(1),
+            present_mode: wgpu::PresentMode::Fifo,
+            desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![wgpu::TextureFormat::Bgra8Unorm],
         };
@@ -220,46 +265,136 @@ impl ApplicationHandler for App {
         let font_size = 15.0 * hidpi;
         context.io_mut().set_font_global_scale(1.0 / hidpi);
         use dear_imgui_custom_mod::code_editor::BuiltinFont;
-        context.fonts().add_font_from_memory_ttf(BuiltinFont::Hack.data(), font_size,
-            Some(&dear_imgui_rs::FontConfig::new().size_pixels(font_size).oversample_h(2).name("Hack")), None);
+        context.fonts().add_font_from_memory_ttf(
+            BuiltinFont::Hack.data(),
+            font_size,
+            Some(
+                &dear_imgui_rs::FontConfig::new()
+                    .size_pixels(font_size)
+                    .oversample_h(2)
+                    .name("Hack"),
+            ),
+            None,
+        );
         apply_dark_theme(context.style_mut());
         let renderer = WgpuRenderer::new(
-            WgpuInitInfo::new(device.clone(), queue.clone(), surface_cfg.format), &mut context,
-        ).expect("renderer");
-        self.gpu = Some(GpuState { device, queue, window, surface_cfg, surface, context, platform, renderer, demo: DemoState::new() });
+            WgpuInitInfo::new(device.clone(), queue.clone(), surface_cfg.format),
+            &mut context,
+        )
+        .expect("renderer");
+        self.gpu = Some(GpuState {
+            device,
+            queue,
+            window,
+            surface_cfg,
+            surface,
+            context,
+            platform,
+            renderer,
+            demo: DemoState::new(),
+        });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
-        gpu.platform.handle_event::<()>(&mut gpu.context, &gpu.window, &Event::WindowEvent { window_id, event: event.clone() });
+        gpu.platform.handle_event::<()>(
+            &mut gpu.context,
+            &gpu.window,
+            &Event::WindowEvent {
+                window_id,
+                event: event.clone(),
+            },
+        );
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(s) => { gpu.surface_cfg.width = s.width.max(1); gpu.surface_cfg.height = s.height.max(1); gpu.surface.configure(&gpu.device, &gpu.surface_cfg); gpu.window.request_redraw(); }
+            WindowEvent::Resized(s) => {
+                gpu.surface_cfg.width = s.width.max(1);
+                gpu.surface_cfg.height = s.height.max(1);
+                gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
+                gpu.window.request_redraw();
+            }
             WindowEvent::RedrawRequested => {
-                let frame = match gpu.surface.get_current_texture() { wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f, wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => { gpu.surface.configure(&gpu.device, &gpu.surface_cfg); return; } other => { eprintln!("{other:?}"); return; } };
-                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let frame = match gpu.surface.get_current_texture() {
+                    wgpu::CurrentSurfaceTexture::Success(f)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                        gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
+                        return;
+                    }
+                    other => {
+                        eprintln!("{other:?}");
+                        return;
+                    }
+                };
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
-                let ui = gpu.context.frame(); gpu.demo.render(ui);
+                let ui = gpu.context.frame();
+                gpu.demo.render(ui);
                 gpu.platform.prepare_render_with_ui(ui, &gpu.window);
                 let draw_data = gpu.context.render();
-                let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("imgui") });
-                { let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { label: Some("p"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, depth_slice: None,
-                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.06, g: 0.06, b: 0.08, a: 1.0 }), store: wgpu::StoreOp::Store } })],
-                    depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None, multiview_mask: None });
-                if draw_data.total_vtx_count > 0 { gpu.renderer.render_draw_data(draw_data, &mut pass).expect("render"); } }
-                gpu.queue.submit(Some(encoder.finish())); frame.present(); gpu.window.request_redraw();
+                let mut encoder =
+                    gpu.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("imgui"),
+                        });
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("p"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            depth_slice: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.06,
+                                    g: 0.06,
+                                    b: 0.08,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    if draw_data.total_vtx_count > 0 {
+                        gpu.renderer
+                            .render_draw_data(draw_data, &mut pass)
+                            .expect("render");
+                    }
+                }
+                gpu.queue.submit(Some(encoder.finish()));
+                frame.present();
+                gpu.window.request_redraw();
             }
             _ => {}
         }
     }
-    fn about_to_wait(&mut self, _: &ActiveEventLoop) { if let Some(gpu) = self.gpu.as_ref() { gpu.window.request_redraw(); } }
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        if let Some(gpu) = self.gpu.as_ref() {
+            gpu.window.request_redraw();
+        }
+    }
 }
 
 fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
-    style.set_window_rounding(6.0); style.set_frame_rounding(4.0); style.set_grab_rounding(4.0);
-    style.set_scrollbar_rounding(6.0); style.set_window_border_size(1.0); style.set_popup_rounding(4.0);
-    let a = [0.40, 0.63, 0.88, 1.0]; let ad = [0.30, 0.50, 0.75, 1.0];
+    style.set_window_rounding(6.0);
+    style.set_frame_rounding(4.0);
+    style.set_grab_rounding(4.0);
+    style.set_scrollbar_rounding(6.0);
+    style.set_window_border_size(1.0);
+    style.set_popup_rounding(4.0);
+    let a = [0.40, 0.63, 0.88, 1.0];
+    let ad = [0.30, 0.50, 0.75, 1.0];
     style.set_color(StyleColor::WindowBg, [0.09, 0.09, 0.11, 1.0]);
     style.set_color(StyleColor::ChildBg, [0.10, 0.10, 0.13, 1.0]);
     style.set_color(StyleColor::Border, [0.20, 0.22, 0.27, 0.70]);
@@ -272,7 +407,8 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::ScrollbarGrab, [0.22, 0.24, 0.30, 1.0]);
     style.set_color(StyleColor::ScrollbarGrabHovered, [0.30, 0.33, 0.40, 1.0]);
     style.set_color(StyleColor::ScrollbarGrabActive, ad);
-    style.set_color(StyleColor::CheckMark, a); style.set_color(StyleColor::SliderGrab, ad);
+    style.set_color(StyleColor::CheckMark, a);
+    style.set_color(StyleColor::SliderGrab, ad);
     style.set_color(StyleColor::SliderGrabActive, a);
     style.set_color(StyleColor::Button, [0.18, 0.20, 0.25, 1.0]);
     style.set_color(StyleColor::ButtonHovered, [0.26, 0.29, 0.36, 1.0]);

@@ -28,42 +28,72 @@ pub fn physical_key_to_imgui(physical: PhysicalKey) -> Option<Key> {
     };
     Some(match code {
         // Letters
-        KeyCode::KeyA => Key::A, KeyCode::KeyB => Key::B, KeyCode::KeyC => Key::C,
-        KeyCode::KeyD => Key::D, KeyCode::KeyE => Key::E, KeyCode::KeyF => Key::F,
-        KeyCode::KeyG => Key::G, KeyCode::KeyH => Key::H, KeyCode::KeyI => Key::I,
-        KeyCode::KeyJ => Key::J, KeyCode::KeyK => Key::K, KeyCode::KeyL => Key::L,
-        KeyCode::KeyM => Key::M, KeyCode::KeyN => Key::N, KeyCode::KeyO => Key::O,
-        KeyCode::KeyP => Key::P, KeyCode::KeyQ => Key::Q, KeyCode::KeyR => Key::R,
-        KeyCode::KeyS => Key::S, KeyCode::KeyT => Key::T, KeyCode::KeyU => Key::U,
-        KeyCode::KeyV => Key::V, KeyCode::KeyW => Key::W, KeyCode::KeyX => Key::X,
-        KeyCode::KeyY => Key::Y, KeyCode::KeyZ => Key::Z,
+        KeyCode::KeyA => Key::A,
+        KeyCode::KeyB => Key::B,
+        KeyCode::KeyC => Key::C,
+        KeyCode::KeyD => Key::D,
+        KeyCode::KeyE => Key::E,
+        KeyCode::KeyF => Key::F,
+        KeyCode::KeyG => Key::G,
+        KeyCode::KeyH => Key::H,
+        KeyCode::KeyI => Key::I,
+        KeyCode::KeyJ => Key::J,
+        KeyCode::KeyK => Key::K,
+        KeyCode::KeyL => Key::L,
+        KeyCode::KeyM => Key::M,
+        KeyCode::KeyN => Key::N,
+        KeyCode::KeyO => Key::O,
+        KeyCode::KeyP => Key::P,
+        KeyCode::KeyQ => Key::Q,
+        KeyCode::KeyR => Key::R,
+        KeyCode::KeyS => Key::S,
+        KeyCode::KeyT => Key::T,
+        KeyCode::KeyU => Key::U,
+        KeyCode::KeyV => Key::V,
+        KeyCode::KeyW => Key::W,
+        KeyCode::KeyX => Key::X,
+        KeyCode::KeyY => Key::Y,
+        KeyCode::KeyZ => Key::Z,
         // Function keys
-        KeyCode::F1  => Key::F1,  KeyCode::F2  => Key::F2,  KeyCode::F3  => Key::F3,
-        KeyCode::F4  => Key::F4,  KeyCode::F5  => Key::F5,  KeyCode::F6  => Key::F6,
-        KeyCode::F7  => Key::F7,  KeyCode::F8  => Key::F8,  KeyCode::F9  => Key::F9,
-        KeyCode::F10 => Key::F10, KeyCode::F11 => Key::F11, KeyCode::F12 => Key::F12,
+        KeyCode::F1 => Key::F1,
+        KeyCode::F2 => Key::F2,
+        KeyCode::F3 => Key::F3,
+        KeyCode::F4 => Key::F4,
+        KeyCode::F5 => Key::F5,
+        KeyCode::F6 => Key::F6,
+        KeyCode::F7 => Key::F7,
+        KeyCode::F8 => Key::F8,
+        KeyCode::F9 => Key::F9,
+        KeyCode::F10 => Key::F10,
+        KeyCode::F11 => Key::F11,
+        KeyCode::F12 => Key::F12,
         // Top-row digits (Key0..9 — distinct from Keypad0..9)
-        KeyCode::Digit0 => Key::Key0, KeyCode::Digit1 => Key::Key1,
-        KeyCode::Digit2 => Key::Key2, KeyCode::Digit3 => Key::Key3,
-        KeyCode::Digit4 => Key::Key4, KeyCode::Digit5 => Key::Key5,
-        KeyCode::Digit6 => Key::Key6, KeyCode::Digit7 => Key::Key7,
-        KeyCode::Digit8 => Key::Key8, KeyCode::Digit9 => Key::Key9,
+        KeyCode::Digit0 => Key::Key0,
+        KeyCode::Digit1 => Key::Key1,
+        KeyCode::Digit2 => Key::Key2,
+        KeyCode::Digit3 => Key::Key3,
+        KeyCode::Digit4 => Key::Key4,
+        KeyCode::Digit5 => Key::Key5,
+        KeyCode::Digit6 => Key::Key6,
+        KeyCode::Digit7 => Key::Key7,
+        KeyCode::Digit8 => Key::Key8,
+        KeyCode::Digit9 => Key::Key9,
         // Navigation / editing
-        KeyCode::Escape    => Key::Escape,
-        KeyCode::Tab       => Key::Tab,
-        KeyCode::Enter     => Key::Enter,
-        KeyCode::Space     => Key::Space,
+        KeyCode::Escape => Key::Escape,
+        KeyCode::Tab => Key::Tab,
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Space => Key::Space,
         KeyCode::Backspace => Key::Backspace,
-        KeyCode::ArrowUp    => Key::UpArrow,
-        KeyCode::ArrowDown  => Key::DownArrow,
-        KeyCode::ArrowLeft  => Key::LeftArrow,
+        KeyCode::ArrowUp => Key::UpArrow,
+        KeyCode::ArrowDown => Key::DownArrow,
+        KeyCode::ArrowLeft => Key::LeftArrow,
         KeyCode::ArrowRight => Key::RightArrow,
-        KeyCode::Home      => Key::Home,
-        KeyCode::End       => Key::End,
-        KeyCode::PageUp    => Key::PageUp,
-        KeyCode::PageDown  => Key::PageDown,
-        KeyCode::Insert    => Key::Insert,
-        KeyCode::Delete    => Key::Delete,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
+        KeyCode::PageUp => Key::PageUp,
+        KeyCode::PageDown => Key::PageDown,
+        KeyCode::Insert => Key::Insert,
+        KeyCode::Delete => Key::Delete,
         _ => return None,
     })
 }
@@ -184,23 +214,50 @@ mod tests {
 
     #[test]
     fn letters_map_to_imgui_keys() {
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyA)), Some(Key::A));
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyC)), Some(Key::C));
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyZ)), Some(Key::Z));
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyA)),
+            Some(Key::A)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyC)),
+            Some(Key::C)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyZ)),
+            Some(Key::Z)
+        );
     }
 
     #[test]
     fn function_keys_map() {
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::F1)),  Some(Key::F1));
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::F5)),  Some(Key::F5));
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::F12)), Some(Key::F12));
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::F1)),
+            Some(Key::F1)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::F5)),
+            Some(Key::F5)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::F12)),
+            Some(Key::F12)
+        );
     }
 
     #[test]
     fn digit_keys_map_to_key_variants() {
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit0)), Some(Key::Key0));
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit5)), Some(Key::Key5));
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit9)), Some(Key::Key9));
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit0)),
+            Some(Key::Key0)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit5)),
+            Some(Key::Key5)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit9)),
+            Some(Key::Key9)
+        );
     }
 
     #[test]
@@ -226,7 +283,10 @@ mod tests {
     #[test]
     fn unmapped_key_returns_none() {
         // PrintScreen is not in the covered set.
-        assert_eq!(physical_key_to_imgui(PhysicalKey::Code(KeyCode::PrintScreen)), None);
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::PrintScreen)),
+            None
+        );
     }
 
     #[test]
