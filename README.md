@@ -26,6 +26,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`virtual_tree`** | Virtualized tree-table for up to 1M nodes — slab/arena with generational `NodeId`, flat view cache, multi-column, inline editing, sibling-scoped sorting, drag-and-drop, filter/search, tree lines, striped rows, icons, badges, configurable capacity with optional FIFO eviction | [docs/virtual_tree.md](docs/virtual_tree.md) |
 | **`page_control`** | Generic tabbed container — Dashboard (tile grid) and Tabs (4 styles: Pill, Underline, Card, Square) views. Close confirmation, badges, status indicators, keyboard navigation | [docs/page_control.md](docs/page_control.md) |
 | **`node_graph`** | Visual node graph editor — pan/zoom, bezier/straight/orthogonal wires, 4 pin shapes, multi-select, rectangle selection, mini-map, snap-to-grid, wire yanking, frustum culling, stats overlay, context menus, node shadow, wire flow animation, LOD, smooth zoom | [docs/node_graph.md](docs/node_graph.md) |
+| **`force_graph`** | Obsidian-style force-directed knowledge graph — Barnes-Hut O(N log N) physics, pan/zoom/box-select, sidebar (search, tag filter, depth focus, time-travel slider), minimap overlay, 6 node shapes, color modes (static/tag/community/PageRank/betweenness), SVG/DOT/Mermaid export, Louvain community detection, drag/pin, context menus | [docs/force_graph.md](docs/force_graph.md) |
 | **`hex_viewer`** | Binary hex dump viewer — offset/hex/ASCII columns, color regions, data inspector, goto address, pattern search, selection, diff highlighting, hover byte tooltips with binary/octal/decimal display, configurable bytes-per-row, endianness control | [docs/hex_viewer.md](docs/hex_viewer.md) |
 | **`timeline`** | Zoomable profiler timeline — nested spans, multi-track with collapse, flame graph view, markers, tooltips, pan/zoom with Shift+scroll, adaptive time ruler, color-by-duration/category/name modes, configurable track height | [docs/timeline.md](docs/timeline.md) |
 | **`diff_viewer`** | Side-by-side and unified diff viewer — Myers diff algorithm (O((N+M)D)), synchronized scrolling, fold unchanged regions, hunk navigation, hover row highlights, hunk accent bars, +/- prefixes in unified mode, context line control | [docs/diff_viewer.md](docs/diff_viewer.md) |
@@ -138,6 +139,26 @@ src/
       input.rs                      Mouse/keyboard input
       overlays.rs                   Stats overlay and minimap
     types.rs                        NodeId, PinInfo, PinShape, GraphAction
+  force_graph/
+    mod.rs                          GraphViewer widget — public API, event loop
+    data.rs                         GraphData, NodeId/EdgeId (SlotMap backend)
+    style.rs                        NodeStyle, EdgeStyle, NodeKind, GraphColors
+    config.rs                       ViewerConfig, ForceConfig, ColorMode
+    event.rs                        GraphEvent — typed event stream
+    filter.rs                       FilterState — tag/search/depth/time-travel
+    sim/                            Barnes-Hut O(N log N) physics simulation
+    layout/                         Spiral + Louvain community layout
+    metrics/                        PageRank, betweenness centrality
+    render/                         Draw pipeline, camera, minimap, export
+      mod.rs                        Main render entry — edges, nodes, LOD
+      camera.rs                     Camera — pan/zoom/inertia/animation
+      visibility.rs                 Visibility pass — filter + search-highlight
+      minimap.rs                    160×100 minimap overlay with click-to-pan
+      export.rs                     SVG / DOT (Graphviz) / Mermaid export
+      groups.rs                     Color group resolution
+      interaction.rs                Drag, box-select, keyboard, context menu
+      labels.rs                     Label rendering with zoom-based fade
+    sidebar.rs                      Sidebar — filters, color groups, display, export
   hex_viewer/
     mod.rs                          HexViewer widget — render, navigation, search
     config.rs                       HexViewerConfig
@@ -167,6 +188,7 @@ examples/
   demo_file_manager.rs              FileManager demo
   demo_table.rs                     VirtualTable demo
   demo_node_graph.rs                NodeGraph demo
+  demo_force_graph.rs               ForceGraph demo — Obsidian-style knowledge graph
   demo_tree.rs                      VirtualTree demo
   demo_hex_viewer.rs                HexViewer demo — PE header, color regions
   demo_timeline.rs                  Timeline demo — 4 tracks, 50+ spans, markers
