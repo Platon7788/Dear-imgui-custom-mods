@@ -104,14 +104,23 @@ ColumnDef::new("Name")
 ### Clip Tooltip
 
 When cell text is wider than the column, a tooltip is automatically shown on hover.
-Enabled by default. Disable per-column with `.no_clip_tooltip()`.
+
+**Cascade pattern** — table-level default + optional per-column override:
 
 ```rust
-ColumnDef::new("Description")
-    .stretch(1.0)
-    .clip_tooltip()        // enabled by default
-    .no_clip_tooltip()     // disable for this column
+// Global default (affects all columns that don't set their own value):
+let config = TableConfig {
+    default_clip_tooltip: false,   // disable globally
+    ..Default::default()
+};
+
+// Per-column override (takes priority over the global default):
+ColumnDef::new("Description").clip_tooltip(true)   // force-on for this column
+ColumnDef::new("ID").no_clip_tooltip()             // force-off for this column
+ColumnDef::new("Name")                             // inherits default_clip_tooltip
 ```
+
+`ColumnDef::clip_tooltip` is `Option<bool>` — `None` (the default) inherits from `TableConfig::default_clip_tooltip`.
 
 ### Default Sort Direction
 
@@ -198,6 +207,7 @@ All `TableConfig` fields with their defaults:
 | `default_row_height` | `Option<f32>` | `None` | Custom row height override (px); `None` = density-based |
 | `snap_last_row` | `bool` | `false` | Quantize table height to a row multiple — prevents half-visible last row in tightly-sized containers |
 | `extra_flags` | `TableFlags` | `NONE` | Raw Dear ImGui `TableFlags` merged into computed flags |
+| `default_clip_tooltip` | `bool` | `true` | Default for `ColumnDef::clip_tooltip` — `false` disables clip-tooltips globally; individual columns can still override with `.clip_tooltip(true)` |
 
 ```rust
 TableConfig {
@@ -221,6 +231,7 @@ TableConfig {
     row_density: RowDensity::Normal,
     auto_scroll: false,
     snap_last_row: false,
+    default_clip_tooltip: true,   // false = disable globally
     ..Default::default()
 }
 ```

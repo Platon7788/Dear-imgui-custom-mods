@@ -839,8 +839,12 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 ui.text(&self.cell_buf);
             }
 
-            // Clip tooltip: show full text when hovered and clipped
-            if self.columns[col_idx].clip_tooltip
+            // Clip tooltip: show full text when hovered and clipped.
+            // Column can override (Some); falls back to table-level default.
+            let show_clip_tooltip = self.columns[col_idx]
+                .clip_tooltip
+                .unwrap_or(self.config.default_clip_tooltip);
+            if show_clip_tooltip
                 && !self.cell_buf.is_empty()
                 && ui.is_item_hovered()
             {
@@ -1185,8 +1189,11 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                         ui.text(&self.cell_buf);
                     }
 
-                    // Clip tooltip: show full text when hovered and clipped
-                    if self.columns[col_idx].clip_tooltip
+                    // Clip tooltip: show full text when hovered and clipped.
+                    let show_clip_tooltip = self.columns[col_idx]
+                        .clip_tooltip
+                        .unwrap_or(self.config.default_clip_tooltip);
+                    if show_clip_tooltip
                         && !self.cell_buf.is_empty()
                         && ui.is_item_hovered()
                     {

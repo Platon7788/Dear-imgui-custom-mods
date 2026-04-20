@@ -87,8 +87,10 @@ pub struct ColumnDef {
     pub visible: bool,
     pub user_id: u32,
     /// Show a tooltip with the full cell text when it's clipped (wider than column).
-    /// Default: true.
-    pub clip_tooltip: bool,
+    ///
+    /// `None` inherits from `TableConfig::default_clip_tooltip` (the default).
+    /// `Some(true/false)` overrides the table-level default for this column only.
+    pub clip_tooltip: Option<bool>,
     /// Default sort direction for this column (None = not default-sorted).
     pub default_sort: Option<bool>,
 }
@@ -105,7 +107,7 @@ impl ColumnDef {
             flags: TableColumnFlags::NONE,
             visible: true,
             user_id: 0,
-            clip_tooltip: true,
+            clip_tooltip: None,
             default_sort: None,
         }
     }
@@ -188,9 +190,10 @@ impl ColumnDef {
         self
     }
 
-    /// Show tooltip with full text when cell content is clipped. Default: true.
+    /// Override the table-level `default_clip_tooltip` for this column.
+    /// `true` — always show; `false` — never show, regardless of the global default.
     pub fn clip_tooltip(mut self, enabled: bool) -> Self {
-        self.clip_tooltip = enabled;
+        self.clip_tooltip = Some(enabled);
         self
     }
 
@@ -200,9 +203,9 @@ impl ColumnDef {
         self
     }
 
-    /// Disable clip tooltips for this column (e.g. for checkbox/button columns).
+    /// Disable clip tooltips for this column, overriding the table-level default.
     pub fn no_clip_tooltip(mut self) -> Self {
-        self.clip_tooltip = false;
+        self.clip_tooltip = Some(false);
         self
     }
 

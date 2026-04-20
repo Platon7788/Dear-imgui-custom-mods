@@ -160,6 +160,7 @@ TreeConfig {
         selection_mode: SelectionMode::Multi,
         edit_trigger: EditTrigger::DoubleClick,
         row_density: RowDensity::Normal,
+        default_clip_tooltip: true,    // false = disable globally; columns can still override
         ..Default::default()
     },
 
@@ -304,8 +305,8 @@ ColumnDef::new("Name")
     .auto_fit(100.0)                       // auto-fit to content (init_width required)
     .align(CellAlignment::Left)           // Left, Center, Right
     .editor(CellEditor::TextInput)         // inline editor
-    .clip_tooltip()                        // tooltip when text clipped (default: on)
-    .no_clip_tooltip()                     // disable clip tooltip
+    .clip_tooltip(true)                    // force-on for this column (overrides global default)
+    .no_clip_tooltip()                     // force-off for this column (overrides global default)
     .default_sort(true)                    // default ascending sort
     .no_sort()                             // disable sorting
     .no_resize()                           // disable drag resize

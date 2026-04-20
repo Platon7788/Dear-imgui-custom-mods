@@ -160,6 +160,13 @@ pub struct TableConfig {
     pub snap_last_row: bool,
     /// Extra Dear ImGui flags merged into the computed flags.
     pub extra_flags: TableFlags,
+
+    /// Default value for `ColumnDef::clip_tooltip` when a column hasn't set an
+    /// explicit value (`None`). Set to `false` to disable clip-tooltips globally;
+    /// individual columns can still override with `.clip_tooltip(true)`.
+    ///
+    /// Default: `true`.
+    pub default_clip_tooltip: bool,
 }
 
 impl Default for TableConfig {
@@ -193,6 +200,7 @@ impl Default for TableConfig {
             default_row_height: None,
             snap_last_row: false,
             extra_flags: TableFlags::NONE,
+            default_clip_tooltip: true,
         }
     }
 }

@@ -1285,8 +1285,11 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 ui.text(&self.cell_buf);
             }
 
-            // Clip tooltip for tree cell text
-            if self.columns[self.config.tree_column].clip_tooltip
+            // Clip tooltip for tree cell text.
+            let show_clip_tooltip = self.columns[self.config.tree_column]
+                .clip_tooltip
+                .unwrap_or(self.config.table.default_clip_tooltip);
+            if show_clip_tooltip
                 && !self.cell_buf.is_empty()
                 && ui.is_item_hovered()
             {
@@ -1442,8 +1445,11 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                         ui.text(&self.cell_buf);
                     }
 
-                    // Clip tooltip: show full text when hovered and clipped
-                    if self.columns[col_idx].clip_tooltip
+                    // Clip tooltip: show full text when hovered and clipped.
+                    let show_clip_tooltip = self.columns[col_idx]
+                        .clip_tooltip
+                        .unwrap_or(self.config.table.default_clip_tooltip);
+                    if show_clip_tooltip
                         && !self.cell_buf.is_empty()
                         && ui.is_item_hovered()
                     {
