@@ -217,15 +217,13 @@ impl GraphViewer {
         let mut sim_toggle_done = false;
         for ev in events.iter_mut() {
             match ev {
-                GraphEvent::SimulationToggled(_) => {
-                    if !sim_toggle_done {
-                        sim_toggle_done = true;
-                        self.sim.asleep = !self.sim.asleep;
-                        if !self.sim.asleep {
-                            self.sim.wake();
-                        }
-                        *ev = GraphEvent::SimulationToggled(self.sim.asleep);
+                GraphEvent::SimulationToggled(_) if !sim_toggle_done => {
+                    sim_toggle_done = true;
+                    self.sim.asleep = !self.sim.asleep;
+                    if !self.sim.asleep {
+                        self.sim.wake();
                     }
+                    *ev = GraphEvent::SimulationToggled(self.sim.asleep);
                 }
                 GraphEvent::ResetLayout => {
                     self.reset_layout(graph);

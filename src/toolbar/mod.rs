@@ -379,40 +379,39 @@ impl Toolbar {
             };
 
             match &mut item.kind {
-                ToolbarItemKind::Button => {
-                    if hovered {
-                        let bg = if ui.is_mouse_down(MouseButton::Left) {
-                            cfg.color_active
-                        } else {
-                            cfg.color_hover
-                        };
-                        draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
-                            .rounding(cfg.button_rounding)
-                            .filled(true)
-                            .build();
-
-                        // Hover underline
-                        let uy = btn_y + btn_h - 1.0;
-                        draw.add_line(
-                            [x + 2.0, uy],
-                            [x + btn_w - 2.0, uy],
-                            col32(cfg.color_hover_underline),
-                        )
-                        .thickness(cfg.hover_underline_thickness)
+                ToolbarItemKind::Button if hovered => {
+                    let bg = if ui.is_mouse_down(MouseButton::Left) {
+                        cfg.color_active
+                    } else {
+                        cfg.color_hover
+                    };
+                    draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
+                        .rounding(cfg.button_rounding)
+                        .filled(true)
                         .build();
 
-                        if ui.is_mouse_clicked(MouseButton::Left) {
-                            events.push(ToolbarEvent::ButtonClicked {
-                                index: idx,
-                                label: item.label.clone(), // clone only on event (not per-frame)
-                            });
-                        }
+                    // Hover underline
+                    let uy = btn_y + btn_h - 1.0;
+                    draw.add_line(
+                        [x + 2.0, uy],
+                        [x + btn_w - 2.0, uy],
+                        col32(cfg.color_hover_underline),
+                    )
+                    .thickness(cfg.hover_underline_thickness)
+                    .build();
 
-                        if !item.tooltip.is_empty() {
-                            ui.tooltip_text(&item.tooltip);
-                        }
+                    if ui.is_mouse_clicked(MouseButton::Left) {
+                        events.push(ToolbarEvent::ButtonClicked {
+                            index: idx,
+                            label: item.label.clone(), // clone only on event (not per-frame)
+                        });
+                    }
+
+                    if !item.tooltip.is_empty() {
+                        ui.tooltip_text(&item.tooltip);
                     }
                 }
+                ToolbarItemKind::Button => {}
 
                 ToolbarItemKind::Toggle { on } => {
                     // Toggle background
@@ -463,42 +462,41 @@ impl Toolbar {
                     }
                 }
 
-                ToolbarItemKind::Dropdown { options, selected } => {
-                    if hovered {
-                        let bg = if ui.is_mouse_down(MouseButton::Left) {
-                            cfg.color_active
-                        } else {
-                            cfg.color_hover
-                        };
-                        draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
-                            .rounding(cfg.button_rounding)
-                            .filled(true)
-                            .build();
-
-                        // Hover underline
-                        let uy = btn_y + btn_h - 1.0;
-                        draw.add_line(
-                            [x + 2.0, uy],
-                            [x + btn_w - 2.0, uy],
-                            col32(cfg.color_hover_underline),
-                        )
-                        .thickness(cfg.hover_underline_thickness)
+                ToolbarItemKind::Dropdown { options, selected } if hovered => {
+                    let bg = if ui.is_mouse_down(MouseButton::Left) {
+                        cfg.color_active
+                    } else {
+                        cfg.color_hover
+                    };
+                    draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
+                        .rounding(cfg.button_rounding)
+                        .filled(true)
                         .build();
 
-                        if ui.is_mouse_clicked(MouseButton::Left) && !options.is_empty() {
-                            *selected = (*selected + 1) % options.len();
-                            events.push(ToolbarEvent::DropdownChanged {
-                                index: idx,
-                                label: item.label.clone(), // clone only on event (not per-frame)
-                                selected: *selected,
-                            });
-                        }
+                    // Hover underline
+                    let uy = btn_y + btn_h - 1.0;
+                    draw.add_line(
+                        [x + 2.0, uy],
+                        [x + btn_w - 2.0, uy],
+                        col32(cfg.color_hover_underline),
+                    )
+                    .thickness(cfg.hover_underline_thickness)
+                    .build();
 
-                        if !item.tooltip.is_empty() {
-                            ui.tooltip_text(&item.tooltip);
-                        }
+                    if ui.is_mouse_clicked(MouseButton::Left) && !options.is_empty() {
+                        *selected = (*selected + 1) % options.len();
+                        events.push(ToolbarEvent::DropdownChanged {
+                            index: idx,
+                            label: item.label.clone(), // clone only on event (not per-frame)
+                            selected: *selected,
+                        });
+                    }
+
+                    if !item.tooltip.is_empty() {
+                        ui.tooltip_text(&item.tooltip);
                     }
                 }
+                ToolbarItemKind::Dropdown { .. } => {}
 
                 // Separator/Spacer already handled above via `continue`.
                 _ => {}

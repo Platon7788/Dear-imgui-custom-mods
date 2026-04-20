@@ -91,27 +91,23 @@ pub(super) fn handle_input<T>(
         let had_wire = state.new_wire.is_some();
         if had_wire {
             let completed = match (&state.new_wire, hit) {
-                (Some(NewWire::FromOutput(out_pin)), HoveredElement::InputPin(in_pin)) => {
-                    if viewer.can_connect(*out_pin, in_pin, graph) {
-                        actions.push(GraphAction::Connected(Wire {
-                            out_pin: *out_pin,
-                            in_pin,
-                        }));
-                        true
-                    } else {
-                        false
-                    }
+                (Some(NewWire::FromOutput(out_pin)), HoveredElement::InputPin(in_pin))
+                    if viewer.can_connect(*out_pin, in_pin, graph) =>
+                {
+                    actions.push(GraphAction::Connected(Wire {
+                        out_pin: *out_pin,
+                        in_pin,
+                    }));
+                    true
                 }
-                (Some(NewWire::FromInput(in_pin)), HoveredElement::OutputPin(out_pin)) => {
-                    if viewer.can_connect(out_pin, *in_pin, graph) {
-                        actions.push(GraphAction::Connected(Wire {
-                            out_pin,
-                            in_pin: *in_pin,
-                        }));
-                        true
-                    } else {
-                        false
-                    }
+                (Some(NewWire::FromInput(in_pin)), HoveredElement::OutputPin(out_pin))
+                    if viewer.can_connect(out_pin, *in_pin, graph) =>
+                {
+                    actions.push(GraphAction::Connected(Wire {
+                        out_pin,
+                        in_pin: *in_pin,
+                    }));
+                    true
                 }
                 // Clicking another pin of the same direction — restart wire from new pin
                 (Some(NewWire::FromOutput(_)), HoveredElement::OutputPin(pin)) => {

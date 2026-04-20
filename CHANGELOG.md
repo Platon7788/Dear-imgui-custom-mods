@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed — MSRV
+- **MSRV bumped from 1.94 → 1.95.** Pins updated in `rust-toolchain.toml`,
+  `Cargo.toml (rust-version)`, `clippy.toml (msrv)`, and the
+  `msrv (rust 1.95)` CI job. Users on the prior stable channel must
+  `rustup update stable` before building. Rust 1.95 brings `cfg_select!`,
+  `if-let` guards in `match`, `core::hint::cold_path()`,
+  `Atomic{Ptr,Bool,Isize,Usize}::update()`, `Vec::push_mut()`, and
+  const-stable `fmt::from_fn()` — available for use in future work.
+- **5 `clippy::collapsible_match` findings** resolved by collapsing
+  `match + if` into pattern guards (`force_graph::mod`, `node_graph::render::input`
+  x2, `toolbar::mod` x2). Clippy 1.95 promoted the lint; same semantics,
+  more idiomatic.
+
 ### Added
 - **`notifications` module** — modern toast-notification center with
   `NotificationCenter` holding the live stack between frames.

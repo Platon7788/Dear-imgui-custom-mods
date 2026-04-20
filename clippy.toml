@@ -18,4 +18,4 @@ too-many-arguments-threshold = 8
 
 # MSRV hint so clippy disables lints that suggest features newer than our
 # declared minimum.
-msrv = "1.94"
+msrv = "1.95"
