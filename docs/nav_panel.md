@@ -84,7 +84,11 @@ and submenu selections reach you.
 | `animate` | `bool` | `true` | Enable slide animation |
 | `animation_speed` | `f32` | `6.0` | Animation speed (progress/sec) |
 | `show_tooltips` | `bool` | `true` | Global tooltip toggle |
-| `content_offset_y` | `f32` | `0.0` | Y offset for edge detection (titlebar) |
+| `submenu_min_width` | `f32` | `160.0` | Flyout submenu minimum width (px) |
+| `submenu_item_height` | `f32` | `26.0` | Flyout submenu item row height (px) |
+| `edge_zone` | `f32` | `6.0` | Edge detection zone width for auto-show (px) |
+| `content_offset_y` | `f32` | `0.0` | Y offset for edge detection (e.g. titlebar height) |
+| `content_offset_x` | `f32` | `0.0` | X offset for Left edge detection |
 
 ## Themes
 
@@ -153,6 +157,31 @@ Wrap NavPanel + content in a child_window sized to `avail_h - status_bar_height`
 
 ## NavButton API
 
+### `NavButton` Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `&'static str` | Unique identifier returned in events |
+| `icon` | `&'static str` | Icon glyph or text label |
+| `tooltip` | `String` | Hover tooltip text (supports runtime-localised strings) |
+| `color` | `Option<[f32; 4]>` | Custom icon RGBA tint (overrides theme default) |
+| `submenu` | `Vec<SubMenuItem>` | Flyout submenu items (`Item` or `Separator`) |
+| `badge` | `Option<String>` | Badge text anchored to button corner (e.g. `"3"` or `"●"`) |
+| `show_tooltip` | `bool` | Show tooltip on hover (default: `true`) |
+
+### `NavButton` Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `NavButton::action(id, icon, tooltip)` | Create a plain-click button |
+| `NavButton::submenu(id, icon, tooltip)` | Create a button that opens a flyout submenu |
+| `.with_color([r,g,b,a])` | Set custom icon color |
+| `.with_badge(text)` | Set badge text |
+| `.with_tooltip(text)` | Update tooltip (useful for runtime-localised text) |
+| `.without_tooltip()` | Disable tooltip for this button |
+| `.add_item(SubMenuItem)` | Add a submenu item |
+| `.add_separator()` | Add a separator to the submenu |
+
 ```rust
 use dear_imgui_custom_mod::nav_panel::{NavButton, SubMenuItem};
 
@@ -163,5 +192,6 @@ let _sub = NavButton::submenu("id", "icon", "tooltip")    // opens flyout
     .add_item(SubMenuItem::new("b", "Label").with_shortcut("Ctrl+B"))
     .with_color([1.0, 1.0, 1.0, 1.0])
     .with_badge("3")
+    .with_tooltip("Updated tooltip")
     .without_tooltip();
 ```

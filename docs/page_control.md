@@ -99,6 +99,26 @@ Switch at runtime via `pc.config.tab_style`:
 | `TabStyle::Card` | Raised card with top accent line (Chrome/browser) |
 | `TabStyle::Square` | Flat rectangular tabs with 3-sided border (classic) |
 
+## ContentView
+
+`pc.view` controls which presentation mode is active:
+
+| Variant | Description |
+|---------|-------------|
+| `ContentView::Dashboard` | Interactive tile grid showing all pages as cards (default) |
+| `ContentView::Tabs` | Traditional tab strip with content area |
+| `ContentView::Custom(u8)` | Component renders nothing; caller handles all content. The `u8` is a user-defined view index for distinguishing multiple custom views |
+
+```rust
+// Switch to Tabs after clicking a dashboard tile:
+PageAction::TileClicked(id) => {
+    pc.set_active(id);
+    pc.view = ContentView::Tabs;
+}
+// Use a custom view:
+pc.view = ContentView::Custom(0);
+```
+
 ## PageItem Trait
 
 Required:
@@ -184,6 +204,11 @@ PageControlConfig {
     tab_gap: 4.0,
     tab_min_width: 60.0,           // minimum tab width in pixels
     tab_max_width: 300.0,          // maximum tab width in pixels
+    close_btn_size: 12.0,          // close button diameter in pixels
+    close_btn_gap: 5.0,            // gap between tab text and close button
+    strip_padding_v: 3.0,          // vertical padding above/below tabs in strip
+    scroll_btn_width: 22.0,        // width of left/right scroll arrow buttons
+    scroll_speed: 200.0,           // tab strip scroll speed (px/s)
     smooth_scroll: true,           // animated scroll for tab strip
     show_overflow_dropdown: true,  // dropdown listing all tabs when overflow
     show_view_toggle: false,       // Dashboard↔Tabs toggle button
@@ -207,7 +232,43 @@ PageControlConfig {
 }
 ```
 
-Colors and strings are customizable via `PcColors` and `PcStrings`.
+### PcColors
+
+All color fields are `[u8; 3]` RGB in 0–255 range. Alpha is applied per-use.
+
+| Field | Description |
+|-------|-------------|
+| `tab_bg` | Inactive tab background |
+| `tab_hover` | Hovered tab background |
+| `tab_active` | Active tab background |
+| `accent` | Accent underline / active indicator |
+| `text` | Primary tab text |
+| `text_muted` | Secondary/dimmed text |
+| `close_hover` | Close button hover color |
+| `strip_bg` | Tab strip background |
+| `separator` | Strip-content separator line |
+| `tile_bg` | Dashboard tile background |
+| `tile_hover` | Hovered dashboard tile background |
+| `status_active` | Green status dot |
+| `status_inactive` | Gray status dot |
+| `status_warning` | Amber status dot |
+| `status_error` | Red status dot |
+
+### PcStrings
+
+All fields are `&'static str`. Override for localization.
+
+| Field | Default |
+|-------|---------|
+| `cancel` | `"Cancel"` |
+| `close` | `"Close"` |
+| `close_confirm` | `"Close this page?"` |
+| `no_pages` | `"No pages"` |
+| `empty_hint` | `"Add a page to begin…"` |
+| `overflow_tooltip` | `"All tabs"` |
+| `view_dashboard` | `"Dashboard"` |
+| `view_tabs` | `"Tabs"` |
+| `add_page` | `"Add page"` |
 
 ## Architecture
 

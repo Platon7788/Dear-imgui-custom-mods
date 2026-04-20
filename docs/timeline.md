@@ -211,6 +211,8 @@ cfg.max_zoom = 1e6;              // maximum pixels per second
 | `color_selection` | Selected span outline |
 | `color_hover` | Hovered span overlay |
 | `color_marker` | Default marker line color |
+| `color_tooltip_bg` | Tooltip background |
+| `color_tooltip_text` | Tooltip text color |
 | `span_palette` | Vec of 10 RGBA colors for span bars |
 
 ## Architecture

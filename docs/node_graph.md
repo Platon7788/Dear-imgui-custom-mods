@@ -190,55 +190,103 @@ Actions returned by `render()` — process in a loop:
 
 ## Configuration
 
-```rust
-let mut ng = NodeGraph::with_config("my_graph", NodeGraphConfig {
-    // Grid
-    show_grid: true,
-    grid_size: 32.0,
-    snap_to_grid: false,
-    snap_size: 16.0,
+All `NodeGraphConfig` fields with their defaults:
 
-    // Nodes
-    node_rounding: 6.0,
-    node_min_width: 120.0,
-    node_collapsible: true,
+| Field | Default | Description |
+|-------|---------|-------------|
+| `show_grid` | `true` | Draw canvas grid |
+| `grid_size` | `32.0` | Grid cell size (px at zoom 1.0) |
+| `grid_thick_every` | `8` | Draw thick grid lines every N cells |
+| `grid_rotation` | `0.0` | Grid rotation angle in degrees |
+| `snap_to_grid` | `false` | Snap node positions to grid |
+| `snap_size` | `16.0` | Snap granularity (px) |
+| `node_rounding` | `6.0` | Node corner rounding |
+| `node_border_thickness` | `1.0` | Node border line thickness |
+| `node_header_height` | `26.0` | Node header bar height |
+| `node_padding_h` | `12.0` | Horizontal padding inside node |
+| `node_padding_v` | `6.0` | Vertical padding inside node |
+| `node_min_width` | `120.0` | Minimum node width |
+| `node_body_height` | `24.0` | Default body height for body nodes |
+| `node_collapsible` | `true` | Show collapse/expand button in header |
+| `node_shadow` | `true` | Drop shadow behind nodes |
+| `node_shadow_offset` | `4.0` | Shadow offset (px, down-right) |
+| `node_shadow_alpha` | `80` | Shadow alpha (0–255) |
+| `pin_radius` | `5.0` | Pin circle radius |
+| `pin_spacing` | `22.0` | Vertical spacing between pins |
+| `pin_offset` | `0.0` | Horizontal offset of pin from node edge |
+| `pin_hit_radius` | `8.0` | Hit-test radius (easier clicking) |
+| `show_wires` | `true` | Draw wires between nodes |
+| `wire_style` | `Bezier` | `Bezier` / `Line` / `Orthogonal` |
+| `wire_thickness` | `2.0` | Wire line thickness |
+| `wire_hover_distance` | `6.0` | Wire hover hit distance (px, scales with zoom) |
+| `wire_curvature` | `0.5` | Bezier tangent length (fraction of Δx) |
+| `wire_layer` | `BehindNodes` | `BehindNodes` / `AboveNodes` |
+| `wire_yanking` | `true` | Ctrl+Click on wire to detach and redirect |
+| `wire_flow` | `false` | Animate directional dots along wires |
+| `wire_flow_speed` | `60.0` | Flow dot speed (px/s) |
+| `wire_flow_spacing` | `20.0` | Flow dot spacing (px) |
+| `drop_wire_menu` | `true` | Drop wire on canvas fires `DroppedWire` action |
+| `zoom_min` | `0.25` | Minimum zoom level |
+| `zoom_max` | `1.5` | Maximum zoom level |
+| `zoom_speed` | `0.1` | Zoom step per scroll tick |
+| `zoom_with_wheel` | `true` | Scroll wheel zooms |
+| `smooth_zoom` | `true` | Animate zoom transitions |
+| `smooth_zoom_speed` | `8.0` | Zoom interpolation speed |
+| `pan_button_middle` | `true` | Middle mouse button pans |
+| `pan_button_right` | `true` | Right mouse drag on empty canvas pans |
+| `pan_shift_lmb` | `false` | Shift+LMB pans |
+| `multi_select` | `true` | Ctrl+Click adds to selection |
+| `rect_select` | `true` | Drag rectangle to select |
+| `canvas_context_menu` | `true` | Right-click on empty canvas opens context menu |
+| `node_context_menu` | `true` | Right-click on node opens context menu |
+| `node_double_click` | `true` | Double-click fires `NodeDoubleClicked` |
+| `keyboard_delete` | `true` | Delete key fires `DeleteSelected` |
+| `keyboard_select_all` | `true` | Ctrl+A selects all nodes |
+| `keyboard_escape_cancel` | `true` | Escape cancels wire drag |
+| `tooltip_delay` | `0.5` | Seconds before hover tooltip appears |
+| `lod_hide_labels_zoom` | `0.4` | Hide pin/node labels below this zoom |
+| `lod_simplify_pins_zoom` | `0.3` | Simplify pin shapes below this zoom |
+| `lod_hide_body_zoom` | `0.35` | Hide node bodies below this zoom |
+| `show_stats_overlay` | `false` | Canvas stats overlay (nodes, wires, zoom) |
+| `stats_overlay_corner` | `1` | 0=TL, 1=TR, 2=BL, 3=BR |
+| `stats_overlay_margin` | `8.0` | Stats overlay edge margin (px) |
+| `show_minimap` | `false` | Mini-map overlay |
+| `minimap_size` | `[160, 100]` | Mini-map dimensions (px) |
+| `minimap_corner` | `3` | 0=TL, 1=TR, 2=BL, 3=BR |
+| `minimap_margin` | `8.0` | Mini-map edge margin (px) |
+| `minimap_interactive` | `true` | Click/drag mini-map to pan camera |
+| `colors` | default | `NgColors` palette |
 
-    // Pins
-    pin_radius: 5.0,
-    pin_spacing: 22.0,
+### NgColors
 
-    // Wires
-    wire_style: WireStyle::Bezier,      // or WireStyle::Line / WireStyle::Orthogonal
-    wire_thickness: 2.0,
-    wire_curvature: 0.5,
-    wire_layer: WireLayer::BehindNodes, // or AboveNodes
-    wire_yanking: true,
-    drop_wire_menu: true,
+All color fields are `[u8; 3]` RGB in 0–255 range. Alpha applied per-use.
 
-    // Zoom
-    zoom_min: 0.25,
-    zoom_max: 1.5,
-
-    // LOD
-    lod_hide_labels_zoom: 0.4,
-    lod_simplify_pins_zoom: 0.3,
-    lod_hide_body_zoom: 0.35,
-
-    // Stats overlay
-    show_stats_overlay: true,
-    stats_overlay_corner: 1,    // 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
-    stats_overlay_margin: 8.0,
-
-    // Mini-map
-    show_minimap: true,
-    minimap_corner: 3,          // bottom-right
-    minimap_interactive: true,
-
-    // Colors
-    colors: NgColors::default(),
-    ..Default::default()
-});
-```
+| Field | Element |
+|-------|---------|
+| `canvas_bg` | Canvas background |
+| `grid_line` | Normal grid lines |
+| `grid_line_thick` | Thick (major) grid lines |
+| `node_bg` | Node body background |
+| `node_bg_hovered` | Hovered node background |
+| `node_bg_selected` | Selected node background |
+| `node_header_bg` | Node header bar background |
+| `node_border` | Node border |
+| `node_border_selected` | Selected node border (accent) |
+| `text` | Primary text |
+| `text_muted` | Pin labels, secondary text |
+| `pin_default` | Default pin fill |
+| `pin_hovered` | Hovered pin fill |
+| `wire_default` | Default wire color |
+| `wire_hovered` | Hovered wire |
+| `wire_dragging` | Wire being dragged |
+| `selection_rect` | Selection rectangle outline |
+| `selection_rect_fill` | Selection rectangle fill (with alpha) |
+| `minimap_bg` | Mini-map background |
+| `minimap_outline` | Mini-map border |
+| `minimap_node` | Node dots in mini-map |
+| `minimap_viewport` | Viewport rect in mini-map |
+| `collapse_btn` | Collapse button icon |
+| `collapse_btn_hovered` | Hovered collapse button icon |
 
 ## Architecture
 

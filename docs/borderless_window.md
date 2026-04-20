@@ -61,6 +61,28 @@ let mut state = TitlebarState::new();
 
 ## Configuration
 
+### `BorderlessConfig` Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `title` | `String` | `"Application"` | Window title text |
+| `titlebar_height` | `f32` | `28.0` | Titlebar height in pixels |
+| `resize_zone` | `f32` | `6.0` | Edge/corner resize detection zone width (px) |
+| `separator_height` | `f32` | `1.0` | Height of the separator line below the titlebar (px) |
+| `theme` | `Theme` | `Dark` | Color theme selector |
+| `colors_override` | `Option<Box<TitlebarColors>>` | `None` | Per-instance custom palette (bypasses `theme`) |
+| `title_align` | `TitleAlign` | `Left` | Title text alignment: `Left` or `Center` |
+| `icon` | `Option<String>` | `None` | Unicode glyph shown before the title |
+| `buttons` | `ButtonConfig` | default | Minimize/maximize/close + extra buttons |
+| `double_click_maximize` | `bool` | `true` | Maximize window on titlebar double-click |
+| `title_padding_left` | `f32` | `10.0` | Left padding before icon / title (px) |
+| `close_mode` | `CloseMode` | `Immediate` | Close behavior: `Immediate` or `Confirm` |
+| `separator_visible` | `bool` | `true` | Show the 1-px separator line below the titlebar |
+| `show_drag_hint` | `bool` | `true` | Highlight the drag-move zone on hover |
+| `focus_dim` | `bool` | `false` | Dim titlebar colors when the window loses OS focus |
+
+### Builder Methods
+
 ```rust
 use dear_imgui_custom_mod::borderless_window::{
     BorderlessConfig, ButtonConfig, CloseMode, ExtraButton, TitleAlign,
@@ -68,14 +90,19 @@ use dear_imgui_custom_mod::borderless_window::{
 use dear_imgui_custom_mod::theme::Theme;
 
 let cfg = BorderlessConfig::new("My App")
+    .with_title("New Title")                      // change title
     .with_theme(Theme::Solarized)                 // color theme
     .with_titlebar_height(32.0)                   // px height
+    .with_resize_zone(8.0)                        // edge resize zone width (px)
     .with_title_align(TitleAlign::Center)         // center title
     .with_icon("\u{2302}")                        // house icon before title
     .with_close_mode(CloseMode::Confirm)          // ask before closing
     .with_focus_dim()                             // dim when unfocused
+    .without_focus_dim()                          // explicitly disable focus dim
     .without_drag_hint()                          // no hover hint
     .without_separator()                          // no bottom line
+    .without_minimize()                           // hide minimize button
+    .without_maximize()                           // hide maximize button
     .with_buttons(
         ButtonConfig::default()
             .add_extra(
@@ -84,6 +111,26 @@ let cfg = BorderlessConfig::new("My App")
             ),
     );
 ```
+
+All builder methods:
+
+| Method | Description |
+|--------|-------------|
+| `with_title(t)` | Set window title text |
+| `with_theme(t)` | Set color theme (clears `colors_override`) |
+| `with_colors(c)` | Set per-instance `TitlebarColors` palette override |
+| `with_titlebar_height(h)` | Titlebar height in pixels |
+| `with_resize_zone(z)` | Edge/corner resize detection zone width (px) |
+| `with_title_align(a)` | Title alignment (`Left` or `Center`) |
+| `with_icon(s)` | Icon character/glyph before title |
+| `with_buttons(b)` | Replace entire `ButtonConfig` |
+| `with_close_mode(m)` | Close behavior (`Immediate` or `Confirm`) |
+| `without_maximize()` | Hide the maximize/restore button |
+| `without_minimize()` | Hide the minimize button |
+| `without_separator()` | Hide the 1-px separator line |
+| `without_drag_hint()` | Disable drag-zone hover highlight |
+| `with_focus_dim()` | Enable titlebar dimming on focus loss |
+| `without_focus_dim()` | Disable titlebar dimming on focus loss |
 
 ## Themes
 

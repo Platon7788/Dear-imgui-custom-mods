@@ -1,8 +1,8 @@
 # VirtualTable
 
-Virtualized table component for Dear ImGui, capable of rendering up to 10,000,000 rows at 60 FPS.
+Virtualized table component for Dear ImGui, capable of rendering up to **10,000,000 rows** at 60 FPS.
 
-**Capacity**: Hard limit of `MAX_TABLE_ROWS` (10,000,000). `RingBuffer::new()` clamps capacity to this value. When full, oldest rows are automatically evicted (FIFO).
+**Capacity**: Hard limit of `MAX_TABLE_ROWS` = `10_000_000`. `RingBuffer::new(capacity)` clamps to this value. When full, oldest rows are automatically evicted (FIFO). Use `Vec<T>` if you need unbounded storage.
 
 ## Overview
 
@@ -167,20 +167,60 @@ Optional overrides:
 
 ## Configuration
 
+All `TableConfig` fields with their defaults:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `resizable` | `bool` | `true` | Column drag-resize handles |
+| `reorderable` | `bool` | `false` | Column drag-reorder |
+| `hideable` | `bool` | `true` | Right-click header to hide/show columns |
+| `sortable` | `bool` | `true` | Click header to sort |
+| `multi_sort` | `bool` | `false` | Enable multi-column sorting (Shift+Click) |
+| `borders` | `BorderStyle` | `Full` | `None` / `Inner` / `Outer` / `Full` / `InnerV` / `InnerH` |
+| `show_row_lines` | `bool` | `true` | Show horizontal lines between rows |
+| `show_column_lines` | `bool` | `true` | Show vertical lines between columns |
+| `row_bg` | `bool` | `true` | Alternating row background tint |
+| `scroll_x` | `bool` | `false` | Horizontal scrollbar |
+| `scroll_y` | `bool` | `true` | Vertical scrollbar (required for ListClipper) |
+| `highlight_hovered` | `bool` | `true` | Highlight column under cursor |
+| `context_menu` | `bool` | `true` | Right-click context menu inside table body |
+| `freeze_cols` | `i32` | `0` | Number of frozen (sticky) columns from the left |
+| `freeze_rows` | `i32` | `1` | Number of frozen rows (default: 1 = frozen header) |
+| `sizing` | `SizingPolicy` | `FixedFit` | `FixedFit` / `FixedSame` / `StretchProp` / `StretchSame` |
+| `selection_mode` | `SelectionMode` | `Single` | `None` / `Single` / `Multi` |
+| `selection_color` | `[f32; 4]` | vivid blue 75% | Row background for selected rows |
+| `selection_text_color` | `Option<[f32; 4]>` | `Some(white)` | Text color override for selected rows |
+| `copy_to_clipboard` | `bool` | `false` | Ctrl+C copies selected rows as tab-separated text |
+| `edit_trigger` | `EditTrigger` | `DoubleClick` | `None` / `DoubleClick` / `SingleClick` / `F2Key` |
+| `commit_on_focus_loss` | `bool` | `true` | Commit edit when editor loses focus (`false` = cancel) |
+| `auto_scroll` | `bool` | `false` | Auto-scroll to follow newest rows |
+| `row_density` | `RowDensity` | `Normal` | `Normal` / `Compact` / `Dense` |
+| `default_row_height` | `Option<f32>` | `None` | Custom row height override (px); `None` = density-based |
+| `snap_last_row` | `bool` | `false` | Quantize table height to a row multiple — prevents half-visible last row in tightly-sized containers |
+| `extra_flags` | `TableFlags` | `NONE` | Raw Dear ImGui `TableFlags` merged into computed flags |
+
 ```rust
 TableConfig {
-    resizable: true,           // column drag-resize
-    reorderable: false,        // column drag-reorder
-    hideable: true,            // right-click header to hide columns
-    sortable: true,            // click header to sort
+    resizable: true,
+    reorderable: false,
+    hideable: true,
+    sortable: true,
+    multi_sort: false,
+    borders: BorderStyle::Full,
+    show_row_lines: true,
+    show_column_lines: true,
+    row_bg: true,
+    scroll_y: true,
+    freeze_rows: 1,              // frozen header
     selection_mode: SelectionMode::Multi,
     selection_color: [0.20, 0.45, 0.85, 0.75],       // vivid blue at 75% opacity
     selection_text_color: Some([1.0, 1.0, 1.0, 1.0]), // white text on selection
+    copy_to_clipboard: false,
     edit_trigger: EditTrigger::DoubleClick,
+    commit_on_focus_loss: true,
     row_density: RowDensity::Normal,
-    show_row_lines: true,
-    show_column_lines: true,
-    auto_scroll: false,        // follow newest rows
+    auto_scroll: false,
+    snap_last_row: false,
     ..Default::default()
 }
 ```

@@ -8,7 +8,7 @@
 //!
 //! # Capacity
 //!
-//! Hard limit: [`MAX_TABLE_ROWS`] (1,000,000). Requests exceeding this are clamped.
+//! Hard limit: [`MAX_TABLE_ROWS`] (10,000,000). Requests exceeding this are clamped.
 //!
 //! # Key Operations
 //!

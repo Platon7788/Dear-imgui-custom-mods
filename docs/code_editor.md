@@ -263,6 +263,53 @@ Individual colors can be overridden after `set_theme`:
 editor.config_mut().colors.keyword = [1.0, 0.0, 0.0, 1.0]; // red keywords
 ```
 
+### SyntaxColors Fields
+
+All fields are `[f32; 4]` RGBA in `0.0..=1.0`.
+
+#### Syntax Token Colors
+
+| Field | Token type |
+|-------|-----------|
+| `keyword` | Language keywords (`fn`, `let`, `if`, …) |
+| `type_name` | Type identifiers |
+| `lifetime` | Rust lifetime annotations (`'a`) |
+| `string` | String literals |
+| `char_lit` | Character literals |
+| `number` | Numeric literals |
+| `comment` | Line and block comments |
+| `attribute` | Attributes / decorators (`#[…]`) |
+| `macro_call` | Macro invocations (`vec!`, `println!`, …) |
+| `operator` | Operators (`+`, `->`, `=>`, …) |
+| `punctuation` | Punctuation (`;`, `,`, `.`, …) |
+| `identifier` | Plain identifiers (default text) |
+| `user_code_marker` | `todo!` / `unimplemented!` call-sites |
+
+#### Hex-Mode Value Colors
+
+| Field | Byte range |
+|-------|-----------|
+| `hex_null` | `0x00` — red |
+| `hex_ff` | `0xFF` — amber |
+| `hex_default` | `0x01–0x1F`, `0x7F`, `0x80–0xFE` — silver |
+| `hex_printable` | `0x20–0x7E` — green |
+
+#### Editor UI Colors
+
+| Field | Purpose |
+|-------|---------|
+| `current_line_bg` | Active line highlight background |
+| `selection_bg` | Text selection highlight |
+| `search_match_bg` | Non-current search match highlight |
+| `search_current_bg` | Current search match highlight (brighter) |
+| `line_number` | Gutter line number (inactive lines) |
+| `line_number_active` | Gutter line number (active line) |
+| `bracket_match_bg` | Matching bracket highlight background |
+| `error_underline` | Error marker underline color |
+| `warning_underline` | Warning marker underline color |
+| `gutter_bg` | Line number gutter background |
+| `editor_bg` | Editor text-area background |
+
 ## Languages
 
 ```rust

@@ -22,8 +22,8 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 |-----------|-------------|------|
 | **`code_editor`** | Full-featured code editor — 10 languages (Rust, TOML, RON, Rhai, JSON, YAML, XML, ASM, Hex, Custom), 6 themes, 3 built-in fonts (Hack, JetBrains Mono), code folding, word wrap, find/replace, multi-cursor, undo/redo, breakpoints, error markers, smooth scrolling | [docs/code_editor.md](docs/code_editor.md) |
 | **`file_manager`** | Universal file/folder picker dialog — SelectFolder, OpenFile, SaveFile modes. Breadcrumb navigation, favorites sidebar, back/forward history, type-to-search, file filters, overwrite confirmation | [docs/file_manager.md](docs/file_manager.md) |
-| **`virtual_table`** | Virtualized table for up to 1M rows — ListClipper, sortable columns, inline editing (text, checkbox, combo, slider, color, custom), selection with vivid highlight + white text, keyboard navigation (Up/Down/Home/End/PageUp/PageDown), scroll-to-row, clip tooltips, auto-fit columns, `RingBuffer<T>` FIFO eviction, `MAX_TABLE_ROWS` capacity | [docs/virtual_table.md](docs/virtual_table.md) |
-| **`virtual_tree`** | Virtualized tree-table for up to 1M nodes — slab/arena with generational `NodeId`, flat view cache, multi-column, inline editing, sibling-scoped sorting, drag-and-drop, filter/search, tree lines, striped rows, icons, badges, configurable capacity with optional FIFO eviction | [docs/virtual_tree.md](docs/virtual_tree.md) |
+| **`virtual_table`** | Virtualized table for up to 10M rows — ListClipper, sortable columns (single + multi), inline editing (text, checkbox, combo, slider, color, custom, button), selection with vivid highlight + white text, keyboard navigation (Up/Down/Home/End/PageUp/PageDown), scroll-to-row, clip tooltips, freeze cols/rows, `copy_to_clipboard`, `snap_last_row`, `RingBuffer<T>` FIFO eviction, `MAX_TABLE_ROWS` (10,000,000) capacity | [docs/virtual_table.md](docs/virtual_table.md) |
+| **`virtual_tree`** | Virtualized tree-table for up to 10M nodes — slab/arena with generational `NodeId`, flat view cache, multi-column, inline editing, sibling-scoped sorting, drag-and-drop, filter/search, tree lines, striped rows, icons, badges, lazy children loading, configurable per-instance capacity with optional FIFO eviction | [docs/virtual_tree.md](docs/virtual_tree.md) |
 | **`page_control`** | Generic tabbed container — Dashboard (tile grid) and Tabs (4 styles: Pill, Underline, Card, Square) views. Close confirmation, badges, status indicators, keyboard navigation | [docs/page_control.md](docs/page_control.md) |
 | **`node_graph`** | Visual node graph editor — pan/zoom, bezier/straight/orthogonal wires, 4 pin shapes, multi-select, rectangle selection, mini-map, snap-to-grid, wire yanking, frustum culling, stats overlay, context menus, node shadow, wire flow animation, LOD, smooth zoom | [docs/node_graph.md](docs/node_graph.md) |
 | **`force_graph`** | Obsidian-style force-directed knowledge graph — Barnes-Hut O(N log N) physics, pan/zoom/box-select, sidebar (search, tag filter, depth focus, time-travel slider), minimap overlay, 6 node shapes, color modes (static/tag/community/PageRank/betweenness), SVG/DOT/Mermaid export, Louvain community detection, drag/pin, context menus | [docs/force_graph.md](docs/force_graph.md) |
@@ -35,11 +35,11 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`status_bar`** | Composable bottom status bar — left/center/right sections, status indicators (Success/Warning/Error/Info), progress bars, clickable items with events, tooltips, icon support, hover highlights, overlay variant (`render_overlay`) | [docs/status_bar.md](docs/status_bar.md) |
 | **`icons`** | Material Design Icons v7.4 codepoint constants (7400+ icons) | |
 | **`theme`** | Unified `Theme` enum — 5 built-in palettes (Dark/Light/Midnight/Solarized/Monokai), each owning the full stack (titlebar/nav/dialog/statusbar/ImGui style); legacy semantic color tokens retained | [docs/theme.md](docs/theme.md) |
-| **`utils`** | Color packing (RGB/RGBA to u32), `calc_text_size` wrapper | |
+| **`utils`** | Color packing (RGB/RGBA to u32), `calc_text_size` wrapper, clipboard helpers (copy/paste), SVG/DOT/Mermaid export utilities (`force_graph`), glob pattern matching (file manager) | |
 
 ## Stack
 
-- **Rust 1.94** — edition 2024, let-chains, `is_some_and`, `AtomicU32`
+- **Rust 1.95** — edition 2024, let-chains, `is_some_and`, `AtomicU32`
 - **dear-imgui-rs 0.11.0** — Dear ImGui v1.92.6 (docking branch)
 - **dear-imgui-wgpu 0.11.0** / **dear-imgui-winit 0.11.0** — wgpu + winit integration
 - **wgpu 29.0.1** — GPU rendering backend
@@ -189,6 +189,7 @@ examples/
   demo_table.rs                     VirtualTable demo
   demo_node_graph.rs                NodeGraph demo
   demo_force_graph.rs               ForceGraph demo — Obsidian-style knowledge graph
+  demo_knowledge_graph.rs           Knowledge graph demo via the `knowledge_graph` alias (`force_graph` re-export) — 50+ nodes, NodeKind shapes, sidebar, color modes, box-select
   demo_tree.rs                      VirtualTree demo
   demo_hex_viewer.rs                HexViewer demo — PE header, color regions
   demo_timeline.rs                  Timeline demo — 4 tracks, 50+ spans, markers
@@ -368,27 +369,30 @@ diff.set_texts("old text...", "new text...");
 ## Running the Demos
 
 ```bash
-cargo run --example demo_nav_panel --release
 cargo run --example demo_app_window --release
 cargo run --example demo_borderless --release
+cargo run --example demo_nav_panel --release
 cargo run --example demo_code_editor --release
-cargo run --example demo_node_graph --release
 cargo run --example demo_table --release
 cargo run --example demo_tree --release
 cargo run --example demo_page_control --release
 cargo run --example demo_file_manager --release
+cargo run --example demo_node_graph --release
+cargo run --example demo_force_graph --release
+cargo run --example demo_knowledge_graph --features force_graph,app_window --release
 cargo run --example demo_hex_viewer --release
 cargo run --example demo_timeline --release
 cargo run --example demo_diff_viewer --release
 cargo run --example demo_property_inspector --release
 cargo run --example demo_status_toolbar --release
+cargo run --example demo_disasm_view --release
 ```
 
 Some demos require `assets/materialdesignicons-webfont.ttf` for icons.
 
 ## Design Principles
 
-- **1M-scale performance** — virtual_tree and virtual_table handle up to 1,000,000 nodes/rows at 60 FPS with configurable capacity limits and optional FIFO eviction
+- **10M-scale performance** — virtual_tree and virtual_table handle up to 10,000,000 nodes/rows at 60 FPS (`MAX_TREE_NODES` / `MAX_TABLE_ROWS` = 10,000,000) with configurable per-instance capacity limits and optional FIFO eviction
 - **Zero per-frame allocations** — scratch buffers, `mem::take`, raw pointers for borrow avoidance, `mem::replace` for zero-copy commits
 - **Index-based action processing** — avoids borrow conflicts between reads and writes
 - **Two-phase rendering** — collect targets immutably, then apply mutations

@@ -221,13 +221,34 @@ pub enum HexSearchMode {
 }
 ```
 
+## BytesPerRow
+
+`BytesPerRow` is a newtype struct. All standard presets are provided as associated constants:
+
+| Constant | Bytes |
+|----------|-------|
+| `BytesPerRow::EIGHT` | 8 |
+| `BytesPerRow::TWELVE` | 12 |
+| `BytesPerRow::SIXTEEN` | 16 (default) |
+| `BytesPerRow::TWENTY` | 20 |
+| `BytesPerRow::TWENTY_FOUR` | 24 |
+| `BytesPerRow::TWENTY_EIGHT` | 28 |
+| `BytesPerRow::THIRTY_TWO` | 32 |
+
+Custom values: `BytesPerRow::new(n)` — clamps `n` to `4..=64`, rounds down to the nearest multiple of 4.
+
+```rust
+cfg.bytes_per_row = BytesPerRow::SIXTEEN;     // standard preset
+cfg.bytes_per_row = BytesPerRow::new(20);     // custom value
+```
+
 ## Configuration
 
 ```rust
 let cfg = viewer.config_mut();
 
 // Layout
-cfg.bytes_per_row = BytesPerRow::Sixteen;
+cfg.bytes_per_row = BytesPerRow::SIXTEEN;
 cfg.grouping = ByteGrouping::DWord;
 
 // Display

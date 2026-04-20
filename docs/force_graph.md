@@ -117,6 +117,115 @@ dear-imgui-custom-mod = { version = "0.9", features = ["force_graph"] }
 
 `force_graph` depends on `slotmap = "1.0"` (pure Rust, no unsafe beyond SlotMap internals).
 
+## Configuration
+
+### ViewerConfig Fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `theme` | `Dark` | Application theme for built-in colour palette |
+| `colors_override` | `None` | Custom `GraphColors` palette (bypasses theme) |
+| `show_labels` | `HoverOnly` | `Always` / `HoverOnly` / `BySize` / `Never` |
+| `min_label_zoom` | `0.6` | Minimum zoom for labels in `BySize` mode |
+| `show_edge_labels` | `false` | Draw edge labels at midpoint |
+| `edge_arrow` | `true` | Draw arrowhead on directed edges |
+| `edge_bundling` | `false` | Bundle edges to reduce visual clutter |
+| `background_grid` | `true` | Dot-grid background on canvas |
+| `minimap` | `false` | Show minimap overlay |
+| `selection_mode` | `Additive` | `Single` / `Box` / `Additive` |
+| `lod_threshold` | `5000` | Node count above which LOD activates |
+| `time_travel` | `None` | `Option<TimeTravelSlider>` for sidebar time slider |
+| `color_mode` | `Static` | `Static` / `ByTag` / `ByCommunity` / `ByPageRank` / `ByBetweenness` / `Custom(fn)` |
+| `drag_enabled` | `true` | Nodes can be dragged |
+| `context_menu_enabled` | `true` | Right-click context menu on nodes |
+| `pin_on_drag` | `true` | Auto-pin dragged nodes on release |
+| `hover_fade_opacity` | `0.15` | Opacity of non-hovered nodes/edges (0=hidden, 1=no fade) |
+| `glow_on_hover` | `true` | Soft glow halo on hovered/selected nodes |
+| `text_fade_threshold` | `0.0` | Label visibility bias by zoom (-5..5) |
+| `node_size_multiplier` | `1.0` | Global node radius multiplier |
+| `edge_thickness_multiplier` | `1.0` | Global edge thickness multiplier |
+| `edge_curve` | `0.0` | Bézier curve amount (0=straight, 1=fully curved) |
+| `color_groups` | `[]` | Ordered `Vec<ColorGroup>` — first match wins |
+| `show_orphans` | `true` | Show degree-0 (isolated) nodes |
+| `show_unresolved` | `true` | Show `NodeKind::Unresolved` ghost nodes |
+| `show_tags` | `true` | Show `NodeKind::Tag` nodes |
+| `gravity_direction` | `[0,0]` | Directional gravity vector `[x, y]` |
+| `fit_padding` | `40.0` | Padding (canvas units) when fitting to screen |
+| `depth_fade` | `false` | Fade nodes beyond depth hops from focused node |
+| `cluster_hulls` | `false` | Draw convex hull around Louvain communities |
+| `search_highlight_mode` | `true` | Dim non-matching nodes instead of hiding |
+
+### LabelVisibility
+
+| Variant | Behavior |
+|---------|---------|
+| `Always` | Labels always drawn |
+| `HoverOnly` | Labels appear only on cursor hover |
+| `BySize` | Labels shown when rendered radius ≥ `min_label_zoom` |
+| `Never` | No labels drawn |
+
+### SelectionMode
+
+| Variant | Behavior |
+|---------|---------|
+| `Single` | Click selects one node; empty-space click clears |
+| `Box` | Drag rectangle selects enclosed nodes |
+| `Additive` | Box-select + Shift adds to selection |
+
+### SidebarKind
+
+| Variant | Behavior |
+|---------|---------|
+| `None` | No sidebar — viewer uses full width |
+| `Built` | Built-in sidebar, fully expanded (default) |
+| `BuiltCollapsed` | Built-in sidebar, starts collapsed |
+
+### ColorGroup
+
+Color groups allow priority-based node coloring by label/tag/kind/regex. First match wins.
+
+```rust
+use dear_imgui_custom_mod::force_graph::config::{ColorGroup, ColorGroupQuery};
+
+ColorGroup::new("Core nodes", ColorGroupQuery::Tag("core".into()), [0.3, 0.7, 1.0, 1.0])
+ColorGroup::new("Warnings",   ColorGroupQuery::Label("WARN".into()), [1.0, 0.7, 0.0, 1.0])
+ColorGroup::new("All",        ColorGroupQuery::All, [0.6, 0.6, 0.6, 1.0])
+```
+
+| `ColorGroupQuery` | Matches |
+|-------------------|---------|
+| `Label(s)` | Case-insensitive substring of node label |
+| `Tag(s)` | Exact tag match (without `#`) |
+| `Kind(s)` | NodeKind name: `"regular"`, `"tag"`, `"unresolved"`, etc. |
+| `Regex(s)` | Regex pattern on node label |
+| `All` | Every node (catch-all) |
+
+### ForceConfig Fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `barnes_hut_theta` | `0.9` | Approximation threshold θ (0=exact, 2=coarse) |
+| `repulsion` | `120.0` | Coulomb repulsion strength |
+| `attraction` | `0.04` | Spring attraction along edges |
+| `center_pull` | `0.002` | Pull toward canvas origin (prevents drift) |
+| `collision_radius` | `20.0` | Min distance before collision correction |
+| `link_distance` | `80.0` | Spring rest length (canvas units) |
+| `velocity_decay` | `0.6` | Damping per tick (0=instant stop, 1=no damping) |
+| `gravity_strength` | `0.0` | Downward gravity (`0.0` = disabled) |
+| `radius_by_degree` | `true` | Node radius grows with degree |
+| `radius_base` | `4.0` | Base radius when `radius_by_degree` enabled |
+| `radius_per_degree` | `1.5` | Extra radius per incident edge |
+
+### TimeTravelSlider
+
+When set on `ViewerConfig::time_travel`, adds a slider to the sidebar:
+
+| Field | Description |
+|-------|-------------|
+| `min` | Earliest timestamp value |
+| `max` | Latest timestamp value |
+| `step` | Slider step granularity |
+
 ## Performance
 
 | Graph size | FPS (release) | Notes |

@@ -191,3 +191,5 @@ AppWindow::run(handler)
 | `with_start_position(p)` | `CenterScreen` | Where to place the window on startup |
 | `with_theme(theme)` | `Dark` | Initial color theme |
 | `with_titlebar(cfg)` | default | Replace the entire titlebar config |
+| `with_corner_radius(r: i32)` | `8` | Rounded-corner radius for Win10 fallback path (Win11 DWM ignores this) |
+| `with_mdi_icons()` | `false` | Merge Material Design Icons font into atlas — required for MDI codepoints (U+F0000–U+F1FFF) in nav panel buttons etc. |

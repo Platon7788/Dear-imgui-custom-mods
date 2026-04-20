@@ -137,18 +137,22 @@ impl DisasmDataProvider for IcedDecoder {
 
 ### Instruction Trait
 
+Required methods: `address`, `bytes`, `mnemonic`, `operands`. All others have default implementations.
+
 ```rust
 pub trait Instruction {
     fn address(&self) -> u64;
     fn bytes(&self) -> &[u8];
     fn mnemonic(&self) -> &str;
     fn operands(&self) -> &str;
-    fn comment(&self) -> Option<&str>;
-    fn flow_kind(&self) -> FlowKind;
-    fn branch_target(&self) -> Option<u64>;
-    fn block_index(&self) -> usize;
-    fn has_breakpoint(&self) -> bool;
-    fn is_current(&self) -> bool;
+    // Optional (defaults shown):
+    fn comment(&self) -> Option<&str>  { None }
+    fn flow_kind(&self) -> FlowKind    { FlowKind::Normal }
+    fn branch_target(&self) -> Option<u64> { None }
+    fn block_index(&self) -> usize     { 0 }
+    fn has_breakpoint(&self) -> bool   { false }
+    fn breakpoint_number(&self) -> u32 { 0 }  // 1-based; 0 = no breakpoint
+    fn is_current(&self) -> bool       { false }
 }
 ```
 
@@ -287,7 +291,8 @@ Blue, Red, Green, Amber, Purple, Teal — all with subtle alpha (10-12%).
 
 | Field | Description |
 |-------|-------------|
-| `breakpoint` | Breakpoint circle color (bright red) |
+| `breakpoint` | Default breakpoint circle color (bright red) |
+| `breakpoint_colors` | `Vec<[f32; 4]>` — per-number breakpoint colors (index by `breakpoint_number - 1`) |
 | `breakpoint_bg` | Breakpoint gutter background |
 | `current_line_bg` | Stopped-at instruction highlight (warm yellow) |
 | `selection_bg` | Selected row background |

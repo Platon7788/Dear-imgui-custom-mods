@@ -5,7 +5,7 @@
 //!
 //! ## Capacity
 //!
-//! Hard limit: [`MAX_TREE_NODES`] (1,000,000). Insertions beyond this return `None`.
+//! Hard limit: [`MAX_TREE_NODES`] (10,000,000). Insertions beyond this return `None`.
 
 /// Maximum number of nodes a single tree can hold.
 /// At 10M nodes the arena consumes ~560 MB, flat view ~120 MB (~680 MB total).
