@@ -74,10 +74,7 @@ impl DemoState {
                     self.fm.save_file(
                         None,
                         "untitled.rs",
-                        vec![
-                            FileFilter::new("Rust (*.rs)", &["rs"]),
-                            FileFilter::all(),
-                        ],
+                        vec![FileFilter::new("Rust (*.rs)", &["rs"]), FileFilter::all()],
                     );
                 }
 
@@ -157,9 +154,7 @@ impl ApplicationHandler for App {
             backends: wgpu::Backends::PRIMARY,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
-        let surface = instance
-            .create_surface(window.clone())
-            .expect("surface");
+        let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
@@ -167,8 +162,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -301,8 +295,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -316,8 +309,7 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                gpu.platform
-                    .prepare_frame(&gpu.window, &mut gpu.context);
+                gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
 
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);

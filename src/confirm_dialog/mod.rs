@@ -61,7 +61,9 @@ pub enum DialogResult {
 // ── Color helper ─────────────────────────────────────────────────────────────
 
 #[inline]
-fn c32(c: [f32; 4]) -> u32 { rgba_f32(c[0], c[1], c[2], c[3]) }
+fn c32(c: [f32; 4]) -> u32 {
+    rgba_f32(c[0], c[1], c[2], c[3])
+}
 
 // ── Icon drawing primitives ──────────────────────────────────────────────────
 
@@ -74,40 +76,64 @@ fn draw_icon_warning(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32, bg_
     let base_y = top_y + h;
 
     let p_top = [cx, top_y];
-    let p_bl  = [cx - half_base, base_y];
-    let p_br  = [cx + half_base, base_y];
+    let p_bl = [cx - half_base, base_y];
+    let p_br = [cx + half_base, base_y];
 
     // Filled triangle background
-    draw.add_triangle(p_top, p_bl, p_br, col).filled(true).build();
+    draw.add_triangle(p_top, p_bl, p_br, col)
+        .filled(true)
+        .build();
     // "!" drawn in bg color on top of the filled triangle
     let bang_top = cy - r * 0.22;
     let bang_bot = cy + r * 0.20;
-    let dot_y    = cy + r * 0.42;
-    draw.add_line([cx, bang_top], [cx, bang_bot], bg_col).thickness(2.2).build();
-    draw.add_circle([cx, dot_y], 1.6, bg_col).filled(true).build();
+    let dot_y = cy + r * 0.42;
+    draw.add_line([cx, bang_top], [cx, bang_bot], bg_col)
+        .thickness(2.2)
+        .build();
+    draw.add_circle([cx, dot_y], 1.6, bg_col)
+        .filled(true)
+        .build();
 }
 
 fn draw_icon_error(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     draw.add_circle([cx, cy], r, col).thickness(2.0).build();
     let d = r * 0.42;
-    draw.add_line([cx - d, cy - d], [cx + d, cy + d], col).thickness(2.0).build();
-    draw.add_line([cx + d, cy - d], [cx - d, cy + d], col).thickness(2.0).build();
+    draw.add_line([cx - d, cy - d], [cx + d, cy + d], col)
+        .thickness(2.0)
+        .build();
+    draw.add_line([cx + d, cy - d], [cx - d, cy + d], col)
+        .thickness(2.0)
+        .build();
 }
 
 fn draw_icon_info(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     draw.add_circle([cx, cy], r, col).thickness(2.0).build();
-    draw.add_circle([cx, cy - r * 0.35], 1.8, col).filled(true).build();
-    draw.add_line([cx, cy - r * 0.10], [cx, cy + r * 0.45], col).thickness(2.0).build();
+    draw.add_circle([cx, cy - r * 0.35], 1.8, col)
+        .filled(true)
+        .build();
+    draw.add_line([cx, cy - r * 0.10], [cx, cy + r * 0.45], col)
+        .thickness(2.0)
+        .build();
 }
 
 fn draw_icon_question(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     draw.add_circle([cx, cy], r, col).thickness(2.0).build();
     let qx = cx;
-    draw.add_line([qx - r * 0.20, cy - r * 0.35], [qx, cy - r * 0.50], col).thickness(2.0).build();
-    draw.add_line([qx, cy - r * 0.50], [qx + r * 0.20, cy - r * 0.35], col).thickness(2.0).build();
-    draw.add_line([qx + r * 0.20, cy - r * 0.35], [qx, cy - r * 0.10], col).thickness(2.0).build();
-    draw.add_line([qx, cy - r * 0.10], [qx, cy + r * 0.05], col).thickness(2.0).build();
-    draw.add_circle([qx, cy + r * 0.30], 1.8, col).filled(true).build();
+    draw.add_line([qx - r * 0.20, cy - r * 0.35], [qx, cy - r * 0.50], col)
+        .thickness(2.0)
+        .build();
+    draw.add_line([qx, cy - r * 0.50], [qx + r * 0.20, cy - r * 0.35], col)
+        .thickness(2.0)
+        .build();
+    draw.add_line([qx + r * 0.20, cy - r * 0.35], [qx, cy - r * 0.10], col)
+        .thickness(2.0)
+        .build();
+    draw.add_line([qx, cy - r * 0.10], [qx, cy + r * 0.05], col)
+        .thickness(2.0)
+        .build();
+    draw.add_circle([qx, cy + r * 0.30], 1.8, col)
+        .filled(true)
+        .build();
 }
 
 // ── Button glyph drawing ─────────────────────────────────────────────────────
@@ -121,20 +147,21 @@ enum ButtonGlyph {
 }
 
 fn draw_glyph_x(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
-    draw.add_line([cx - r, cy - r], [cx + r, cy + r], col).thickness(1.8).build();
-    draw.add_line([cx + r, cy - r], [cx - r, cy + r], col).thickness(1.8).build();
+    draw.add_line([cx - r, cy - r], [cx + r, cy + r], col)
+        .thickness(1.8)
+        .build();
+    draw.add_line([cx + r, cy - r], [cx - r, cy + r], col)
+        .thickness(1.8)
+        .build();
 }
 
 fn draw_glyph_power(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     // Open arc (gap at top) approximated with short line segments + vertical bar.
     let segs = 18;
     let start = -std::f32::consts::FRAC_PI_2 + 0.55; // start below the top, sweeping clockwise
-    let end   = 2.0 * std::f32::consts::PI - std::f32::consts::FRAC_PI_2 - 0.55;
+    let end = 2.0 * std::f32::consts::PI - std::f32::consts::FRAC_PI_2 - 0.55;
     let step = (end - start) / segs as f32;
-    let mut prev = [
-        cx + r * start.cos(),
-        cy + r * start.sin(),
-    ];
+    let mut prev = [cx + r * start.cos(), cy + r * start.sin()];
     for i in 1..=segs {
         let a = start + step * i as f32;
         let p = [cx + r * a.cos(), cy + r * a.sin()];
@@ -142,7 +169,9 @@ fn draw_glyph_power(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
         prev = p;
     }
     // Vertical bar at top
-    draw.add_line([cx, cy - r - 1.0], [cx, cy - r * 0.15], col).thickness(1.8).build();
+    draw.add_line([cx, cy - r - 1.0], [cx, cy - r * 0.15], col)
+        .thickness(1.8)
+        .build();
 }
 
 fn draw_glyph_check(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
@@ -171,8 +200,14 @@ fn icon_button(
     let pos = ui.cursor_screen_pos();
     let pressed = ui.invisible_button(id, size);
     let hovered = ui.is_item_hovered();
-    let active  = ui.is_item_active();
-    let cur_bg  = if active { bg_act } else if hovered { bg_hov } else { bg };
+    let active = ui.is_item_active();
+    let cur_bg = if active {
+        bg_act
+    } else if hovered {
+        bg_hov
+    } else {
+        bg
+    };
 
     let draw = ui.get_window_draw_list();
     draw.add_rect(pos, [pos[0] + size[0], pos[1] + size[1]], c32(cur_bg))
@@ -189,16 +224,16 @@ fn icon_button(
         draw.add_text([tx, ty], text_col_u32, label);
     } else {
         let icon_r = size[1] * 0.22;
-        let gap    = 8.0;
+        let gap = 8.0;
         let group_w = icon_r * 2.0 + gap + text_size[0];
         let group_x = pos[0] + (size[0] - group_w) * 0.5;
         let icon_cx = group_x + icon_r;
         let icon_cy = pos[1] + size[1] * 0.5;
         match glyph {
-            ButtonGlyph::X     => draw_glyph_x(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
+            ButtonGlyph::X => draw_glyph_x(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
             ButtonGlyph::Power => draw_glyph_power(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
             ButtonGlyph::Check => draw_glyph_check(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
-            ButtonGlyph::None  => {}
+            ButtonGlyph::None => {}
         }
         let tx = icon_cx + icon_r + gap;
         let ty = pos[1] + (size[1] - text_size[1]) * 0.5;
@@ -216,11 +251,7 @@ fn icon_button(
 /// `false` when the user confirms or cancels.
 ///
 /// Returns [`DialogResult`] indicating the action taken this frame.
-pub fn render_confirm_dialog(
-    ui: &Ui,
-    cfg: &DialogConfig,
-    open: &mut bool,
-) -> DialogResult {
+pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> DialogResult {
     if !*open {
         return DialogResult::Cancelled;
     }
@@ -232,8 +263,10 @@ pub fn render_confirm_dialog(
 
     // ── Dim overlay ──────────────────────────────────────────────────────────
     if cfg.dim_background {
-        fg_draw.add_rect([0.0, 0.0], [dw, dh], c32(colors.overlay))
-            .filled(true).build();
+        fg_draw
+            .add_rect([0.0, 0.0], [dw, dh], c32(colors.overlay))
+            .filled(true)
+            .build();
     }
 
     // ── Keyboard shortcuts ───────────────────────────────────────────────────
@@ -250,27 +283,27 @@ pub fn render_confirm_dialog(
     }
 
     // ── Dialog window ────────────────────────────────────────────────────────
-    let dlg_x = (dw - cfg.width)  * 0.5;
+    let dlg_x = (dw - cfg.width) * 0.5;
     let dlg_y = (dh - cfg.height) * 0.5;
 
     // Resolve the border color: derive from icon when accent_border is on,
     // fall back to the theme's neutral border otherwise.
     let border_color = if cfg.accent_border {
         match cfg.icon {
-            DialogIcon::Warning  => colors.icon_warning,
-            DialogIcon::Error    => colors.icon_error,
-            DialogIcon::Info     => colors.icon_info,
+            DialogIcon::Warning => colors.icon_warning,
+            DialogIcon::Error => colors.icon_error,
+            DialogIcon::Info => colors.icon_info,
             DialogIcon::Question => colors.icon_question,
-            DialogIcon::None     => colors.border,
+            DialogIcon::None => colors.border,
         }
     } else {
         colors.border
     };
 
-    let _pad  = ui.push_style_var(StyleVar::WindowPadding([cfg.padding, cfg.padding]));
-    let _rnd  = ui.push_style_var(StyleVar::WindowRounding(cfg.rounding));
-    let _brd  = ui.push_style_var(StyleVar::WindowBorderSize(cfg.border_thickness));
-    let _bg   = ui.push_style_color(StyleColor::WindowBg, colors.bg);
+    let _pad = ui.push_style_var(StyleVar::WindowPadding([cfg.padding, cfg.padding]));
+    let _rnd = ui.push_style_var(StyleVar::WindowRounding(cfg.rounding));
+    let _brd = ui.push_style_var(StyleVar::WindowBorderSize(cfg.border_thickness));
+    let _bg = ui.push_style_color(StyleColor::WindowBg, colors.bg);
     let _brdc = ui.push_style_color(StyleColor::Border, border_color);
 
     ui.window("##confirm_dialog")
@@ -291,7 +324,11 @@ pub fn render_confirm_dialog(
             // ── Icon + Title row ─────────────────────────────────────────────
             let icon_size = 16.0_f32;
             let has_icon = cfg.icon != DialogIcon::None;
-            let title_start_x = if has_icon { icon_size * 2.0 + 10.0 } else { 0.0 };
+            let title_start_x = if has_icon {
+                icon_size * 2.0 + 10.0
+            } else {
+                0.0
+            };
 
             // Scoped window draw list so it is released before `icon_button`
             // below tries to take its own — only one DrawListMut of a given
@@ -305,18 +342,35 @@ pub fn render_confirm_dialog(
                     let text_h = calc_text_size("Mg")[1];
                     let icon_cy = win_pos[1] + cy_pos + text_h * 0.5;
                     let icon_col = match cfg.icon {
-                        DialogIcon::Warning  => colors.icon_warning,
-                        DialogIcon::Error    => colors.icon_error,
-                        DialogIcon::Info     => colors.icon_info,
+                        DialogIcon::Warning => colors.icon_warning,
+                        DialogIcon::Error => colors.icon_error,
+                        DialogIcon::Info => colors.icon_info,
                         DialogIcon::Question => colors.icon_question,
-                        DialogIcon::None     => unreachable!(),
+                        DialogIcon::None => unreachable!(),
                     };
                     match cfg.icon {
-                        DialogIcon::Warning  => draw_icon_warning(&wdl, icon_cx, icon_cy, icon_size * 0.6, c32(icon_col), c32(colors.bg)),
-                        DialogIcon::Error    => draw_icon_error(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
-                        DialogIcon::Info     => draw_icon_info(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
-                        DialogIcon::Question => draw_icon_question(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col)),
-                        DialogIcon::None     => {}
+                        DialogIcon::Warning => draw_icon_warning(
+                            &wdl,
+                            icon_cx,
+                            icon_cy,
+                            icon_size * 0.6,
+                            c32(icon_col),
+                            c32(colors.bg),
+                        ),
+                        DialogIcon::Error => {
+                            draw_icon_error(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col))
+                        }
+                        DialogIcon::Info => {
+                            draw_icon_info(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col))
+                        }
+                        DialogIcon::Question => draw_icon_question(
+                            &wdl,
+                            icon_cx,
+                            icon_cy,
+                            icon_size * 0.55,
+                            c32(icon_col),
+                        ),
+                        DialogIcon::None => {}
                     }
                 }
 
@@ -327,7 +381,9 @@ pub fn render_confirm_dialog(
                         [win_pos[0] + cfg.padding, sep_y_abs],
                         [win_pos[0] + cfg.width - cfg.padding, sep_y_abs],
                         c32(colors.separator),
-                    ).thickness(1.0).build();
+                    )
+                    .thickness(1.0)
+                    .build();
                 }
             } // wdl drops here
 
@@ -364,7 +420,7 @@ pub fn render_confirm_dialog(
             let (cancel_glyph, confirm_glyph) = if cfg.show_button_icons {
                 let cg = match cfg.confirm_style {
                     ConfirmStyle::Destructive => ButtonGlyph::Power,
-                    ConfirmStyle::Normal      => ButtonGlyph::Check,
+                    ConfirmStyle::Normal => ButtonGlyph::Check,
                 };
                 (ButtonGlyph::X, cg)
             } else {
@@ -378,7 +434,7 @@ pub fn render_confirm_dialog(
                 0.0
             };
             let h_pad = 22.0;
-            let cancel_w  = calc_text_size(cfg.cancel_label.as_str())[0]  + icon_extra + h_pad;
+            let cancel_w = calc_text_size(cfg.cancel_label.as_str())[0] + icon_extra + h_pad;
             let confirm_w = calc_text_size(cfg.confirm_label.as_str())[0] + icon_extra + h_pad;
             let btn_w = cancel_w.max(confirm_w);
 

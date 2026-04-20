@@ -9,8 +9,7 @@ use crate::virtual_table::config::TableConfig;
 // ─── ExpandStyle ────────────────────────────────────────────────────────────
 
 /// Visual style for expand/collapse indicators on branch nodes.
-#[derive(Clone, Debug)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub enum ExpandStyle {
     /// Standard ImGui TreeNode arrow (default filled triangle ▶/▼).
     #[default]
@@ -24,7 +23,6 @@ pub enum ExpandStyle {
         color: Option<[f32; 4]>,
     },
 }
-
 
 // ─── TreeConfig ─────────────────────────────────────────────────────────────
 

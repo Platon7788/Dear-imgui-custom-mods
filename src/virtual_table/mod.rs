@@ -135,12 +135,12 @@ mod sort;
 
 pub use column::{CellAlignment, CellEditor, ColumnDef, ColumnSizing};
 pub use config::{BorderStyle, EditTrigger, RowDensity, SelectionMode, SizingPolicy, TableConfig};
-pub use ring_buffer::{RingBuffer, MAX_TABLE_ROWS};
+pub use ring_buffer::{MAX_TABLE_ROWS, RingBuffer};
 pub use row::{CellStyle, CellValue, RowStyle, VirtualTableRow};
 
 use crate::utils::clipboard::{c_key_down_physical, set_clipboard};
 use crate::utils::text::calc_text_size;
-use column::{alignment_pad, editor_kind, EditorKind};
+use column::{EditorKind, alignment_pad, editor_kind};
 use dear_imgui_rs::{
     Key, ListClipper, MouseButton, SelectableFlags, TableBgTarget, TableRowFlags, Ui,
 };
@@ -392,18 +392,16 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             crate::utils::export::ExportScope::Selected => {
                 for idx in self.selected_rows() {
                     if let Some(row) = self.data.get(idx) {
-                        let vals: Vec<crate::utils::export::FieldValue> = (0..T::field_count())
-                            .map(|c| row.field_value(c))
-                            .collect();
+                        let vals: Vec<crate::utils::export::FieldValue> =
+                            (0..T::field_count()).map(|c| row.field_value(c)).collect();
                         data.add_row(vals);
                     }
                 }
             }
             crate::utils::export::ExportScope::All => {
                 for row in self.data.iter() {
-                    let vals: Vec<crate::utils::export::FieldValue> = (0..T::field_count())
-                        .map(|c| row.field_value(c))
-                        .collect();
+                    let vals: Vec<crate::utils::export::FieldValue> =
+                        (0..T::field_count()).map(|c| row.field_value(c)).collect();
                     data.add_row(vals);
                 }
             }
@@ -451,7 +449,9 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         let data = crate::utils::export::import_flat_from_file(path)?;
         let mut count = 0;
         for row_vals in &data.rows {
-            let fields: Vec<(&str, crate::utils::export::FieldValue)> = data.columns.iter()
+            let fields: Vec<(&str, crate::utils::export::FieldValue)> = data
+                .columns
+                .iter()
                 .zip(row_vals.iter())
                 .map(|(k, v)| (k.as_str(), v.clone()))
                 .collect();
@@ -623,20 +623,14 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         let row_stride = row_height_to_stride(row_h, cell_padding_y);
         let outer_size = if self.config.snap_last_row && self.config.scroll_y {
             let avail_h = ui.content_region_avail()[1];
-            let header_h = unsafe { dear_imgui_rs::sys::igGetTextLineHeight() }
-                + cell_padding_y * 2.0;
+            let header_h =
+                unsafe { dear_imgui_rs::sys::igGetTextLineHeight() } + cell_padding_y * 2.0;
             [0.0, snap_outer_height(avail_h, header_h, row_stride)]
         } else {
             [0.0, 0.0]
         };
 
-        let _table = match ui.begin_table_with_sizing(
-            &self.id,
-            col_count,
-            flags,
-            outer_size,
-            0.0,
-        ) {
+        let _table = match ui.begin_table_with_sizing(&self.id, col_count, flags, outer_size, 0.0) {
             Some(t) => t,
             None => return,
         };
@@ -749,9 +743,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         }
 
         // Tooltip
-        if ui.is_item_hovered()
-            && !row.render_tooltip(ui)
-        {
+        if ui.is_item_hovered() && !row.render_tooltip(ui) {
             self.cell_buf.clear();
             row.row_tooltip(&mut self.cell_buf);
             if !self.cell_buf.is_empty() {
@@ -764,13 +756,18 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             self.handle_selection(ui, idx);
             self.context_row = Some(idx);
             let hovered = ui.table_get_hovered_column();
-            self.context_col = if hovered >= 0 { Some(hovered as usize) } else { None };
+            self.context_col = if hovered >= 0 {
+                Some(hovered as usize)
+            } else {
+                None
+            };
             self.open_context_menu = true;
         }
 
         // ── Render cells (read-only: text + custom only) ───────────
         let row_text_color = if is_selected {
-            self.config.selection_text_color
+            self.config
+                .selection_text_color
                 .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
         } else {
             row_style.as_ref().and_then(|s| s.text_color)
@@ -796,8 +793,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             let _cell_id = ui.push_id(col_idx);
 
             // Custom cell rendering (CellEditor::Custom)
-            if matches!(editor_kind(&self.columns[col_idx].editor), EditorKind::Custom)
-                && row.render_cell(ui, col_idx)
+            if matches!(
+                editor_kind(&self.columns[col_idx].editor),
+                EditorKind::Custom
+            ) && row.render_cell(ui, col_idx)
             {
                 continue;
             }
@@ -887,8 +886,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             for s in specs.iter() {
                 self.sort_state.specs.push(SortSpec {
                     column_index: s.column_index as usize,
-                    ascending: s.sort_direction
-                        == dear_imgui_rs::SortDirection::Ascending,
+                    ascending: s.sort_direction == dear_imgui_rs::SortDirection::Ascending,
                 });
             }
             specs.clear_dirty();
@@ -1006,27 +1004,33 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Tooltip
         if ui.is_item_hovered()
             && let Some(row) = self.data.get(idx)
-                && !row.render_tooltip(ui) {
-                    self.cell_buf.clear();
-                    row.row_tooltip(&mut self.cell_buf);
-                    if !self.cell_buf.is_empty() {
-                        ui.tooltip_text(&self.cell_buf);
-                    }
-                }
+            && !row.render_tooltip(ui)
+        {
+            self.cell_buf.clear();
+            row.row_tooltip(&mut self.cell_buf);
+            if !self.cell_buf.is_empty() {
+                ui.tooltip_text(&self.cell_buf);
+            }
+        }
 
         // Context menu
         if ui.is_item_hovered() && ui.is_mouse_clicked(MouseButton::Right) {
             self.handle_selection(ui, idx);
             self.context_row = Some(idx);
             let hovered = ui.table_get_hovered_column();
-            self.context_col = if hovered >= 0 { Some(hovered as usize) } else { None };
+            self.context_col = if hovered >= 0 {
+                Some(hovered as usize)
+            } else {
+                None
+            };
             self.open_context_menu = true;
         }
 
         // ── Render cells ────────────────────────────────────────────
         // Selection text color takes precedence over row_style text color
         let row_text_color = if is_selected {
-            self.config.selection_text_color
+            self.config
+                .selection_text_color
                 .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
         } else {
             row_style.as_ref().and_then(|s| s.text_color)
@@ -1065,10 +1069,11 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 EditorKind::Checkbox => {
                     if let Some(val) = self.data.get(idx).map(|r| r.cell_value(col_idx))
                         && let CellValue::Bool(mut b) = val
-                            && ui.checkbox("##cb", &mut b)
-                            && let Some(row) = self.data.get_mut(idx) {
-                                row.set_cell_value(col_idx, &CellValue::Bool(b));
-                            }
+                        && ui.checkbox("##cb", &mut b)
+                        && let Some(row) = self.data.get_mut(idx)
+                    {
+                        row.set_cell_value(col_idx, &CellValue::Bool(b));
+                    }
                 }
                 EditorKind::ComboBox => {
                     let val = self.data.get(idx).map(|r| r.cell_value(col_idx));
@@ -1076,35 +1081,42 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                         let changed = {
                             let items = match &self.columns[col_idx].editor {
                                 CellEditor::ComboBox { items } => items,
-                                _ => { self.edit_state.deactivate(); return; }
+                                _ => {
+                                    self.edit_state.deactivate();
+                                    return;
+                                }
                             };
                             ui.set_next_item_width(-1.0);
                             ui.combo_simple_string("##combo", &mut choice, items)
                         };
-                        if changed
-                            && let Some(row) = self.data.get_mut(idx)
-                        {
+                        if changed && let Some(row) = self.data.get_mut(idx) {
                             row.set_cell_value(col_idx, &CellValue::Choice(choice));
                         }
                     }
                 }
                 EditorKind::ColorEdit => {
                     if let Some(val) = self.data.get(idx).map(|r| r.cell_value(col_idx))
-                        && let CellValue::Color(mut c) = val {
-                            ui.set_next_item_width(-1.0);
-                            if ui.color_edit4_config("##color", &mut c)
-                                .flags(dear_imgui_rs::ColorEditFlags::NO_INPUTS)
-                                .build()
-                                && let Some(row) = self.data.get_mut(idx) {
-                                    row.set_cell_value(col_idx, &CellValue::Color(c));
-                                }
+                        && let CellValue::Color(mut c) = val
+                    {
+                        ui.set_next_item_width(-1.0);
+                        if ui
+                            .color_edit4_config("##color", &mut c)
+                            .flags(dear_imgui_rs::ColorEditFlags::NO_INPUTS)
+                            .build()
+                            && let Some(row) = self.data.get_mut(idx)
+                        {
+                            row.set_cell_value(col_idx, &CellValue::Color(c));
                         }
+                    }
                 }
                 EditorKind::Button => {
                     let clicked = {
                         let label = match &self.columns[col_idx].editor {
                             CellEditor::Button { label } => label.as_str(),
-                            _ => { self.edit_state.deactivate(); return; }
+                            _ => {
+                                self.edit_state.deactivate();
+                                return;
+                            }
                         };
                         ui.button(label)
                     };
@@ -1114,17 +1126,18 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 }
                 EditorKind::ProgressBar => {
                     if let Some(val) = self.data.get(idx).map(|r| r.cell_value(col_idx))
-                        && let CellValue::Progress(p) = val {
-                            self.cell_buf.clear();
-                            let _ = std::fmt::Write::write_fmt(
-                                &mut self.cell_buf,
-                                format_args!("{:.0}%", p * 100.0),
-                            );
-                            ui.progress_bar(p)
-                                .size([-1.0, 0.0])
-                                .overlay_text(&self.cell_buf)
-                                .build();
-                        }
+                        && let CellValue::Progress(p) = val
+                    {
+                        self.cell_buf.clear();
+                        let _ = std::fmt::Write::write_fmt(
+                            &mut self.cell_buf,
+                            format_args!("{:.0}%", p * 100.0),
+                        );
+                        ui.progress_bar(p)
+                            .size([-1.0, 0.0])
+                            .overlay_text(&self.cell_buf)
+                            .build();
+                    }
                 }
                 EditorKind::Custom => {
                     if let Some(row) = self.data.get(idx) {
@@ -1132,7 +1145,9 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                     }
                 }
                 EditorKind::Other | EditorKind::None => {
-                    let Some(row) = self.data.get(idx) else { continue };
+                    let Some(row) = self.data.get(idx) else {
+                        continue;
+                    };
                     self.cell_buf.clear();
                     row.cell_display_text(col_idx, &mut self.cell_buf);
 

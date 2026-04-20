@@ -45,9 +45,7 @@ pub fn diff_lines(old: &[&str], new: &[&str]) -> Vec<DiffOp> {
         let mut k = -d_i;
         while k <= d_i {
             let ki = (k + offset as isize) as usize;
-            let mut x = if k == -d_i
-                || (k != d_i && v[ki - 1] < v[ki + 1])
-            {
+            let mut x = if k == -d_i || (k != d_i && v[ki - 1] < v[ki + 1]) {
                 v[ki + 1] // move down (insert)
             } else {
                 v[ki - 1] + 1 // move right (delete)
@@ -97,7 +95,10 @@ fn backtrack(
             while x > 0 && y > 0 && old[x - 1] == new[y - 1] {
                 x -= 1;
                 y -= 1;
-                ops.push(DiffOp::Equal { old_idx: x, new_idx: y });
+                ops.push(DiffOp::Equal {
+                    old_idx: x,
+                    new_idx: y,
+                });
             }
             break;
         }
@@ -105,9 +106,7 @@ fn backtrack(
         let prev_k;
         {
             let d_i = d as isize;
-            prev_k = if k == -d_i
-                || (k != d_i && v[ki - 1] < v[ki + 1])
-            {
+            prev_k = if k == -d_i || (k != d_i && v[ki - 1] < v[ki + 1]) {
                 k + 1 // came from down (insert)
             } else {
                 k - 1 // came from right (delete)
@@ -122,7 +121,10 @@ fn backtrack(
         while x > prev_x && y > prev_y {
             x -= 1;
             y -= 1;
-            ops.push(DiffOp::Equal { old_idx: x, new_idx: y });
+            ops.push(DiffOp::Equal {
+                old_idx: x,
+                new_idx: y,
+            });
         }
 
         // The edit
@@ -230,8 +232,12 @@ fn build_hunk(ops: &[DiffOp]) -> DiffHunk {
         }
     }
 
-    if old_start == usize::MAX { old_start = 0; }
-    if new_start == usize::MAX { new_start = 0; }
+    if old_start == usize::MAX {
+        old_start = 0;
+    }
+    if new_start == usize::MAX {
+        new_start = 0;
+    }
 
     DiffHunk {
         old_start,
@@ -281,8 +287,14 @@ mod tests {
         let new = vec!["a", "x", "c"];
         let ops = diff_lines(&old, &new);
         // Should be: Equal(a), Delete(b), Insert(x), Equal(c)
-        let deletes = ops.iter().filter(|o| matches!(o, DiffOp::Delete { .. })).count();
-        let inserts = ops.iter().filter(|o| matches!(o, DiffOp::Insert { .. })).count();
+        let deletes = ops
+            .iter()
+            .filter(|o| matches!(o, DiffOp::Delete { .. }))
+            .count();
+        let inserts = ops
+            .iter()
+            .filter(|o| matches!(o, DiffOp::Insert { .. }))
+            .count();
         assert_eq!(deletes, 1);
         assert_eq!(inserts, 1);
     }
@@ -292,7 +304,10 @@ mod tests {
         let old = vec!["a", "c"];
         let new = vec!["a", "b", "c"];
         let ops = diff_lines(&old, &new);
-        let inserts = ops.iter().filter(|o| matches!(o, DiffOp::Insert { .. })).count();
+        let inserts = ops
+            .iter()
+            .filter(|o| matches!(o, DiffOp::Insert { .. }))
+            .count();
         assert_eq!(inserts, 1);
     }
 
@@ -301,20 +316,27 @@ mod tests {
         let old = vec!["a", "b", "c"];
         let new = vec!["a", "c"];
         let ops = diff_lines(&old, &new);
-        let deletes = ops.iter().filter(|o| matches!(o, DiffOp::Delete { .. })).count();
+        let deletes = ops
+            .iter()
+            .filter(|o| matches!(o, DiffOp::Delete { .. }))
+            .count();
         assert_eq!(deletes, 1);
     }
 
     #[test]
     fn group_hunks_basic() {
-        let old: Vec<&str> = (0..10).map(|i| match i {
-            3 => "OLD",
-            _ => "same",
-        }).collect();
-        let new: Vec<&str> = (0..10).map(|i| match i {
-            3 => "NEW",
-            _ => "same",
-        }).collect();
+        let old: Vec<&str> = (0..10)
+            .map(|i| match i {
+                3 => "OLD",
+                _ => "same",
+            })
+            .collect();
+        let new: Vec<&str> = (0..10)
+            .map(|i| match i {
+                3 => "NEW",
+                _ => "same",
+            })
+            .collect();
         let ops = diff_lines(&old, &new);
         let hunks = group_hunks(&ops, 2);
         assert!(!hunks.is_empty());

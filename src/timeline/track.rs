@@ -48,7 +48,7 @@ impl Track {
             return None;
         }
         let start = self.spans.iter().map(|s| s.start).fold(f64::MAX, f64::min);
-        let end   = self.spans.iter().map(|s| s.end).fold(f64::MIN, f64::max);
+        let end = self.spans.iter().map(|s| s.end).fold(f64::MIN, f64::max);
         Some((start, end))
     }
 }

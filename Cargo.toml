@@ -1,6 +1,6 @@
 [package]
 name = "dear-imgui-custom-mod"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.94"
 description = "Custom UI components for dear-imgui-rs"
@@ -33,6 +33,7 @@ full = [
     "hex_viewer",
     "nav_panel",
     "node_graph",
+    "notifications",
     "page_control",
     "property_inspector",
     "status_bar",
@@ -51,6 +52,10 @@ app_window = ["borderless_window", "code_editor"]
 # ── Dialogs & small widgets ─────────────────────────────────────────────────
 confirm_dialog = []
 nav_panel = []
+# Toast-notification center — severity-tinted popups with stacking, progress,
+# actions, 6 placements, fade/slide animations. Fully custom draw-list icons
+# so it's font-independent.
+notifications = []
 status_bar = []
 toolbar = []
 property_inspector = []
@@ -74,8 +79,16 @@ code_editor = []
 node_graph = []
 page_control = []
 timeline = []
+# Force-directed interactive graph viewer — Obsidian-style with Barnes-Hut
+# physics, pan/zoom/drag/select, sidebar, PageRank/betweenness metrics,
+# color groups, BFS depth filter, and SVG/DOT/Mermaid export (Phase D).
+# Re-uses nav_panel palette for the sidebar. Requires slotmap for stable NodeId/EdgeId.
+force_graph = ["nav_panel", "dep:slotmap"]
+# Keep old name as alias so existing users aren't broken immediately.
+knowledge_graph = ["force_graph"]
 
 [dependencies]
+slotmap = { version = "1.0", optional = true }
 dear-imgui-rs = "0.11.0"
 dear-imgui-wgpu = "0.11.0"
 dear-imgui-winit = "0.11.0"
@@ -183,9 +196,19 @@ required-features = ["borderless_window", "app_window"]
 [[example]]
 name = "demo_app_window"
 path = "examples/demo_app_window.rs"
-required-features = ["app_window"]
+required-features = ["app_window", "notifications", "confirm_dialog"]
 
 [[example]]
 name = "demo_nav_panel"
 path = "examples/demo_nav_panel.rs"
 required-features = ["nav_panel", "app_window"]
+
+[[example]]
+name = "demo_force_graph"
+path = "examples/demo_force_graph.rs"
+required-features = ["force_graph", "app_window"]
+
+[[example]]
+name = "demo_knowledge_graph"
+path = "examples/demo_knowledge_graph.rs"
+required-features = ["force_graph", "app_window"]

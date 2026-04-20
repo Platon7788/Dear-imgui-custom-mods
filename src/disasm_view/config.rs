@@ -39,20 +39,34 @@ pub trait Instruction {
     /// Formatted operand string (e.g. "rax, [rbp-0x10]").
     fn operands(&self) -> &str;
     /// Optional comment (string references, call target names).
-    fn comment(&self) -> Option<&str> { None }
+    fn comment(&self) -> Option<&str> {
+        None
+    }
     /// Control flow classification.
-    fn flow_kind(&self) -> FlowKind { FlowKind::Normal }
+    fn flow_kind(&self) -> FlowKind {
+        FlowKind::Normal
+    }
     /// Branch/call target address (if applicable).
-    fn branch_target(&self) -> Option<u64> { None }
+    fn branch_target(&self) -> Option<u64> {
+        None
+    }
     /// Logical block index for block-tinting (0-based).
-    fn block_index(&self) -> usize { 0 }
+    fn block_index(&self) -> usize {
+        0
+    }
     /// Whether a breakpoint is set at this address.
-    fn has_breakpoint(&self) -> bool { false }
+    fn has_breakpoint(&self) -> bool {
+        false
+    }
     /// Breakpoint number (1-based). Used for colored numbered markers.
     /// Returns 0 if no breakpoint.
-    fn breakpoint_number(&self) -> u32 { if self.has_breakpoint() { 1 } else { 0 } }
+    fn breakpoint_number(&self) -> u32 {
+        if self.has_breakpoint() { 1 } else { 0 }
+    }
     /// Whether this is the current execution point (stopped-at).
-    fn is_current(&self) -> bool { false }
+    fn is_current(&self) -> bool {
+        false
+    }
 }
 
 // ── Data Provider Trait ─────────────────────────────────────────────────────
@@ -78,17 +92,25 @@ pub trait DisasmDataProvider {
     fn index_of_address(&self, addr: u64) -> Option<usize>;
 
     /// Toggle breakpoint at address. Returns the new breakpoint state.
-    fn toggle_breakpoint(&mut self, _addr: u64) -> bool { false }
+    fn toggle_breakpoint(&mut self, _addr: u64) -> bool {
+        false
+    }
 
     /// Assemble a text instruction into bytes at `addr`.
     /// Returns the assembled bytes or `None` on failure.
-    fn assemble(&self, _addr: u64, _text: &str) -> Option<Vec<u8>> { None }
+    fn assemble(&self, _addr: u64, _text: &str) -> Option<Vec<u8>> {
+        None
+    }
 
     /// Write bytes at address (for patching).
-    fn write_bytes(&mut self, _addr: u64, _bytes: &[u8]) -> bool { false }
+    fn write_bytes(&mut self, _addr: u64, _bytes: &[u8]) -> bool {
+        false
+    }
 
     /// Get a human-readable name for an address (symbol, export, label).
-    fn symbol_name(&self, _addr: u64) -> Option<String> { None }
+    fn symbol_name(&self, _addr: u64) -> Option<String> {
+        None
+    }
 
     /// Called every frame when auto-refresh is enabled.
     fn refresh(&mut self) {}
@@ -136,40 +158,70 @@ impl InstructionEntry {
     }
 
     pub fn with_flow(mut self, kind: FlowKind) -> Self {
-        self.flow_kind = kind; self
+        self.flow_kind = kind;
+        self
     }
     pub fn with_target(mut self, target: u64) -> Self {
-        self.branch_target = Some(target); self
+        self.branch_target = Some(target);
+        self
     }
     pub fn with_comment(mut self, comment: impl Into<String>) -> Self {
-        self.comment = Some(comment.into()); self
+        self.comment = Some(comment.into());
+        self
     }
     pub fn with_block(mut self, index: usize) -> Self {
-        self.block_index = index; self
+        self.block_index = index;
+        self
     }
     pub fn with_breakpoint(mut self, bp: bool) -> Self {
-        self.breakpoint = bp; self
+        self.breakpoint = bp;
+        self
     }
     pub fn with_bp_number(mut self, n: u32) -> Self {
-        self.bp_number = n; self.breakpoint = n > 0; self
+        self.bp_number = n;
+        self.breakpoint = n > 0;
+        self
     }
     pub fn with_current(mut self, current: bool) -> Self {
-        self.current = current; self
+        self.current = current;
+        self
     }
 }
 
 impl Instruction for InstructionEntry {
-    fn address(&self) -> u64 { self.address }
-    fn bytes(&self) -> &[u8] { &self.bytes }
-    fn mnemonic(&self) -> &str { &self.mnemonic }
-    fn operands(&self) -> &str { &self.operands }
-    fn comment(&self) -> Option<&str> { self.comment.as_deref() }
-    fn flow_kind(&self) -> FlowKind { self.flow_kind }
-    fn branch_target(&self) -> Option<u64> { self.branch_target }
-    fn block_index(&self) -> usize { self.block_index }
-    fn has_breakpoint(&self) -> bool { self.breakpoint }
-    fn breakpoint_number(&self) -> u32 { self.bp_number }
-    fn is_current(&self) -> bool { self.current }
+    fn address(&self) -> u64 {
+        self.address
+    }
+    fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+    fn mnemonic(&self) -> &str {
+        &self.mnemonic
+    }
+    fn operands(&self) -> &str {
+        &self.operands
+    }
+    fn comment(&self) -> Option<&str> {
+        self.comment.as_deref()
+    }
+    fn flow_kind(&self) -> FlowKind {
+        self.flow_kind
+    }
+    fn branch_target(&self) -> Option<u64> {
+        self.branch_target
+    }
+    fn block_index(&self) -> usize {
+        self.block_index
+    }
+    fn has_breakpoint(&self) -> bool {
+        self.breakpoint
+    }
+    fn breakpoint_number(&self) -> u32 {
+        self.bp_number
+    }
+    fn is_current(&self) -> bool {
+        self.current
+    }
 }
 
 // ── Vec Provider ────────────────────────────────────────────────────────────
@@ -180,24 +232,38 @@ pub struct VecDisasmProvider {
 }
 
 impl VecDisasmProvider {
-    pub fn new() -> Self { Self { instructions: Vec::new() } }
+    pub fn new() -> Self {
+        Self {
+            instructions: Vec::new(),
+        }
+    }
     pub fn from_vec(instructions: Vec<InstructionEntry>) -> Self {
         Self { instructions }
     }
     pub fn push(&mut self, instr: InstructionEntry) {
         self.instructions.push(instr);
     }
-    pub fn clear(&mut self) { self.instructions.clear(); }
-    pub fn instructions(&self) -> &[InstructionEntry] { &self.instructions }
-    pub fn instructions_mut(&mut self) -> &mut Vec<InstructionEntry> { &mut self.instructions }
+    pub fn clear(&mut self) {
+        self.instructions.clear();
+    }
+    pub fn instructions(&self) -> &[InstructionEntry] {
+        &self.instructions
+    }
+    pub fn instructions_mut(&mut self) -> &mut Vec<InstructionEntry> {
+        &mut self.instructions
+    }
 }
 
 impl Default for VecDisasmProvider {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DisasmDataProvider for VecDisasmProvider {
-    fn instruction_count(&self) -> usize { self.instructions.len() }
+    fn instruction_count(&self) -> usize {
+        self.instructions.len()
+    }
     fn instruction(&self, idx: usize) -> Option<&dyn Instruction> {
         self.instructions.get(idx).map(|i| i as &dyn Instruction)
     }
@@ -208,7 +274,12 @@ impl DisasmDataProvider for VecDisasmProvider {
         self.instructions.iter().position(|i| i.address == addr)
     }
     fn toggle_breakpoint(&mut self, addr: u64) -> bool {
-        let max_bp = self.instructions.iter().map(|i| i.bp_number).max().unwrap_or(0);
+        let max_bp = self
+            .instructions
+            .iter()
+            .map(|i| i.bp_number)
+            .max()
+            .unwrap_or(0);
         if let Some(instr) = self.instructions.iter_mut().find(|i| i.address == addr) {
             instr.breakpoint = !instr.breakpoint;
             if instr.breakpoint {
@@ -414,61 +485,61 @@ impl Default for DisasmColors {
     fn default() -> Self {
         Self {
             // Mnemonic colors (dark theme, high contrast)
-            mnemonic_normal:  [0.88, 0.92, 0.97, 1.0],  // near white
-            mnemonic_jump:    [0.95, 0.85, 0.35, 1.0],   // yellow
-            mnemonic_call:    [0.45, 0.85, 0.45, 1.0],   // green
-            mnemonic_return:  [0.90, 0.35, 0.35, 1.0],   // red
-            mnemonic_nop:     [0.50, 0.50, 0.50, 0.60],  // dim gray
-            mnemonic_stack:   [0.70, 0.55, 0.90, 1.0],   // purple
-            mnemonic_system:  [1.00, 0.55, 0.30, 1.0],   // orange
-            mnemonic_invalid: [1.00, 0.20, 0.20, 1.0],   // bright red
+            mnemonic_normal: [0.88, 0.92, 0.97, 1.0], // near white
+            mnemonic_jump: [0.95, 0.85, 0.35, 1.0],   // yellow
+            mnemonic_call: [0.45, 0.85, 0.45, 1.0],   // green
+            mnemonic_return: [0.90, 0.35, 0.35, 1.0], // red
+            mnemonic_nop: [0.50, 0.50, 0.50, 0.60],   // dim gray
+            mnemonic_stack: [0.70, 0.55, 0.90, 1.0],  // purple
+            mnemonic_system: [1.00, 0.55, 0.30, 1.0], // orange
+            mnemonic_invalid: [1.00, 0.20, 0.20, 1.0], // bright red
 
             // Operand colors
-            operand_register: [0.45, 0.80, 0.90, 1.0],   // cyan
-            operand_number:   [0.55, 0.85, 0.55, 1.0],   // light green
-            operand_memory:   [0.90, 0.65, 0.30, 1.0],   // orange
-            operand_string:   [0.85, 0.70, 0.50, 1.0],   // warm yellow
-            operand_default:  [0.80, 0.82, 0.85, 1.0],   // light gray
+            operand_register: [0.45, 0.80, 0.90, 1.0], // cyan
+            operand_number: [0.55, 0.85, 0.55, 1.0],   // light green
+            operand_memory: [0.90, 0.65, 0.30, 1.0],   // orange
+            operand_string: [0.85, 0.70, 0.50, 1.0],   // warm yellow
+            operand_default: [0.80, 0.82, 0.85, 1.0],  // light gray
 
             // Address / bytes
-            address:          [0.45, 0.55, 0.70, 1.0],
-            bytes:            [0.60, 0.62, 0.65, 0.80],
-            comment:          [0.50, 0.65, 0.50, 0.85],
+            address: [0.45, 0.55, 0.70, 1.0],
+            bytes: [0.60, 0.62, 0.65, 0.80],
+            comment: [0.50, 0.65, 0.50, 0.85],
 
             // Branch arrows
-            arrow_jump:       [0.95, 0.85, 0.35, 0.90],  // yellow
-            arrow_call:       [0.45, 0.85, 0.45, 0.90],  // green
-            arrow_return:     [0.90, 0.35, 0.35, 0.90],  // red
-            arrow_default:    [0.60, 0.60, 0.70, 0.70],  // gray
+            arrow_jump: [0.95, 0.85, 0.35, 0.90],    // yellow
+            arrow_call: [0.45, 0.85, 0.45, 0.90],    // green
+            arrow_return: [0.90, 0.35, 0.35, 0.90],  // red
+            arrow_default: [0.60, 0.60, 0.70, 0.70], // gray
 
             // Block tints (subtle backgrounds)
             block_tints: vec![
-                [0.15, 0.18, 0.25, 0.12],   // blue tint
-                [0.25, 0.15, 0.15, 0.10],   // red tint
-                [0.15, 0.22, 0.15, 0.10],   // green tint
-                [0.25, 0.22, 0.12, 0.10],   // amber tint
-                [0.20, 0.15, 0.25, 0.10],   // purple tint
-                [0.15, 0.22, 0.25, 0.10],   // teal tint
+                [0.15, 0.18, 0.25, 0.12], // blue tint
+                [0.25, 0.15, 0.15, 0.10], // red tint
+                [0.15, 0.22, 0.15, 0.10], // green tint
+                [0.25, 0.22, 0.12, 0.10], // amber tint
+                [0.20, 0.15, 0.25, 0.10], // purple tint
+                [0.15, 0.22, 0.25, 0.10], // teal tint
             ],
 
             // UI
-            breakpoint:       [0.95, 0.25, 0.25, 1.0],   // bright red
-            breakpoint_bg:    [0.25, 0.10, 0.10, 0.30],
+            breakpoint: [0.95, 0.25, 0.25, 1.0], // bright red
+            breakpoint_bg: [0.25, 0.10, 0.10, 0.30],
             breakpoint_colors: vec![
-                [0.95, 0.30, 0.30, 1.0],  // 1: red
-                [0.30, 0.80, 0.95, 1.0],  // 2: cyan
-                [0.95, 0.80, 0.25, 1.0],  // 3: yellow
-                [0.50, 0.90, 0.40, 1.0],  // 4: green
-                [0.85, 0.50, 0.95, 1.0],  // 5: purple
-                [0.95, 0.60, 0.25, 1.0],  // 6: orange
-                [0.40, 0.70, 0.95, 1.0],  // 7: blue
-                [0.95, 0.50, 0.70, 1.0],  // 8: pink
+                [0.95, 0.30, 0.30, 1.0], // 1: red
+                [0.30, 0.80, 0.95, 1.0], // 2: cyan
+                [0.95, 0.80, 0.25, 1.0], // 3: yellow
+                [0.50, 0.90, 0.40, 1.0], // 4: green
+                [0.85, 0.50, 0.95, 1.0], // 5: purple
+                [0.95, 0.60, 0.25, 1.0], // 6: orange
+                [0.40, 0.70, 0.95, 1.0], // 7: blue
+                [0.95, 0.50, 0.70, 1.0], // 8: pink
             ],
-            current_line_bg:  [0.40, 0.35, 0.15, 0.35],  // warm yellow tint
-            selection_bg:     [0.20, 0.35, 0.55, 0.45],
-            hover_bg:         [1.00, 1.00, 1.00, 0.04],
-            header:           [0.50, 0.55, 0.60, 0.80],
-            separator:        [0.30, 0.32, 0.35, 0.40],
+            current_line_bg: [0.40, 0.35, 0.15, 0.35], // warm yellow tint
+            selection_bg: [0.20, 0.35, 0.55, 0.45],
+            hover_bg: [1.00, 1.00, 1.00, 0.04],
+            header: [0.50, 0.55, 0.60, 0.80],
+            separator: [0.30, 0.32, 0.35, 0.40],
         }
     }
 }
@@ -477,13 +548,13 @@ impl DisasmColors {
     /// Get mnemonic color for a given flow kind.
     pub fn mnemonic_color(&self, kind: FlowKind) -> [f32; 4] {
         match kind {
-            FlowKind::Normal  => self.mnemonic_normal,
-            FlowKind::Jump    => self.mnemonic_jump,
-            FlowKind::Call    => self.mnemonic_call,
-            FlowKind::Return  => self.mnemonic_return,
-            FlowKind::Nop     => self.mnemonic_nop,
-            FlowKind::Stack   => self.mnemonic_stack,
-            FlowKind::System  => self.mnemonic_system,
+            FlowKind::Normal => self.mnemonic_normal,
+            FlowKind::Jump => self.mnemonic_jump,
+            FlowKind::Call => self.mnemonic_call,
+            FlowKind::Return => self.mnemonic_return,
+            FlowKind::Nop => self.mnemonic_nop,
+            FlowKind::Stack => self.mnemonic_stack,
+            FlowKind::System => self.mnemonic_system,
             FlowKind::Invalid => self.mnemonic_invalid,
         }
     }
@@ -491,10 +562,10 @@ impl DisasmColors {
     /// Get arrow color for a given flow kind.
     pub fn arrow_color(&self, kind: FlowKind) -> [f32; 4] {
         match kind {
-            FlowKind::Jump   => self.arrow_jump,
-            FlowKind::Call   => self.arrow_call,
+            FlowKind::Jump => self.arrow_jump,
+            FlowKind::Call => self.arrow_call,
             FlowKind::Return => self.arrow_return,
-            _                => self.arrow_default,
+            _ => self.arrow_default,
         }
     }
 

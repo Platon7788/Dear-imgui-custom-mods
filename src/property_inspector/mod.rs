@@ -212,7 +212,9 @@ impl PropertyInspector {
                             [win_pos[0], y],
                             [win_pos[0] + win_w, y + cfg.row_height],
                             col32(cfg.color_category_bg),
-                        ).filled(true).build();
+                        )
+                        .filled(true)
+                        .build();
 
                         // Hover highlight on category header
                         let cat_row_hovered = mouse_pos[0] >= win_pos[0]
@@ -224,7 +226,9 @@ impl PropertyInspector {
                                 [win_pos[0], y],
                                 [win_pos[0] + win_w, y + cfg.row_height],
                                 col32([1.0, 1.0, 1.0, 0.04]),
-                            ).filled(true).build();
+                            )
+                            .filled(true)
+                            .build();
                         }
 
                         let arrow = if self.categories[cat_idx].collapsed {
@@ -321,7 +325,9 @@ impl PropertyInspector {
                 [win_pos[0], *y],
                 [win_pos[0] + win_w, *y + cfg.row_height],
                 col32(cfg.color_bg_alt),
-            ).filled(true).build();
+            )
+            .filled(true)
+            .build();
         }
 
         // Changed highlight
@@ -330,7 +336,9 @@ impl PropertyInspector {
                 [win_pos[0], *y],
                 [win_pos[0] + win_w, *y + cfg.row_height],
                 col32(cfg.color_changed),
-            ).filled(true).build();
+            )
+            .filled(true)
+            .build();
         }
 
         // Hover highlight
@@ -343,7 +351,9 @@ impl PropertyInspector {
                 [win_pos[0], *y],
                 [win_pos[0] + win_w, *y + cfg.row_height],
                 col32([1.0, 1.0, 1.0, 0.04]),
-            ).filled(true).build();
+            )
+            .filled(true)
+            .build();
         }
 
         let indent = prop.depth as f32 * cfg.indent;
@@ -353,12 +363,12 @@ impl PropertyInspector {
         let has_children = !prop.children.is_empty()
             || matches!(prop.value, PropertyValue::Object | PropertyValue::Array(_));
         if has_children {
-            let arrow = if prop.expanded { "\u{25BE}" } else { "\u{25B8}" };
-            draw.add_text(
-                [win_pos[0] + indent + 2.0, ty],
-                col32(cfg.color_key),
-                arrow,
-            );
+            let arrow = if prop.expanded {
+                "\u{25BE}"
+            } else {
+                "\u{25B8}"
+            };
+            draw.add_text([win_pos[0] + indent + 2.0, ty], col32(cfg.color_key), arrow);
         }
 
         // Click detection for expand/collapse on property rows with children
@@ -375,18 +385,15 @@ impl PropertyInspector {
 
         // Key
         let key_x = win_pos[0] + indent + if has_children { 16.0 } else { 4.0 };
-        draw.add_text(
-            [key_x, ty],
-            col32(cfg.color_key),
-            &prop.key,
-        );
+        draw.add_text([key_x, ty], col32(cfg.color_key), &prop.key);
 
         // Separator
         draw.add_line(
             [win_pos[0] + key_w, *y],
             [win_pos[0] + key_w, *y + cfg.row_height],
             col32(cfg.color_separator),
-        ).build();
+        )
+        .build();
 
         // Value
         let val_x = win_pos[0] + key_w + 4.0;
@@ -404,42 +411,30 @@ impl PropertyInspector {
                     [val_x, *y + 2.0],
                     [val_x + 14.0, *y + cfg.row_height - 2.0],
                     col32([c[0], c[1], c[2], 1.0]),
-                ).filled(true).build();
-                draw.add_text(
-                    [val_x + 18.0, ty],
-                    col32(val_color),
-                    &val_text,
-                );
+                )
+                .filled(true)
+                .build();
+                draw.add_text([val_x + 18.0, ty], col32(val_color), &val_text);
             }
             PropertyValue::Color4(c) => {
                 draw.add_rect(
                     [val_x, *y + 2.0],
                     [val_x + 14.0, *y + cfg.row_height - 2.0],
                     col32(*c),
-                ).filled(true).build();
-                draw.add_text(
-                    [val_x + 18.0, ty],
-                    col32(val_color),
-                    &val_text,
-                );
+                )
+                .filled(true)
+                .build();
+                draw.add_text([val_x + 18.0, ty], col32(val_color), &val_text);
             }
             _ => {
-                draw.add_text(
-                    [val_x, ty],
-                    col32(val_color),
-                    &val_text,
-                );
+                draw.add_text([val_x, ty], col32(val_color), &val_text);
             }
         }
 
         // Type badge (dimmed, right-aligned)
         let type_badge = prop.value.type_name();
         let badge_x = win_pos[0] + win_w - calc_text_size(type_badge)[0] - 6.0;
-        draw.add_text(
-            [badge_x, ty],
-            col32([0.35, 0.38, 0.45, 1.0]),
-            type_badge,
-        );
+        draw.add_text([badge_x, ty], col32([0.35, 0.38, 0.45, 1.0]), type_badge);
 
         *y += cfg.row_height;
         *row_idx += 1;
@@ -554,6 +549,10 @@ mod tests {
     #[test]
     fn vec_display() {
         assert!(PropertyValue::Vec2([1.0, 2.0]).display().contains("1.00"));
-        assert!(PropertyValue::Vec3([1.0, 2.0, 3.0]).display().contains("3.00"));
+        assert!(
+            PropertyValue::Vec3([1.0, 2.0, 3.0])
+                .display()
+                .contains("3.00")
+        );
     }
 }

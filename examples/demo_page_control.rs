@@ -11,7 +11,7 @@
 //!   - Close confirmation, non-closable pages
 //!   - draw_mini_tile helper for tile bodies
 
-use dear_imgui_custom_mod::demo::{render_demo_window, DemoState};
+use dear_imgui_custom_mod::demo::{DemoState, render_demo_window};
 use dear_imgui_rs::StyleColor;
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
@@ -69,9 +69,7 @@ impl ApplicationHandler for App {
             backends: wgpu::Backends::PRIMARY,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
-        let surface = instance
-            .create_surface(window.clone())
-            .expect("surface");
+        let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
@@ -79,8 +77,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -110,24 +107,28 @@ impl ApplicationHandler for App {
         if std::path::Path::new(segoe_path).exists() {
             let font_data = std::fs::read(segoe_path).expect("read font");
             let font_data: &'static [u8] = Box::leak(font_data.into_boxed_slice());
-            context.fonts().add_font(&[dear_imgui_rs::FontSource::TtfData {
-                data: font_data,
-                size_pixels: Some(font_size),
-                config: Some(
-                    dear_imgui_rs::FontConfig::new()
-                        .size_pixels(font_size)
-                        .oversample_h(2),
-                ),
-            }]);
+            context
+                .fonts()
+                .add_font(&[dear_imgui_rs::FontSource::TtfData {
+                    data: font_data,
+                    size_pixels: Some(font_size),
+                    config: Some(
+                        dear_imgui_rs::FontConfig::new()
+                            .size_pixels(font_size)
+                            .oversample_h(2),
+                    ),
+                }]);
         } else {
-            context.fonts().add_font(&[dear_imgui_rs::FontSource::DefaultFontData {
-                config: Some(
-                    dear_imgui_rs::FontConfig::new()
-                        .size_pixels(font_size)
-                        .oversample_h(2),
-                ),
-                size_pixels: Some(font_size),
-            }]);
+            context
+                .fonts()
+                .add_font(&[dear_imgui_rs::FontSource::DefaultFontData {
+                    config: Some(
+                        dear_imgui_rs::FontConfig::new()
+                            .size_pixels(font_size)
+                            .oversample_h(2),
+                    ),
+                    size_pixels: Some(font_size),
+                }]);
         }
 
         // Load Material Design Icons font (merge into previous font)
@@ -142,15 +143,17 @@ impl ApplicationHandler for App {
             if path.exists() {
                 let mdi_data = std::fs::read(path).expect("read MDI font");
                 let mdi_data: &'static [u8] = Box::leak(mdi_data.into_boxed_slice());
-                context.fonts().add_font(&[dear_imgui_rs::FontSource::TtfData {
-                    data: mdi_data,
-                    size_pixels: Some(font_size),
-                    config: Some(
-                        dear_imgui_rs::FontConfig::new()
-                            .size_pixels(font_size)
-                            .merge_mode(true),
-                    ),
-                }]);
+                context
+                    .fonts()
+                    .add_font(&[dear_imgui_rs::FontSource::TtfData {
+                        data: mdi_data,
+                        size_pixels: Some(font_size),
+                        config: Some(
+                            dear_imgui_rs::FontConfig::new()
+                                .size_pixels(font_size)
+                                .merge_mode(true),
+                        ),
+                    }]);
                 eprintln!("MDI font loaded from {mdi_path} ({} bytes)", mdi_data.len());
                 break;
             }
@@ -210,8 +213,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -225,8 +227,7 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                gpu.platform
-                    .prepare_frame(&gpu.window, &mut gpu.context);
+                gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
 
                 let ui = gpu.context.frame();
                 render_demo_window(ui, &mut gpu.demo);
@@ -344,7 +345,10 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::TableRowBg, [0.00, 0.00, 0.00, 0.00]);
     style.set_color(StyleColor::TableRowBgAlt, [1.0, 1.0, 1.0, 0.025]);
 
-    style.set_color(StyleColor::TextSelectedBg, [accent[0], accent[1], accent[2], 0.30]);
+    style.set_color(
+        StyleColor::TextSelectedBg,
+        [accent[0], accent[1], accent[2], 0.30],
+    );
     style.set_color(StyleColor::Text, [0.92, 0.93, 0.95, 1.0]);
     style.set_color(StyleColor::TextDisabled, [0.42, 0.45, 0.52, 1.0]);
 

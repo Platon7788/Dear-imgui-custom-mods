@@ -26,19 +26,31 @@ pub(super) fn render_stats_overlay<T>(
 
     // Reuse scratch buffer — zero alloc after first frame.
     state.fmt_buf.clear();
-    let _ = write!(state.fmt_buf, "Nodes: {}  Wires: {}  Zoom: {}%", node_count, wire_count, zoom_pct);
+    let _ = write!(
+        state.fmt_buf,
+        "Nodes: {}  Wires: {}  Zoom: {}%",
+        node_count, wire_count, zoom_pct
+    );
     let line1_end = state.fmt_buf.len();
     if sel > 0 {
         let _ = write!(state.fmt_buf, "\nSelected: {sel}");
     }
     let line1 = &state.fmt_buf[..line1_end];
-    let line2 = if sel > 0 { &state.fmt_buf[line1_end + 1..] } else { "" };
+    let line2 = if sel > 0 {
+        &state.fmt_buf[line1_end + 1..]
+    } else {
+        ""
+    };
 
     let pad_x = 10.0;
     let pad_y = 6.0;
     // Use actual font metrics for correct sizing across all font sizes.
     let sz1 = calc_text_size(line1);
-    let sz2 = if sel > 0 { calc_text_size(line2) } else { [0.0, 0.0] };
+    let sz2 = if sel > 0 {
+        calc_text_size(line2)
+    } else {
+        [0.0, 0.0]
+    };
     let text_h = sz1[1];
     let box_w = sz1[0].max(sz2[0]) + pad_x * 2.0;
     let box_h = if sel > 0 {
@@ -50,24 +62,38 @@ pub(super) fn render_stats_overlay<T>(
     let margin = config.stats_overlay_margin;
     let (bx, by) = match config.stats_overlay_corner {
         0 => (canvas_pos[0] + margin, canvas_pos[1] + margin),
-        2 => (canvas_pos[0] + margin, canvas_pos[1] + canvas_size[1] - box_h - margin),
+        2 => (
+            canvas_pos[0] + margin,
+            canvas_pos[1] + canvas_size[1] - box_h - margin,
+        ),
         3 => (
             canvas_pos[0] + canvas_size[0] - box_w - margin,
             canvas_pos[1] + canvas_size[1] - box_h - margin,
         ),
-        _ => (canvas_pos[0] + canvas_size[0] - box_w - margin, canvas_pos[1] + margin), // top-right
+        _ => (
+            canvas_pos[0] + canvas_size[0] - box_w - margin,
+            canvas_pos[1] + margin,
+        ), // top-right
     };
 
     // Background pill
-    draw.add_rect([bx, by], [bx + box_w, by + box_h], c32([0x10, 0x10, 0x1a], 200))
-        .rounding(5.0)
-        .filled(true)
-        .build();
+    draw.add_rect(
+        [bx, by],
+        [bx + box_w, by + box_h],
+        c32([0x10, 0x10, 0x1a], 200),
+    )
+    .rounding(5.0)
+    .filled(true)
+    .build();
     // Subtle border
-    draw.add_rect([bx, by], [bx + box_w, by + box_h], c32([0x5b, 0x9b, 0xd5], 60))
-        .rounding(5.0)
-        .filled(false)
-        .build();
+    draw.add_rect(
+        [bx, by],
+        [bx + box_w, by + box_h],
+        c32([0x5b, 0x9b, 0xd5], 60),
+    )
+    .rounding(5.0)
+    .filled(false)
+    .build();
 
     // Line 1: stats text
     draw.add_text(
@@ -119,14 +145,22 @@ pub(super) fn render_minimap<T>(
     };
 
     // Background
-    draw.add_rect(mm_pos, [mm_pos[0] + mm[0], mm_pos[1] + mm[1]], c32(colors.minimap_bg, 200))
-        .rounding(4.0)
-        .filled(true)
-        .build();
-    draw.add_rect(mm_pos, [mm_pos[0] + mm[0], mm_pos[1] + mm[1]], c32(colors.minimap_outline, 150))
-        .rounding(4.0)
-        .filled(false)
-        .build();
+    draw.add_rect(
+        mm_pos,
+        [mm_pos[0] + mm[0], mm_pos[1] + mm[1]],
+        c32(colors.minimap_bg, 200),
+    )
+    .rounding(4.0)
+    .filled(true)
+    .build();
+    draw.add_rect(
+        mm_pos,
+        [mm_pos[0] + mm[0], mm_pos[1] + mm[1]],
+        c32(colors.minimap_outline, 150),
+    )
+    .rounding(4.0)
+    .filled(false)
+    .build();
 
     // Compute graph bounding box (using real node sizes)
     let Some((min_x, min_y, max_x, max_y)) = graph_bounds(graph, config, viewer, 100.0) else {
@@ -149,7 +183,9 @@ pub(super) fn render_minimap<T>(
             graph.get_node(wire.out_pin.node),
             graph.get_node(wire.in_pin.node),
         ) {
-            let out_w = viewer.node_width(&out_node.value).unwrap_or(config.node_min_width);
+            let out_w = viewer
+                .node_width(&out_node.value)
+                .unwrap_or(config.node_min_width);
             let out_h = config.node_height(
                 viewer.inputs(&out_node.value),
                 viewer.outputs(&out_node.value),
@@ -180,7 +216,9 @@ pub(super) fn render_minimap<T>(
 
     // Render nodes as colored rectangles with headers
     for (nid, node) in graph.nodes() {
-        let w = viewer.node_width(&node.value).unwrap_or(config.node_min_width);
+        let w = viewer
+            .node_width(&node.value)
+            .unwrap_or(config.node_min_width);
         let h = config.node_height(
             viewer.inputs(&node.value),
             viewer.outputs(&node.value),
@@ -239,7 +277,9 @@ pub(super) fn render_minimap<T>(
     // Check if reticle overlaps any node — invert color on overlap
     let mut over_node = false;
     for (_, node) in graph.nodes() {
-        let nw = viewer.node_width(&node.value).unwrap_or(config.node_min_width);
+        let nw = viewer
+            .node_width(&node.value)
+            .unwrap_or(config.node_min_width);
         let nh = config.node_height(
             viewer.inputs(&node.value),
             viewer.outputs(&node.value),
@@ -259,9 +299,17 @@ pub(super) fn render_minimap<T>(
 
     // Normal: cyan/amber reticle. Over node: inverted bright white/magenta
     let (c_outer, c_inner, c_dot) = if over_node {
-        (c32([0xff, 0x40, 0x80], 255), c32([0xff, 0xff, 0xff], 240), c32([0xff, 0x60, 0xa0], 255))
+        (
+            c32([0xff, 0x40, 0x80], 255),
+            c32([0xff, 0xff, 0xff], 240),
+            c32([0xff, 0x60, 0xa0], 255),
+        )
     } else {
-        (c32([0x00, 0xd4, 0xaa], 200), c32([0x00, 0xd4, 0xaa], 140), c32([0x00, 0xff, 0xcc], 255))
+        (
+            c32([0x00, 0xd4, 0xaa], 200),
+            c32([0x00, 0xd4, 0xaa], 140),
+            c32([0x00, 0xff, 0xcc], 255),
+        )
     };
 
     let r_outer = 8.0;
@@ -283,22 +331,38 @@ pub(super) fn render_minimap<T>(
 
     // Crosshair arms (4 lines with gap near center)
     // Right
-    draw.add_line([cx + gap, cy], [cx + arm, cy], c_outer).thickness(1.5).build();
+    draw.add_line([cx + gap, cy], [cx + arm, cy], c_outer)
+        .thickness(1.5)
+        .build();
     // Left
-    draw.add_line([cx - arm, cy], [cx - gap, cy], c_outer).thickness(1.5).build();
+    draw.add_line([cx - arm, cy], [cx - gap, cy], c_outer)
+        .thickness(1.5)
+        .build();
     // Down
-    draw.add_line([cx, cy + gap], [cx, cy + arm], c_outer).thickness(1.5).build();
+    draw.add_line([cx, cy + gap], [cx, cy + arm], c_outer)
+        .thickness(1.5)
+        .build();
     // Up
-    draw.add_line([cx, cy - arm], [cx, cy - gap], c_outer).thickness(1.5).build();
+    draw.add_line([cx, cy - arm], [cx, cy - gap], c_outer)
+        .thickness(1.5)
+        .build();
 
     // Small tick marks at 45° diagonals on outer ring
     let d45 = r_outer * 0.707; // cos(45°)
     let tick = 2.5;
     let d45_in = (r_outer - tick) * 0.707;
-    draw.add_line([cx + d45_in, cy + d45_in], [cx + d45, cy + d45], c_inner).thickness(1.0).build();
-    draw.add_line([cx - d45_in, cy + d45_in], [cx - d45, cy + d45], c_inner).thickness(1.0).build();
-    draw.add_line([cx + d45_in, cy - d45_in], [cx + d45, cy - d45], c_inner).thickness(1.0).build();
-    draw.add_line([cx - d45_in, cy - d45_in], [cx - d45, cy - d45], c_inner).thickness(1.0).build();
+    draw.add_line([cx + d45_in, cy + d45_in], [cx + d45, cy + d45], c_inner)
+        .thickness(1.0)
+        .build();
+    draw.add_line([cx - d45_in, cy + d45_in], [cx - d45, cy + d45], c_inner)
+        .thickness(1.0)
+        .build();
+    draw.add_line([cx + d45_in, cy - d45_in], [cx + d45, cy - d45], c_inner)
+        .thickness(1.0)
+        .build();
+    draw.add_line([cx - d45_in, cy - d45_in], [cx - d45, cy - d45], c_inner)
+        .thickness(1.0)
+        .build();
 
     // Center dot
     draw.add_circle([cx, cy], 1.5, c_dot)
@@ -322,7 +386,9 @@ pub(super) fn graph_bounds<T>(
     let mut max_x = f32::MIN;
     let mut max_y = f32::MIN;
     for (_, node) in graph.nodes() {
-        let w = viewer.node_width(&node.value).unwrap_or(config.node_min_width);
+        let w = viewer
+            .node_width(&node.value)
+            .unwrap_or(config.node_min_width);
         let h = config.node_height(
             viewer.inputs(&node.value),
             viewer.outputs(&node.value),

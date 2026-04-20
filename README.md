@@ -14,6 +14,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`app_window`** | Zero-boilerplate application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Auto GPU backend (DX12→Vulkan→GL), auto HiDPI, FPS cap, `StartPosition`, atomic theme switching via `AppState::set_theme(Theme)` | [docs/app_window.md](docs/app_window.md) |
 | **`nav_panel`** | Modern navigation panel (activity bar) — 3 docking positions (Left/Right/Top), flyout submenus, auto-hide with slide animation, toggle arrow, badges, button spacing/separators, per-button tooltip control, 5 unified themes, overlay variant (`render_nav_panel_overlay`) | [docs/nav_panel.md](docs/nav_panel.md) |
 | **`confirm_dialog`** | Reusable modal confirmation dialog — 5 unified themes + `colors_override`, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
+| **`notifications`** | Modern toast-notification center — 5 severity levels (Info/Success/Warning/Error/Debug) with draw-list icons, 6 stack placements (4 corners + top/bottom center), auto-dismiss timer with bottom progress bar, pause-on-hover, Fade/SlideIn/None animations, action buttons with caller-defined ids, manual `×` close, per-toast custom accent override, max-visible cap, 5 unified themes + `colors_override` | [docs/notifications.md](docs/notifications.md) |
 
 ### UI Widgets
 
@@ -72,6 +73,11 @@ src/
     mod.rs                          render_confirm_dialog() — themed modal dialog, DialogResult (#[must_use])
     config.rs                       DialogConfig (theme: Theme + colors_override), DialogIcon, ConfirmStyle
     theme.rs                        DialogColors (shared struct)
+  notifications/
+    mod.rs                          NotificationCenter — push/dismiss/render, 5-pass render pipeline, events
+    config.rs                       Notification builder, Severity, Placement, Duration, AnimationKind, CenterConfig
+    theme.rs                        NotificationColors (5 palettes: dark/light/midnight/solarized/monokai)
+    icons.rs                        5 severity icons + × close glyph via DrawListMut (font-independent)
   nav_panel/
     mod.rs                          render_nav_panel() + render_nav_panel_overlay(), NavPanelResult (#[must_use])
     config.rs                       NavPanelConfig (theme: Theme + colors_override), NavButton, SubMenuItem, DockPosition
@@ -191,7 +197,7 @@ examples/
   demo_status_toolbar.rs            Toolbar + StatusBar combined demo with events
   demo_borderless.rs                BorderlessWindow standalone demo — all 5 themes, edge resize
   demo_nav_panel.rs                 NavPanel + StatusBar demo — full config panel, all positions
-  demo_app_window.rs                AppWindow demo — counter, theme picker, log panel, close confirm
+  demo_app_window.rs                AppWindow + Notifications demo — counter, theme picker, log panel, close confirm, all 5 toast severities, placement / animation combos, sticky / custom-color / action-button toasts
 ```
 
 ## Quick Start

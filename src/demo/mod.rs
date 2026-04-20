@@ -7,8 +7,8 @@
 use crate::file_manager::FileManager;
 use crate::icons;
 use crate::page_control::{
-    Badge, ContentView, PageAction, PageControl, PageControlConfig, PageItem, PageStatus,
-    PcColors, TabStyle, draw_mini_tile,
+    Badge, ContentView, PageAction, PageControl, PageControlConfig, PageItem, PageStatus, PcColors,
+    TabStyle, draw_mini_tile,
 };
 use crate::virtual_table::{
     CellAlignment, CellValue, ColumnDef, TableConfig, VirtualTable, VirtualTableRow,
@@ -87,7 +87,10 @@ impl VirtualTableRow for DemoRow {
         match col {
             0 => self.id.cmp(&other.id),
             1 => self.name.cmp(&other.name),
-            2 => self.value.partial_cmp(&other.value).unwrap_or(Ordering::Equal),
+            2 => self
+                .value
+                .partial_cmp(&other.value)
+                .unwrap_or(Ordering::Equal),
             3 => self.status.cmp(other.status),
             _ => Ordering::Equal,
         }
@@ -166,8 +169,18 @@ impl PageItem for ServerPage {
         {
             let draw = ui.get_window_draw_list();
             let _ = write!(buf, "CPU: {:.0}%", self.cpu);
-            draw.add_text([x, y], crate::utils::color::rgb_arr(
-                if self.cpu > 80.0 { [0xd0, 0x7a, 0x30] } else { text }, 255), &buf);
+            draw.add_text(
+                [x, y],
+                crate::utils::color::rgb_arr(
+                    if self.cpu > 80.0 {
+                        [0xd0, 0x7a, 0x30]
+                    } else {
+                        text
+                    },
+                    255,
+                ),
+                &buf,
+            );
 
             buf.clear();
             let _ = write!(buf, "MEM: {:.0}%", self.memory);
@@ -175,18 +188,34 @@ impl PageItem for ServerPage {
 
             buf.clear();
             let _ = write!(buf, "Conn: {}", self.connections);
-            draw.add_text([x, y + 28.0], crate::utils::color::rgb_arr(muted, 200), &buf);
+            draw.add_text(
+                [x, y + 28.0],
+                crate::utils::color::rgb_arr(muted, 200),
+                &buf,
+            );
         }
 
         // Mini-tiles for services (draw_mini_tile gets its own DrawListMut)
         let mini_y = y + 48.0;
         let colors = PcColors::default();
-        draw_mini_tile(ui, [x, mini_y], [72.0, 20.0],
-            icons::SHIELD_LOCK, "Auth",
-            [0x5b, 0x9b, 0xd5], &colors);
-        draw_mini_tile(ui, [x + 76.0, mini_y], [72.0, 20.0],
-            icons::RADAR, "Game",
-            [0x5f, 0xb8, 0x70], &colors);
+        draw_mini_tile(
+            ui,
+            [x, mini_y],
+            [72.0, 20.0],
+            icons::SHIELD_LOCK,
+            "Auth",
+            [0x5b, 0x9b, 0xd5],
+            &colors,
+        );
+        draw_mini_tile(
+            ui,
+            [x + 76.0, mini_y],
+            [72.0, 20.0],
+            icons::RADAR,
+            "Game",
+            [0x5f, 0xb8, 0x70],
+            &colors,
+        );
         None
     }
 
@@ -409,7 +438,9 @@ impl PageItem for InfoPage {
         let draw = ui.get_window_draw_list();
         let [x, y, w, _h] = area;
         // Truncate text to tile width
-        let text = self.description.char_indices()
+        let text = self
+            .description
+            .char_indices()
             .nth(30)
             .map(|(i, _)| &self.description[..i])
             .unwrap_or(&self.description);
@@ -548,10 +579,17 @@ impl Default for DemoState {
             table: VirtualTable::new(
                 "##demo_table",
                 vec![
-                    ColumnDef::new("#").fixed(40.0).align(CellAlignment::Center).no_resize(),
+                    ColumnDef::new("#")
+                        .fixed(40.0)
+                        .align(CellAlignment::Center)
+                        .no_resize(),
                     ColumnDef::new("Name").stretch(1.0),
-                    ColumnDef::new("Value").fixed(80.0).align(CellAlignment::Right),
-                    ColumnDef::new("Status").fixed(70.0).align(CellAlignment::Center),
+                    ColumnDef::new("Value")
+                        .fixed(80.0)
+                        .align(CellAlignment::Right),
+                    ColumnDef::new("Status")
+                        .fixed(70.0)
+                        .align(CellAlignment::Center),
                 ],
                 10_000,
                 config,
@@ -561,14 +599,17 @@ impl Default for DemoState {
             pc_main: PageControl::new("##pc_main"),
             pc_main_populated: false,
 
-            pc_side: PageControl::with_config("##pc_side", PageControlConfig {
-                tile_width: 180.0,
-                tile_header_height: 32.0,
-                tile_body_height: 60.0,
-                tile_gap: 8.0,
-                confirm_close: false,
-                ..Default::default()
-            }),
+            pc_side: PageControl::with_config(
+                "##pc_side",
+                PageControlConfig {
+                    tile_width: 180.0,
+                    tile_header_height: 32.0,
+                    tile_body_height: 60.0,
+                    tile_gap: 8.0,
+                    confirm_close: false,
+                    ..Default::default()
+                },
+            ),
             pc_side_populated: false,
         }
     }
@@ -598,23 +639,38 @@ impl DemoState {
         self.pc_main_populated = true;
 
         // Server pages
-        self.pc_main.add(DemoPage::Server(
-            ServerPage::new("prod-web-01", 45.2, 62.0, 230, true),
-        ));
-        self.pc_main.add(DemoPage::Server(
-            ServerPage::new("prod-db-01", 88.5, 91.3, 42, true),
-        ));
-        self.pc_main.add(DemoPage::Server(
-            ServerPage::new("staging-01", 12.0, 28.0, 5, true),
-        ));
-        self.pc_main.add(DemoPage::Server(
-            ServerPage::new("legacy-api", 0.0, 0.0, 0, false),
-        ));
+        self.pc_main.add(DemoPage::Server(ServerPage::new(
+            "prod-web-01",
+            45.2,
+            62.0,
+            230,
+            true,
+        )));
+        self.pc_main.add(DemoPage::Server(ServerPage::new(
+            "prod-db-01",
+            88.5,
+            91.3,
+            42,
+            true,
+        )));
+        self.pc_main.add(DemoPage::Server(ServerPage::new(
+            "staging-01",
+            12.0,
+            28.0,
+            5,
+            true,
+        )));
+        self.pc_main.add(DemoPage::Server(ServerPage::new(
+            "legacy-api",
+            0.0,
+            0.0,
+            0,
+            false,
+        )));
 
         // Nested page (contains its own PageControl!)
-        self.pc_main.add(DemoPage::Nested(Box::new(
-            NestedPage::new("Workspaces"),
-        )));
+        self.pc_main
+            .add(DemoPage::Nested(Box::new(NestedPage::new("Workspaces"))));
 
         // Info page (non-closable)
         self.pc_main.add(DemoPage::Info(InfoPage {
@@ -673,14 +729,8 @@ pub fn render_demo_window(ui: &Ui, state: &mut DemoState) {
                         state.file_manager.open_file(
                             None,
                             vec![
-                                crate::file_manager::FileFilter::new(
-                                    "Rust Files (*.rs)",
-                                    &["rs"],
-                                ),
-                                crate::file_manager::FileFilter::new(
-                                    "All Files (*.*)",
-                                    &[],
-                                ),
+                                crate::file_manager::FileFilter::new("Rust Files (*.rs)", &["rs"]),
+                                crate::file_manager::FileFilter::new("All Files (*.*)", &[]),
                             ],
                         );
                     }
@@ -764,18 +814,25 @@ fn render_page_control_tab(ui: &Ui, state: &mut DemoState) {
         use std::sync::atomic::{AtomicU32, Ordering};
         static CTR: AtomicU32 = AtomicU32::new(0);
         let n = CTR.fetch_add(1, Ordering::Relaxed) + 1;
-        state.pc_main.add(DemoPage::Server(
-            ServerPage::new(format!("new-srv-{:02}", n), 25.0, 40.0, 10, true),
-        ));
+        state.pc_main.add(DemoPage::Server(ServerPage::new(
+            format!("new-srv-{:02}", n),
+            25.0,
+            40.0,
+            10,
+            true,
+        )));
     }
     ui.same_line();
     if ui.button("Add Nested") {
         use std::sync::atomic::{AtomicU32, Ordering};
         static CTR2: AtomicU32 = AtomicU32::new(0);
         let n = CTR2.fetch_add(1, Ordering::Relaxed) + 1;
-        state.pc_main.add(DemoPage::Nested(Box::new(
-            NestedPage::new(format!("Workspace-{}", n)),
-        )));
+        state
+            .pc_main
+            .add(DemoPage::Nested(Box::new(NestedPage::new(format!(
+                "Workspace-{}",
+                n
+            )))));
     }
     ui.same_line();
     let view_label = match state.pc_main.view {
@@ -870,4 +927,3 @@ fn render_page_control_tab(ui: &Ui, state: &mut DemoState) {
                 });
         });
 }
-

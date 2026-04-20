@@ -4,9 +4,7 @@ use dear_imgui_rs::{Key, MouseButton, Ui};
 
 use super::super::config::NodeGraphConfig;
 use super::super::graph::Graph;
-use super::super::state::{
-    HoveredElement, InteractionState, NewWire, NodeDrag, RectSelect,
-};
+use super::super::state::{HoveredElement, InteractionState, NewWire, NodeDrag, RectSelect};
 use super::super::types::*;
 use super::super::viewer::NodeGraphViewer;
 use super::math;
@@ -129,7 +127,10 @@ pub(super) fn handle_input<T>(
 
             if completed {
                 state.new_wire = None;
-            } else if !matches!(hit, HoveredElement::OutputPin(_) | HoveredElement::InputPin(_)) {
+            } else if !matches!(
+                hit,
+                HoveredElement::OutputPin(_) | HoveredElement::InputPin(_)
+            ) {
                 // Clicked on empty space / node — cancel wire + fire dropped wire action
                 if config.drop_wire_menu && matches!(hit, HoveredElement::None) {
                     let graph_pos = state.viewport.screen_to_graph(mouse);
@@ -163,7 +164,9 @@ pub(super) fn handle_input<T>(
                 }
                 HoveredElement::Node(nid) => {
                     // Check if collapse button was clicked
-                    if config.node_collapsible && is_collapse_button_hit(graph, state, config, nid, mouse) {
+                    if config.node_collapsible
+                        && is_collapse_button_hit(graph, state, config, nid, mouse)
+                    {
                         actions.push(GraphAction::NodeToggled(nid));
                     } else {
                         // Start dragging
@@ -224,56 +227,55 @@ pub(super) fn handle_input<T>(
         // the next press — non-zero means the mouse actually moved during the drag.
         let dd = ui.mouse_drag_delta(MouseButton::Left);
         let dragged = dd[0] * dd[0] + dd[1] * dd[1] > 25.0; // 5 px threshold
-        if dragged
-            && let Some(ref nw) = state.new_wire {
-                let completed = match nw {
-                    NewWire::FromOutput(out_pin) => {
-                        if let HoveredElement::InputPin(in_pin) = hit
-                            && viewer.can_connect(*out_pin, in_pin, graph)
-                        {
-                            actions.push(GraphAction::Connected(Wire {
-                                out_pin: *out_pin,
-                                in_pin,
-                            }));
-                            true
-                        } else {
-                            false
-                        }
+        if dragged && let Some(ref nw) = state.new_wire {
+            let completed = match nw {
+                NewWire::FromOutput(out_pin) => {
+                    if let HoveredElement::InputPin(in_pin) = hit
+                        && viewer.can_connect(*out_pin, in_pin, graph)
+                    {
+                        actions.push(GraphAction::Connected(Wire {
+                            out_pin: *out_pin,
+                            in_pin,
+                        }));
+                        true
+                    } else {
+                        false
                     }
-                    NewWire::FromInput(in_pin) => {
-                        if let HoveredElement::OutputPin(out_pin) = hit
-                            && viewer.can_connect(out_pin, *in_pin, graph)
-                        {
-                            actions.push(GraphAction::Connected(Wire {
-                                out_pin,
-                                in_pin: *in_pin,
-                            }));
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                };
-
-                if completed {
-                    state.new_wire = None;
-                } else if matches!(hit, HoveredElement::None) {
-                    // Dropped wire on empty canvas via drag
-                    if config.drop_wire_menu {
-                        let graph_pos = state.viewport.screen_to_graph(mouse);
-                        match nw {
-                            NewWire::FromOutput(pin) => {
-                                actions.push(GraphAction::DroppedWireOut(*pin, graph_pos));
-                            }
-                            NewWire::FromInput(pin) => {
-                                actions.push(GraphAction::DroppedWireIn(*pin, graph_pos));
-                            }
-                        }
-                    }
-                    state.new_wire = None;
                 }
-                // If released on a node or other element but not a valid pin,
-                // keep the wire alive for click-to-click mode
+                NewWire::FromInput(in_pin) => {
+                    if let HoveredElement::OutputPin(out_pin) = hit
+                        && viewer.can_connect(out_pin, *in_pin, graph)
+                    {
+                        actions.push(GraphAction::Connected(Wire {
+                            out_pin,
+                            in_pin: *in_pin,
+                        }));
+                        true
+                    } else {
+                        false
+                    }
+                }
+            };
+
+            if completed {
+                state.new_wire = None;
+            } else if matches!(hit, HoveredElement::None) {
+                // Dropped wire on empty canvas via drag
+                if config.drop_wire_menu {
+                    let graph_pos = state.viewport.screen_to_graph(mouse);
+                    match nw {
+                        NewWire::FromOutput(pin) => {
+                            actions.push(GraphAction::DroppedWireOut(*pin, graph_pos));
+                        }
+                        NewWire::FromInput(pin) => {
+                            actions.push(GraphAction::DroppedWireIn(*pin, graph_pos));
+                        }
+                    }
+                }
+                state.new_wire = None;
+            }
+            // If released on a node or other element but not a valid pin,
+            // keep the wire alive for click-to-click mode
         }
 
         // Complete node drag
@@ -288,12 +290,16 @@ pub(super) fn handle_input<T>(
             let r = rect_sel.rect();
             for (nid, node) in graph.nodes() {
                 let sp = state.viewport.graph_to_screen(node.pos);
-                let node_w = viewer.node_width(&node.value).unwrap_or(config.node_min_width)
+                let node_w = viewer
+                    .node_width(&node.value)
+                    .unwrap_or(config.node_min_width)
                     * state.viewport.zoom;
                 let ni = viewer.inputs(&node.value);
                 let no = viewer.outputs(&node.value);
                 let hb = viewer.has_body(&node.value);
-                let node_h = config.node_height(ni, no, hb, node.open, viewer.body_height(&node.value)) * state.viewport.zoom;
+                let node_h =
+                    config.node_height(ni, no, hb, node.open, viewer.body_height(&node.value))
+                        * state.viewport.zoom;
 
                 if sp[0] + node_w >= r[0]
                     && sp[0] <= r[2]
@@ -311,9 +317,7 @@ pub(super) fn handle_input<T>(
     let right_dragging = config.pan_button_right
         && ui.is_mouse_dragging(MouseButton::Right)
         && matches!(hit, HoveredElement::None);
-    let shift_lmb = config.pan_shift_lmb
-        && io.key_shift()
-        && ui.is_mouse_down(MouseButton::Left);
+    let shift_lmb = config.pan_shift_lmb && io.key_shift() && ui.is_mouse_down(MouseButton::Left);
 
     if mid_down || right_dragging || shift_lmb {
         let delta = io.mouse_delta();
@@ -394,7 +398,9 @@ fn hit_test<T>(
     for &node_id in state.draw_order.iter().rev() {
         if let Some(node) = graph.get_node(node_id) {
             let [sx, sy] = vp.graph_to_screen(node.pos);
-            let node_w = viewer.node_width(&node.value).unwrap_or(config.node_min_width);
+            let node_w = viewer
+                .node_width(&node.value)
+                .unwrap_or(config.node_min_width);
             let ni = viewer.inputs(&node.value);
             let no = viewer.outputs(&node.value);
             let hb = viewer.has_body(&node.value);
@@ -403,11 +409,7 @@ fn hit_test<T>(
             let sw = node_w * vp.zoom;
             let sh = node_h * vp.zoom;
 
-            if mouse[0] >= sx
-                && mouse[0] < sx + sw
-                && mouse[1] >= sy
-                && mouse[1] < sy + sh
-            {
+            if mouse[0] >= sx && mouse[0] < sx + sw && mouse[1] >= sy && mouse[1] < sy + sh {
                 return HoveredElement::Node(node_id);
             }
         }
@@ -432,8 +434,15 @@ fn hit_test<T>(
         };
 
         if math::wire_hit_test(
-            from_pos, to_pos, mouse, wire_dist, wire_style, config,
-            wire_aabbs, wire.out_pin.node, wire.in_pin.node,
+            from_pos,
+            to_pos,
+            mouse,
+            wire_dist,
+            wire_style,
+            config,
+            wire_aabbs,
+            wire.out_pin.node,
+            wire.in_pin.node,
         ) {
             return HoveredElement::Wire(wire.out_pin, wire.in_pin);
         }
@@ -463,8 +472,7 @@ fn is_collapse_button_hit<T>(
     let btn_w = 18.0 * zoom;
     let btn_h = config.node_header_height * zoom;
 
-    mouse[0] >= btn_x && mouse[0] < btn_x + btn_w
-        && mouse[1] >= btn_y && mouse[1] < btn_y + btn_h
+    mouse[0] >= btn_x && mouse[0] < btn_x + btn_w && mouse[1] >= btn_y && mouse[1] < btn_y + btn_h
 }
 
 // ─── Interactive minimap input ───────────────────────────────────────────────
@@ -482,14 +490,25 @@ fn handle_minimap_input<T>(
     let margin = config.minimap_margin;
     let mm_pos = match config.minimap_corner {
         0 => [canvas_pos[0] + margin, canvas_pos[1] + margin],
-        1 => [canvas_pos[0] + canvas_size[0] - mm[0] - margin, canvas_pos[1] + margin],
-        2 => [canvas_pos[0] + margin, canvas_pos[1] + canvas_size[1] - mm[1] - margin],
-        _ => [canvas_pos[0] + canvas_size[0] - mm[0] - margin, canvas_pos[1] + canvas_size[1] - mm[1] - margin],
+        1 => [
+            canvas_pos[0] + canvas_size[0] - mm[0] - margin,
+            canvas_pos[1] + margin,
+        ],
+        2 => [
+            canvas_pos[0] + margin,
+            canvas_pos[1] + canvas_size[1] - mm[1] - margin,
+        ],
+        _ => [
+            canvas_pos[0] + canvas_size[0] - mm[0] - margin,
+            canvas_pos[1] + canvas_size[1] - mm[1] - margin,
+        ],
     };
 
     let mouse = ui.io().mouse_pos();
-    let in_minimap = mouse[0] >= mm_pos[0] && mouse[0] < mm_pos[0] + mm[0]
-        && mouse[1] >= mm_pos[1] && mouse[1] < mm_pos[1] + mm[1];
+    let in_minimap = mouse[0] >= mm_pos[0]
+        && mouse[0] < mm_pos[0] + mm[0]
+        && mouse[1] >= mm_pos[1]
+        && mouse[1] < mm_pos[1] + mm[1];
 
     if ui.is_mouse_clicked(MouseButton::Left) && in_minimap {
         state.minimap_dragging = true;
@@ -503,7 +522,8 @@ fn handle_minimap_input<T>(
         return;
     }
 
-    let Some((min_x, min_y, max_x, max_y)) = overlays::graph_bounds(graph, config, viewer, 100.0) else {
+    let Some((min_x, min_y, max_x, max_y)) = overlays::graph_bounds(graph, config, viewer, 100.0)
+    else {
         return;
     };
 

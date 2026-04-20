@@ -34,7 +34,12 @@ pub struct ExtraButton {
 impl ExtraButton {
     /// Create a new extra button.
     pub fn new(id: &'static str, label: &'static str, color: [f32; 4]) -> Self {
-        Self { id, label, tooltip: None, color }
+        Self {
+            id,
+            label,
+            tooltip: None,
+            color,
+        }
     }
     /// Attach a tooltip.
     pub fn with_tooltip(mut self, tip: &'static str) -> Self {
@@ -97,9 +102,15 @@ impl ButtonConfig {
         self
     }
     /// Hide the minimize button.
-    pub fn no_minimize(mut self) -> Self { self.show_minimize = false; self }
+    pub fn no_minimize(mut self) -> Self {
+        self.show_minimize = false;
+        self
+    }
     /// Hide the maximize / restore button.
-    pub fn no_maximize(mut self) -> Self { self.show_maximize = false; self }
+    pub fn no_maximize(mut self) -> Self {
+        self.show_maximize = false;
+        self
+    }
 }
 
 // ── Main config ──────────────────────────────────────────────────────────────
@@ -184,10 +195,16 @@ impl Default for BorderlessConfig {
 impl BorderlessConfig {
     /// Create a config with the given window title and all other fields at their defaults.
     pub fn new(title: impl Into<String>) -> Self {
-        Self { title: title.into(), ..Self::default() }
+        Self {
+            title: title.into(),
+            ..Self::default()
+        }
     }
     /// Set the window title text.
-    pub fn with_title(mut self, t: impl Into<String>) -> Self { self.title = t.into(); self }
+    pub fn with_title(mut self, t: impl Into<String>) -> Self {
+        self.title = t.into();
+        self
+    }
     /// Set the color theme.
     pub fn with_theme(mut self, t: Theme) -> Self {
         self.theme = t;
@@ -208,27 +225,63 @@ impl BorderlessConfig {
         }
     }
     /// Set the titlebar height in pixels.
-    pub fn with_titlebar_height(mut self, h: f32) -> Self { self.titlebar_height = h; self }
+    pub fn with_titlebar_height(mut self, h: f32) -> Self {
+        self.titlebar_height = h;
+        self
+    }
     /// Set the edge/corner resize detection zone width in pixels.
-    pub fn with_resize_zone(mut self, z: f32) -> Self { self.resize_zone = z; self }
+    pub fn with_resize_zone(mut self, z: f32) -> Self {
+        self.resize_zone = z;
+        self
+    }
     /// Set the title text alignment.
-    pub fn with_title_align(mut self, a: TitleAlign) -> Self { self.title_align = a; self }
+    pub fn with_title_align(mut self, a: TitleAlign) -> Self {
+        self.title_align = a;
+        self
+    }
     /// Set the icon character/glyph shown before the title text.
-    pub fn with_icon(mut self, icon: impl Into<String>) -> Self { self.icon = Some(icon.into()); self }
+    pub fn with_icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
     /// Replace the entire button configuration.
-    pub fn with_buttons(mut self, b: ButtonConfig) -> Self { self.buttons = b; self }
+    pub fn with_buttons(mut self, b: ButtonConfig) -> Self {
+        self.buttons = b;
+        self
+    }
     /// Set the close button behavior (immediate or confirm dialog).
-    pub fn with_close_mode(mut self, m: CloseMode) -> Self { self.close_mode = m; self }
+    pub fn with_close_mode(mut self, m: CloseMode) -> Self {
+        self.close_mode = m;
+        self
+    }
     /// Hide the maximize / restore button.
-    pub fn without_maximize(mut self) -> Self { self.buttons.show_maximize = false; self }
+    pub fn without_maximize(mut self) -> Self {
+        self.buttons.show_maximize = false;
+        self
+    }
     /// Hide the minimize button.
-    pub fn without_minimize(mut self) -> Self { self.buttons.show_minimize = false; self }
+    pub fn without_minimize(mut self) -> Self {
+        self.buttons.show_minimize = false;
+        self
+    }
     /// Hide the 1-px separator line below the titlebar.
-    pub fn without_separator(mut self) -> Self { self.separator_visible = false; self }
+    pub fn without_separator(mut self) -> Self {
+        self.separator_visible = false;
+        self
+    }
     /// Disable the drag-zone hover highlight.
-    pub fn without_drag_hint(mut self) -> Self { self.show_drag_hint = false; self }
+    pub fn without_drag_hint(mut self) -> Self {
+        self.show_drag_hint = false;
+        self
+    }
     /// Enable titlebar dimming when the window loses OS focus.
-    pub fn with_focus_dim(mut self) -> Self { self.focus_dim = true; self }
+    pub fn with_focus_dim(mut self) -> Self {
+        self.focus_dim = true;
+        self
+    }
     /// Disable titlebar dimming when the window loses OS focus (already the default).
-    pub fn without_focus_dim(mut self) -> Self { self.focus_dim = false; self }
+    pub fn without_focus_dim(mut self) -> Self {
+        self.focus_dim = false;
+        self
+    }
 }

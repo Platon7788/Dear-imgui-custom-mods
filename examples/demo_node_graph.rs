@@ -126,11 +126,19 @@ impl NodeGraphViewer<DemoNode> for DemoViewer {
     fn input_label(&self, node: &DemoNode, input: u8) -> &str {
         match node {
             DemoNode::MathOp { .. } => {
-                if input == 0 { "A" } else { "B" }
+                if input == 0 {
+                    "A"
+                } else {
+                    "B"
+                }
             }
             DemoNode::Clamp { .. } => "Value",
             DemoNode::Mix { .. } => {
-                if input == 0 { "A" } else { "B" }
+                if input == 0 {
+                    "A"
+                } else {
+                    "B"
+                }
             }
             DemoNode::Output { .. } => "In",
             _ => "",
@@ -228,12 +236,12 @@ impl NodeGraphViewer<DemoNode> for DemoViewer {
     fn header_color(&self, node: &DemoNode) -> Option<[u8; 3]> {
         Some(match node {
             DemoNode::FloatValue { .. } => [0x2a, 0x5a, 0x8a], // blue
-            DemoNode::Vec2Value { .. } => [0x3a, 0x6a, 0x2a], // green
+            DemoNode::Vec2Value { .. } => [0x3a, 0x6a, 0x2a],  // green
             DemoNode::ColorValue { .. } => [0x7a, 0x2a, 0x5a], // pink
-            DemoNode::MathOp { .. } => [0x5a, 0x4a, 0x2a], // amber
-            DemoNode::Clamp { .. } => [0x4a, 0x3a, 0x5a], // purple
-            DemoNode::Mix { .. } => [0x2a, 0x5a, 0x5a], // teal
-            DemoNode::Output { .. } => [0x6a, 0x2a, 0x2a], // red
+            DemoNode::MathOp { .. } => [0x5a, 0x4a, 0x2a],     // amber
+            DemoNode::Clamp { .. } => [0x4a, 0x3a, 0x5a],      // purple
+            DemoNode::Mix { .. } => [0x2a, 0x5a, 0x5a],        // teal
+            DemoNode::Output { .. } => [0x6a, 0x2a, 0x2a],     // red
         })
     }
 
@@ -301,7 +309,9 @@ impl DemoState {
             [480.0, 100.0],
         );
         let output = ng.add_node(
-            DemoNode::Output { label: "Result".into() },
+            DemoNode::Output {
+                label: "Result".into(),
+            },
             [680.0, 100.0],
         );
 
@@ -312,27 +322,48 @@ impl DemoState {
             [50.0, 350.0],
         );
         let _mix = ng.add_node(DemoNode::Mix { factor: 0.5 }, [280.0, 300.0]);
-        let _vec = ng.add_node(
-            DemoNode::Vec2Value { x: 1.0, y: -2.0 },
-            [50.0, 500.0],
-        );
+        let _vec = ng.add_node(DemoNode::Vec2Value { x: 1.0, y: -2.0 }, [50.0, 500.0]);
 
         // Wire up: val1 -> add.A, val2 -> add.B, add -> clamp -> output
         ng.connect(
-            OutPinId { node: val1, output: 0 },
-            InPinId { node: add, input: 0 },
+            OutPinId {
+                node: val1,
+                output: 0,
+            },
+            InPinId {
+                node: add,
+                input: 0,
+            },
         );
         ng.connect(
-            OutPinId { node: val2, output: 0 },
-            InPinId { node: add, input: 1 },
+            OutPinId {
+                node: val2,
+                output: 0,
+            },
+            InPinId {
+                node: add,
+                input: 1,
+            },
         );
         ng.connect(
-            OutPinId { node: add, output: 0 },
-            InPinId { node: clamp, input: 0 },
+            OutPinId {
+                node: add,
+                output: 0,
+            },
+            InPinId {
+                node: clamp,
+                input: 0,
+            },
         );
         ng.connect(
-            OutPinId { node: clamp, output: 0 },
-            InPinId { node: output, input: 0 },
+            OutPinId {
+                node: clamp,
+                output: 0,
+            },
+            InPinId {
+                node: output,
+                input: 0,
+            },
         );
 
         // Keep color node unconnected for demo
@@ -443,7 +474,11 @@ impl DemoState {
             WireStyle::Orthogonal => 2,
         };
         ui.set_next_item_width(110.0);
-        if ui.combo_simple_string("Wire##style", &mut wire_idx, &["Bezier", "Straight", "Orthogonal"]) {
+        if ui.combo_simple_string(
+            "Wire##style",
+            &mut wire_idx,
+            &["Bezier", "Straight", "Orthogonal"],
+        ) {
             self.ng.config.wire_style = match wire_idx {
                 1 => WireStyle::Line,
                 2 => WireStyle::Orthogonal,
@@ -467,10 +502,7 @@ impl DemoState {
             let mut created: Option<NodeId> = None;
 
             if ui.menu_item("Float Value") {
-                created = Some(
-                    self.ng
-                        .add_node(DemoNode::FloatValue { value: 0.0 }, pos),
-                );
+                created = Some(self.ng.add_node(DemoNode::FloatValue { value: 0.0 }, pos));
             }
             if ui.menu_item("Vec2 Value") {
                 created = Some(
@@ -521,23 +553,20 @@ impl DemoState {
             }
             ui.separator();
             if ui.menu_item("Clamp") {
-                created = Some(self.ng.add_node(
-                    DemoNode::Clamp {
-                        min: 0.0,
-                        max: 1.0,
-                    },
-                    pos,
-                ));
+                created = Some(
+                    self.ng
+                        .add_node(DemoNode::Clamp { min: 0.0, max: 1.0 }, pos),
+                );
             }
             if ui.menu_item("Mix") {
-                created = Some(
-                    self.ng.add_node(DemoNode::Mix { factor: 0.5 }, pos),
-                );
+                created = Some(self.ng.add_node(DemoNode::Mix { factor: 0.5 }, pos));
             }
             ui.separator();
             if ui.menu_item("Output") {
                 created = Some(self.ng.add_node(
-                    DemoNode::Output { label: "Output".into() },
+                    DemoNode::Output {
+                        label: "Output".into(),
+                    },
                     pos,
                 ));
             }
@@ -549,7 +578,13 @@ impl DemoState {
                     if let Some(node) = self.ng.graph.get_node(new_id) {
                         let inputs = self.viewer.inputs(&node.value);
                         if inputs > 0 {
-                            self.ng.connect(out_pin, InPinId { node: new_id, input: 0 });
+                            self.ng.connect(
+                                out_pin,
+                                InPinId {
+                                    node: new_id,
+                                    input: 0,
+                                },
+                            );
                         }
                     }
                 } else if let Some((in_pin, _)) = self.dropped_wire_in.take() {
@@ -557,7 +592,13 @@ impl DemoState {
                     if let Some(node) = self.ng.graph.get_node(new_id) {
                         let outputs = self.viewer.outputs(&node.value);
                         if outputs > 0 {
-                            self.ng.connect(OutPinId { node: new_id, output: 0 }, in_pin);
+                            self.ng.connect(
+                                OutPinId {
+                                    node: new_id,
+                                    output: 0,
+                                },
+                                in_pin,
+                            );
                         }
                     }
                 }
@@ -617,9 +658,7 @@ impl ApplicationHandler for App {
             backends: wgpu::Backends::PRIMARY,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
-        let surface = instance
-            .create_surface(window.clone())
-            .expect("surface");
+        let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
@@ -627,8 +666,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -735,8 +773,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -750,8 +787,7 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                gpu.platform
-                    .prepare_frame(&gpu.window, &mut gpu.context);
+                gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
 
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);
@@ -766,30 +802,27 @@ impl ApplicationHandler for App {
                         });
 
                 {
-                    let mut pass =
-                        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                            label: Some("imgui_pass"),
-                            color_attachments: &[Some(
-                                wgpu::RenderPassColorAttachment {
-                                    view: &view,
-                                    resolve_target: None,
-                                    depth_slice: None,
-                                    ops: wgpu::Operations {
-                                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                                            r: 0.08,
-                                            g: 0.09,
-                                            b: 0.11,
-                                            a: 1.0,
-                                        }),
-                                        store: wgpu::StoreOp::Store,
-                                    },
-                                },
-                            )],
-                            depth_stencil_attachment: None,
-                            timestamp_writes: None,
-                            occlusion_query_set: None,
-                            multiview_mask: None,
-                        });
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("imgui_pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            depth_slice: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.08,
+                                    g: 0.09,
+                                    b: 0.11,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
 
                     if draw_data.total_vtx_count > 0 {
                         gpu.renderer
@@ -846,10 +879,7 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
 
     style.set_color(StyleColor::ScrollbarBg, [0.08, 0.08, 0.10, 0.60]);
     style.set_color(StyleColor::ScrollbarGrab, [0.22, 0.24, 0.30, 1.0]);
-    style.set_color(
-        StyleColor::ScrollbarGrabHovered,
-        [0.30, 0.33, 0.40, 1.0],
-    );
+    style.set_color(StyleColor::ScrollbarGrabHovered, [0.30, 0.33, 0.40, 1.0]);
     style.set_color(StyleColor::ScrollbarGrabActive, accent_dim);
 
     style.set_color(StyleColor::CheckMark, accent);

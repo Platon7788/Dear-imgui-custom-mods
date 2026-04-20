@@ -46,7 +46,10 @@ pub enum ToolbarItemKind {
     /// Flexible spacer (pushes items to the right).
     Spacer,
     /// Dropdown (click → emits event, dropdown menu is handled externally).
-    Dropdown { options: Vec<String>, selected: usize },
+    Dropdown {
+        options: Vec<String>,
+        selected: usize,
+    },
 }
 
 /// A single toolbar item.
@@ -116,11 +119,18 @@ impl ToolbarItem {
         selected: usize,
         tooltip: impl Into<String>,
     ) -> Self {
-        let clamped = if options.is_empty() { 0 } else { selected.min(options.len() - 1) };
+        let clamped = if options.is_empty() {
+            0
+        } else {
+            selected.min(options.len() - 1)
+        };
         Self {
             label: label.into(),
             icon: String::new(),
-            kind: ToolbarItemKind::Dropdown { options, selected: clamped },
+            kind: ToolbarItemKind::Dropdown {
+                options,
+                selected: clamped,
+            },
             tooltip: tooltip.into(),
             enabled: true,
         }
@@ -147,9 +157,17 @@ pub enum ToolbarEvent {
     /// A button was clicked.
     ButtonClicked { index: usize, label: String },
     /// A toggle was toggled (new state).
-    Toggled { index: usize, label: String, on: bool },
+    Toggled {
+        index: usize,
+        label: String,
+        on: bool,
+    },
     /// A dropdown selection changed.
-    DropdownChanged { index: usize, label: String, selected: usize },
+    DropdownChanged {
+        index: usize,
+        label: String,
+        selected: usize,
+    },
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -223,10 +241,14 @@ impl Toolbar {
     }
 
     /// Number of items.
-    pub fn len(&self) -> usize { self.items.len() }
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
 
     /// Whether the toolbar has no items.
-    pub fn is_empty(&self) -> bool { self.items.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
 
     /// Clear all items.
     pub fn clear(&mut self) {
@@ -250,14 +272,17 @@ impl Toolbar {
             cursor,
             [cursor[0] + avail_w, cursor[1] + bar_h],
             col32(cfg.color_bg),
-        ).filled(true).build();
+        )
+        .filled(true)
+        .build();
 
         // Bottom border
         draw.add_line(
             [cursor[0], cursor[1] + bar_h - 1.0],
             [cursor[0] + avail_w, cursor[1] + bar_h - 1.0],
             col32(cfg.color_border),
-        ).build();
+        )
+        .build();
 
         let mouse_pos = ui.io().mouse_pos();
         let window_hovered = ui.is_window_hovered();
@@ -280,13 +305,13 @@ impl Toolbar {
                     } else {
                         base.into_owned()
                     };
-                    fixed_w += calc_text_size(&label)[0] + cfg.button_padding * 2.0
-                        + cfg.item_spacing;
+                    fixed_w +=
+                        calc_text_size(&label)[0] + cfg.button_padding * 2.0 + cfg.item_spacing;
                 }
                 _ => {
                     let text = display_text(item);
-                    fixed_w += calc_text_size(&text)[0] + cfg.button_padding * 2.0
-                        + cfg.item_spacing;
+                    fixed_w +=
+                        calc_text_size(&text)[0] + cfg.button_padding * 2.0 + cfg.item_spacing;
                 }
             }
         }
@@ -309,7 +334,8 @@ impl Toolbar {
                         [x, btn_y + 2.0],
                         [x, btn_y + btn_h - 2.0],
                         col32(cfg.color_separator),
-                    ).build();
+                    )
+                    .build();
                     x += cfg.separator_width + cfg.separator_margin;
                     continue;
                 }
@@ -325,7 +351,10 @@ impl Toolbar {
             let full_display: std::borrow::Cow<'_, str> = match &item.kind {
                 ToolbarItemKind::Dropdown { options, selected } => {
                     if *selected < options.len() {
-                        std::borrow::Cow::Owned(format!("{} [{}]", base_display, options[*selected]))
+                        std::borrow::Cow::Owned(format!(
+                            "{} [{}]",
+                            base_display, options[*selected]
+                        ))
                     } else {
                         base_display.clone()
                     }
@@ -357,11 +386,10 @@ impl Toolbar {
                         } else {
                             cfg.color_hover
                         };
-                        draw.add_rect(
-                            [x, btn_y],
-                            [x + btn_w, btn_y + btn_h],
-                            col32(bg),
-                        ).rounding(cfg.button_rounding).filled(true).build();
+                        draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
+                            .rounding(cfg.button_rounding)
+                            .filled(true)
+                            .build();
 
                         // Hover underline
                         let uy = btn_y + btn_h - 1.0;
@@ -369,7 +397,9 @@ impl Toolbar {
                             [x + 2.0, uy],
                             [x + btn_w - 2.0, uy],
                             col32(cfg.color_hover_underline),
-                        ).thickness(cfg.hover_underline_thickness).build();
+                        )
+                        .thickness(cfg.hover_underline_thickness)
+                        .build();
 
                         if ui.is_mouse_clicked(MouseButton::Left) {
                             events.push(ToolbarEvent::ButtonClicked {
@@ -391,7 +421,10 @@ impl Toolbar {
                             [x, btn_y],
                             [x + btn_w, btn_y + btn_h],
                             col32(cfg.color_toggled),
-                        ).rounding(cfg.button_rounding).filled(true).build();
+                        )
+                        .rounding(cfg.button_rounding)
+                        .filled(true)
+                        .build();
                     }
 
                     if hovered {
@@ -400,11 +433,10 @@ impl Toolbar {
                         } else {
                             cfg.color_hover
                         };
-                        draw.add_rect(
-                            [x, btn_y],
-                            [x + btn_w, btn_y + btn_h],
-                            col32(bg),
-                        ).rounding(cfg.button_rounding).filled(true).build();
+                        draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
+                            .rounding(cfg.button_rounding)
+                            .filled(true)
+                            .build();
 
                         // Hover underline
                         let uy = btn_y + btn_h - 1.0;
@@ -412,7 +444,9 @@ impl Toolbar {
                             [x + 2.0, uy],
                             [x + btn_w - 2.0, uy],
                             col32(cfg.color_hover_underline),
-                        ).thickness(cfg.hover_underline_thickness).build();
+                        )
+                        .thickness(cfg.hover_underline_thickness)
+                        .build();
 
                         if ui.is_mouse_clicked(MouseButton::Left) {
                             *on = !*on;
@@ -436,11 +470,10 @@ impl Toolbar {
                         } else {
                             cfg.color_hover
                         };
-                        draw.add_rect(
-                            [x, btn_y],
-                            [x + btn_w, btn_y + btn_h],
-                            col32(bg),
-                        ).rounding(cfg.button_rounding).filled(true).build();
+                        draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
+                            .rounding(cfg.button_rounding)
+                            .filled(true)
+                            .build();
 
                         // Hover underline
                         let uy = btn_y + btn_h - 1.0;
@@ -448,7 +481,9 @@ impl Toolbar {
                             [x + 2.0, uy],
                             [x + btn_w - 2.0, uy],
                             col32(cfg.color_hover_underline),
-                        ).thickness(cfg.hover_underline_thickness).build();
+                        )
+                        .thickness(cfg.hover_underline_thickness)
+                        .build();
 
                         if ui.is_mouse_clicked(MouseButton::Left) && !options.is_empty() {
                             *selected = (*selected + 1) % options.len();

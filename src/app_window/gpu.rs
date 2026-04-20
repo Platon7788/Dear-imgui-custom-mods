@@ -1,7 +1,9 @@
 //! wgpu + winit + Dear ImGui initialisation and per-frame rendering helpers.
 
 use crate::borderless_window::{
-    WindowAction, actions::ResizeEdge, platform::{cursor_icon_for_edge, resize_direction_of},
+    WindowAction,
+    actions::ResizeEdge,
+    platform::{cursor_icon_for_edge, resize_direction_of},
     render_titlebar,
 };
 use dear_imgui_rs::{Condition, StyleVar, WindowFlags};
@@ -12,20 +14,20 @@ use std::sync::Arc;
 use std::time::Duration;
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
-use super::state::AppState;
 use super::AppHandler;
+use super::state::AppState;
 
 /// All GPU + ImGui resources needed for one application window.
 pub(super) struct GpuState {
-    pub device:       wgpu::Device,
-    pub queue:        wgpu::Queue,
-    pub window:       Arc<Window>,
-    pub surface_cfg:  wgpu::SurfaceConfiguration,
-    pub surface:      wgpu::Surface<'static>,
-    pub context:      dear_imgui_rs::Context,
-    pub platform:     WinitPlatform,
-    pub renderer:     WgpuRenderer,
-    pub app_state:    AppState,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub window: Arc<Window>,
+    pub surface_cfg: wgpu::SurfaceConfiguration,
+    pub surface: wgpu::Surface<'static>,
+    pub context: dear_imgui_rs::Context,
+    pub platform: WinitPlatform,
+    pub renderer: WgpuRenderer,
+    pub app_state: AppState,
     pub titlebar_cfg: crate::borderless_window::BorderlessConfig,
     pub fps_interval: Duration,
 }
@@ -33,7 +35,9 @@ pub(super) struct GpuState {
 // ── wgpu setup ────────────────────────────────────────────────────────────────
 
 /// Create and configure a `wgpu` surface + device/queue for the given window.
-pub(super) fn init_wgpu(window: &Arc<Window>) -> (
+pub(super) fn init_wgpu(
+    window: &Arc<Window>,
+) -> (
     wgpu::Device,
     wgpu::Queue,
     wgpu::Surface<'static>,
@@ -66,10 +70,8 @@ pub(super) fn init_wgpu(window: &Arc<Window>) -> (
     })
     .expect("wgpu: no suitable adapter found");
 
-    let (device, queue) = block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor::default(),
-    ))
-    .expect("wgpu: request_device failed");
+    let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+        .expect("wgpu: request_device failed");
 
     let phys = window.inner_size();
     let surface_caps = surface.get_capabilities(&adapter);
@@ -77,8 +79,7 @@ pub(super) fn init_wgpu(window: &Arc<Window>) -> (
         .formats
         .iter()
         .find(|&&f| {
-            f == wgpu::TextureFormat::Bgra8UnormSrgb
-                || f == wgpu::TextureFormat::Rgba8UnormSrgb
+            f == wgpu::TextureFormat::Bgra8UnormSrgb || f == wgpu::TextureFormat::Rgba8UnormSrgb
         })
         .copied()
         .or_else(|| surface_caps.formats.first().copied())
@@ -109,6 +110,7 @@ pub(super) fn init_imgui(
     surface_format: wgpu::TextureFormat,
     font_size: f32,
     titlebar_cfg: &crate::borderless_window::BorderlessConfig,
+    merge_mdi: bool,
 ) -> (dear_imgui_rs::Context, WinitPlatform, WgpuRenderer) {
     let mut context = dear_imgui_rs::Context::create();
     let _ = context.set_ini_filename(None::<std::path::PathBuf>);
@@ -132,6 +134,10 @@ pub(super) fn init_imgui(
         ),
         None,
     );
+
+    if merge_mdi {
+        crate::fonts::merge_mdi_icons(&mut context, scaled_font);
+    }
 
     titlebar_cfg.theme.apply_imgui_style(context.style_mut());
 
@@ -158,8 +164,7 @@ pub(super) fn render_frame<H: AppHandler>(
             gpu.window.request_redraw();
             f
         }
-        wgpu::CurrentSurfaceTexture::Outdated
-        | wgpu::CurrentSurfaceTexture::Lost => {
+        wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
             gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
             gpu.window.request_redraw();
             return;
@@ -185,7 +190,7 @@ pub(super) fn render_frame<H: AppHandler>(
     {
         let display = ui.io().display_size();
         let _no_pad = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
-        let _no_sp  = ui.push_style_var(StyleVar::ItemSpacing([0.0, 0.0]));
+        let _no_sp = ui.push_style_var(StyleVar::ItemSpacing([0.0, 0.0]));
 
         ui.window("##app_root")
             .size(display, Condition::Always)
@@ -200,11 +205,7 @@ pub(super) fn render_frame<H: AppHandler>(
                     | WindowFlags::NO_NAV_FOCUS,
             )
             .build(|| {
-                let res = render_titlebar(
-                    ui,
-                    &gpu.titlebar_cfg,
-                    &mut gpu.app_state.titlebar,
-                );
+                let res = render_titlebar(ui, &gpu.titlebar_cfg, &mut gpu.app_state.titlebar);
                 hover_edge = res.hover_edge;
 
                 match res.action {
@@ -243,9 +244,11 @@ pub(super) fn render_frame<H: AppHandler>(
         a: 1.0,
     };
 
-    let mut enc = gpu.device.create_command_encoder(
-        &wgpu::CommandEncoderDescriptor { label: Some("app_window") },
-    );
+    let mut enc = gpu
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("app_window"),
+        });
     {
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("main"),

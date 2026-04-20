@@ -144,19 +144,64 @@ impl DialogConfig {
             self.theme.dialog()
         }
     }
-    pub fn with_icon(mut self, icon: DialogIcon) -> Self { self.icon = icon; self }
-    pub fn with_confirm_label(mut self, l: impl Into<String>) -> Self { self.confirm_label = l.into(); self }
-    pub fn with_cancel_label(mut self, l: impl Into<String>) -> Self { self.cancel_label = l.into(); self }
-    pub fn with_confirm_style(mut self, s: ConfirmStyle) -> Self { self.confirm_style = s; self }
-    pub fn with_width(mut self, w: f32) -> Self { self.width = w; self }
-    pub fn with_height(mut self, h: f32) -> Self { self.height = h; self }
-    pub fn with_padding(mut self, p: f32) -> Self { self.padding = p; self }
-    pub fn with_button_height(mut self, h: f32) -> Self { self.button_height = h; self }
-    pub fn with_rounding(mut self, r: f32) -> Self { self.rounding = r; self }
-    pub fn with_border_thickness(mut self, t: f32) -> Self { self.border_thickness = t; self }
-    pub fn with_accent_border(mut self, on: bool) -> Self { self.accent_border = on; self }
-    pub fn with_separator(mut self, on: bool) -> Self { self.show_separator = on; self }
-    pub fn with_button_icons(mut self, on: bool) -> Self { self.show_button_icons = on; self }
-    pub fn without_dim(mut self) -> Self { self.dim_background = false; self }
-    pub fn without_keyboard(mut self) -> Self { self.keyboard_shortcuts = false; self }
+    pub fn with_icon(mut self, icon: DialogIcon) -> Self {
+        self.icon = icon;
+        self
+    }
+    pub fn with_confirm_label(mut self, l: impl Into<String>) -> Self {
+        self.confirm_label = l.into();
+        self
+    }
+    pub fn with_cancel_label(mut self, l: impl Into<String>) -> Self {
+        self.cancel_label = l.into();
+        self
+    }
+    pub fn with_confirm_style(mut self, s: ConfirmStyle) -> Self {
+        self.confirm_style = s;
+        self
+    }
+    pub fn with_width(mut self, w: f32) -> Self {
+        self.width = w;
+        self
+    }
+    pub fn with_height(mut self, h: f32) -> Self {
+        self.height = h;
+        self
+    }
+    pub fn with_padding(mut self, p: f32) -> Self {
+        self.padding = p;
+        self
+    }
+    pub fn with_button_height(mut self, h: f32) -> Self {
+        self.button_height = h;
+        self
+    }
+    pub fn with_rounding(mut self, r: f32) -> Self {
+        self.rounding = r;
+        self
+    }
+    pub fn with_border_thickness(mut self, t: f32) -> Self {
+        self.border_thickness = t;
+        self
+    }
+    pub fn with_accent_border(mut self, on: bool) -> Self {
+        self.accent_border = on;
+        self
+    }
+    pub fn with_separator(mut self, on: bool) -> Self {
+        self.show_separator = on;
+        self
+    }
+    pub fn with_button_icons(mut self, on: bool) -> Self {
+        self.show_button_icons = on;
+        self
+    }
+    pub fn without_dim(mut self) -> Self {
+        self.dim_background = false;
+        self
+    }
+    pub fn without_keyboard(mut self) -> Self {
+        self.keyboard_shortcuts = false;
+        self
+    }
 }

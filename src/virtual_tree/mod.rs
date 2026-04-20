@@ -41,7 +41,7 @@ pub mod flat_view;
 pub mod node;
 mod sort;
 
-pub use arena::{NodeId, NodeSlot, MAX_TREE_NODES};
+pub use arena::{MAX_TREE_NODES, NodeId, NodeSlot};
 pub use config::{ExpandStyle, TreeConfig};
 pub use filter::FilterState;
 pub use flat_view::{FlatRow, FlatView};
@@ -54,10 +54,9 @@ pub use crate::virtual_table::row::{CellStyle, CellValue, RowStyle};
 
 use crate::utils::clipboard::{c_key_down_physical, set_clipboard};
 use crate::utils::text::calc_text_size;
-use crate::virtual_table::column::{alignment_pad, editor_kind, EditorKind};
+use crate::virtual_table::column::{EditorKind, alignment_pad, editor_kind};
 use dear_imgui_rs::{
-    Key, ListClipper, MouseButton, SelectableFlags, TableBgTarget,
-    TableRowFlags, Ui,
+    Key, ListClipper, MouseButton, SelectableFlags, TableBgTarget, TableRowFlags, Ui,
 };
 
 use std::collections::HashSet;
@@ -75,7 +74,7 @@ type NodeIdSet = HashSet<NodeId, foldhash::fast::FixedState>;
 #[derive(Clone, Debug, Default)]
 struct EditState {
     active: bool,
-    row: usize,   // flat-view index
+    row: usize, // flat-view index
     col: usize,
     just_activated: bool,
     frames_active: u32,
@@ -95,7 +94,10 @@ impl EditState {
         self.just_activated = true;
         self.frames_active = 0;
         match value {
-            CellValue::Text(s) => { self.text_buf.clear(); self.text_buf.push_str(s); }
+            CellValue::Text(s) => {
+                self.text_buf.clear();
+                self.text_buf.push_str(s);
+            }
             CellValue::Bool(b) => self.bool_val = *b,
             CellValue::Int(v) => self.int_val = (*v).clamp(i32::MIN as i64, i32::MAX as i64) as i32,
             CellValue::Float(v) => self.float_val = (*v as f32).clamp(f32::MIN, f32::MAX),
@@ -105,7 +107,9 @@ impl EditState {
         }
     }
 
-    fn deactivate(&mut self) { self.active = false; }
+    fn deactivate(&mut self) {
+        self.active = false;
+    }
 
     fn take_cell_value(&mut self, editor: &CellEditor) -> CellValue {
         match editor {
@@ -116,8 +120,12 @@ impl EditState {
             }
             CellEditor::Checkbox => CellValue::Bool(self.bool_val),
             CellEditor::ComboBox { .. } => CellValue::Choice(self.choice_idx),
-            CellEditor::SliderInt { .. } | CellEditor::SpinInt { .. } => CellValue::Int(self.int_val as i64),
-            CellEditor::SliderFloat { .. } | CellEditor::SpinFloat { .. } => CellValue::Float(self.float_val as f64),
+            CellEditor::SliderInt { .. } | CellEditor::SpinInt { .. } => {
+                CellValue::Int(self.int_val as i64)
+            }
+            CellEditor::SliderFloat { .. } | CellEditor::SpinFloat { .. } => {
+                CellValue::Float(self.float_val as f64)
+            }
             CellEditor::ColorEdit => CellValue::Color(self.color_val),
             CellEditor::ProgressBar => CellValue::Progress(self.float_val),
             CellEditor::Button { .. } | CellEditor::Custom => CellValue::Custom,
@@ -188,11 +196,7 @@ pub struct VirtualTree<T: VirtualTreeNode> {
 
 impl<T: VirtualTreeNode> VirtualTree<T> {
     /// Create a new tree with the given columns and configuration.
-    pub fn new(
-        id: impl Into<String>,
-        columns: Vec<ColumnDef>,
-        config: TreeConfig,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, columns: Vec<ColumnDef>, config: TreeConfig) -> Self {
         let max_nodes = config.max_nodes;
         let evict = config.evict_on_overflow;
         Self {
@@ -459,7 +463,8 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
     // ─── Filter ─────────────────────────────────────────────────────
 
     pub fn set_filter(&mut self, query: &str) {
-        self.filter_state.set_filter(query, &mut self.arena, self.config.auto_expand_on_filter);
+        self.filter_state
+            .set_filter(query, &mut self.arena, self.config.auto_expand_on_filter);
         self.flat_view.mark_dirty();
     }
 
@@ -547,24 +552,26 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 let mut result = Vec::new();
                 for &id in &selected {
                     let already_covered = self.is_ancestor_selected(id, &selected);
-                    if !already_covered
-                        && let Some(node) = self.export_subtree(id)
-                    {
+                    if !already_covered && let Some(node) = self.export_subtree(id) {
                         result.push(node);
                     }
                 }
                 result
             }
-            crate::utils::export::ExportScope::All => {
-                self.arena.roots().iter()
-                    .filter_map(|&id| self.export_subtree(id))
-                    .collect()
-            }
+            crate::utils::export::ExportScope::All => self
+                .arena
+                .roots()
+                .iter()
+                .filter_map(|&id| self.export_subtree(id))
+                .collect(),
         }
     }
 
     /// Export a single node with its subtree.
-    fn export_subtree(&self, id: crate::virtual_tree::arena::NodeId) -> Option<crate::utils::export::TreeExportNode>
+    fn export_subtree(
+        &self,
+        id: crate::virtual_tree::arena::NodeId,
+    ) -> Option<crate::utils::export::TreeExportNode>
     where
         T: crate::utils::export::Exportable,
     {
@@ -574,7 +581,9 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             .map(|c| (names[c].to_string(), data.field_value(c)))
             .collect();
 
-        let children: Vec<crate::utils::export::TreeExportNode> = self.arena.children(id)
+        let children: Vec<crate::utils::export::TreeExportNode> = self
+            .arena
+            .children(id)
             .iter()
             .filter_map(|&child_id| self.export_subtree(child_id))
             .collect();
@@ -590,7 +599,9 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
     ) -> bool {
         let mut current = self.arena.parent(id);
         while let Some(pid) = current {
-            if selected.contains(&pid) { return true; }
+            if selected.contains(&pid) {
+                return true;
+            }
             current = self.arena.parent(pid);
         }
         false
@@ -698,10 +709,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             }
         }
 
-        ui.table_setup_scroll_freeze(
-            self.config.table.freeze_cols,
-            self.config.table.freeze_rows,
-        );
+        ui.table_setup_scroll_freeze(self.config.table.freeze_cols, self.config.table.freeze_rows);
 
         // Header
         self.render_header(ui);
@@ -720,19 +728,25 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // `row_count * 2*CellPadding.y` and makes the last rows unreachable via
         // manual scroll in tightly-sized containers (e.g. nested child_window).
         let row_count = self.flat_view.len();
-        let row_h = self.config.table.default_row_height.unwrap_or_else(|| unsafe {
-            match self.config.table.row_density {
-                RowDensity::Normal  => dear_imgui_rs::sys::igGetFrameHeightWithSpacing(),
-                RowDensity::Compact => dear_imgui_rs::sys::igGetFrameHeight() + 2.0,
-                RowDensity::Dense   => dear_imgui_rs::sys::igGetFontSize() + 2.0,
-            }
-        });
+        let row_h = self
+            .config
+            .table
+            .default_row_height
+            .unwrap_or_else(|| unsafe {
+                match self.config.table.row_density {
+                    RowDensity::Normal => dear_imgui_rs::sys::igGetFrameHeightWithSpacing(),
+                    RowDensity::Compact => dear_imgui_rs::sys::igGetFrameHeight() + 2.0,
+                    RowDensity::Dense => dear_imgui_rs::sys::igGetFontSize() + 2.0,
+                }
+            });
         let cell_padding_y = ui.clone_style().cell_padding()[1];
         let row_stride = crate::virtual_table::row_height_to_stride(row_h, cell_padding_y);
         let clip = ListClipper::new(row_count as i32).items_height(row_stride);
         let tok = clip.begin(ui);
 
-        let scroll_target = self.scroll_to_node.take()
+        let scroll_target = self
+            .scroll_to_node
+            .take()
             .and_then(|id| self.flat_view.index_of(id));
 
         for flat_idx in tok.iter() {
@@ -801,8 +815,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             for s in specs.iter() {
                 self.sort_state.specs.push(SortSpec {
                     column_index: s.column_index as usize,
-                    ascending: s.sort_direction
-                        == dear_imgui_rs::SortDirection::Ascending,
+                    ascending: s.sort_direction == dear_imgui_rs::SortDirection::Ascending,
                 });
             }
             specs.clear_dirty();
@@ -851,11 +864,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             {
                 ui.table_set_bg_color(TableBgTarget::RowBg1, bg, -1);
             } else if self.config.striped && flat_idx % 2 == 1 {
-                ui.table_set_bg_color(
-                    TableBgTarget::RowBg1,
-                    [1.0, 1.0, 1.0, 0.02],
-                    -1,
-                );
+                ui.table_set_bg_color(TableBgTarget::RowBg1, [1.0, 1.0, 1.0, 0.02], -1);
             }
         }
 
@@ -900,66 +909,78 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // Tooltip
         if ui.is_item_hovered()
             && let Some(data) = self.arena.get_data(node_id)
-                && !data.render_tooltip(ui) {
-                    self.cell_buf.clear();
-                    data.row_tooltip(&mut self.cell_buf);
-                    if !self.cell_buf.is_empty() {
-                        ui.tooltip_text(&self.cell_buf);
-                    }
-                }
+            && !data.render_tooltip(ui)
+        {
+            self.cell_buf.clear();
+            data.row_tooltip(&mut self.cell_buf);
+            if !self.cell_buf.is_empty() {
+                ui.tooltip_text(&self.cell_buf);
+            }
+        }
 
         // Context menu
         if ui.is_item_hovered() && ui.is_mouse_clicked(MouseButton::Right) {
             self.handle_selection(ui, flat_idx);
             self.context_node = Some(node_id);
             let hovered = ui.table_get_hovered_column();
-            self.context_col = if hovered >= 0 { Some(hovered as usize) } else { None };
+            self.context_col = if hovered >= 0 {
+                Some(hovered as usize)
+            } else {
+                None
+            };
             self.open_context_menu = true;
         }
 
         // ── Drag-and-drop ───────────────────────────────────────────
         if self.config.drag_drop_enabled {
             // Drag source
-            let is_draggable = self.arena.get_data(node_id).is_some_and(|d| d.is_draggable());
+            let is_draggable = self
+                .arena
+                .get_data(node_id)
+                .is_some_and(|d| d.is_draggable());
             if is_draggable
-                && let Some(tooltip) = ui.drag_drop_source_config(drag::DRAG_DROP_TYPE)
+                && let Some(tooltip) = ui
+                    .drag_drop_source_config(drag::DRAG_DROP_TYPE)
                     .begin_payload(node_id)
-                {
-                    // Show node name as drag tooltip
-                    if let Some(data) = self.arena.get_data(node_id) {
-                        self.cell_buf.clear();
-                        data.cell_display_text(self.config.tree_column, &mut self.cell_buf);
-                        ui.text(&self.cell_buf);
-                    }
-                    tooltip.end();
+            {
+                // Show node name as drag tooltip
+                if let Some(data) = self.arena.get_data(node_id) {
+                    self.cell_buf.clear();
+                    data.cell_display_text(self.config.tree_column, &mut self.cell_buf);
+                    ui.text(&self.cell_buf);
                 }
+                tooltip.end();
+            }
 
             // Drop target
             if let Some(target) = ui.drag_drop_target() {
                 if let Some(Ok(payload)) = target.accept_payload::<NodeId, _>(
                     drag::DRAG_DROP_TYPE,
                     dear_imgui_rs::DragDropFlags::NONE,
-                )
-                    && payload.delivery {
-                        let dragged_id = payload.data;
-                        // Check if target accepts this drop
-                        let accepted = self.arena.get_data(node_id)
-                            .and_then(|target_data| {
-                                self.arena.get_data(dragged_id)
-                                    .map(|dragged_data| target_data.accepts_drop(dragged_data))
-                            })
-                            .unwrap_or(false);
+                ) && payload.delivery
+                {
+                    let dragged_id = payload.data;
+                    // Check if target accepts this drop
+                    let accepted = self
+                        .arena
+                        .get_data(node_id)
+                        .and_then(|target_data| {
+                            self.arena
+                                .get_data(dragged_id)
+                                .map(|dragged_data| target_data.accepts_drop(dragged_data))
+                        })
+                        .unwrap_or(false);
 
-                        if accepted {
-                            // Move dragged node as child of target
-                            let pos = self.arena.children(node_id).len();
-                            self.arena.move_node(dragged_id, Some(node_id), pos);
-                            self.arena.expand(node_id);
-                            self.flat_view.mark_dirty();
-                            // Record event for consumers
-                            self.last_reparent = Some((dragged_id, Some(node_id), pos));
-                        }
+                    if accepted {
+                        // Move dragged node as child of target
+                        let pos = self.arena.children(node_id).len();
+                        self.arena.move_node(dragged_id, Some(node_id), pos);
+                        self.arena.expand(node_id);
+                        self.flat_view.mark_dirty();
+                        // Record event for consumers
+                        self.last_reparent = Some((dragged_id, Some(node_id), pos));
                     }
+                }
                 target.pop();
             }
         }
@@ -1013,7 +1034,10 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         row_text_color: Option<[f32; 4]>,
     ) {
         let indent = flat_row.depth as f32 * self.config.indent_width;
-        let tree_col = self.config.tree_column.min(self.columns.len().saturating_sub(1));
+        let tree_col = self
+            .config
+            .tree_column
+            .min(self.columns.len().saturating_sub(1));
         let indent_w = self.config.indent_width;
 
         // ── Tree lines (vertical + horizontal connectors) ────────────
@@ -1032,11 +1056,13 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             for d in 1..flat_row.depth {
                 if flat_row.continuation_mask & (1u64 << d) != 0 {
                     let x = cursor_screen[0] + (d as f32) * indent_w + indent_w * 0.5;
-                    draw_list.add_line(
-                        [x, cursor_screen[1]],
-                        [x, cursor_screen[1] + row_h],
-                        line_color,
-                    ).build();
+                    draw_list
+                        .add_line(
+                            [x, cursor_screen[1]],
+                            [x, cursor_screen[1] + row_h],
+                            line_color,
+                        )
+                        .build();
                 }
             }
 
@@ -1045,21 +1071,27 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             let mid_y = cursor_screen[1] + row_h * 0.5;
 
             // Vertical stub: from top of row to mid-y (or full if not last child)
-            let vert_end = if flat_row.is_last_child { mid_y } else { cursor_screen[1] + row_h };
-            draw_list.add_line(
-                [x, cursor_screen[1]],
-                [x, vert_end],
-                line_color,
-            ).build();
+            let vert_end = if flat_row.is_last_child {
+                mid_y
+            } else {
+                cursor_screen[1] + row_h
+            };
+            draw_list
+                .add_line([x, cursor_screen[1]], [x, vert_end], line_color)
+                .build();
 
             // Horizontal branch: from vertical line to arrow/icon
             let arrow_space = unsafe { dear_imgui_rs::sys::igGetTreeNodeToLabelSpacing() };
-            let h_end = cursor_screen[0] + indent + if flat_row.is_leaf { arrow_space * 0.5 } else { 0.0 };
-            draw_list.add_line(
-                [x, mid_y],
-                [h_end, mid_y],
-                line_color,
-            ).build();
+            let h_end = cursor_screen[0]
+                + indent
+                + if flat_row.is_leaf {
+                    arrow_space * 0.5
+                } else {
+                    0.0
+                };
+            draw_list
+                .add_line([x, mid_y], [h_end, mid_y], line_color)
+                .build();
         }
 
         // ── Editing the tree column? ────────────────────────────────
@@ -1082,9 +1114,17 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             }
         } else {
             match &self.config.expand_style {
-                config::ExpandStyle::Glyph { collapsed, expanded, color } => {
+                config::ExpandStyle::Glyph {
+                    collapsed,
+                    expanded,
+                    color,
+                } => {
                     // Custom glyph expand/collapse indicator
-                    let glyph = if flat_row.is_expanded { *expanded } else { *collapsed };
+                    let glyph = if flat_row.is_expanded {
+                        *expanded
+                    } else {
+                        *collapsed
+                    };
                     let glyph_color = *color;
 
                     // Indent
@@ -1110,7 +1150,11 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     // until after invisible_button returns.
                     let btn_id_ptr = self.cell_buf[glyph_len..].as_ptr();
                     let btn_id_len = self.cell_buf.len() - glyph_len;
-                    let btn_id = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(btn_id_ptr, btn_id_len)) };
+                    let btn_id = unsafe {
+                        std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                            btn_id_ptr, btn_id_len,
+                        ))
+                    };
 
                     if ui.invisible_button(btn_id, [btn_w, font_size]) {
                         self.pending_toggle = Some(node_id);
@@ -1120,8 +1164,8 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     let draw_list = ui.get_window_draw_list();
                     let glyph_x = btn_min[0] + (btn_w - glyph_sz[0]) * 0.5;
                     let glyph_y = btn_min[1];
-                    let c = glyph_color.unwrap_or(row_text_color
-                        .unwrap_or([0.85, 0.88, 0.92, 1.0]));
+                    let c =
+                        glyph_color.unwrap_or(row_text_color.unwrap_or([0.85, 0.88, 0.92, 1.0]));
                     let color_u32 = crate::utils::color::rgba_f32(c[0], c[1], c[2], c[3]);
                     draw_list.add_text([glyph_x, glyph_y], color_u32, &self.cell_buf[..glyph_len]);
 
@@ -1159,20 +1203,26 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
                     if flat_row.is_expanded {
                         // ▾ Down-pointing triangle
-                        draw_list.add_triangle(
-                            [cx - r, cy - r * 0.5],
-                            [cx + r, cy - r * 0.5],
-                            [cx, cy + r],
-                            arrow_color,
-                        ).filled(true).build();
+                        draw_list
+                            .add_triangle(
+                                [cx - r, cy - r * 0.5],
+                                [cx + r, cy - r * 0.5],
+                                [cx, cy + r],
+                                arrow_color,
+                            )
+                            .filled(true)
+                            .build();
                     } else {
                         // ▸ Right-pointing triangle
-                        draw_list.add_triangle(
-                            [cx - r * 0.5, cy - r],
-                            [cx + r, cy],
-                            [cx - r * 0.5, cy + r],
-                            arrow_color,
-                        ).filled(true).build();
+                        draw_list
+                            .add_triangle(
+                                [cx - r * 0.5, cy - r],
+                                [cx + r, cy],
+                                [cx - r * 0.5, cy + r],
+                                arrow_color,
+                            )
+                            .filled(true)
+                            .build();
                     }
 
                     ui.same_line_with_spacing(0.0, 2.0);
@@ -1224,7 +1274,8 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             self.cell_buf.clear();
             data.cell_display_text(self.config.tree_column, &mut self.cell_buf);
 
-            let color = data.cell_style(self.config.tree_column)
+            let color = data
+                .cell_style(self.config.tree_column)
                 .and_then(|s| s.text_color)
                 .or(row_text_color);
 
@@ -1275,9 +1326,10 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     let val = data.cell_value(col_idx);
                     if let CellValue::Bool(mut b) = val
                         && ui.checkbox("##cb", &mut b)
-                        && let Some(data) = self.arena.get_data_mut(node_id) {
-                            data.set_cell_value(col_idx, &CellValue::Bool(b));
-                        }
+                        && let Some(data) = self.arena.get_data_mut(node_id)
+                    {
+                        data.set_cell_value(col_idx, &CellValue::Bool(b));
+                    }
                 }
             }
             EditorKind::ComboBox => {
@@ -1286,14 +1338,15 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     let changed = {
                         let items = match &self.columns[col_idx].editor {
                             CellEditor::ComboBox { items } => items,
-                            _ => { self.edit_state.deactivate(); return; }
+                            _ => {
+                                self.edit_state.deactivate();
+                                return;
+                            }
                         };
                         ui.set_next_item_width(-1.0);
                         ui.combo_simple_string("##combo", &mut choice, items)
                     };
-                    if changed
-                        && let Some(data) = self.arena.get_data_mut(node_id)
-                    {
+                    if changed && let Some(data) = self.arena.get_data_mut(node_id) {
                         data.set_cell_value(col_idx, &CellValue::Choice(choice));
                     }
                 }
@@ -1303,12 +1356,14 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     let val = data.cell_value(col_idx);
                     if let CellValue::Color(mut c) = val {
                         ui.set_next_item_width(-1.0);
-                        if ui.color_edit4_config("##color", &mut c)
+                        if ui
+                            .color_edit4_config("##color", &mut c)
                             .flags(dear_imgui_rs::ColorEditFlags::NO_INPUTS)
                             .build()
-                            && let Some(data) = self.arena.get_data_mut(node_id) {
-                                data.set_cell_value(col_idx, &CellValue::Color(c));
-                            }
+                            && let Some(data) = self.arena.get_data_mut(node_id)
+                        {
+                            data.set_cell_value(col_idx, &CellValue::Color(c));
+                        }
                     }
                 }
             }
@@ -1316,7 +1371,10 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 let clicked = {
                     let label = match &self.columns[col_idx].editor {
                         CellEditor::Button { label } => label.as_str(),
-                        _ => { self.edit_state.deactivate(); return; }
+                        _ => {
+                            self.edit_state.deactivate();
+                            return;
+                        }
                     };
                     ui.button(label)
                 };
@@ -1634,26 +1692,29 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
         if ui.is_key_pressed(Key::RightArrow)
             && let Some(anchor) = self.selection_anchor
-                && let Some(row) = self.flat_view.rows.get(anchor) {
-                    let node_id = row.node_id;
-                    if !row.is_leaf && !row.is_expanded {
-                        self.pending_toggle = Some(node_id);
-                    } else if row.is_expanded && anchor + 1 < self.flat_view.len() {
-                        self.select_flat_row(anchor + 1);
-                    }
-                }
+            && let Some(row) = self.flat_view.rows.get(anchor)
+        {
+            let node_id = row.node_id;
+            if !row.is_leaf && !row.is_expanded {
+                self.pending_toggle = Some(node_id);
+            } else if row.is_expanded && anchor + 1 < self.flat_view.len() {
+                self.select_flat_row(anchor + 1);
+            }
+        }
 
         if ui.is_key_pressed(Key::LeftArrow)
             && let Some(anchor) = self.selection_anchor
-                && let Some(row) = self.flat_view.rows.get(anchor) {
-                    let node_id = row.node_id;
-                    if !row.is_leaf && row.is_expanded {
-                        self.pending_toggle = Some(node_id);
-                    } else if let Some(parent_id) = self.arena.parent(node_id)
-                        && let Some(parent_flat) = self.flat_view.index_of(parent_id) {
-                            self.select_flat_row(parent_flat);
-                        }
-                }
+            && let Some(row) = self.flat_view.rows.get(anchor)
+        {
+            let node_id = row.node_id;
+            if !row.is_leaf && row.is_expanded {
+                self.pending_toggle = Some(node_id);
+            } else if let Some(parent_id) = self.arena.parent(node_id)
+                && let Some(parent_flat) = self.flat_view.index_of(parent_id)
+            {
+                self.select_flat_row(parent_flat);
+            }
+        }
 
         // Delete
         if ui.is_key_pressed(Key::Delete) && !self.selected_nodes.is_empty() {
@@ -1678,23 +1739,24 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // F2
         if ui.is_key_pressed(Key::F2)
             && self.config.table.edit_trigger == EditTrigger::F2Key
-            && let Some(anchor) = self.selection_anchor {
-                for c in 0..self.columns.len() {
-                    if !matches!(
-                        editor_kind(&self.columns[c].editor),
-                        EditorKind::None
-                            | EditorKind::Checkbox
-                            | EditorKind::ComboBox
-                            | EditorKind::Button
-                            | EditorKind::ProgressBar
-                            | EditorKind::ColorEdit
-                            | EditorKind::Custom
-                    ) {
-                        self.try_activate_edit(anchor, c);
-                        break;
-                    }
+            && let Some(anchor) = self.selection_anchor
+        {
+            for c in 0..self.columns.len() {
+                if !matches!(
+                    editor_kind(&self.columns[c].editor),
+                    EditorKind::None
+                        | EditorKind::Checkbox
+                        | EditorKind::ComboBox
+                        | EditorKind::Button
+                        | EditorKind::ProgressBar
+                        | EditorKind::ColorEdit
+                        | EditorKind::Custom
+                ) {
+                    self.try_activate_edit(anchor, c);
+                    break;
                 }
             }
+        }
     }
 
     fn select_flat_row(&mut self, flat_idx: usize) {
@@ -1735,7 +1797,9 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             if !emit_set.contains(&row.node_id) {
                 continue;
             }
-            let Some(slot) = self.arena.get(row.node_id) else { continue };
+            let Some(slot) = self.arena.get(row.node_id) else {
+                continue;
+            };
 
             // Indent: 2 spaces per depth level
             for _ in 0..row.depth {
@@ -1786,7 +1850,9 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
     ) {
         let mut stack: Vec<(NodeId, usize)> = vec![(nid, depth)];
         while let Some((current, d)) = stack.pop() {
-            let Some(slot) = self.arena.get(current) else { continue };
+            let Some(slot) = self.arena.get(current) else {
+                continue;
+            };
 
             for _ in 0..d {
                 out.push_str("  ");
@@ -1808,4 +1874,3 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         }
     }
 }
-

@@ -34,7 +34,7 @@ pub use state::AppState;
 pub use style::apply_imgui_style_for_theme;
 
 pub use crate::borderless_window::{
-    BorderlessConfig, ButtonConfig, ExtraButton, CloseMode, TitleAlign,
+    BorderlessConfig, ButtonConfig, CloseMode, ExtraButton, TitleAlign,
 };
 pub use crate::theme::Theme;
 
@@ -136,14 +136,18 @@ impl AppWindow {
 // ── Internal winit application ────────────────────────────────────────────────
 
 struct WinitApp<H: AppHandler> {
-    config:  AppConfig,
+    config: AppConfig,
     handler: Option<H>,
-    gpu:     Option<gpu::GpuState>,
+    gpu: Option<gpu::GpuState>,
 }
 
 impl<H: AppHandler> WinitApp<H> {
     fn new(config: AppConfig, handler: H) -> Self {
-        Self { config, handler: Some(handler), gpu: None }
+        Self {
+            config,
+            handler: Some(handler),
+            gpu: None,
+        }
     }
 }
 
@@ -160,10 +164,7 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
                     Window::default_attributes()
                         .with_title(cfg.title.clone())
                         .with_inner_size(LogicalSize::new(cfg.size[0], cfg.size[1]))
-                        .with_min_inner_size(LogicalSize::new(
-                            cfg.min_size[0],
-                            cfg.min_size[1],
-                        ))
+                        .with_min_inner_size(LogicalSize::new(cfg.min_size[0], cfg.min_size[1]))
                         .with_decorations(false)
                         .with_resizable(true)
                         .with_visible(false),
@@ -196,6 +197,7 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
             surface_format,
             cfg.font_size,
             &cfg.titlebar,
+            cfg.merge_mdi_icons,
         );
 
         let fps_interval = if cfg.fps_limit > 0 {
@@ -233,7 +235,10 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
         g.platform.handle_event::<()>(
             &mut g.context,
             &g.window,
-            &Event::WindowEvent { window_id, event: event.clone() },
+            &Event::WindowEvent {
+                window_id,
+                event: event.clone(),
+            },
         );
 
         match event {
@@ -271,9 +276,8 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
             g.window.request_redraw();
             if g.fps_interval > Duration::ZERO {
                 // Cap frame rate: sleep until next frame deadline.
-                event_loop.set_control_flow(ControlFlow::WaitUntil(
-                    Instant::now() + g.fps_interval,
-                ));
+                event_loop
+                    .set_control_flow(ControlFlow::WaitUntil(Instant::now() + g.fps_interval));
             } else {
                 // fps_limit = 0: render as fast as possible (Poll mode).
                 event_loop.set_control_flow(ControlFlow::Poll);

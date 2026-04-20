@@ -46,11 +46,11 @@ pub enum Indicator {
 impl Indicator {
     fn color(self, cfg: &StatusBarConfig) -> Option<[f32; 4]> {
         match self {
-            Self::None    => None,
+            Self::None => None,
             Self::Success => Some(cfg.color_success),
             Self::Warning => Some(cfg.color_warning),
-            Self::Error   => Some(cfg.color_error),
-            Self::Info    => Some(cfg.color_info),
+            Self::Error => Some(cfg.color_error),
+            Self::Info => Some(cfg.color_info),
         }
     }
 }
@@ -224,12 +224,7 @@ impl StatusBar {
     ///
     /// Hover detection uses position-only (no `is_window_hovered`), so the bar
     /// stays responsive even when no ImGui window covers the region.
-    pub fn render_overlay(
-        &self,
-        ui: &Ui,
-        origin: [f32; 2],
-        size: [f32; 2],
-    ) -> Vec<StatusBarEvent> {
+    pub fn render_overlay(&self, ui: &Ui, origin: [f32; 2], size: [f32; 2]) -> Vec<StatusBarEvent> {
         let _id_tok = ui.push_id(&self.id);
         let draw = ui.get_foreground_draw_list();
         self.render_impl(ui, origin, size, &draw, false)
@@ -254,14 +249,17 @@ impl StatusBar {
             cursor,
             [cursor[0] + avail_w, cursor[1] + bar_h],
             col32(cfg.color_bg),
-        ).filled(true).build();
+        )
+        .filled(true)
+        .build();
 
         // Top border line
         draw.add_line(
             cursor,
             [cursor[0] + avail_w, cursor[1]],
             col32(cfg.color_separator),
-        ).build();
+        )
+        .build();
 
         // Use "Mg" for representative glyph height (covers ascenders + descenders).
         let text_y = cursor[1] + (bar_h - calc_text_size("Mg")[1]) * 0.5;
@@ -269,7 +267,17 @@ impl StatusBar {
         // ── Left items ──────────────────────────────────────────────
         let mut x = cursor[0] + cfg.item_padding;
         for item in &self.left_items {
-            let w = self.render_item(draw, ui, item, x, text_y, cursor[1], bar_h, use_window_hovered, &mut events);
+            let w = self.render_item(
+                draw,
+                ui,
+                item,
+                x,
+                text_y,
+                cursor[1],
+                bar_h,
+                use_window_hovered,
+                &mut events,
+            );
             x += w + cfg.item_padding;
 
             if cfg.show_separators {
@@ -277,7 +285,8 @@ impl StatusBar {
                     [x, cursor[1] + 3.0],
                     [x, cursor[1] + bar_h - 3.0],
                     col32(cfg.color_separator),
-                ).build();
+                )
+                .build();
                 x += cfg.separator_width + cfg.item_padding;
             }
         }
@@ -287,7 +296,17 @@ impl StatusBar {
         for item in self.right_items.iter().rev() {
             let w = self.measure_item(item);
             rx -= w;
-            self.render_item(draw, ui, item, rx, text_y, cursor[1], bar_h, use_window_hovered, &mut events);
+            self.render_item(
+                draw,
+                ui,
+                item,
+                rx,
+                text_y,
+                cursor[1],
+                bar_h,
+                use_window_hovered,
+                &mut events,
+            );
             rx -= cfg.item_padding;
 
             if cfg.show_separators {
@@ -295,19 +314,33 @@ impl StatusBar {
                     [rx, cursor[1] + 3.0],
                     [rx, cursor[1] + bar_h - 3.0],
                     col32(cfg.color_separator),
-                ).build();
+                )
+                .build();
                 rx -= cfg.separator_width + cfg.item_padding;
             }
         }
 
         // ── Center items ────────────────────────────────────────────
         if !self.center_items.is_empty() {
-            let total_w: f32 = self.center_items.iter()
+            let total_w: f32 = self
+                .center_items
+                .iter()
                 .map(|i| self.measure_item(i) + cfg.item_padding)
-                .sum::<f32>() - cfg.item_padding;
+                .sum::<f32>()
+                - cfg.item_padding;
             let mut cx = cursor[0] + (avail_w - total_w) * 0.5;
             for item in &self.center_items {
-                let w = self.render_item(draw, ui, item, cx, text_y, cursor[1], bar_h, use_window_hovered, &mut events);
+                let w = self.render_item(
+                    draw,
+                    ui,
+                    item,
+                    cx,
+                    text_y,
+                    cursor[1],
+                    bar_h,
+                    use_window_hovered,
+                    &mut events,
+                );
                 cx += w + cfg.item_padding;
             }
         }
@@ -345,7 +378,11 @@ impl StatusBar {
         if hovered {
             if cfg.highlight_hover {
                 let hover_bg = if item.clickable {
-                    if ui.is_mouse_down(MouseButton::Left) { cfg.color_active } else { cfg.color_hover }
+                    if ui.is_mouse_down(MouseButton::Left) {
+                        cfg.color_active
+                    } else {
+                        cfg.color_hover
+                    }
                 } else {
                     [1.0, 1.0, 1.0, 0.04] // subtle highlight for non-clickable
                 };
@@ -353,7 +390,9 @@ impl StatusBar {
                     [x - 2.0, bar_y],
                     [x + w + 2.0, bar_y + bar_h],
                     col32(hover_bg),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
             }
 
             if item.clickable && ui.is_mouse_clicked(MouseButton::Left) {
@@ -369,17 +408,19 @@ impl StatusBar {
             let dot_r = 3.5;
             let dot_cx = cx + dot_r;
             let dot_cy = bar_y + bar_h * 0.5;
-            draw.add_circle(
-                [dot_cx, dot_cy],
-                dot_r,
-                col32(dot_color),
-            ).filled(true).build();
+            draw.add_circle([dot_cx, dot_cy], dot_r, col32(dot_color))
+                .filled(true)
+                .build();
             cx += dot_r * 2.0 + 4.0;
         }
 
         // Icon prefix
         if !item.icon.is_empty() {
-            draw.add_text([cx, text_y], col32(item.color.unwrap_or(cfg.color_text)), &item.icon);
+            draw.add_text(
+                [cx, text_y],
+                col32(item.color.unwrap_or(cfg.color_text)),
+                &item.icon,
+            );
             cx += calc_text_size(&item.icon)[0] + 3.0;
         }
 
@@ -394,16 +435,16 @@ impl StatusBar {
                 [cx, py],
                 [cx + prog_w, py + prog_h],
                 col32([0.2, 0.2, 0.25, 1.0]),
-            ).filled(true).build();
+            )
+            .filled(true)
+            .build();
 
             // Fill
             let fill_w = prog_w * progress;
             if fill_w > 0.0 {
-                draw.add_rect(
-                    [cx, py],
-                    [cx + fill_w, py + prog_h],
-                    col32(cfg.color_info),
-                ).filled(true).build();
+                draw.add_rect([cx, py], [cx + fill_w, py + prog_h], col32(cfg.color_info))
+                    .filled(true)
+                    .build();
             }
 
             cx += prog_w + 4.0;
@@ -417,10 +458,9 @@ impl StatusBar {
         }
 
         // Tooltip
-        if hovered
-            && let Some(ref tip) = item.tooltip {
-                ui.tooltip_text(tip);
-            }
+        if hovered && let Some(ref tip) = item.tooltip {
+            ui.tooltip_text(tip);
+        }
 
         w
     }

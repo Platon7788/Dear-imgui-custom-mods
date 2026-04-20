@@ -73,27 +73,27 @@ pub const SELECTION_BG: [f32; 4] = [0.35, 0.55, 0.80, 0.40];
 
 // Base backgrounds
 pub const LIGHT_BG_WINDOW: [f32; 4] = [0.96, 0.96, 0.98, 1.0];
-pub const LIGHT_BG_CHILD: [f32; 4]  = [0.92, 0.92, 0.95, 1.0];
-pub const LIGHT_BG_FRAME: [f32; 4]  = [0.87, 0.87, 0.91, 1.0];
+pub const LIGHT_BG_CHILD: [f32; 4] = [0.92, 0.92, 0.95, 1.0];
+pub const LIGHT_BG_FRAME: [f32; 4] = [0.87, 0.87, 0.91, 1.0];
 
 // Accent
-pub const LIGHT_ACCENT: [f32; 4]        = [0.18, 0.48, 0.76, 1.0];
-pub const LIGHT_ACCENT_HOVER: [f32; 4]  = [0.24, 0.56, 0.86, 1.0];
+pub const LIGHT_ACCENT: [f32; 4] = [0.18, 0.48, 0.76, 1.0];
+pub const LIGHT_ACCENT_HOVER: [f32; 4] = [0.24, 0.56, 0.86, 1.0];
 pub const LIGHT_ACCENT_ACTIVE: [f32; 4] = [0.14, 0.40, 0.66, 1.0];
 
 // Status
 pub const LIGHT_SUCCESS: [f32; 4] = [0.20, 0.60, 0.28, 1.0];
-pub const LIGHT_DANGER:  [f32; 4] = [0.80, 0.18, 0.18, 1.0];
+pub const LIGHT_DANGER: [f32; 4] = [0.80, 0.18, 0.18, 1.0];
 pub const LIGHT_WARNING: [f32; 4] = [0.76, 0.52, 0.04, 1.0];
 
 // Text
-pub const LIGHT_TEXT_PRIMARY:   [f32; 4] = [0.10, 0.10, 0.14, 1.0];
+pub const LIGHT_TEXT_PRIMARY: [f32; 4] = [0.10, 0.10, 0.14, 1.0];
 pub const LIGHT_TEXT_SECONDARY: [f32; 4] = [0.36, 0.38, 0.44, 1.0];
-pub const LIGHT_TEXT_MUTED:     [f32; 4] = [0.55, 0.56, 0.62, 1.0];
-pub const LIGHT_TEXT_ERROR:     [f32; 4] = [0.82, 0.18, 0.16, 1.0];
+pub const LIGHT_TEXT_MUTED: [f32; 4] = [0.55, 0.56, 0.62, 1.0];
+pub const LIGHT_TEXT_ERROR: [f32; 4] = [0.82, 0.18, 0.16, 1.0];
 
 // Borders
-pub const LIGHT_BORDER:    [f32; 4] = [0.70, 0.71, 0.76, 1.0];
+pub const LIGHT_BORDER: [f32; 4] = [0.70, 0.71, 0.76, 1.0];
 pub const LIGHT_SEPARATOR: [f32; 4] = [0.76, 0.77, 0.82, 1.0];
 
 // Selection
@@ -110,6 +110,8 @@ use crate::borderless_window::TitlebarColors;
 use crate::confirm_dialog::DialogColors;
 #[cfg(feature = "nav_panel")]
 use crate::nav_panel::NavColors;
+#[cfg(feature = "notifications")]
+use crate::notifications::NotificationColors;
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
 use dear_imgui_rs::Style;
@@ -200,6 +202,19 @@ impl Theme {
             Self::Midnight => midnight::dialog_colors(),
             Self::Solarized => solarized::dialog_colors(),
             Self::Monokai => monokai::dialog_colors(),
+        }
+    }
+
+    /// Notification-center colours for this theme.
+    /// Available only with the `notifications` feature.
+    #[cfg(feature = "notifications")]
+    pub fn notifications(self) -> NotificationColors {
+        match self {
+            Self::Dark => NotificationColors::dark(),
+            Self::Light => NotificationColors::light(),
+            Self::Midnight => NotificationColors::midnight(),
+            Self::Solarized => NotificationColors::solarized(),
+            Self::Monokai => NotificationColors::monokai(),
         }
     }
 

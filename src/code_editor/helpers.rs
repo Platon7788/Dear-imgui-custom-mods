@@ -25,7 +25,9 @@ pub(super) fn col32(c: [f32; 4]) -> u32 {
 pub(super) fn parse_hex_color(s: &str) -> Option<[f32; 4]> {
     #[inline]
     fn byte(hex: &str, pos: usize) -> Option<f32> {
-        u8::from_str_radix(&hex[pos..pos + 2], 16).ok().map(|v| v as f32 / 255.0)
+        u8::from_str_radix(&hex[pos..pos + 2], 16)
+            .ok()
+            .map(|v| v as f32 / 255.0)
     }
     if let Some(hex) = s.strip_prefix('#') {
         let all_hex = hex.chars().all(|c| c.is_ascii_hexdigit());
@@ -133,7 +135,9 @@ pub(super) fn col_to_x(line: &str, col: usize, char_advance: f32, tab_size: u8) 
     }
     let mut x = 0.0f32;
     for (i, ch) in line.chars().enumerate() {
-        if i == col { return x; }
+        if i == col {
+            return x;
+        }
         if ch == '\t' {
             x += char_advance * tab_size as f32;
         } else {
@@ -156,7 +160,9 @@ pub(super) fn x_to_col(line: &str, x: f32, char_advance: f32, tab_size: u8) -> u
     if !line.contains('\t') && char_advance > 0.0 {
         // Closed-form path — no Unicode decode, no per-char loop.
         let max_col = line.chars().count();
-        if x <= 0.0 { return 0; }
+        if x <= 0.0 {
+            return 0;
+        }
         let raw = ((x + char_advance * 0.33) / char_advance).floor() as usize;
         return raw.min(max_col);
     }
@@ -181,7 +187,9 @@ pub(super) fn x_to_col(line: &str, x: f32, char_advance: f32, tab_size: u8) -> u
 pub(super) fn set_clipboard(text: &str) {
     let c_str = std::ffi::CString::new(text).unwrap_or_default();
     // SAFETY: igSetClipboardText takes a null-terminated C string, which CString provides.
-    unsafe { dear_imgui_rs::sys::igSetClipboardText(c_str.as_ptr()); }
+    unsafe {
+        dear_imgui_rs::sys::igSetClipboardText(c_str.as_ptr());
+    }
 }
 
 /// Get clipboard text via ImGui sys API.
@@ -192,7 +200,9 @@ pub(super) fn get_clipboard() -> Option<String> {
     // We immediately copy to `String` so the returned value outlives any
     // subsequent ImGui call that might invalidate the underlying buffer.
     let ptr = unsafe { dear_imgui_rs::sys::igGetClipboardText() };
-    if ptr.is_null() { return None; }
+    if ptr.is_null() {
+        return None;
+    }
     // SAFETY: ptr is non-null and points at a null-terminated C string
     // owned by ImGui; valid until the next clipboard API call.
     let c_str = unsafe { std::ffi::CStr::from_ptr(ptr) };
@@ -207,7 +217,9 @@ pub(super) fn read_input_chars() -> Vec<char> {
         let io = &*dear_imgui_rs::sys::igGetIO_Nil();
         let data = io.InputQueueCharacters.Data;
         let size = io.InputQueueCharacters.Size;
-        if data.is_null() || size <= 0 { return Vec::new(); }
+        if data.is_null() || size <= 0 {
+            return Vec::new();
+        }
         let slice = std::slice::from_raw_parts(data, size as usize);
         slice.iter().filter_map(|&wc| char::from_u32(wc)).collect()
     }
@@ -219,7 +231,10 @@ const BRACKET_PAIRS: &[(char, char)] = &[('(', ')'), ('{', '}'), ('[', ']')];
 const QUOTE_PAIRS: &[(char, char)] = &[('"', '"'), ('\'', '\'')];
 
 pub(super) fn closing_bracket(ch: char) -> Option<char> {
-    BRACKET_PAIRS.iter().find(|(o, _)| *o == ch).map(|(_, c)| *c)
+    BRACKET_PAIRS
+        .iter()
+        .find(|(o, _)| *o == ch)
+        .map(|(_, c)| *c)
 }
 
 pub(super) fn closing_quote(ch: char) -> Option<char> {
@@ -238,7 +253,9 @@ pub(super) fn is_closing_quote(ch: char) -> bool {
 
 /// Number of digits in `n` — used to size the line-number gutter.
 pub(super) fn digit_count(n: usize) -> usize {
-    if n == 0 { return 1; }
+    if n == 0 {
+        return 1;
+    }
     let mut n = n;
     let mut c = 0;
     while n > 0 {

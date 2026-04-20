@@ -86,32 +86,15 @@ pub trait NodeGraphViewer<T> {
     ///
     /// Default: `true` (all connections allowed). Override to restrict
     /// connections by type, prevent cycles, limit fan-in, etc.
-    fn can_connect(
-        &self,
-        _from: OutPinId,
-        _to: InPinId,
-        _graph: &Graph<T>,
-    ) -> bool {
+    fn can_connect(&self, _from: OutPinId, _to: InPinId, _graph: &Graph<T>) -> bool {
         true
     }
 
     /// Called after a connection is made. Use for side-effects (e.g. propagation).
-    fn on_connect(
-        &mut self,
-        _from: OutPinId,
-        _to: InPinId,
-        _graph: &Graph<T>,
-    ) {
-    }
+    fn on_connect(&mut self, _from: OutPinId, _to: InPinId, _graph: &Graph<T>) {}
 
     /// Called after a connection is removed.
-    fn on_disconnect(
-        &mut self,
-        _from: OutPinId,
-        _to: InPinId,
-        _graph: &Graph<T>,
-    ) {
-    }
+    fn on_disconnect(&mut self, _from: OutPinId, _to: InPinId, _graph: &Graph<T>) {}
 
     /// Tooltip text when hovering a node. Return `None` for no tooltip.
     fn node_tooltip<'a>(&'a self, _node: &'a T) -> Option<&'a str> {

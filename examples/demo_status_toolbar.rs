@@ -38,7 +38,10 @@ impl DemoState {
         let mut toolbar = Toolbar::new("##toolbar_demo");
 
         // File operations
-        toolbar.add(ToolbarItem::button("\u{E800} New", "Create new file (Ctrl+N)"));
+        toolbar.add(ToolbarItem::button(
+            "\u{E800} New",
+            "Create new file (Ctrl+N)",
+        ));
         toolbar.add(ToolbarItem::button("\u{E801} Open", "Open file (Ctrl+O)"));
         toolbar.add(ToolbarItem::button("\u{E802} Save", "Save file (Ctrl+S)"));
         toolbar.add(ToolbarItem::separator());
@@ -50,14 +53,17 @@ impl DemoState {
 
         // Toggles
         toolbar.add(ToolbarItem::toggle("Bold", false, "Toggle bold (Ctrl+B)"));
-        toolbar.add(ToolbarItem::toggle("Italic", false, "Toggle italic (Ctrl+I)"));
+        toolbar.add(ToolbarItem::toggle(
+            "Italic",
+            false,
+            "Toggle italic (Ctrl+I)",
+        ));
         toolbar.add(ToolbarItem::toggle("Wrap", true, "Toggle word wrap"));
         toolbar.add(ToolbarItem::separator());
 
         // Run
         toolbar.add(ToolbarItem::button("\u{25B6} Run", "Run project (F5)"));
-        toolbar.add(ToolbarItem::button("\u{25A0} Stop", "Stop (Shift+F5)")
-            .with_enabled(false));
+        toolbar.add(ToolbarItem::button("\u{25A0} Stop", "Stop (Shift+F5)").with_enabled(false));
         toolbar.add(ToolbarItem::separator());
 
         // Dropdown
@@ -89,7 +95,9 @@ impl DemoState {
     fn render(&mut self, ui: &Ui) {
         // Animate progress
         self.progress += ui.io().delta_time() * 0.05;
-        if self.progress > 1.0 { self.progress = 0.0; }
+        if self.progress > 1.0 {
+            self.progress = 0.0;
+        }
 
         ui.window("Toolbar + StatusBar Demo")
             .size([900.0, 550.0], Condition::FirstUseEver)
@@ -105,8 +113,11 @@ impl DemoState {
                         ToolbarEvent::Toggled { label, on, .. } => {
                             self.log.push(format!("Toggle: {} = {}", label, on));
                         }
-                        ToolbarEvent::DropdownChanged { label, selected, .. } => {
-                            self.log.push(format!("Dropdown: {} -> #{}", label, selected));
+                        ToolbarEvent::DropdownChanged {
+                            label, selected, ..
+                        } => {
+                            self.log
+                                .push(format!("Dropdown: {} -> #{}", label, selected));
                         }
                     }
                 }
@@ -151,31 +162,40 @@ impl DemoState {
         } else {
             (Indicator::Error, "Disconnected")
         };
-        self.status.left(StatusItem::indicator(label, ind)
-            .with_tooltip("Click to toggle connection"));
-        self.status.left(StatusItem::text(format!("Ln {}, Col {}", self.line, self.col)));
-        self.status.left(StatusItem::progress("Build", self.progress)
-            .with_tooltip(format!("{:.0}% complete", self.progress * 100.0)));
+        self.status
+            .left(StatusItem::indicator(label, ind).with_tooltip("Click to toggle connection"));
+        self.status.left(StatusItem::text(format!(
+            "Ln {}, Col {}",
+            self.line, self.col
+        )));
+        self.status.left(
+            StatusItem::progress("Build", self.progress)
+                .with_tooltip(format!("{:.0}% complete", self.progress * 100.0)),
+        );
 
         // Center: mode
-        self.status.center(StatusItem::text("NORMAL")
-            .with_color([0.5, 0.8, 0.5, 1.0]));
+        self.status
+            .center(StatusItem::text("NORMAL").with_color([0.5, 0.8, 0.5, 1.0]));
 
         // Right: encoding, language, eol
-        let enc = if self.encoding_idx == 0 { "UTF-8" } else { "UTF-16" };
-        self.status.right(StatusItem::clickable(enc)
-            .with_tooltip("Click to change encoding"));
-        self.status.right(StatusItem::text("Rust")
-            .with_color([0.85, 0.55, 0.25, 1.0]));
+        let enc = if self.encoding_idx == 0 {
+            "UTF-8"
+        } else {
+            "UTF-16"
+        };
+        self.status
+            .right(StatusItem::clickable(enc).with_tooltip("Click to change encoding"));
+        self.status
+            .right(StatusItem::text("Rust").with_color([0.85, 0.55, 0.25, 1.0]));
         self.status.right(StatusItem::text("LF"));
         self.status.right(StatusItem::text("4 spaces"));
 
         // Warning indicator
         if self.log.len() > 5 {
-            self.status.right(StatusItem::indicator(
-                format!("{} msgs", self.log.len()),
-                Indicator::Warning,
-            ).with_tooltip("Event log is growing"));
+            self.status.right(
+                StatusItem::indicator(format!("{} msgs", self.log.len()), Indicator::Warning)
+                    .with_tooltip("Event log is growing"),
+            );
         }
     }
 
@@ -204,7 +224,10 @@ impl DemoState {
                         dear_imgui_custom_mod::toolbar::ToolbarItemKind::Toggle { on } => {
                             ui.text(format!("[{}] Toggle: {} = {}", i, item.label, on));
                         }
-                        dear_imgui_custom_mod::toolbar::ToolbarItemKind::Dropdown { selected, .. } => {
+                        dear_imgui_custom_mod::toolbar::ToolbarItemKind::Dropdown {
+                            selected,
+                            ..
+                        } => {
                             ui.text(format!("[{}] Dropdown: {} = #{}", i, item.label, selected));
                         }
                         dear_imgui_custom_mod::toolbar::ToolbarItemKind::Separator => {
@@ -223,9 +246,19 @@ impl DemoState {
                 ui.set_next_item_width(-1.0);
                 ui.slider("Height##tb", 20.0, 50.0, &mut self.toolbar.config.height);
                 ui.set_next_item_width(-1.0);
-                ui.slider("Btn Rounding", 0.0, 10.0, &mut self.toolbar.config.button_rounding);
+                ui.slider(
+                    "Btn Rounding",
+                    0.0,
+                    10.0,
+                    &mut self.toolbar.config.button_rounding,
+                );
                 ui.set_next_item_width(-1.0);
-                ui.slider("Spacing##tb", 0.0, 10.0, &mut self.toolbar.config.item_spacing);
+                ui.slider(
+                    "Spacing##tb",
+                    0.0,
+                    10.0,
+                    &mut self.toolbar.config.item_spacing,
+                );
 
                 ui.spacing();
                 ui.separator();
@@ -272,35 +305,62 @@ impl DemoState {
 // ─── wgpu + winit boilerplate ────────────────────────────────────────────────
 
 struct GpuState {
-    device: wgpu::Device, queue: wgpu::Queue, window: Arc<Window>,
-    surface_cfg: wgpu::SurfaceConfiguration, surface: wgpu::Surface<'static>,
-    context: dear_imgui_rs::Context, platform: WinitPlatform,
-    renderer: WgpuRenderer, demo: DemoState,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    window: Arc<Window>,
+    surface_cfg: wgpu::SurfaceConfiguration,
+    surface: wgpu::Surface<'static>,
+    context: dear_imgui_rs::Context,
+    platform: WinitPlatform,
+    renderer: WgpuRenderer,
+    demo: DemoState,
 }
-struct App { gpu: Option<GpuState> }
-impl App { fn new() -> Self { Self { gpu: None } } }
+struct App {
+    gpu: Option<GpuState>,
+}
+impl App {
+    fn new() -> Self {
+        Self { gpu: None }
+    }
+}
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gpu.is_some() { return; }
-        let window = Arc::new(event_loop.create_window(
-            Window::default_attributes()
-                .with_inner_size(LogicalSize::new(900.0, 550.0))
-                .with_title("Toolbar + StatusBar Demo"),
-        ).expect("window"));
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::PRIMARY, ..wgpu::InstanceDescriptor::new_without_display_handle() });
+        if self.gpu.is_some() {
+            return;
+        }
+        let window = Arc::new(
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_inner_size(LogicalSize::new(900.0, 550.0))
+                        .with_title("Toolbar + StatusBar Demo"),
+                )
+                .expect("window"),
+        );
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
         let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface), force_fallback_adapter: false,
-        })).expect("adapter");
-        let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        }))
+        .expect("adapter");
+        let (device, queue) =
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT, format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            width: phys.width.max(1), height: phys.height.max(1),
-            present_mode: wgpu::PresentMode::Fifo, desired_maximum_frame_latency: 2,
-            alpha_mode: wgpu::CompositeAlphaMode::Auto, view_formats: vec![wgpu::TextureFormat::Bgra8Unorm],
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            width: phys.width.max(1),
+            height: phys.height.max(1),
+            present_mode: wgpu::PresentMode::Fifo,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            view_formats: vec![wgpu::TextureFormat::Bgra8Unorm],
         };
         surface.configure(&device, &surface_cfg);
         let mut context = dear_imgui_rs::Context::create();
@@ -311,46 +371,136 @@ impl ApplicationHandler for App {
         let font_size = 15.0 * hidpi;
         context.io_mut().set_font_global_scale(1.0 / hidpi);
         use dear_imgui_custom_mod::code_editor::BuiltinFont;
-        context.fonts().add_font_from_memory_ttf(BuiltinFont::Hack.data(), font_size,
-            Some(&dear_imgui_rs::FontConfig::new().size_pixels(font_size).oversample_h(2).name("Hack")), None);
+        context.fonts().add_font_from_memory_ttf(
+            BuiltinFont::Hack.data(),
+            font_size,
+            Some(
+                &dear_imgui_rs::FontConfig::new()
+                    .size_pixels(font_size)
+                    .oversample_h(2)
+                    .name("Hack"),
+            ),
+            None,
+        );
         apply_dark_theme(context.style_mut());
         let renderer = WgpuRenderer::new(
-            WgpuInitInfo::new(device.clone(), queue.clone(), surface_cfg.format), &mut context,
-        ).expect("renderer");
-        self.gpu = Some(GpuState { device, queue, window, surface_cfg, surface, context, platform, renderer, demo: DemoState::new() });
+            WgpuInitInfo::new(device.clone(), queue.clone(), surface_cfg.format),
+            &mut context,
+        )
+        .expect("renderer");
+        self.gpu = Some(GpuState {
+            device,
+            queue,
+            window,
+            surface_cfg,
+            surface,
+            context,
+            platform,
+            renderer,
+            demo: DemoState::new(),
+        });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
-        gpu.platform.handle_event::<()>(&mut gpu.context, &gpu.window, &Event::WindowEvent { window_id, event: event.clone() });
+        gpu.platform.handle_event::<()>(
+            &mut gpu.context,
+            &gpu.window,
+            &Event::WindowEvent {
+                window_id,
+                event: event.clone(),
+            },
+        );
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(s) => { gpu.surface_cfg.width = s.width.max(1); gpu.surface_cfg.height = s.height.max(1); gpu.surface.configure(&gpu.device, &gpu.surface_cfg); gpu.window.request_redraw(); }
+            WindowEvent::Resized(s) => {
+                gpu.surface_cfg.width = s.width.max(1);
+                gpu.surface_cfg.height = s.height.max(1);
+                gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
+                gpu.window.request_redraw();
+            }
             WindowEvent::RedrawRequested => {
-                let frame = match gpu.surface.get_current_texture() { wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f, wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => { gpu.surface.configure(&gpu.device, &gpu.surface_cfg); return; } other => { eprintln!("{other:?}"); return; } };
-                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let frame = match gpu.surface.get_current_texture() {
+                    wgpu::CurrentSurfaceTexture::Success(f)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                        gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
+                        return;
+                    }
+                    other => {
+                        eprintln!("{other:?}");
+                        return;
+                    }
+                };
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
-                let ui = gpu.context.frame(); gpu.demo.render(ui);
+                let ui = gpu.context.frame();
+                gpu.demo.render(ui);
                 gpu.platform.prepare_render_with_ui(ui, &gpu.window);
                 let draw_data = gpu.context.render();
-                let mut enc = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("imgui") });
-                { let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor { label: Some("p"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, depth_slice: None,
-                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.06, g: 0.06, b: 0.08, a: 1.0 }), store: wgpu::StoreOp::Store } })],
-                    depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None, multiview_mask: None });
-                if draw_data.total_vtx_count > 0 { gpu.renderer.render_draw_data(draw_data, &mut pass).expect("render"); } }
-                gpu.queue.submit(Some(enc.finish())); frame.present(); gpu.window.request_redraw();
+                let mut enc = gpu
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("imgui"),
+                    });
+                {
+                    let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("p"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            depth_slice: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.06,
+                                    g: 0.06,
+                                    b: 0.08,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    if draw_data.total_vtx_count > 0 {
+                        gpu.renderer
+                            .render_draw_data(draw_data, &mut pass)
+                            .expect("render");
+                    }
+                }
+                gpu.queue.submit(Some(enc.finish()));
+                frame.present();
+                gpu.window.request_redraw();
             }
             _ => {}
         }
     }
-    fn about_to_wait(&mut self, _: &ActiveEventLoop) { if let Some(gpu) = self.gpu.as_ref() { gpu.window.request_redraw(); } }
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        if let Some(gpu) = self.gpu.as_ref() {
+            gpu.window.request_redraw();
+        }
+    }
 }
 
 fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
-    style.set_window_rounding(6.0); style.set_frame_rounding(4.0); style.set_grab_rounding(4.0);
-    style.set_scrollbar_rounding(6.0); style.set_window_border_size(1.0); style.set_popup_rounding(4.0);
-    let a = [0.40, 0.63, 0.88, 1.0]; let ad = [0.30, 0.50, 0.75, 1.0];
+    style.set_window_rounding(6.0);
+    style.set_frame_rounding(4.0);
+    style.set_grab_rounding(4.0);
+    style.set_scrollbar_rounding(6.0);
+    style.set_window_border_size(1.0);
+    style.set_popup_rounding(4.0);
+    let a = [0.40, 0.63, 0.88, 1.0];
+    let ad = [0.30, 0.50, 0.75, 1.0];
     style.set_color(StyleColor::WindowBg, [0.09, 0.09, 0.11, 1.0]);
     style.set_color(StyleColor::ChildBg, [0.10, 0.10, 0.13, 1.0]);
     style.set_color(StyleColor::Border, [0.20, 0.22, 0.27, 0.70]);
@@ -363,7 +513,8 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::ScrollbarGrab, [0.22, 0.24, 0.30, 1.0]);
     style.set_color(StyleColor::ScrollbarGrabHovered, [0.30, 0.33, 0.40, 1.0]);
     style.set_color(StyleColor::ScrollbarGrabActive, ad);
-    style.set_color(StyleColor::CheckMark, a); style.set_color(StyleColor::SliderGrab, ad);
+    style.set_color(StyleColor::CheckMark, a);
+    style.set_color(StyleColor::SliderGrab, ad);
     style.set_color(StyleColor::SliderGrabActive, a);
     style.set_color(StyleColor::Button, [0.18, 0.20, 0.25, 1.0]);
     style.set_color(StyleColor::ButtonHovered, [0.26, 0.29, 0.36, 1.0]);

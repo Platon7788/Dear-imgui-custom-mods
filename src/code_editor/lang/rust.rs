@@ -8,53 +8,160 @@ use crate::code_editor::token::{Token, TokenKind};
 
 const KEYWORDS: &[&str] = &[
     // Stable
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn",
-    "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
-    "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
-    "self", "Self", "static", "struct", "super", "trait", "true", "type",
-    "unsafe", "use", "where", "while", "yield", "macro_rules",
+    "as",
+    "async",
+    "await",
+    "break",
+    "const",
+    "continue",
+    "crate",
+    "dyn",
+    "else",
+    "enum",
+    "extern",
+    "false",
+    "fn",
+    "for",
+    "if",
+    "impl",
+    "in",
+    "let",
+    "loop",
+    "match",
+    "mod",
+    "move",
+    "mut",
+    "pub",
+    "ref",
+    "return",
+    "self",
+    "Self",
+    "static",
+    "struct",
+    "super",
+    "trait",
+    "true",
+    "type",
+    "unsafe",
+    "use",
+    "where",
+    "while",
+    "yield",
+    "macro_rules",
     // Reserved
-    "abstract", "become", "box", "do", "final", "macro", "override",
-    "priv", "try", "typeof", "unsized", "virtual",
+    "abstract",
+    "become",
+    "box",
+    "do",
+    "final",
+    "macro",
+    "override",
+    "priv",
+    "try",
+    "typeof",
+    "unsized",
+    "virtual",
 ];
 
 const BUILTIN_TYPES: &[&str] = &[
     // Primitives
-    "bool", "char", "f32", "f64",
-    "i8", "i16", "i32", "i64", "i128", "isize",
-    "u8", "u16", "u32", "u64", "u128", "usize",
-    "str", "never",
+    "bool",
+    "char",
+    "f32",
+    "f64",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "i128",
+    "isize",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "u128",
+    "usize",
+    "str",
+    "never",
     // Heap / smart pointers
-    "String", "Box", "Rc", "Arc", "Weak",
+    "String",
+    "Box",
+    "Rc",
+    "Arc",
+    "Weak",
     // Collections
-    "Vec", "VecDeque", "LinkedList",
-    "HashMap", "BTreeMap", "IndexMap",
-    "HashSet", "BTreeSet", "IndexSet",
+    "Vec",
+    "VecDeque",
+    "LinkedList",
+    "HashMap",
+    "BTreeMap",
+    "IndexMap",
+    "HashSet",
+    "BTreeSet",
+    "IndexSet",
     // Option / Result
-    "Option", "Result",
+    "Option",
+    "Result",
     // Sync
-    "Cell", "RefCell", "Mutex", "RwLock", "MutexGuard", "RwLockReadGuard",
-    "RwLockWriteGuard", "Atomic", "AtomicBool", "AtomicI32", "AtomicU32",
-    "AtomicI64", "AtomicU64", "AtomicUsize",
+    "Cell",
+    "RefCell",
+    "Mutex",
+    "RwLock",
+    "MutexGuard",
+    "RwLockReadGuard",
+    "RwLockWriteGuard",
+    "Atomic",
+    "AtomicBool",
+    "AtomicI32",
+    "AtomicU32",
+    "AtomicI64",
+    "AtomicU64",
+    "AtomicUsize",
     // Pointers
-    "Pin", "NonNull", "MaybeUninit", "ManuallyDrop",
+    "Pin",
+    "NonNull",
+    "MaybeUninit",
+    "ManuallyDrop",
     // Borrowed
-    "Cow", "Ref", "RefMut",
+    "Cow",
+    "Ref",
+    "RefMut",
     // Strings / paths
-    "OsStr", "OsString", "CStr", "CString", "Path", "PathBuf",
+    "OsStr",
+    "OsString",
+    "CStr",
+    "CString",
+    "Path",
+    "PathBuf",
     // Ranges
-    "Range", "RangeInclusive", "RangeFull", "RangeFrom", "RangeTo",
+    "Range",
+    "RangeInclusive",
+    "RangeFull",
+    "RangeFrom",
+    "RangeTo",
     "RangeToInclusive",
     // Time
-    "Duration", "Instant", "SystemTime",
+    "Duration",
+    "Instant",
+    "SystemTime",
     // I/O
-    "File", "BufReader", "BufWriter", "Cursor",
+    "File",
+    "BufReader",
+    "BufWriter",
+    "Cursor",
     // Error
-    "Error", "Infallible",
+    "Error",
+    "Infallible",
     // Misc
-    "Ordering", "Formatter", "Thread", "JoinHandle",
+    "Ordering",
+    "Formatter",
+    "Thread",
+    "JoinHandle",
     // Common enum variants
-    "Some", "None", "Ok", "Err",
+    "Some",
+    "None",
+    "Ok",
+    "Err",
 ];
 
 // ── Language definition ─────────────────────────────────────────────────────
@@ -62,21 +169,31 @@ const BUILTIN_TYPES: &[&str] = &[
 pub struct RustLang;
 
 impl SyntaxDefinition for RustLang {
-    fn name(&self) -> &str { "Rust" }
+    fn name(&self) -> &str {
+        "Rust"
+    }
 
     fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
         tokenize(line, in_block_comment)
     }
 
-    fn line_comment_prefix(&self) -> Option<&str> { Some("//") }
-    fn block_comment_delimiters(&self) -> Option<(&str, &str)> { Some(("/*", "*/")) }
+    fn line_comment_prefix(&self) -> Option<&str> {
+        Some("//")
+    }
+    fn block_comment_delimiters(&self) -> Option<(&str, &str)> {
+        Some(("/*", "*/"))
+    }
 
     fn bracket_pairs(&self) -> &[(char, char)] {
         &[('(', ')'), ('{', '}'), ('[', ']')]
     }
 
-    fn auto_indent_after(&self) -> &[char] { &['{'] }
-    fn auto_dedent_on(&self) -> &[char] { &['}'] }
+    fn auto_indent_after(&self) -> &[char] {
+        &['{']
+    }
+    fn auto_dedent_on(&self) -> &[char] {
+        &['}']
+    }
 
     fn auto_close_pairs(&self) -> &[(&str, &str)] {
         &[("(", ")"), ("{", "}"), ("[", "]"), ("\"", "\""), ("'", "'")]
@@ -95,7 +212,11 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
     {
         let trimmed = line.trim();
         if trimmed.starts_with("// USER CODE BEGIN") || trimmed.starts_with("// USER CODE END") {
-            tokens.push(Token { kind: TokenKind::UserCodeMarker, start: 0, len: line.len() });
+            tokens.push(Token {
+                kind: TokenKind::UserCodeMarker,
+                start: 0,
+                len: line.len(),
+            });
             return (tokens, in_block_comment);
         }
     }
@@ -111,9 +232,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                     break;
                 }
                 i += 1;
-                if i >= len { break; }
+                if i >= len {
+                    break;
+                }
             }
-            tokens.push(Token { kind: TokenKind::Comment, start, len: i - start });
+            tokens.push(Token {
+                kind: TokenKind::Comment,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
@@ -122,14 +249,24 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         // ── Whitespace ───────────────────────────────────────────────────
         if b == b' ' || b == b'\t' {
             let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') { i += 1; }
-            tokens.push(Token { kind: TokenKind::Whitespace, start, len: i - start });
+            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Whitespace,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // ── Line comment ─────────────────────────────────────────────────
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'/' {
-            tokens.push(Token { kind: TokenKind::Comment, start: i, len: len - i });
+            tokens.push(Token {
+                kind: TokenKind::Comment,
+                start: i,
+                len: len - i,
+            });
             return (tokens, in_block_comment);
         }
 
@@ -145,9 +282,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                     break;
                 }
                 i += 1;
-                if i >= len { break; }
+                if i >= len {
+                    break;
+                }
             }
-            tokens.push(Token { kind: TokenKind::Comment, start, len: i - start });
+            tokens.push(Token {
+                kind: TokenKind::Comment,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
@@ -160,13 +303,20 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                     b'[' => depth += 1,
                     b']' => {
                         depth = depth.saturating_sub(1);
-                        if depth == 0 { i += 1; break; }
+                        if depth == 0 {
+                            i += 1;
+                            break;
+                        }
                     }
                     _ => {}
                 }
                 i += 1;
             }
-            tokens.push(Token { kind: TokenKind::Attribute, start, len: i - start });
+            tokens.push(Token {
+                kind: TokenKind::Attribute,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
@@ -184,7 +334,11 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                     i += 1;
                 }
             }
-            tokens.push(Token { kind: TokenKind::String, start, len: i - start });
+            tokens.push(Token {
+                kind: TokenKind::String,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
@@ -193,11 +347,16 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             let start = i;
             i += 1;
             let mut hashes = 0usize;
-            while i < len && bytes[i] == b'#' { hashes += 1; i += 1; }
+            while i < len && bytes[i] == b'#' {
+                hashes += 1;
+                i += 1;
+            }
             if i < len && bytes[i] == b'"' {
                 i += 1;
                 'raw: loop {
-                    if i >= len { break; }
+                    if i >= len {
+                        break;
+                    }
                     if bytes[i] == b'"' {
                         let mut end_hashes = 0;
                         let mut j = i + 1;
@@ -205,11 +364,18 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                             end_hashes += 1;
                             j += 1;
                         }
-                        if end_hashes == hashes { i = j; break 'raw; }
+                        if end_hashes == hashes {
+                            i = j;
+                            break 'raw;
+                        }
                     }
                     i += 1;
                 }
-                tokens.push(Token { kind: TokenKind::String, start, len: i - start });
+                tokens.push(Token {
+                    kind: TokenKind::String,
+                    start,
+                    len: i - start,
+                });
                 continue;
             }
             i = start; // not a raw string — fall through
@@ -221,13 +387,19 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             i += 1;
             if i < len && bytes[i] == b'\\' {
                 i += 1;
-                if i < len { i += 1; }
+                if i < len {
+                    i += 1;
+                }
             } else if i < len {
                 i += 1;
             }
             if i < len && bytes[i] == b'\'' {
                 i += 1;
-                tokens.push(Token { kind: TokenKind::CharLit, start, len: i - start });
+                tokens.push(Token {
+                    kind: TokenKind::CharLit,
+                    start,
+                    len: i - start,
+                });
                 continue;
             }
             i = start;
@@ -237,8 +409,14 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         if b == b'\'' && i + 1 < len && is_ident_start(bytes[i + 1]) {
             let start = i;
             i += 1;
-            while i < len && is_ident_continue(bytes[i]) { i += 1; }
-            tokens.push(Token { kind: TokenKind::Lifetime, start, len: i - start });
+            while i < len && is_ident_continue(bytes[i]) {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Lifetime,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
@@ -249,15 +427,24 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                 match bytes[i + 1] {
                     b'x' | b'X' => {
                         i += 2;
-                        while i < len && (bytes[i].is_ascii_hexdigit() || bytes[i] == b'_') { i += 1; }
+                        while i < len && (bytes[i].is_ascii_hexdigit() || bytes[i] == b'_') {
+                            i += 1;
+                        }
                     }
                     b'b' | b'B' => {
                         i += 2;
-                        while i < len && (bytes[i] == b'0' || bytes[i] == b'1' || bytes[i] == b'_') { i += 1; }
+                        while i < len && (bytes[i] == b'0' || bytes[i] == b'1' || bytes[i] == b'_')
+                        {
+                            i += 1;
+                        }
                     }
                     b'o' | b'O' => {
                         i += 2;
-                        while i < len && ((bytes[i] >= b'0' && bytes[i] <= b'7') || bytes[i] == b'_') { i += 1; }
+                        while i < len
+                            && ((bytes[i] >= b'0' && bytes[i] <= b'7') || bytes[i] == b'_')
+                        {
+                            i += 1;
+                        }
                     }
                     _ => consume_decimal(&mut i, bytes),
                 }
@@ -266,20 +453,32 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             }
             // Type suffix
             if i < len && is_ident_start(bytes[i]) {
-                while i < len && is_ident_continue(bytes[i]) { i += 1; }
+                while i < len && is_ident_continue(bytes[i]) {
+                    i += 1;
+                }
             }
-            tokens.push(Token { kind: TokenKind::Number, start, len: i - start });
+            tokens.push(Token {
+                kind: TokenKind::Number,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // ── Identifier / Keyword / Type / Macro ──────────────────────────
         if is_ident_start(b) {
             let start = i;
-            while i < len && is_ident_continue(bytes[i]) { i += 1; }
+            while i < len && is_ident_continue(bytes[i]) {
+                i += 1;
+            }
             let word = &line[start..i];
             if i < len && bytes[i] == b'!' && !KEYWORDS.contains(&word) {
                 i += 1;
-                tokens.push(Token { kind: TokenKind::MacroCall, start, len: i - start });
+                tokens.push(Token {
+                    kind: TokenKind::MacroCall,
+                    start,
+                    len: i - start,
+                });
                 continue;
             }
             let kind = if KEYWORDS.contains(&word) {
@@ -291,7 +490,11 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             } else {
                 TokenKind::Identifier
             };
-            tokens.push(Token { kind, start, len: i - start });
+            tokens.push(Token {
+                kind,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
@@ -299,40 +502,100 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         if b == b'.' && i + 1 < len && bytes[i + 1] == b'.' {
             let start = i;
             i += 2;
-            if i < len && bytes[i] == b'=' { i += 1; }
-            tokens.push(Token { kind: TokenKind::Operator, start, len: i - start });
+            if i < len && bytes[i] == b'=' {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Operator,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // ── Operators ────────────────────────────────────────────────────
-        if matches!(b, b'+' | b'-' | b'*' | b'/' | b'%' | b'=' | b'!' |
-                        b'<' | b'>' | b'&' | b'|' | b'^' | b'~') {
+        if matches!(
+            b,
+            b'+' | b'-'
+                | b'*'
+                | b'/'
+                | b'%'
+                | b'='
+                | b'!'
+                | b'<'
+                | b'>'
+                | b'&'
+                | b'|'
+                | b'^'
+                | b'~'
+        ) {
             let start = i;
             i += 1;
-            if i < len && matches!((b, bytes[i]),
-                (b'=', b'=') | (b'!', b'=') | (b'<', b'=') | (b'>', b'=') |
-                (b'-', b'>') | (b'=', b'>') | (b'&', b'&') | (b'|', b'|') |
-                (b'<', b'<') | (b'>', b'>') | (b'+', b'=') | (b'-', b'=') |
-                (b'*', b'=') | (b'/', b'=') | (b'%', b'=') | (b'&', b'=') |
-                (b'|', b'=') | (b'^', b'='))
+            if i < len
+                && matches!(
+                    (b, bytes[i]),
+                    (b'=', b'=')
+                        | (b'!', b'=')
+                        | (b'<', b'=')
+                        | (b'>', b'=')
+                        | (b'-', b'>')
+                        | (b'=', b'>')
+                        | (b'&', b'&')
+                        | (b'|', b'|')
+                        | (b'<', b'<')
+                        | (b'>', b'>')
+                        | (b'+', b'=')
+                        | (b'-', b'=')
+                        | (b'*', b'=')
+                        | (b'/', b'=')
+                        | (b'%', b'=')
+                        | (b'&', b'=')
+                        | (b'|', b'=')
+                        | (b'^', b'=')
+                )
             {
                 i += 1;
             }
-            tokens.push(Token { kind: TokenKind::Operator, start, len: i - start });
+            tokens.push(Token {
+                kind: TokenKind::Operator,
+                start,
+                len: i - start,
+            });
             continue;
         }
 
         // ── Punctuation ──────────────────────────────────────────────────
-        if matches!(b, b'(' | b')' | b'{' | b'}' | b'[' | b']' |
-                        b';' | b':' | b',' | b'.' | b'@' | b'?' | b'#') {
-            tokens.push(Token { kind: TokenKind::Punctuation, start: i, len: 1 });
+        if matches!(
+            b,
+            b'(' | b')'
+                | b'{'
+                | b'}'
+                | b'['
+                | b']'
+                | b';'
+                | b':'
+                | b','
+                | b'.'
+                | b'@'
+                | b'?'
+                | b'#'
+        ) {
+            tokens.push(Token {
+                kind: TokenKind::Punctuation,
+                start: i,
+                len: 1,
+            });
             i += 1;
             continue;
         }
 
         // ── Fallback: full Unicode scalar ────────────────────────────────
         let ch_len = line[i..].chars().next().map_or(1, |c| c.len_utf8());
-        tokens.push(Token { kind: TokenKind::Identifier, start: i, len: ch_len });
+        tokens.push(Token {
+            kind: TokenKind::Identifier,
+            start: i,
+            len: ch_len,
+        });
         i += ch_len;
     }
 
@@ -349,7 +612,10 @@ mod tests {
 
     fn tok(line: &str) -> Vec<(TokenKind, &str)> {
         let (tokens, _) = tokenize_line(line, &Language::Rust, false);
-        tokens.iter().map(|t| (t.kind, &line[t.start..t.start + t.len])).collect()
+        tokens
+            .iter()
+            .map(|t| (t.kind, &line[t.start..t.start + t.len]))
+            .collect()
     }
 
     #[test]

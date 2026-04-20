@@ -6,8 +6,7 @@
 //! Run: cargo run --example demo_code_editor
 
 use dear_imgui_custom_mod::code_editor::{
-    CodeEditor, EditorTheme, Language, LineMarker,
-    CODE_EDITOR_FONT_PTR, MDI_FONT_DATA,
+    CODE_EDITOR_FONT_PTR, CodeEditor, EditorTheme, Language, LineMarker, MDI_FONT_DATA,
 };
 use dear_imgui_rs::{Condition, FontConfig, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
@@ -185,11 +184,11 @@ unsafe impl Sync for LoadedFont {}
 
 /// System monospace font candidates: (display_name, path).
 const SYSTEM_MONO_FONTS: &[(&str, &str)] = &[
-    ("Consolas",       "C:\\Windows\\Fonts\\consola.ttf"),
-    ("Cascadia Code",  "C:\\Windows\\Fonts\\CascadiaCode.ttf"),
-    ("Cascadia Mono",  "C:\\Windows\\Fonts\\CascadiaMono.ttf"),
-    ("Fira Code",      "C:\\Windows\\Fonts\\FiraCode-Regular.ttf"),
-    ("Courier New",    "C:\\Windows\\Fonts\\cour.ttf"),
+    ("Consolas", "C:\\Windows\\Fonts\\consola.ttf"),
+    ("Cascadia Code", "C:\\Windows\\Fonts\\CascadiaCode.ttf"),
+    ("Cascadia Mono", "C:\\Windows\\Fonts\\CascadiaMono.ttf"),
+    ("Fira Code", "C:\\Windows\\Fonts\\FiraCode-Regular.ttf"),
+    ("Courier New", "C:\\Windows\\Fonts\\cour.ttf"),
     ("Lucida Console", "C:\\Windows\\Fonts\\lucon.ttf"),
 ];
 
@@ -200,7 +199,10 @@ fn load_all_fonts(ctx: &mut dear_imgui_rs::Context, size_pixels: f32) -> (Vec<Lo
     let mdi_glyph_ranges: &[u32] = &[0xF0000, 0xF1FFF, 0];
 
     // Helper: add a font from bytes, merge MDI icons, return ImFont ptr.
-    let add_font = |ctx: &mut dear_imgui_rs::Context, name: &'static str, data: &[u8]| -> Option<*mut dear_imgui_rs::sys::ImFont> {
+    let add_font = |ctx: &mut dear_imgui_rs::Context,
+                    name: &'static str,
+                    data: &[u8]|
+     -> Option<*mut dear_imgui_rs::sys::ImFont> {
         let cfg = FontConfig::new()
             .size_pixels(size_pixels)
             .oversample_h(2)
@@ -215,7 +217,12 @@ fn load_all_fonts(ctx: &mut dear_imgui_rs::Context, size_pixels: f32) -> (Vec<Lo
             .merge_mode(true)
             .name("MDI");
         let mut atlas2 = ctx.fonts();
-        atlas2.add_font_from_memory_ttf(MDI_FONT_DATA, size_pixels, Some(&mdi_cfg), Some(mdi_glyph_ranges));
+        atlas2.add_font_from_memory_ttf(
+            MDI_FONT_DATA,
+            size_pixels,
+            Some(&mdi_cfg),
+            Some(mdi_glyph_ranges),
+        );
         drop(atlas2);
         Some(ptr)
     };
@@ -224,7 +231,10 @@ fn load_all_fonts(ctx: &mut dear_imgui_rs::Context, size_pixels: f32) -> (Vec<Lo
     use dear_imgui_custom_mod::code_editor::BuiltinFont;
     for variant in BuiltinFont::ALL {
         if let Some(ptr) = add_font(ctx, variant.display_name(), variant.data()) {
-            fonts.push(LoadedFont { name: variant.display_name(), ptr });
+            fonts.push(LoadedFont {
+                name: variant.display_name(),
+                ptr,
+            });
         }
     }
 
@@ -233,7 +243,9 @@ fn load_all_fonts(ctx: &mut dear_imgui_rs::Context, size_pixels: f32) -> (Vec<Lo
         if !std::path::Path::new(path).exists() {
             continue;
         }
-        let Ok(data) = std::fs::read(path) else { continue };
+        let Ok(data) = std::fs::read(path) else {
+            continue;
+        };
         let data: &'static [u8] = Box::leak(data.into_boxed_slice());
         if let Some(ptr) = add_font(ctx, name, data) {
             fonts.push(LoadedFont { name, ptr });
@@ -391,9 +403,7 @@ impl DemoState {
         ui.separator();
 
         // Theme selector
-        let theme_names: Vec<&str> = EditorTheme::ALL.iter()
-            .map(|t| t.display_name())
-            .collect();
+        let theme_names: Vec<&str> = EditorTheme::ALL.iter().map(|t| t.display_name()).collect();
         ui.set_next_item_width(-1.0);
         if ui.combo_simple_string("Theme", &mut self.theme_idx, &theme_names) {
             config.set_theme(EditorTheme::ALL[self.theme_idx]);
@@ -403,8 +413,8 @@ impl DemoState {
         self.lang_idx = match config.language {
             Language::Rust => 0,
             Language::Toml => 1,
-            Language::Ron  => 2,
-            Language::Hex  => 3,
+            Language::Ron => 2,
+            Language::Hex => 3,
             Language::None => 4,
             _ => 4,
         };
@@ -550,9 +560,7 @@ impl ApplicationHandler for App {
             backends: wgpu::Backends::PRIMARY,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
-        let surface = instance
-            .create_surface(window.clone())
-            .expect("surface");
+        let surface = instance.create_surface(window.clone()).expect("surface");
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
@@ -560,8 +568,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -643,8 +650,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -658,8 +664,7 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                gpu.platform
-                    .prepare_frame(&gpu.window, &mut gpu.context);
+                gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
 
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);
@@ -771,7 +776,10 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::TabHovered, accent_dim);
     style.set_color(StyleColor::TabSelected, [0.22, 0.24, 0.30, 1.0]);
 
-    style.set_color(StyleColor::TextSelectedBg, [accent[0], accent[1], accent[2], 0.30]);
+    style.set_color(
+        StyleColor::TextSelectedBg,
+        [accent[0], accent[1], accent[2], 0.30],
+    );
     style.set_color(StyleColor::Text, [0.92, 0.93, 0.95, 1.0]);
     style.set_color(StyleColor::TextDisabled, [0.42, 0.45, 0.52, 1.0]);
 

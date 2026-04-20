@@ -269,11 +269,21 @@ impl Timeline {
                     win_pos,
                     [win_pos[0] + win_size[0], win_pos[1] + win_size[1]],
                     col32(cfg.color_bg),
-                ).filled(true).build();
+                )
+                .filled(true)
+                .build();
 
                 // ── Layout ──────────────────────────────────────────────
-                let label_w = if cfg.show_track_labels { cfg.track_label_width } else { 0.0 };
-                let ruler_h = if cfg.show_ruler { cfg.ruler_height } else { 0.0 };
+                let label_w = if cfg.show_track_labels {
+                    cfg.track_label_width
+                } else {
+                    0.0
+                };
+                let ruler_h = if cfg.show_ruler {
+                    cfg.ruler_height
+                } else {
+                    0.0
+                };
                 let content_x = win_pos[0] + label_w;
                 let content_w = (win_size[0] - label_w).max(1.0);
                 let content_y = win_pos[1] + ruler_h;
@@ -304,8 +314,8 @@ impl Timeline {
                         let zoom_factor = 1.15_f64.powf(wheel as f64);
                         let mouse_time = self.x_to_time(mouse_pos[0], content_x);
 
-                        let new_pps = (self.vp.zoom_target * zoom_factor)
-                            .clamp(cfg.min_zoom, cfg.max_zoom);
+                        let new_pps =
+                            (self.vp.zoom_target * zoom_factor).clamp(cfg.min_zoom, cfg.max_zoom);
                         self.vp.zoom_target = new_pps;
 
                         if !cfg.smooth_zoom {
@@ -332,8 +342,7 @@ impl Timeline {
                 }
 
                 if self.panning {
-                    if ui.is_mouse_down(MouseButton::Middle)
-                        || ui.is_mouse_down(MouseButton::Right)
+                    if ui.is_mouse_down(MouseButton::Middle) || ui.is_mouse_down(MouseButton::Right)
                     {
                         let dx = mouse_pos[0] - self.pan_start_x;
                         self.vp.time_start =
@@ -349,7 +358,9 @@ impl Timeline {
                         [content_x, win_pos[1]],
                         [content_x + content_w, win_pos[1] + ruler_h],
                         col32(cfg.color_ruler_bg),
-                    ).filled(true).build();
+                    )
+                    .filled(true)
+                    .build();
 
                     let visible_duration = content_w as f64 / self.vp.pixels_per_second;
                     let (tick_interval, unit) = adaptive_ticks(visible_duration, content_w);
@@ -370,7 +381,8 @@ impl Timeline {
                                     [x, win_pos[1] + ruler_h - 6.0],
                                     [x, win_pos[1] + ruler_h],
                                     col32(cfg.color_ruler_text),
-                                ).build();
+                                )
+                                .build();
 
                                 let val = t * unit.factor();
                                 let label = if val.abs() < 0.001 {
@@ -383,13 +395,8 @@ impl Timeline {
 
                                 let text_size = calc_text_size(&label);
                                 let tx = (x - text_size[0] * 0.5).max(content_x);
-                                let ty = win_pos[1]
-                                    + (ruler_h - 6.0 - text_size[1]) * 0.5;
-                                draw.add_text(
-                                    [tx, ty],
-                                    col32(cfg.color_ruler_text),
-                                    &label,
-                                );
+                                let ty = win_pos[1] + (ruler_h - 6.0 - text_size[1]) * 0.5;
+                                draw.add_text([tx, ty], col32(cfg.color_ruler_text), &label);
                             }
                             t += tick_interval;
                         }
@@ -407,19 +414,24 @@ impl Timeline {
                             cfg.color_bg[2] + 0.03,
                             1.0,
                         ]),
-                    ).filled(true).build();
+                    )
+                    .filled(true)
+                    .build();
                 }
 
                 // ── Tracks & spans ──────────────────────────────────────
                 let mut y = content_y - self.vp.scroll_y;
 
                 for (ti, track) in self.tracks.iter().enumerate() {
-                    let rows = if track.collapsed { 0 } else { track.depth_rows() };
+                    let rows = if track.collapsed {
+                        0
+                    } else {
+                        track.depth_rows()
+                    };
                     let track_h = if track.collapsed {
                         cfg.track_header_height
                     } else {
-                        cfg.track_header_height
-                            + rows as f32 * (cfg.row_height + cfg.row_gap)
+                        cfg.track_header_height + rows as f32 * (cfg.row_height + cfg.row_gap)
                     };
 
                     // Cull off-screen tracks
@@ -434,12 +446,18 @@ impl Timeline {
                             [content_x, y],
                             [win_pos[0] + win_size[0], y + track_h],
                             col32(cfg.color_bg_alt),
-                        ).filled(true).build();
+                        )
+                        .filled(true)
+                        .build();
                     }
 
                     // Track label
                     if cfg.show_track_labels {
-                        let arrow = if track.collapsed { "\u{25B8}" } else { "\u{25BE}" };
+                        let arrow = if track.collapsed {
+                            "\u{25B8}"
+                        } else {
+                            "\u{25BE}"
+                        };
                         let label_text = format!("{} {}", arrow, track.name);
                         let text_y = y + (cfg.track_header_height - 14.0) * 0.5;
                         draw.add_text(
@@ -454,7 +472,8 @@ impl Timeline {
                         [content_x, y + cfg.track_header_height - 1.0],
                         [win_pos[0] + win_size[0], y + cfg.track_header_height - 1.0],
                         col32(cfg.color_track_separator),
-                    ).build();
+                    )
+                    .build();
 
                     // Spans
                     if !track.collapsed {
@@ -469,8 +488,8 @@ impl Timeline {
                             }
 
                             let span_w = (ex - sx).max(cfg.min_span_width);
-                            let sy = span_base_y
-                                + span.depth as f32 * (cfg.row_height + cfg.row_gap);
+                            let sy =
+                                span_base_y + span.depth as f32 * (cfg.row_height + cfg.row_gap);
                             let ey = sy + cfg.row_height;
 
                             if ey < content_y || sy > win_pos[1] + win_size[1] {
@@ -478,27 +497,23 @@ impl Timeline {
                             }
 
                             let span_color = self.span_color(span);
-                            draw.add_rect(
-                                [sx, sy],
-                                [sx + span_w, ey],
-                                col32(span_color),
-                            ).filled(true).build();
+                            draw.add_rect([sx, sy], [sx + span_w, ey], col32(span_color))
+                                .filled(true)
+                                .build();
 
                             // Span text (only if wide enough)
                             if span_w > 20.0 {
                                 let text_size = calc_text_size(&span.label);
                                 if text_size[0] < span_w - 4.0 {
                                     let tx = sx + (span_w - text_size[0]) * 0.5;
-                                    let ty =
-                                        sy + (cfg.row_height - text_size[1]) * 0.5;
+                                    let ty = sy + (cfg.row_height - text_size[1]) * 0.5;
                                     draw.add_text(
                                         [tx, ty],
                                         col32(cfg.color_span_text),
                                         &span.label,
                                     );
                                 } else if span_w > 6.0 {
-                                    let ty =
-                                        sy + (cfg.row_height - calc_text_size("A")[1]) * 0.5;
+                                    let ty = sy + (cfg.row_height - calc_text_size("A")[1]) * 0.5;
                                     draw.add_text(
                                         [sx + 2.0, ty],
                                         col32(cfg.color_span_text),
@@ -516,17 +531,12 @@ impl Timeline {
                             {
                                 self.hovered_span = Some(span.id);
 
-                                draw.add_rect(
-                                    [sx, sy],
-                                    [sx + span_w, ey],
-                                    col32(cfg.color_hover),
-                                ).build();
+                                draw.add_rect([sx, sy], [sx + span_w, ey], col32(cfg.color_hover))
+                                    .build();
 
                                 if ui.is_mouse_clicked(MouseButton::Left) {
                                     self.selected_span = Some(span.id);
-                                    events.push(TimelineEvent::SpanClicked {
-                                        span_id: span.id,
-                                    });
+                                    events.push(TimelineEvent::SpanClicked { span_id: span.id });
                                 }
                                 if ui.is_mouse_double_clicked(MouseButton::Left) {
                                     events.push(TimelineEvent::SpanDoubleClicked {
@@ -543,13 +553,9 @@ impl Timeline {
                                             "{} \u{2014} {:.2}{}",
                                             span.label, val, suffix
                                         ));
-                                        if !span.category.is_empty()
-                                            && span.category != span.label
+                                        if !span.category.is_empty() && span.category != span.label
                                         {
-                                            ui.text(format!(
-                                                "Category: {}",
-                                                span.category
-                                            ));
+                                            ui.text(format!("Category: {}", span.category));
                                         }
                                         if let Some(ref src) = span.source {
                                             ui.text(format!("Source: {}", src));
@@ -570,7 +576,8 @@ impl Timeline {
                                     [sx - 1.0, sy - 1.0],
                                     [sx + span_w + 1.0, ey + 1.0],
                                     col32(cfg.color_selection),
-                                ).build();
+                                )
+                                .build();
                             }
                         }
                     }
@@ -586,17 +593,10 @@ impl Timeline {
                             continue;
                         }
                         let mc = marker.color.unwrap_or(cfg.color_marker);
-                        draw.add_line(
-                            [mx, win_pos[1]],
-                            [mx, win_pos[1] + win_size[1]],
-                            col32(mc),
-                        ).build();
+                        draw.add_line([mx, win_pos[1]], [mx, win_pos[1] + win_size[1]], col32(mc))
+                            .build();
 
-                        draw.add_text(
-                            [mx + 2.0, win_pos[1] + 2.0],
-                            col32(mc),
-                            &marker.label,
-                        );
+                        draw.add_text([mx + 2.0, win_pos[1] + 2.0], col32(mc), &marker.label);
 
                         if in_content
                             && (mouse_pos[0] - mx).abs() < 4.0
@@ -612,11 +612,9 @@ impl Timeline {
                 let visible_h = win_size[1] - ruler_h;
                 if total_h > visible_h {
                     let wheel_v = ui.io().mouse_wheel();
-                    if ui.is_key_down(dear_imgui_rs::Key::LeftShift)
-                        && wheel_v.abs() > 0.01
-                    {
-                        self.vp.scroll_y = (self.vp.scroll_y - wheel_v * 40.0)
-                            .clamp(0.0, total_h - visible_h);
+                    if ui.is_key_down(dear_imgui_rs::Key::LeftShift) && wheel_v.abs() > 0.01 {
+                        self.vp.scroll_y =
+                            (self.vp.scroll_y - wheel_v * 40.0).clamp(0.0, total_h - visible_h);
                     }
                 }
 
@@ -636,13 +634,9 @@ fn adaptive_ticks(visible_seconds: f64, width_px: f32) -> (f64, TimeUnit) {
     let raw_interval = visible_seconds / target_ticks;
 
     let nice: &[f64] = &[
-        1e-9, 2e-9, 5e-9, 1e-8, 2e-8, 5e-8,
-        1e-7, 2e-7, 5e-7, 1e-6, 2e-6, 5e-6,
-        1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4,
-        1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2,
-        0.1, 0.2, 0.5, 1.0, 2.0, 5.0,
-        10.0, 20.0, 50.0, 100.0, 200.0, 500.0,
-        1000.0, 2000.0, 5000.0,
+        1e-9, 2e-9, 5e-9, 1e-8, 2e-8, 5e-8, 1e-7, 2e-7, 5e-7, 1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5,
+        1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0,
+        20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0,
     ];
 
     let interval = nice

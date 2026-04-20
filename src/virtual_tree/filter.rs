@@ -45,7 +45,17 @@ impl FilterState {
     /// Check if a node is in the visible set. O(1) by slot index.
     #[inline]
     pub fn is_visible(&self, id: NodeId) -> bool {
-        self.visible_set.get(id.index as usize).copied().unwrap_or(false)
+        self.visible_set
+            .get(id.index as usize)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// Number of nodes currently marked visible. O(N) — intended for
+    /// diagnostics / benchmarks, not hot-path rendering.
+    #[inline]
+    pub fn visible_count(&self) -> usize {
+        self.visible_set.iter().filter(|&&v| v).count()
     }
 
     /// Apply a filter query. Empty/whitespace-only query clears the filter.
@@ -129,9 +139,13 @@ mod tests {
             CellValue::Text(self.0.clone())
         }
         fn set_cell_value(&mut self, _col: usize, value: &CellValue) {
-            if let CellValue::Text(s) = value { self.0 = s.clone(); }
+            if let CellValue::Text(s) = value {
+                self.0 = s.clone();
+            }
         }
-        fn has_children(&self) -> bool { false }
+        fn has_children(&self) -> bool {
+            false
+        }
         fn matches_filter(&self, query: &str) -> bool {
             self.0.to_lowercase().contains(&query.to_lowercase())
         }
@@ -159,7 +173,7 @@ mod tests {
         fs.set_filter("an", &mut arena, false);
         assert!(fs.active);
         assert!(!fs.is_visible(a)); // "apple" doesn't contain "an"
-        assert!(fs.is_visible(b));  // "banana" contains "an"
+        assert!(fs.is_visible(b)); // "banana" contains "an"
     }
 
     #[test]
@@ -168,7 +182,9 @@ mod tests {
         let mut arena = TreeArena::new();
         let root = arena.insert_root(TestNode("root".into())).unwrap();
         let child = arena.insert_child(root, TestNode("child".into())).unwrap();
-        let leaf = arena.insert_child(child, TestNode("target".into())).unwrap();
+        let leaf = arena
+            .insert_child(child, TestNode("target".into()))
+            .unwrap();
 
         // Root and child should not be expanded initially
         assert!(!arena.is_expanded(root));
@@ -177,8 +193,8 @@ mod tests {
         fs.set_filter("target", &mut arena, true); // auto_expand = true
         assert!(fs.is_visible(leaf));
         assert!(fs.is_visible(child)); // ancestor of match
-        assert!(fs.is_visible(root));  // ancestor of match
-        assert!(arena.is_expanded(root));  // auto-expanded
+        assert!(fs.is_visible(root)); // ancestor of match
+        assert!(arena.is_expanded(root)); // auto-expanded
         assert!(arena.is_expanded(child)); // auto-expanded
     }
 
@@ -198,7 +214,10 @@ mod tests {
     #[test]
     fn is_visible_out_of_bounds_returns_false() {
         let fs = FilterState::new();
-        let fake_id = NodeId { index: 999, generation: 0 };
+        let fake_id = NodeId {
+            index: 999,
+            generation: 0,
+        };
         assert!(!fs.is_visible(fake_id));
     }
 
@@ -208,10 +227,12 @@ mod tests {
         let mut arena = TreeArena::new();
         let root = arena.insert_root(TestNode("root".into())).unwrap();
         let child = arena.insert_child(root, TestNode("child".into())).unwrap();
-        let _leaf = arena.insert_child(child, TestNode("match_me".into())).unwrap();
+        let _leaf = arena
+            .insert_child(child, TestNode("match_me".into()))
+            .unwrap();
 
         fs.set_filter("match_me", &mut arena, false); // auto_expand = false
-        assert!(!arena.is_expanded(root));  // NOT expanded (auto_expand off)
-        assert!(fs.is_visible(root));       // but still visible (ancestor of match)
+        assert!(!arena.is_expanded(root)); // NOT expanded (auto_expand off)
+        assert!(fs.is_visible(root)); // but still visible (ancestor of match)
     }
 }

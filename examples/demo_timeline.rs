@@ -5,9 +5,7 @@
 //!
 //! Run: cargo run --example demo_timeline
 
-use dear_imgui_custom_mod::timeline::{
-    ColorMode, Marker, Span, Timeline, TimelineMode, Track,
-};
+use dear_imgui_custom_mod::timeline::{ColorMode, Marker, Span, Timeline, TimelineMode, Track};
 use dear_imgui_rs::{Condition, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
@@ -31,56 +29,93 @@ fn build_sample_data() -> (Vec<Track>, Vec<Marker>) {
     let mut id = 0u64;
 
     // Frame 1: 0..50ms
-    main_track.add_span(Span::new(id, 0.0, 0.050, 0, "frame()")); id += 1;
-    main_track.add_span(Span::new(id, 0.0, 0.018, 1, "update()")); id += 1;
-    main_track.add_span(Span::new(id, 0.0, 0.008, 2, "physics()")); id += 1;
-    main_track.add_span(Span::new(id, 0.008, 0.015, 2, "ai_tick()")); id += 1;
-    main_track.add_span(Span::new(id, 0.015, 0.018, 2, "animation()")); id += 1;
-    main_track.add_span(Span::new(id, 0.018, 0.048, 1, "render()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.018, 0.030, 2, "draw_nodes()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.018, 0.024, 3, "batch()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.024, 0.030, 3, "submit()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.030, 0.042, 2, "draw_ui()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.042, 0.048, 2, "swap()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.048, 0.050, 1, "present()")); id += 1;
+    main_track.add_span(Span::new(id, 0.0, 0.050, 0, "frame()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.0, 0.018, 1, "update()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.0, 0.008, 2, "physics()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.008, 0.015, 2, "ai_tick()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.015, 0.018, 2, "animation()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.018, 0.048, 1, "render()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.018, 0.030, 2, "draw_nodes()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.018, 0.024, 3, "batch()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.024, 0.030, 3, "submit()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.030, 0.042, 2, "draw_ui()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.042, 0.048, 2, "swap()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.048, 0.050, 1, "present()"));
+    id += 1;
 
     // Frame 2: 50..100ms
-    main_track.add_span(Span::new(id, 0.050, 0.100, 0, "frame()")); id += 1;
-    main_track.add_span(Span::new(id, 0.050, 0.068, 1, "update()")); id += 1;
-    main_track.add_span(Span::new(id, 0.050, 0.060, 2, "physics()")); id += 1;
-    main_track.add_span(Span::new(id, 0.060, 0.068, 2, "ai_tick()")); id += 1;
-    main_track.add_span(Span::new(id, 0.068, 0.096, 1, "render()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.068, 0.082, 2, "draw_nodes()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.082, 0.092, 2, "draw_ui()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.092, 0.096, 2, "swap()").with_category("render")); id += 1;
-    main_track.add_span(Span::new(id, 0.096, 0.100, 1, "present()")); id += 1;
+    main_track.add_span(Span::new(id, 0.050, 0.100, 0, "frame()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.050, 0.068, 1, "update()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.050, 0.060, 2, "physics()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.060, 0.068, 2, "ai_tick()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.068, 0.096, 1, "render()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.068, 0.082, 2, "draw_nodes()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.082, 0.092, 2, "draw_ui()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.092, 0.096, 2, "swap()").with_category("render"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.096, 0.100, 1, "present()"));
+    id += 1;
 
     // Frame 3: 100..160ms (slow frame — GC spike)
-    main_track.add_span(Span::new(id, 0.100, 0.160, 0, "frame()")); id += 1;
-    main_track.add_span(Span::new(id, 0.100, 0.115, 1, "update()")); id += 1;
-    main_track.add_span(Span::new(id, 0.100, 0.108, 2, "physics()")); id += 1;
-    main_track.add_span(Span::new(id, 0.108, 0.115, 2, "ai_tick()")); id += 1;
-    main_track.add_span(Span::new(id, 0.115, 0.145, 1, "render()").with_category("render")); id += 1;
+    main_track.add_span(Span::new(id, 0.100, 0.160, 0, "frame()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.100, 0.115, 1, "update()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.100, 0.108, 2, "physics()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.108, 0.115, 2, "ai_tick()"));
+    id += 1;
+    main_track.add_span(Span::new(id, 0.115, 0.145, 1, "render()").with_category("render"));
+    id += 1;
     main_track.add_span(
         Span::new(id, 0.120, 0.140, 2, "GC_PAUSE")
             .with_color([1.0, 0.2, 0.2, 0.95])
             .with_source("runtime/gc.rs:304"),
-    ); id += 1;
-    main_track.add_span(Span::new(id, 0.145, 0.158, 1, "present()")); id += 1;
+    );
+    id += 1;
+    main_track.add_span(Span::new(id, 0.145, 0.158, 1, "present()"));
+    id += 1;
 
     tracks.push(main_track);
 
     // ── Render Thread ───────────────────────────────────────────
     let mut render_track = Track::new("Render Thread");
-    render_track.add_span(Span::new(id, 0.020, 0.045, 0, "gpu_submit")); id += 1;
-    render_track.add_span(Span::new(id, 0.020, 0.035, 1, "command_buffer")); id += 1;
-    render_track.add_span(Span::new(id, 0.035, 0.045, 1, "present")); id += 1;
-    render_track.add_span(Span::new(id, 0.070, 0.094, 0, "gpu_submit")); id += 1;
-    render_track.add_span(Span::new(id, 0.070, 0.085, 1, "command_buffer")); id += 1;
-    render_track.add_span(Span::new(id, 0.085, 0.094, 1, "present")); id += 1;
-    render_track.add_span(Span::new(id, 0.118, 0.155, 0, "gpu_submit")); id += 1;
-    render_track.add_span(Span::new(id, 0.118, 0.148, 1, "command_buffer")); id += 1;
-    render_track.add_span(Span::new(id, 0.148, 0.155, 1, "present")); id += 1;
+    render_track.add_span(Span::new(id, 0.020, 0.045, 0, "gpu_submit"));
+    id += 1;
+    render_track.add_span(Span::new(id, 0.020, 0.035, 1, "command_buffer"));
+    id += 1;
+    render_track.add_span(Span::new(id, 0.035, 0.045, 1, "present"));
+    id += 1;
+    render_track.add_span(Span::new(id, 0.070, 0.094, 0, "gpu_submit"));
+    id += 1;
+    render_track.add_span(Span::new(id, 0.070, 0.085, 1, "command_buffer"));
+    id += 1;
+    render_track.add_span(Span::new(id, 0.085, 0.094, 1, "present"));
+    id += 1;
+    render_track.add_span(Span::new(id, 0.118, 0.155, 0, "gpu_submit"));
+    id += 1;
+    render_track.add_span(Span::new(id, 0.118, 0.148, 1, "command_buffer"));
+    id += 1;
+    render_track.add_span(Span::new(id, 0.148, 0.155, 1, "present"));
+    id += 1;
     tracks.push(render_track);
 
     // ── Audio Thread ────────────────────────────────────────────
@@ -88,9 +123,7 @@ fn build_sample_data() -> (Vec<Track>, Vec<Marker>) {
     for i in 0..16 {
         let start = i as f64 * 0.010;
         let end = start + 0.003;
-        audio_track.add_span(
-            Span::new(id, start, end, 0, "mix_buffer").with_category("audio"),
-        );
+        audio_track.add_span(Span::new(id, start, end, 0, "mix_buffer").with_category("audio"));
         id += 1;
     }
     tracks.push(audio_track);
@@ -98,12 +131,15 @@ fn build_sample_data() -> (Vec<Track>, Vec<Marker>) {
     // ── IO Thread ───────────────────────────────────────────────
     let mut io_track = Track::new("IO Thread");
     io_track.add_span(
-        Span::new(id, 0.005, 0.035, 0, "load_texture")
-            .with_source("assets/loader.rs:89"),
-    ); id += 1;
-    io_track.add_span(Span::new(id, 0.040, 0.060, 0, "load_mesh")); id += 1;
-    io_track.add_span(Span::new(id, 0.080, 0.130, 0, "stream_level")); id += 1;
-    io_track.add_span(Span::new(id, 0.080, 0.095, 1, "decompress")); id += 1;
+        Span::new(id, 0.005, 0.035, 0, "load_texture").with_source("assets/loader.rs:89"),
+    );
+    id += 1;
+    io_track.add_span(Span::new(id, 0.040, 0.060, 0, "load_mesh"));
+    id += 1;
+    io_track.add_span(Span::new(id, 0.080, 0.130, 0, "stream_level"));
+    id += 1;
+    io_track.add_span(Span::new(id, 0.080, 0.095, 1, "decompress"));
+    id += 1;
     io_track.add_span(Span::new(id, 0.095, 0.130, 1, "upload"));
     tracks.push(io_track);
 
@@ -111,8 +147,7 @@ fn build_sample_data() -> (Vec<Track>, Vec<Marker>) {
     let markers = vec![
         Marker::new(0.0, "Frame 1"),
         Marker::new(0.050, "Frame 2"),
-        Marker::new(0.100, "Frame 3 (slow)")
-            .with_color([1.0, 0.4, 0.3, 0.8]),
+        Marker::new(0.100, "Frame 3 (slow)").with_color([1.0, 0.4, 0.3, 0.8]),
     ];
 
     (tracks, markers)
@@ -266,23 +301,47 @@ impl DemoState {
         ui.text("Layout");
 
         ui.set_next_item_width(-1.0);
-        ui.slider("Row Height", 10.0, 40.0, &mut self.timeline.config.row_height);
+        ui.slider(
+            "Row Height",
+            10.0,
+            40.0,
+            &mut self.timeline.config.row_height,
+        );
         ui.set_next_item_width(-1.0);
         ui.slider("Row Gap", 0.0, 4.0, &mut self.timeline.config.row_gap);
         ui.set_next_item_width(-1.0);
-        ui.slider("Ruler H", 16.0, 40.0, &mut self.timeline.config.ruler_height);
+        ui.slider(
+            "Ruler H",
+            16.0,
+            40.0,
+            &mut self.timeline.config.ruler_height,
+        );
         ui.set_next_item_width(-1.0);
-        ui.slider("Label W", 0.0, 200.0, &mut self.timeline.config.track_label_width);
+        ui.slider(
+            "Label W",
+            0.0,
+            200.0,
+            &mut self.timeline.config.track_label_width,
+        );
         ui.set_next_item_width(-1.0);
-        ui.slider("Min Span W", 1.0, 10.0, &mut self.timeline.config.min_span_width);
+        ui.slider(
+            "Min Span W",
+            1.0,
+            10.0,
+            &mut self.timeline.config.min_span_width,
+        );
 
         ui.spacing();
         ui.separator();
         ui.text("Tracks");
 
         for (i, track) in self.timeline.tracks().iter().enumerate() {
-            let label = format!("{}: {} spans, depth {}",
-                track.name, track.spans.len(), track.max_depth());
+            let label = format!(
+                "{}: {} spans, depth {}",
+                track.name,
+                track.spans.len(),
+                track.max_depth()
+            );
             ui.text_disabled(&label);
             let _ = i;
         }
@@ -315,12 +374,16 @@ struct App {
 }
 
 impl App {
-    fn new() -> Self { Self { gpu: None } }
+    fn new() -> Self {
+        Self { gpu: None }
+    }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gpu.is_some() { return; }
+        if self.gpu.is_some() {
+            return;
+        }
 
         let window = Arc::new(
             event_loop
@@ -344,8 +407,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -418,7 +480,10 @@ impl ApplicationHandler for App {
         gpu.platform.handle_event::<()>(
             &mut gpu.context,
             &gpu.window,
-            &Event::WindowEvent { window_id, event: event.clone() },
+            &Event::WindowEvent {
+                window_id,
+                event: event.clone(),
+            },
         );
 
         match event {
@@ -433,8 +498,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -444,7 +508,9 @@ impl ApplicationHandler for App {
                     }
                 };
 
-                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
 
                 let ui = gpu.context.frame();
@@ -453,9 +519,11 @@ impl ApplicationHandler for App {
 
                 let draw_data = gpu.context.render();
 
-                let mut encoder = gpu.device.create_command_encoder(
-                    &wgpu::CommandEncoderDescriptor { label: Some("imgui") },
-                );
+                let mut encoder =
+                    gpu.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("imgui"),
+                        });
 
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -466,7 +534,10 @@ impl ApplicationHandler for App {
                             depth_slice: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.06, g: 0.06, b: 0.08, a: 1.0,
+                                    r: 0.06,
+                                    g: 0.06,
+                                    b: 0.08,
+                                    a: 1.0,
                                 }),
                                 store: wgpu::StoreOp::Store,
                             },
@@ -478,7 +549,9 @@ impl ApplicationHandler for App {
                     });
 
                     if draw_data.total_vtx_count > 0 {
-                        gpu.renderer.render_draw_data(draw_data, &mut pass).expect("render");
+                        gpu.renderer
+                            .render_draw_data(draw_data, &mut pass)
+                            .expect("render");
                     }
                 }
 
@@ -541,7 +614,10 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::Tab, [0.14, 0.15, 0.19, 1.0]);
     style.set_color(StyleColor::TabHovered, accent_dim);
     style.set_color(StyleColor::TabSelected, [0.22, 0.24, 0.30, 1.0]);
-    style.set_color(StyleColor::TextSelectedBg, [accent[0], accent[1], accent[2], 0.30]);
+    style.set_color(
+        StyleColor::TextSelectedBg,
+        [accent[0], accent[1], accent[2], 0.30],
+    );
     style.set_color(StyleColor::Text, [0.92, 0.93, 0.95, 1.0]);
     style.set_color(StyleColor::TextDisabled, [0.42, 0.45, 0.52, 1.0]);
     style.set_color(StyleColor::PlotHistogram, accent_hi);

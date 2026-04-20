@@ -207,7 +207,10 @@ mod tests {
     fn take_cell_value_slider_float() {
         let mut es = EditState::default();
         es.activate(0, 0, &CellValue::Float(1.5));
-        let val = es.take_cell_value(&CellEditor::SliderFloat { min: 0.0, max: 10.0 });
+        let val = es.take_cell_value(&CellEditor::SliderFloat {
+            min: 0.0,
+            max: 10.0,
+        });
         match val {
             CellValue::Float(v) => assert!((v - 1.5).abs() < 0.01),
             _ => panic!("expected Float"),

@@ -12,8 +12,8 @@ use super::super::state::{InteractionState, NewWire};
 use super::super::types::*;
 use super::super::viewer::NodeGraphViewer;
 use super::math::{
-    bezier_control_points, cubic_bezier, find_obstacles_in_corridor,
-    obstacle_aware_bezier_cps, ortho_wire_points, NodeAABB,
+    NodeAABB, bezier_control_points, cubic_bezier, find_obstacles_in_corridor,
+    obstacle_aware_bezier_cps, ortho_wire_points,
 };
 
 // ─── Wire rendering ──────────────────────────────────────────────────────────
@@ -40,7 +40,10 @@ pub(super) fn render_wires<T>(
         // Determine wire color and style from output pin info (single lookup)
         let (wire_color, wire_style) = if let Some(node) = graph.get_node(wire.out_pin.node) {
             let info = viewer.output_pin(&node.value, wire.out_pin.output);
-            (info.effective_wire_color(), info.wire_style.unwrap_or(config.wire_style))
+            (
+                info.effective_wire_color(),
+                info.wire_style.unwrap_or(config.wire_style),
+            )
         } else {
             (colors.wire_default, config.wire_style)
         };
@@ -59,8 +62,16 @@ pub(super) fn render_wires<T>(
         };
 
         draw_wire_smart(
-            draw, from_pos, to_pos, color, thickness, wire_style, config,
-            aabbs, wire.out_pin.node, wire.in_pin.node,
+            draw,
+            from_pos,
+            to_pos,
+            color,
+            thickness,
+            wire_style,
+            config,
+            aabbs,
+            wire.out_pin.node,
+            wire.in_pin.node,
         );
 
         // ── Wire flow animation (dots moving along the wire) ─────────
@@ -111,8 +122,13 @@ fn draw_wire_smart(
         }
         WireStyle::Bezier => {
             let (cp0, cp1) = obstacle_aware_bezier_cps(
-                from, to, config.wire_curvature,
-                has_obstacle, obs_y_min, obs_y_max, margin,
+                from,
+                to,
+                config.wire_curvature,
+                has_obstacle,
+                obs_y_min,
+                obs_y_max,
+                margin,
             );
             draw.add_bezier_curve(from, cp0, cp1, to, c)
                 .thickness(thickness)
@@ -218,7 +234,9 @@ fn render_wire_flow_dots(
             let dx = to[0] - from[0];
             let dy = to[1] - from[1];
             let length = (dx * dx + dy * dy).sqrt();
-            if length < 1.0 { return; }
+            if length < 1.0 {
+                return;
+            }
             let nx = dx / length;
             let ny = dy / length;
             let mut d = offset;
@@ -249,10 +267,7 @@ fn render_wire_flow_dots(
                     let seg_len = (dx * dx + dy * dy).sqrt();
                     if accum + seg_len >= d {
                         let frac = (d - accum) / seg_len.max(0.001);
-                        let pt = [
-                            segs[i][0] + dx * frac,
-                            segs[i][1] + dy * frac,
-                        ];
+                        let pt = [segs[i][0] + dx * frac, segs[i][1] + dy * frac];
                         draw.add_circle(pt, dot_r, c32(color, 180))
                             .num_segments(6)
                             .filled(true)
@@ -283,16 +298,26 @@ pub(super) fn render_dragging_wire(
         NewWire::FromOutput(pin) => {
             if let Some(from_pos) = state.find_output_pos(*pin) {
                 draw_wire_simple(
-                    draw, from_pos, mouse,
-                    colors.wire_dragging, config.wire_thickness, config.wire_style, config,
+                    draw,
+                    from_pos,
+                    mouse,
+                    colors.wire_dragging,
+                    config.wire_thickness,
+                    config.wire_style,
+                    config,
                 );
             }
         }
         NewWire::FromInput(pin) => {
             if let Some(to_pos) = state.find_input_pos(*pin) {
                 draw_wire_simple(
-                    draw, mouse, to_pos,
-                    colors.wire_dragging, config.wire_thickness, config.wire_style, config,
+                    draw,
+                    mouse,
+                    to_pos,
+                    colors.wire_dragging,
+                    config.wire_thickness,
+                    config.wire_style,
+                    config,
                 );
             }
         }

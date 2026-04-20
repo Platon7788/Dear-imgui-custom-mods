@@ -37,3 +37,21 @@ pub fn pack_color_f32(c: [f32; 4]) -> u32 {
 pub const fn rgb_arr(c: [u8; 3], a: u8) -> u32 {
     rgba(c[0], c[1], c[2], a)
 }
+
+/// Linearly blend two RGBA colors. `t = 0.0` → `a`, `t = 1.0` → `b`.
+#[inline]
+pub fn blend_color(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+    let t = t.clamp(0.0, 1.0);
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        a[3] + (b[3] - a[3]) * t,
+    ]
+}
+
+/// Multiply the alpha component of `c` by `a`, leaving RGB unchanged.
+#[inline]
+pub fn with_alpha(c: [f32; 4], a: f32) -> [f32; 4] {
+    [c[0], c[1], c[2], c[3] * a]
+}

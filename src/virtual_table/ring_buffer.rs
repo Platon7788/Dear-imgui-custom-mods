@@ -82,7 +82,11 @@ impl<T> RingBuffer<T> {
     /// Logical start index (oldest item) in the physical buffer.
     #[inline]
     fn start(&self) -> usize {
-        if self.len < self.capacity { 0 } else { self.head }
+        if self.len < self.capacity {
+            0
+        } else {
+            self.head
+        }
     }
 
     /// Map logical index → physical index.

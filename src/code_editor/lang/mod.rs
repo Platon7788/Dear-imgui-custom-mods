@@ -65,22 +65,43 @@ pub(crate) fn consume_decimal(i: &mut usize, bytes: &[u8]) {
 pub struct PlainTextLang;
 
 impl SyntaxDefinition for PlainTextLang {
-    fn name(&self) -> &str { "Plain Text" }
+    fn name(&self) -> &str {
+        "Plain Text"
+    }
 
     fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
         if line.is_empty() {
             (vec![], false)
         } else {
-            (vec![Token { kind: TokenKind::Identifier, start: 0, len: line.len() }], false)
+            (
+                vec![Token {
+                    kind: TokenKind::Identifier,
+                    start: 0,
+                    len: line.len(),
+                }],
+                false,
+            )
         }
     }
 
-    fn line_comment_prefix(&self) -> Option<&str> { None }
-    fn block_comment_delimiters(&self) -> Option<(&str, &str)> { None }
-    fn bracket_pairs(&self) -> &[(char, char)] { &[] }
-    fn auto_indent_after(&self) -> &[char] { &[] }
-    fn auto_dedent_on(&self) -> &[char] { &[] }
-    fn auto_close_pairs(&self) -> &[(&str, &str)] { &[] }
+    fn line_comment_prefix(&self) -> Option<&str> {
+        None
+    }
+    fn block_comment_delimiters(&self) -> Option<(&str, &str)> {
+        None
+    }
+    fn bracket_pairs(&self) -> &[(char, char)] {
+        &[]
+    }
+    fn auto_indent_after(&self) -> &[char] {
+        &[]
+    }
+    fn auto_dedent_on(&self) -> &[char] {
+        &[]
+    }
+    fn auto_close_pairs(&self) -> &[(&str, &str)] {
+        &[]
+    }
 }
 
 // ── Dispatch functions ──────────────────────────────────────────────────────
@@ -96,16 +117,16 @@ pub fn tokenize_line(
     in_block_comment: bool,
 ) -> (Vec<Token>, bool) {
     match language {
-        Language::None                 => PlainTextLang.tokenize_line(line, in_block_comment),
+        Language::None => PlainTextLang.tokenize_line(line, in_block_comment),
         Language::Rust | Language::Ron => rust::RustLang.tokenize_line(line, in_block_comment),
-        Language::Rhai                 => rhai::RhaiLang.tokenize_line(line, in_block_comment),
-        Language::Toml                 => toml::TomlLang.tokenize_line(line, in_block_comment),
-        Language::Json                 => json::JsonLang.tokenize_line(line, in_block_comment),
-        Language::Yaml                 => yaml::YamlLang.tokenize_line(line, in_block_comment),
-        Language::Xml                  => xml::XmlLang.tokenize_line(line, in_block_comment),
-        Language::Hex                  => hex::HexLang.tokenize_line(line, in_block_comment),
-        Language::Asm                  => asm::AsmLang.tokenize_line(line, in_block_comment),
-        Language::Custom(def)          => def.tokenize_line(line, in_block_comment),
+        Language::Rhai => rhai::RhaiLang.tokenize_line(line, in_block_comment),
+        Language::Toml => toml::TomlLang.tokenize_line(line, in_block_comment),
+        Language::Json => json::JsonLang.tokenize_line(line, in_block_comment),
+        Language::Yaml => yaml::YamlLang.tokenize_line(line, in_block_comment),
+        Language::Xml => xml::XmlLang.tokenize_line(line, in_block_comment),
+        Language::Hex => hex::HexLang.tokenize_line(line, in_block_comment),
+        Language::Asm => asm::AsmLang.tokenize_line(line, in_block_comment),
+        Language::Custom(def) => def.tokenize_line(line, in_block_comment),
     }
 }
 
@@ -117,16 +138,16 @@ pub fn tokenize_line(
 /// vtable overhead is irrelevant for these cold-path calls.
 pub fn definition(language: &Language) -> &dyn SyntaxDefinition {
     match language {
-        Language::None                 => &PlainTextLang,
+        Language::None => &PlainTextLang,
         Language::Rust | Language::Ron => &rust::RustLang,
-        Language::Rhai                 => &rhai::RhaiLang,
-        Language::Toml                 => &toml::TomlLang,
-        Language::Json                 => &json::JsonLang,
-        Language::Yaml                 => &yaml::YamlLang,
-        Language::Xml                  => &xml::XmlLang,
-        Language::Hex                  => &hex::HexLang,
-        Language::Asm                  => &asm::AsmLang,
-        Language::Custom(def)          => def.as_ref(),
+        Language::Rhai => &rhai::RhaiLang,
+        Language::Toml => &toml::TomlLang,
+        Language::Json => &json::JsonLang,
+        Language::Yaml => &yaml::YamlLang,
+        Language::Xml => &xml::XmlLang,
+        Language::Hex => &hex::HexLang,
+        Language::Asm => &asm::AsmLang,
+        Language::Custom(def) => def.as_ref(),
     }
 }
 
@@ -140,12 +161,23 @@ mod tests {
     #[test]
     fn test_empty_line_all_langs() {
         for lang in [
-            Language::None, Language::Rust, Language::Ron, Language::Rhai,
-            Language::Toml, Language::Json, Language::Yaml, Language::Xml,
-            Language::Hex, Language::Asm,
+            Language::None,
+            Language::Rust,
+            Language::Ron,
+            Language::Rhai,
+            Language::Toml,
+            Language::Json,
+            Language::Yaml,
+            Language::Xml,
+            Language::Hex,
+            Language::Asm,
         ] {
             let (toks, _) = tokenize_line("", &lang, false);
-            assert!(toks.is_empty(), "non-empty tokens for {:?} on empty line", lang);
+            assert!(
+                toks.is_empty(),
+                "non-empty tokens for {:?} on empty line",
+                lang
+            );
         }
     }
 
@@ -186,15 +218,28 @@ mod tests {
 
     #[test]
     fn test_definition_comment_delimiters() {
-        assert_eq!(definition(&Language::Rust).line_comment_prefix(), Some("//"));
+        assert_eq!(
+            definition(&Language::Rust).line_comment_prefix(),
+            Some("//")
+        );
         assert_eq!(definition(&Language::Toml).line_comment_prefix(), Some("#"));
         assert_eq!(definition(&Language::Yaml).line_comment_prefix(), Some("#"));
         assert_eq!(definition(&Language::Xml).line_comment_prefix(), None);
         assert_eq!(definition(&Language::None).line_comment_prefix(), None);
 
-        assert_eq!(definition(&Language::Rust).block_comment_delimiters(), Some(("/*", "*/")));
-        assert_eq!(definition(&Language::Xml).block_comment_delimiters(), Some(("<!--", "-->")));
-        assert!(definition(&Language::Yaml).block_comment_delimiters().is_none());
+        assert_eq!(
+            definition(&Language::Rust).block_comment_delimiters(),
+            Some(("/*", "*/"))
+        );
+        assert_eq!(
+            definition(&Language::Xml).block_comment_delimiters(),
+            Some(("<!--", "-->"))
+        );
+        assert!(
+            definition(&Language::Yaml)
+                .block_comment_delimiters()
+                .is_none()
+        );
     }
 
     #[test]

@@ -38,12 +38,11 @@
 pub mod config;
 
 pub use config::{
-    BranchArrow, ColumnWidths, DisasmColors, DisasmDataProvider, DisasmViewConfig,
-    FlowKind, Instruction, InstructionEntry, VecDisasmProvider,
-    compute_arrows, MAX_ARROW_DEPTH,
+    BranchArrow, ColumnWidths, DisasmColors, DisasmDataProvider, DisasmViewConfig, FlowKind,
+    Instruction, InstructionEntry, MAX_ARROW_DEPTH, VecDisasmProvider, compute_arrows,
 };
 
-use crate::utils::clipboard::{set_clipboard, vk_down, VK_C};
+use crate::utils::clipboard::{VK_C, set_clipboard, vk_down};
 use crate::utils::color::rgba_f32;
 use crate::utils::text::calc_text_size;
 
@@ -157,16 +156,24 @@ impl DisasmView {
     // ── Public API ───────────────────────────────────────────────────
 
     /// Currently focused (cursor) instruction index.
-    pub fn selected_index(&self) -> Option<usize> { self.cursor_idx }
+    pub fn selected_index(&self) -> Option<usize> {
+        self.cursor_idx
+    }
 
     /// All selected instruction indices.
-    pub fn selected_indices(&self) -> &BTreeSet<usize> { &self.selection }
+    pub fn selected_indices(&self) -> &BTreeSet<usize> {
+        &self.selection
+    }
 
     /// Number of selected instructions.
-    pub fn selected_count(&self) -> usize { self.selection.len() }
+    pub fn selected_count(&self) -> usize {
+        self.selection.len()
+    }
 
     /// Whether a specific index is selected.
-    pub fn is_selected(&self, idx: usize) -> bool { self.selection.contains(&idx) }
+    pub fn is_selected(&self, idx: usize) -> bool {
+        self.selection.contains(&idx)
+    }
 
     /// Set the cursor and single-select one instruction.
     pub fn select(&mut self, idx: usize) {
@@ -197,7 +204,8 @@ impl DisasmView {
 
     /// Navigate back in address history.
     pub fn nav_back(&mut self, provider: &dyn DisasmDataProvider) {
-        let current_addr = self.cursor_idx
+        let current_addr = self
+            .cursor_idx
             .and_then(|i| provider.instruction(i))
             .map(|instr| instr.address())
             .unwrap_or(0);
@@ -210,7 +218,8 @@ impl DisasmView {
 
     /// Navigate forward in address history.
     pub fn nav_forward(&mut self, provider: &dyn DisasmDataProvider) {
-        let current_addr = self.cursor_idx
+        let current_addr = self
+            .cursor_idx
             .and_then(|i| provider.instruction(i))
             .map(|instr| instr.address())
             .unwrap_or(0);
@@ -234,14 +243,18 @@ impl DisasmView {
     }
 
     /// Whether the view is focused.
-    pub fn is_focused(&self) -> bool { self.focused }
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
 
     // ── Rendering ────────────────────────────────────────────────────
 
     /// Render the disassembly view widget.
     pub fn render(&mut self, ui: &dear_imgui_rs::Ui, provider: &mut dyn DisasmDataProvider) {
         let count = provider.instruction_count();
-        if count == 0 { return; }
+        if count == 0 {
+            return;
+        }
 
         self.frame_counter = self.frame_counter.wrapping_add(1);
 
@@ -275,7 +288,7 @@ impl DisasmView {
             .size([avail[0], avail[1]])
             .flags(
                 dear_imgui_rs::WindowFlags::NO_MOVE
-                | dear_imgui_rs::WindowFlags::NO_SCROLL_WITH_MOUSE,
+                    | dear_imgui_rs::WindowFlags::NO_SCROLL_WITH_MOUSE,
             )
             .build(ui, || {
                 let was_focused = self.focused;
@@ -320,9 +333,8 @@ impl DisasmView {
                     let visible_instrs: Vec<&dyn Instruction> = (first_row..last_row)
                         .filter_map(|i| provider.instruction(i))
                         .collect();
-                    self.cached_arrows = compute_arrows(
-                        &visible_instrs, first_row, last_row - first_row,
-                    );
+                    self.cached_arrows =
+                        compute_arrows(&visible_instrs, first_row, last_row - first_row);
                     if self.cached_arrows.len() > self.config.max_arrows {
                         self.cached_arrows.truncate(self.config.max_arrows);
                     }
@@ -333,7 +345,11 @@ impl DisasmView {
                     self.draw_header(&draw_list, origin_x, origin_y);
                 }
 
-                let header_h = if self.config.show_header { self.line_height } else { 0.0 };
+                let header_h = if self.config.show_header {
+                    self.line_height
+                } else {
+                    0.0
+                };
 
                 // ── Draw rows ─────────────────────────────────
                 let mouse_pos = ui.io().mouse_pos();
@@ -341,18 +357,14 @@ impl DisasmView {
                     if let Some(instr) = provider.instruction(row) {
                         let y = origin_y + header_h + (row - first_row) as f32 * self.line_height;
                         self.draw_instruction_row(
-                            ui, &draw_list, origin_x, y, row, instr,
-                            mouse_pos, avail[0], first_row,
+                            ui, &draw_list, origin_x, y, row, instr, mouse_pos, avail[0], first_row,
                         );
                     }
                 }
 
                 // ── Draw branch arrows on top ─────────────────
                 if self.config.show_arrows && !self.cached_arrows.is_empty() {
-                    self.draw_arrows(
-                        &draw_list, origin_x, origin_y + header_h,
-                        first_row,
-                    );
+                    self.draw_arrows(&draw_list, origin_x, origin_y + header_h, first_row);
                 }
 
                 // ── Render inline InputText for editing ──────────
@@ -374,9 +386,7 @@ impl DisasmView {
                             | dear_imgui_rs::InputTextFlags::AUTO_SELECT_ALL
                             | dear_imgui_rs::InputTextFlags::ENTER_RETURNS_TRUE;
 
-                        let entered = ui.input_text(&label, &mut edit.buf)
-                            .flags(flags)
-                            .build();
+                        let entered = ui.input_text(&label, &mut edit.buf).flags(flags).build();
 
                         if entered {
                             // Enter pressed — commit.
@@ -398,12 +408,7 @@ impl DisasmView {
 
     // ── Drawing helpers ──────────────────────────────────────────────
 
-    fn draw_header(
-        &self,
-        draw_list: &dear_imgui_rs::DrawListMut<'_>,
-        origin_x: f32,
-        y: f32,
-    ) {
+    fn draw_header(&self, draw_list: &dear_imgui_rs::DrawListMut<'_>, origin_x: f32, y: f32) {
         let cols = &self.config.columns;
         let hdr_col = col32(self.config.colors.header);
         let mut x = origin_x;
@@ -453,21 +458,23 @@ impl DisasmView {
         if cfg.show_block_tints {
             let tint = colors.block_tint(instr.block_index());
             if tint[3] > 0.0 {
-                draw_list.add_rect(
-                    [origin_x, y],
-                    [origin_x + win_w, y + lh],
-                    col32(tint),
-                ).filled(true).build();
+                draw_list
+                    .add_rect([origin_x, y], [origin_x + win_w, y + lh], col32(tint))
+                    .filled(true)
+                    .build();
             }
         }
 
         // ── Current execution highlight ───────────────────────
         if instr.is_current() {
-            draw_list.add_rect(
-                [origin_x, y],
-                [origin_x + win_w, y + lh],
-                col32(colors.current_line_bg),
-            ).filled(true).build();
+            draw_list
+                .add_rect(
+                    [origin_x, y],
+                    [origin_x + win_w, y + lh],
+                    col32(colors.current_line_bg),
+                )
+                .filled(true)
+                .build();
         }
 
         // ── Selection highlight ───────────────────────────────
@@ -476,29 +483,44 @@ impl DisasmView {
         if is_selected {
             // Brighter for cursor row, dimmer for other selected rows.
             let alpha = if is_cursor { 0.55 } else { 0.35 };
-            draw_list.add_rect(
-                [origin_x, y],
-                [origin_x + win_w, y + lh],
-                col32([colors.selection_bg[0], colors.selection_bg[1],
-                       colors.selection_bg[2], alpha]),
-            ).filled(true).build();
+            draw_list
+                .add_rect(
+                    [origin_x, y],
+                    [origin_x + win_w, y + lh],
+                    col32([
+                        colors.selection_bg[0],
+                        colors.selection_bg[1],
+                        colors.selection_bg[2],
+                        alpha,
+                    ]),
+                )
+                .filled(true)
+                .build();
         } else if is_cursor {
-            draw_list.add_rect(
-                [origin_x, y],
-                [origin_x + win_w, y + lh],
-                col32(colors.selection_bg),
-            ).filled(true).build();
+            draw_list
+                .add_rect(
+                    [origin_x, y],
+                    [origin_x + win_w, y + lh],
+                    col32(colors.selection_bg),
+                )
+                .filled(true)
+                .build();
         }
 
         // ── Row hover ─────────────────────────────────────────
-        let row_hovered = mouse_pos[1] >= y && mouse_pos[1] < y + lh
-            && mouse_pos[0] >= origin_x && mouse_pos[0] < origin_x + win_w;
+        let row_hovered = mouse_pos[1] >= y
+            && mouse_pos[1] < y + lh
+            && mouse_pos[0] >= origin_x
+            && mouse_pos[0] < origin_x + win_w;
         if row_hovered && !is_selected && !is_cursor {
-            draw_list.add_rect(
-                [origin_x, y],
-                [origin_x + win_w, y + lh],
-                col32(colors.hover_bg),
-            ).filled(true).build();
+            draw_list
+                .add_rect(
+                    [origin_x, y],
+                    [origin_x + win_w, y + lh],
+                    col32(colors.hover_bg),
+                )
+                .filled(true)
+                .build();
         }
 
         let mut x = origin_x;
@@ -509,10 +531,19 @@ impl DisasmView {
             if bp_num > 0 {
                 let bp_color = colors.bp_color(bp_num);
                 // Background tint for the gutter cell.
-                draw_list.add_rect(
-                    [x, y], [x + cols.margin, y + lh],
-                    col32([bp_color[0] * 0.3, bp_color[1] * 0.3, bp_color[2] * 0.3, 0.35]),
-                ).filled(true).build();
+                draw_list
+                    .add_rect(
+                        [x, y],
+                        [x + cols.margin, y + lh],
+                        col32([
+                            bp_color[0] * 0.3,
+                            bp_color[1] * 0.3,
+                            bp_color[2] * 0.3,
+                            0.35,
+                        ]),
+                    )
+                    .filled(true)
+                    .build();
                 // Numbered label (centered).
                 let label = format!("{}", bp_num);
                 let text_w = label.len() as f32 * self.char_advance;
@@ -533,8 +564,11 @@ impl DisasmView {
         // ── Address column ────────────────────────────────────
         let addr = instr.address();
         let addr_str = if cfg.address_width_64 {
-            if cfg.uppercase { format!("{:016X}", addr) }
-            else { format!("{:016x}", addr) }
+            if cfg.uppercase {
+                format!("{:016X}", addr)
+            } else {
+                format!("{:016x}", addr)
+            }
         } else if cfg.uppercase {
             format!("{:08X}", addr)
         } else {
@@ -545,7 +579,9 @@ impl DisasmView {
 
         // ── Bytes column (with inline InputText edit) ──────────
         if cfg.show_bytes {
-            let is_editing_bytes = self.edit.as_ref()
+            let is_editing_bytes = self
+                .edit
+                .as_ref()
                 .map(|e| e.idx == idx && e.column == EditColumn::Bytes)
                 .unwrap_or(false);
 
@@ -557,17 +593,32 @@ impl DisasmView {
                 self.edit_render_width.set(cols.bytes);
 
                 // Draw placeholder background so it's visible.
-                draw_list.add_rect(
-                    [x - 2.0, y], [x + cols.bytes, y + lh],
-                    col32([0.20, 0.15, 0.08, 0.95]),
-                ).filled(true).build();
-                draw_list.add_rect(
-                    [x - 2.0, y], [x + cols.bytes, y + lh],
-                    col32([1.0, 0.7, 0.3, 0.80]),
-                ).build();
+                draw_list
+                    .add_rect(
+                        [x - 2.0, y],
+                        [x + cols.bytes, y + lh],
+                        col32([0.20, 0.15, 0.08, 0.95]),
+                    )
+                    .filled(true)
+                    .build();
+                draw_list
+                    .add_rect(
+                        [x - 2.0, y],
+                        [x + cols.bytes, y + lh],
+                        col32([1.0, 0.7, 0.3, 0.80]),
+                    )
+                    .build();
             } else {
-                let bytes_str: String = instr.bytes().iter()
-                    .map(|b| if cfg.uppercase { format!("{:02X} ", b) } else { format!("{:02x} ", b) })
+                let bytes_str: String = instr
+                    .bytes()
+                    .iter()
+                    .map(|b| {
+                        if cfg.uppercase {
+                            format!("{:02X} ", b)
+                        } else {
+                            format!("{:02x} ", b)
+                        }
+                    })
                     .collect();
                 draw_list.add_text([x, y], col32(colors.bytes), bytes_str.trim_end());
             }
@@ -605,9 +656,11 @@ impl DisasmView {
                 // Instruction size and raw bytes
                 let bytes = instr.bytes();
                 ui.text(format!("Size: {} bytes", bytes.len()));
-                let hex_str: String = bytes.iter()
+                let hex_str: String = bytes
+                    .iter()
                     .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>().join(" ");
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 ui.text(format!("Bytes: {}", hex_str));
 
                 // Full instruction text
@@ -615,13 +668,13 @@ impl DisasmView {
 
                 // Flow kind with semantic description
                 let flow_desc = match instr.flow_kind() {
-                    FlowKind::Normal  => "Normal (sequential)",
-                    FlowKind::Jump    => "Jump (conditional/unconditional)",
-                    FlowKind::Call    => "Call (function call)",
-                    FlowKind::Return  => "Return (function epilogue)",
-                    FlowKind::Nop     => "NOP / padding",
-                    FlowKind::Stack   => "Stack operation (push/pop/sub rsp)",
-                    FlowKind::System  => "System (syscall/int/sysenter)",
+                    FlowKind::Normal => "Normal (sequential)",
+                    FlowKind::Jump => "Jump (conditional/unconditional)",
+                    FlowKind::Call => "Call (function call)",
+                    FlowKind::Return => "Return (function epilogue)",
+                    FlowKind::Nop => "NOP / padding",
+                    FlowKind::Stack => "Stack operation (push/pop/sub rsp)",
+                    FlowKind::System => "System (syscall/int/sysenter)",
                     FlowKind::Invalid => "INVALID (undecodable)",
                 };
                 ui.text(format!("Flow: {}", flow_desc));
@@ -632,7 +685,10 @@ impl DisasmView {
                     // Show offset (relative distance)
                     let offset = target as i64 - addr as i64;
                     if offset >= 0 {
-                        ui.text(format!("Offset: +0x{:X} ({} bytes forward)", offset, offset));
+                        ui.text(format!(
+                            "Offset: +0x{:X} ({} bytes forward)",
+                            offset, offset
+                        ));
                     } else {
                         ui.text(format!("Offset: -0x{:X} ({} bytes back)", -offset, -offset));
                     }
@@ -680,10 +736,10 @@ impl DisasmView {
         for token in OperandTokenizer::new(operands) {
             let color = match token.kind {
                 TokenKind::Register => colors.operand_register,
-                TokenKind::Number   => colors.operand_number,
-                TokenKind::Memory   => colors.operand_memory,
-                TokenKind::String   => colors.operand_string,
-                TokenKind::Plain    => colors.operand_default,
+                TokenKind::Number => colors.operand_number,
+                TokenKind::Memory => colors.operand_memory,
+                TokenKind::String => colors.operand_string,
+                TokenKind::Plain => colors.operand_default,
             };
             draw_list.add_text([cx, y], col32(color), token.text);
             cx += token.text.len() as f32 * cw;
@@ -704,7 +760,11 @@ impl DisasmView {
 
         // Arrow area starts after margin.
         let arrow_base_x = origin_x
-            + if self.config.show_breakpoints { cols.margin } else { 0.0 }
+            + if self.config.show_breakpoints {
+                cols.margin
+            } else {
+                0.0
+            }
             + cols.arrows;
         let depth_spacing = cols.arrows / (MAX_ARROW_DEPTH as f32 + 1.0);
 
@@ -718,38 +778,45 @@ impl DisasmView {
 
             // Draw L-shaped arrow: source → left → vertical → right → target.
             // Horizontal from source to vertical line.
-            draw_list.add_line([arrow_base_x, from_y], [x, from_y], color)
-                .thickness(thickness).build();
+            draw_list
+                .add_line([arrow_base_x, from_y], [x, from_y], color)
+                .thickness(thickness)
+                .build();
             // Vertical line.
-            draw_list.add_line([x, from_y], [x, to_y], color)
-                .thickness(thickness).build();
+            draw_list
+                .add_line([x, from_y], [x, to_y], color)
+                .thickness(thickness)
+                .build();
             // Horizontal to target.
-            draw_list.add_line([x, to_y], [arrow_base_x, to_y], color)
-                .thickness(thickness).build();
+            draw_list
+                .add_line([x, to_y], [arrow_base_x, to_y], color)
+                .thickness(thickness)
+                .build();
 
             // Arrowhead at target.
             let dir = if to_y > from_y { 1.0 } else { -1.0 };
             let head_size = 4.0;
-            draw_list.add_triangle(
-                [arrow_base_x, to_y],
-                [arrow_base_x - head_size, to_y - head_size * dir],
-                [arrow_base_x - head_size, to_y + head_size * dir],
-                color,
-            ).filled(true).build();
+            draw_list
+                .add_triangle(
+                    [arrow_base_x, to_y],
+                    [arrow_base_x - head_size, to_y - head_size * dir],
+                    [arrow_base_x - head_size, to_y + head_size * dir],
+                    color,
+                )
+                .filled(true)
+                .build();
         }
     }
 
     // ── Input handling ───────────────────────────────────────────────
 
-    fn handle_keyboard(
-        &mut self,
-        ui: &dear_imgui_rs::Ui,
-        provider: &mut dyn DisasmDataProvider,
-    ) {
+    fn handle_keyboard(&mut self, ui: &dear_imgui_rs::Ui, provider: &mut dyn DisasmDataProvider) {
         use dear_imgui_rs::Key;
 
         let count = provider.instruction_count();
-        if count == 0 { return; }
+        if count == 0 {
+            return;
+        }
 
         let ctrl = ui.io().key_ctrl();
         let alt = ui.io().key_alt();
@@ -880,7 +947,9 @@ impl DisasmView {
             match edit.column {
                 EditColumn::Bytes => {
                     // Parse hex bytes.
-                    let bytes: Vec<u8> = edit.buf.split_whitespace()
+                    let bytes: Vec<u8> = edit
+                        .buf
+                        .split_whitespace()
                         .filter_map(|tok| u8::from_str_radix(tok, 16).ok())
                         .collect();
                     if !bytes.is_empty() {
@@ -895,12 +964,10 @@ impl DisasmView {
         }
     }
 
-    fn handle_mouse(
-        &mut self,
-        ui: &dear_imgui_rs::Ui,
-        provider: &mut dyn DisasmDataProvider,
-    ) {
-        if !ui.is_window_hovered() { return; }
+    fn handle_mouse(&mut self, ui: &dear_imgui_rs::Ui, provider: &mut dyn DisasmDataProvider) {
+        if !ui.is_window_hovered() {
+            return;
+        }
 
         // Mouse wheel scroll.
         let wheel = ui.io().mouse_wheel();
@@ -973,9 +1040,12 @@ impl DisasmView {
             && let Some(idx) = self.mouse_to_instruction(ui, provider)
             && let Some(instr) = provider.instruction(idx)
         {
-            let bytes_str: String = instr.bytes().iter()
+            let bytes_str: String = instr
+                .bytes()
+                .iter()
                 .map(|b| format!("{:02X}", b))
-                .collect::<Vec<_>>().join(" ");
+                .collect::<Vec<_>>()
+                .join(" ");
             self.edit = Some(EditState {
                 idx,
                 column: EditColumn::Bytes,
@@ -1003,10 +1073,16 @@ impl DisasmView {
         let [_win_x, win_y] = ui.cursor_screen_pos();
         let scroll_y = ui.scroll_y();
         let origin_y = win_y + scroll_y;
-        let header_h = if self.config.show_header { self.line_height } else { 0.0 };
+        let header_h = if self.config.show_header {
+            self.line_height
+        } else {
+            0.0
+        };
 
         let rel_y = my - origin_y - header_h;
-        if rel_y < 0.0 { return None; }
+        if rel_y < 0.0 {
+            return None;
+        }
 
         let scroll_offset = (scroll_y / self.line_height) as usize;
         let row = (rel_y / self.line_height) as usize + scroll_offset;
@@ -1036,37 +1112,50 @@ impl DisasmView {
             self.selection.iter().copied().collect()
         };
 
-        if indices.is_empty() { return; }
+        if indices.is_empty() {
+            return;
+        }
 
-        let lines: Vec<String> = indices.iter().filter_map(|&idx| {
-            provider.instruction(idx).map(|instr| {
-                let addr = if self.config.address_width_64 {
-                    format!("{:016X}", instr.address())
-                } else {
-                    format!("{:08X}", instr.address())
-                };
-                let bytes_str: String = instr.bytes().iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>().join(" ");
-                let comment = instr.comment()
-                    .map(|c| format!(" ; {}", c))
-                    .unwrap_or_default();
-                format!("{}  {:16}  {} {}{}",
-                    addr, bytes_str, instr.mnemonic(), instr.operands(), comment)
+        let lines: Vec<String> = indices
+            .iter()
+            .filter_map(|&idx| {
+                provider.instruction(idx).map(|instr| {
+                    let addr = if self.config.address_width_64 {
+                        format!("{:016X}", instr.address())
+                    } else {
+                        format!("{:08X}", instr.address())
+                    };
+                    let bytes_str: String = instr
+                        .bytes()
+                        .iter()
+                        .map(|b| format!("{:02X}", b))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let comment = instr
+                        .comment()
+                        .map(|c| format!(" ; {}", c))
+                        .unwrap_or_default();
+                    format!(
+                        "{}  {:16}  {} {}{}",
+                        addr,
+                        bytes_str,
+                        instr.mnemonic(),
+                        instr.operands(),
+                        comment
+                    )
+                })
             })
-        }).collect();
+            .collect();
 
         set_clipboard(&lines.join("\n"));
     }
 
     // ── Goto popup ───────────────────────────────────────────────────
 
-    fn render_goto_popup(
-        &mut self,
-        ui: &dear_imgui_rs::Ui,
-        provider: &mut dyn DisasmDataProvider,
-    ) {
-        if !self.show_goto { return; }
+    fn render_goto_popup(&mut self, ui: &dear_imgui_rs::Ui, provider: &mut dyn DisasmDataProvider) {
+        if !self.show_goto {
+            return;
+        }
 
         let label = format!("##dv_goto_{}", self.id);
         ui.open_popup(&label);
@@ -1074,8 +1163,7 @@ impl DisasmView {
 
         if let Some(_popup) = ui.begin_popup(&label) {
             ui.text("Goto address (hex):");
-            ui.input_text("##dv_goto_input", &mut self.goto_buf)
-                .build();
+            ui.input_text("##dv_goto_input", &mut self.goto_buf).build();
 
             if ui.button("Go") || ui.is_key_pressed(dear_imgui_rs::Key::Enter) {
                 if let Some(addr) = parse_address(&self.goto_buf) {
@@ -1097,7 +1185,9 @@ impl DisasmView {
         ui: &dear_imgui_rs::Ui,
         provider: &mut dyn DisasmDataProvider,
     ) {
-        if !self.show_context_menu { return; }
+        if !self.show_context_menu {
+            return;
+        }
 
         let label = format!("##dv_ctx_{}", self.id);
         ui.open_popup(&label);
@@ -1106,8 +1196,10 @@ impl DisasmView {
         if let Some(_popup) = ui.begin_popup(&label) {
             let idx = self.context_idx.unwrap_or(0);
             let instr_addr = provider.instruction(idx).map(|i| i.address());
-            let has_target = provider.instruction(idx)
-                .and_then(|i| i.branch_target()).is_some();
+            let has_target = provider
+                .instruction(idx)
+                .and_then(|i| i.branch_target())
+                .is_some();
 
             if ui.selectable("Copy Address") {
                 if let Some(addr) = instr_addr {
@@ -1131,9 +1223,7 @@ impl DisasmView {
             ui.separator();
 
             if has_target && ui.selectable("Follow Branch") {
-                if let Some(target) = provider.instruction(idx)
-                    .and_then(|i| i.branch_target())
-                {
+                if let Some(target) = provider.instruction(idx).and_then(|i| i.branch_target()) {
                     self.goto_address(target, provider);
                 }
                 ui.close_current_popup();
@@ -1188,38 +1278,54 @@ impl<'a> Iterator for OperandTokenizer<'a> {
     type Item = OperandToken<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.remaining.is_empty() { return None; }
+        if self.remaining.is_empty() {
+            return None;
+        }
 
         // Consume leading whitespace/punctuation as plain tokens.
         let first = self.remaining.as_bytes()[0];
         if matches!(first, b' ' | b',' | b'+' | b'-' | b'*' | b':') {
-            let end = self.remaining.bytes()
+            let end = self
+                .remaining
+                .bytes()
                 .position(|b| !matches!(b, b' ' | b',' | b'+' | b'-' | b'*' | b':'))
                 .unwrap_or(self.remaining.len());
             let (tok, rest) = self.remaining.split_at(end);
             self.remaining = rest;
-            return Some(OperandToken { text: tok, kind: TokenKind::Plain });
+            return Some(OperandToken {
+                text: tok,
+                kind: TokenKind::Plain,
+            });
         }
 
         // Memory brackets.
         if first == b'[' || first == b']' {
             let (tok, rest) = self.remaining.split_at(1);
             self.remaining = rest;
-            return Some(OperandToken { text: tok, kind: TokenKind::Memory });
+            return Some(OperandToken {
+                text: tok,
+                kind: TokenKind::Memory,
+            });
         }
 
         // String literal.
         if first == b'"' {
-            let end = self.remaining[1..].find('"')
+            let end = self.remaining[1..]
+                .find('"')
                 .map(|p| p + 2)
                 .unwrap_or(self.remaining.len());
             let (tok, rest) = self.remaining.split_at(end);
             self.remaining = rest;
-            return Some(OperandToken { text: tok, kind: TokenKind::String });
+            return Some(OperandToken {
+                text: tok,
+                kind: TokenKind::String,
+            });
         }
 
         // Find end of word.
-        let end = self.remaining.bytes()
+        let end = self
+            .remaining
+            .bytes()
             .position(|b| matches!(b, b' ' | b',' | b'+' | b'-' | b'*' | b':' | b'[' | b']'))
             .unwrap_or(self.remaining.len());
         let (word, rest) = self.remaining.split_at(end);
@@ -1232,39 +1338,36 @@ impl<'a> Iterator for OperandTokenizer<'a> {
 
 /// Classify an operand token as register, number, or plain.
 fn classify_operand_token(token: &str) -> TokenKind {
-    if token.is_empty() { return TokenKind::Plain; }
+    if token.is_empty() {
+        return TokenKind::Plain;
+    }
 
     // x86 register names.
     static REGS: &[&str] = &[
         // 64-bit
-        "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp",
-        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
-        // 32-bit
-        "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp",
-        "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d",
-        // 16-bit
-        "ax", "bx", "cx", "dx", "si", "di", "bp", "sp",
-        // 8-bit
-        "al", "bl", "cl", "dl", "ah", "bh", "ch", "dh",
-        "sil", "dil", "bpl", "spl",
-        "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b",
-        // Segment
-        "cs", "ds", "es", "fs", "gs", "ss",
-        // Special
-        "rip", "eip", "rflags", "eflags",
-        // SSE/AVX
-        "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
-        "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
-        "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5", "ymm6", "ymm7",
-        "ymm8", "ymm9", "ymm10", "ymm11", "ymm12", "ymm13", "ymm14", "ymm15",
-        // x87
+        "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", "r8", "r9", "r10", "r11", "r12",
+        "r13", "r14", "r15", // 32-bit
+        "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp", "r8d", "r9d", "r10d", "r11d",
+        "r12d", "r13d", "r14d", "r15d", // 16-bit
+        "ax", "bx", "cx", "dx", "si", "di", "bp", "sp", // 8-bit
+        "al", "bl", "cl", "dl", "ah", "bh", "ch", "dh", "sil", "dil", "bpl", "spl", "r8b", "r9b",
+        "r10b", "r11b", "r12b", "r13b", "r14b", "r15b", // Segment
+        "cs", "ds", "es", "fs", "gs", "ss", // Special
+        "rip", "eip", "rflags", "eflags", // SSE/AVX
+        "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", "xmm8", "xmm9", "xmm10",
+        "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", "ymm0", "ymm1", "ymm2", "ymm3", "ymm4",
+        "ymm5", "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11", "ymm12", "ymm13", "ymm14",
+        "ymm15", // x87
         "st0", "st1", "st2", "st3", "st4", "st5", "st6", "st7",
     ];
 
     let lower = token.to_ascii_lowercase();
 
     // Size keywords → memory context (check before registers).
-    if matches!(lower.as_str(), "byte" | "word" | "dword" | "qword" | "ptr" | "xmmword" | "ymmword") {
+    if matches!(
+        lower.as_str(),
+        "byte" | "word" | "dword" | "qword" | "ptr" | "xmmword" | "ymmword"
+    ) {
         return TokenKind::Memory;
     }
 
@@ -1277,7 +1380,9 @@ fn classify_operand_token(token: &str) -> TokenKind {
         return TokenKind::Number;
     }
     if (token.ends_with('h') || token.ends_with('H'))
-        && token[..token.len() - 1].chars().all(|c| c.is_ascii_hexdigit())
+        && token[..token.len() - 1]
+            .chars()
+            .all(|c| c.is_ascii_hexdigit())
     {
         return TokenKind::Number;
     }
@@ -1310,22 +1415,43 @@ mod tests {
 
     fn sample_provider() -> VecDisasmProvider {
         let mut p = VecDisasmProvider::new();
-        p.push(InstructionEntry::new(0x401000, vec![0x55], "push", "rbp")
-            .with_flow(FlowKind::Stack));
-        p.push(InstructionEntry::new(0x401001, vec![0x48, 0x89, 0xE5], "mov", "rbp, rsp"));
-        p.push(InstructionEntry::new(0x401004, vec![0x48, 0x83, 0xEC, 0x20], "sub", "rsp, 0x20")
-            .with_flow(FlowKind::Stack));
-        p.push(InstructionEntry::new(0x401008, vec![0xE8, 0x10, 0x00, 0x00, 0x00], "call", "0x40101D")
+        p.push(
+            InstructionEntry::new(0x401000, vec![0x55], "push", "rbp").with_flow(FlowKind::Stack),
+        );
+        p.push(InstructionEntry::new(
+            0x401001,
+            vec![0x48, 0x89, 0xE5],
+            "mov",
+            "rbp, rsp",
+        ));
+        p.push(
+            InstructionEntry::new(0x401004, vec![0x48, 0x83, 0xEC, 0x20], "sub", "rsp, 0x20")
+                .with_flow(FlowKind::Stack),
+        );
+        p.push(
+            InstructionEntry::new(
+                0x401008,
+                vec![0xE8, 0x10, 0x00, 0x00, 0x00],
+                "call",
+                "0x40101D",
+            )
             .with_flow(FlowKind::Call)
             .with_target(0x40101D)
-            .with_comment("some_function"));
-        p.push(InstructionEntry::new(0x40100D, vec![0x48, 0x85, 0xC0], "test", "rax, rax"));
-        p.push(InstructionEntry::new(0x401010, vec![0x74, 0x05], "je", "0x401017")
-            .with_flow(FlowKind::Jump)
-            .with_target(0x401017));
+            .with_comment("some_function"),
+        );
+        p.push(InstructionEntry::new(
+            0x40100D,
+            vec![0x48, 0x85, 0xC0],
+            "test",
+            "rax, rax",
+        ));
+        p.push(
+            InstructionEntry::new(0x401010, vec![0x74, 0x05], "je", "0x401017")
+                .with_flow(FlowKind::Jump)
+                .with_target(0x401017),
+        );
         p.push(InstructionEntry::new(0x401012, vec![0xC9], "leave", ""));
-        p.push(InstructionEntry::new(0x401013, vec![0xC3], "ret", "")
-            .with_flow(FlowKind::Return));
+        p.push(InstructionEntry::new(0x401013, vec![0xC3], "ret", "").with_flow(FlowKind::Return));
         p
     }
 
@@ -1381,8 +1507,14 @@ mod tests {
         let colors = DisasmColors::default();
         assert_eq!(colors.mnemonic_color(FlowKind::Jump), colors.mnemonic_jump);
         assert_eq!(colors.mnemonic_color(FlowKind::Call), colors.mnemonic_call);
-        assert_eq!(colors.mnemonic_color(FlowKind::Return), colors.mnemonic_return);
-        assert_eq!(colors.mnemonic_color(FlowKind::Normal), colors.mnemonic_normal);
+        assert_eq!(
+            colors.mnemonic_color(FlowKind::Return),
+            colors.mnemonic_return
+        );
+        assert_eq!(
+            colors.mnemonic_color(FlowKind::Normal),
+            colors.mnemonic_normal
+        );
     }
 
     #[test]
@@ -1414,8 +1546,11 @@ mod tests {
         // je at index 5 targets 0x401017 and call targets 0x40101D — both outside
         // our 8 instructions, so no arrows expected in this basic sample.
         // Arrow computation only shows arrows where BOTH endpoints are visible.
-        assert!(arrows.is_empty() || arrows.len() <= 2,
-            "Expected 0-2 arrows, got {}", arrows.len());
+        assert!(
+            arrows.is_empty() || arrows.len() <= 2,
+            "Expected 0-2 arrows, got {}",
+            arrows.len()
+        );
     }
 
     #[test]
@@ -1517,19 +1652,17 @@ mod tests {
         // Create instructions with nested branches.
         let mut p = VecDisasmProvider::new();
         for i in 0..10 {
-            let mut entry = InstructionEntry::new(
-                0x1000 + i * 2, vec![0x90], "nop", "",
-            );
+            let mut entry = InstructionEntry::new(0x1000 + i * 2, vec![0x90], "nop", "");
             entry.flow_kind = FlowKind::Normal;
             p.push(entry);
         }
         // Add two overlapping jumps.
-        p.instructions_mut()[2] = InstructionEntry::new(
-            0x1004, vec![0xEB, 0x08], "jmp", "0x100E",
-        ).with_flow(FlowKind::Jump).with_target(0x100E);
-        p.instructions_mut()[1] = InstructionEntry::new(
-            0x1002, vec![0x74, 0x0C], "je", "0x1010",
-        ).with_flow(FlowKind::Jump).with_target(0x1010);
+        p.instructions_mut()[2] = InstructionEntry::new(0x1004, vec![0xEB, 0x08], "jmp", "0x100E")
+            .with_flow(FlowKind::Jump)
+            .with_target(0x100E);
+        p.instructions_mut()[1] = InstructionEntry::new(0x1002, vec![0x74, 0x0C], "je", "0x1010")
+            .with_flow(FlowKind::Jump)
+            .with_target(0x1010);
 
         let instrs: Vec<&dyn Instruction> = (0..p.instruction_count())
             .filter_map(|i| p.instruction(i))
@@ -1538,8 +1671,10 @@ mod tests {
 
         // If both targets are in range, should have different depths.
         if arrows.len() >= 2 {
-            assert_ne!(arrows[0].depth, arrows[1].depth,
-                "Overlapping arrows should have different depths");
+            assert_ne!(
+                arrows[0].depth, arrows[1].depth,
+                "Overlapping arrows should have different depths"
+            );
         }
     }
 

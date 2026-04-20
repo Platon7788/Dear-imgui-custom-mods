@@ -35,7 +35,13 @@ pub(super) fn compute_wrap_points(
     // wrap is a straight sum over a pre-known slice.)
     let widths: Vec<f32> = line
         .chars()
-        .map(|ch| if ch == '\t' { char_advance * tab_size as f32 } else { char_advance })
+        .map(|ch| {
+            if ch == '\t' {
+                char_advance * tab_size as f32
+            } else {
+                char_advance
+            }
+        })
         .collect();
     // Also precompute a bitmap of wrap-candidate positions (ch == ' ' || '\t').
     // A single `char_indices()` pass gives us everything we need.

@@ -10,18 +10,18 @@ use crate::theme::Theme;
 pub struct AppState {
     /// Titlebar state (maximized, focused, confirmed_close).
     pub titlebar: TitlebarState,
-    pub(super) should_exit:      bool,
-    pub(super) maximize_toggle:  Option<bool>,
-    pub(super) pending_theme:    Option<Theme>,
+    pub(super) should_exit: bool,
+    pub(super) maximize_toggle: Option<bool>,
+    pub(super) pending_theme: Option<Theme>,
 }
 
 impl AppState {
     pub(super) fn new() -> Self {
         Self {
-            titlebar:        TitlebarState::new(),
-            should_exit:     false,
+            titlebar: TitlebarState::new(),
+            should_exit: false,
             maximize_toggle: None,
-            pending_theme:   None,
+            pending_theme: None,
         }
     }
 

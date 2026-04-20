@@ -65,7 +65,9 @@ use crate::utils::text::calc_text_size;
 // ── Color helpers ─────────────────────────────────────────────────────────────
 
 #[inline]
-fn c32(c: [f32; 4]) -> u32 { rgba_f32(c[0], c[1], c[2], c[3]) }
+fn c32(c: [f32; 4]) -> u32 {
+    rgba_f32(c[0], c[1], c[2], c[3])
+}
 
 // ── Draw-list icon primitives ────────────────────────────────────────────────
 // All icons are drawn in a `[-r, +r]` unit space centred at `(cx, cy)`.
@@ -74,56 +76,69 @@ fn c32(c: [f32; 4]) -> u32 { rgba_f32(c[0], c[1], c[2], c[3]) }
 /// Draw the Close (×) icon — two diagonal lines.
 fn draw_icon_close(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     let d = r * 0.56;
-    draw.add_line([cx - d, cy - d], [cx + d, cy + d], col).thickness(1.5).build();
-    draw.add_line([cx + d, cy - d], [cx - d, cy + d], col).thickness(1.5).build();
+    draw.add_line([cx - d, cy - d], [cx + d, cy + d], col)
+        .thickness(1.5)
+        .build();
+    draw.add_line([cx + d, cy - d], [cx - d, cy + d], col)
+        .thickness(1.5)
+        .build();
 }
 
 /// Draw the Maximize (□) icon — square outline.
 fn draw_icon_maximize(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     let p = r * 0.72;
-    draw.add_rect([cx - p, cy - p], [cx + p, cy + p], col).thickness(1.5).build();
+    draw.add_rect([cx - p, cy - p], [cx + p, cy + p], col)
+        .thickness(1.5)
+        .build();
 }
 
 /// Draw the Restore (❐) icon — two offset overlapping squares.
 /// `bg` is the hover background colour used to "erase" the overlapping area.
 fn draw_icon_restore(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32, bg: u32) {
-    let p  = r * 0.72;
+    let p = r * 0.72;
     let sh = r * 0.38; // shift
     // Back square (top-right)
     draw.add_rect([cx - p + sh, cy - p - sh], [cx + p + sh, cy + p - sh], col)
-        .thickness(1.2).build();
+        .thickness(1.2)
+        .build();
     // Erase overlap with bg, then draw front square
     draw.add_rect([cx - p, cy - p + sh], [cx + p - sh, cy + p + sh], bg)
-        .filled(true).build();
+        .filled(true)
+        .build();
     draw.add_rect([cx - p, cy - p + sh], [cx + p - sh, cy + p + sh], col)
-        .thickness(1.5).build();
+        .thickness(1.5)
+        .build();
 }
 
 /// Draw the Minimize (─) icon — single horizontal line.
 fn draw_icon_minimize(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     let p = r * 0.72;
     let y = cy + r * 0.40;
-    draw.add_line([cx - p, y], [cx + p, y], col).thickness(1.5).build();
+    draw.add_line([cx - p, y], [cx + p, y], col)
+        .thickness(1.5)
+        .build();
 }
 
 // ── Resize edge helper ────────────────────────────────────────────────────────
 
 fn resize_edge_at(lx: f32, ly: f32, w: f32, h: f32, rz: f32) -> Option<ResizeEdge> {
-    if lx < 0.0 || lx >= w || ly < 0.0 || ly >= h { return None; }
+    if lx < 0.0 || lx >= w || ly < 0.0 || ly >= h {
+        return None;
+    }
     let l = lx < rz;
     let r = lx > w - rz;
     let t = ly < rz;
     let b = ly > h - rz;
     match (t, b, l, r) {
-        (true,  _,    true,  _    ) => Some(ResizeEdge::NorthWest),
-        (true,  _,    _,     true ) => Some(ResizeEdge::NorthEast),
-        (_,     true, true,  _    ) => Some(ResizeEdge::SouthWest),
-        (_,     true, _,     true ) => Some(ResizeEdge::SouthEast),
-        (true,  _,    _,     _    ) => Some(ResizeEdge::North),
-        (_,     true, _,     _    ) => Some(ResizeEdge::South),
-        (_,     _,    true,  _    ) => Some(ResizeEdge::West),
-        (_,     _,    _,     true ) => Some(ResizeEdge::East),
-        _                           => None,
+        (true, _, true, _) => Some(ResizeEdge::NorthWest),
+        (true, _, _, true) => Some(ResizeEdge::NorthEast),
+        (_, true, true, _) => Some(ResizeEdge::SouthWest),
+        (_, true, _, true) => Some(ResizeEdge::SouthEast),
+        (true, _, _, _) => Some(ResizeEdge::North),
+        (_, true, _, _) => Some(ResizeEdge::South),
+        (_, _, true, _) => Some(ResizeEdge::West),
+        (_, _, _, true) => Some(ResizeEdge::East),
+        _ => None,
     }
 }
 
@@ -174,7 +189,16 @@ pub fn render_titlebar_overlay(
     full_window_size: [f32; 2],
 ) -> TitlebarResult {
     let draw = ui.get_foreground_draw_list();
-    render_titlebar_impl(ui, cfg, state, origin, origin, full_window_size, &draw, false)
+    render_titlebar_impl(
+        ui,
+        cfg,
+        state,
+        origin,
+        origin,
+        full_window_size,
+        &draw,
+        false,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -191,44 +215,59 @@ fn render_titlebar_impl(
     // ── Confirmed-close from previous frame ───────────────────────────────────
     if state.confirmed_close {
         state.confirmed_close = false;
-        return TitlebarResult { action: WindowAction::Close, hover_edge: None };
+        return TitlebarResult {
+            action: WindowAction::Close,
+            hover_edge: None,
+        };
     }
 
     let colors = cfg.resolved_colors();
-    let dim       = cfg.focus_dim && !state.focused;
-    let bg_col    = if dim { colors.bg_inactive    } else { colors.bg    };
-    let title_col = if dim { colors.title_inactive } else { colors.title };
-    let icon_col  = if dim { colors.title_inactive } else { colors.icon  };
-    let h      = cfg.titlebar_height;
-    let sep_h  = cfg.separator_height;
-    let btn_w  = cfg.buttons.width;
-    let ir     = cfg.buttons.icon_radius;   // icon half-size
-    let ipad   = cfg.buttons.icon_hover_pad; // hover rect padding around icon
+    let dim = cfg.focus_dim && !state.focused;
+    let bg_col = if dim { colors.bg_inactive } else { colors.bg };
+    let title_col = if dim {
+        colors.title_inactive
+    } else {
+        colors.title
+    };
+    let icon_col = if dim {
+        colors.title_inactive
+    } else {
+        colors.icon
+    };
+    let h = cfg.titlebar_height;
+    let sep_h = cfg.separator_height;
+    let btn_w = cfg.buttons.width;
+    let ir = cfg.buttons.icon_radius; // icon half-size
+    let ipad = cfg.buttons.icon_hover_pad; // hover rect padding around icon
 
     let [win_w, win_h] = window_size;
     let [mx, my] = ui.io().mouse_pos();
 
     // ── Background ────────────────────────────────────────────────────────────
     draw.add_rect(
-        [cursor[0],        cursor[1]],
+        [cursor[0], cursor[1]],
         [cursor[0] + win_w, cursor[1] + h],
         c32(bg_col),
-    ).filled(true).build();
+    )
+    .filled(true)
+    .build();
 
     // ── Separator line ────────────────────────────────────────────────────────
     if cfg.separator_visible {
         draw.add_rect(
-            [cursor[0],        cursor[1] + h - sep_h],
+            [cursor[0], cursor[1] + h - sep_h],
             [cursor[0] + win_w, cursor[1] + h],
             c32(colors.separator),
-        ).filled(true).build();
+        )
+        .filled(true)
+        .build();
     }
 
     // ── Layout metrics ────────────────────────────────────────────────────────
-    let num_std   = cfg.buttons.show_close as usize
+    let num_std = cfg.buttons.show_close as usize
         + cfg.buttons.show_maximize as usize
         + cfg.buttons.show_minimize as usize;
-    let btn_area_w    = (num_std + cfg.buttons.extra.len()) as f32 * btn_w;
+    let btn_area_w = (num_std + cfg.buttons.extra.len()) as f32 * btn_w;
     let btn_area_start = cursor[0] + win_w - btn_area_w;
 
     let [_, text_h] = calc_text_size("Mg");
@@ -238,8 +277,8 @@ fn render_titlebar_impl(
     // `ui.is_window_hovered()` so other ImGui surfaces on top of the host
     // steal the hover; in the overlay path there is no host window to gate
     // on, so we just test the mouse rect directly.
-    let in_row = my >= cursor[1] && my < cursor[1] + h
-        && (!use_window_hovered || ui.is_window_hovered());
+    let in_row =
+        my >= cursor[1] && my < cursor[1] + h && (!use_window_hovered || ui.is_window_hovered());
     let clicked = ui.is_mouse_clicked(MouseButton::Left);
 
     // ── Icon + title text ─────────────────────────────────────────────────────
@@ -256,7 +295,11 @@ fn render_titlebar_impl(
         TitleAlign::Center => {
             let tw = calc_text_size(cfg.title.as_str())[0];
             let cx = cursor[0] + (win_w - btn_area_w - tw) * 0.5;
-            draw.add_text([cx.max(title_x), text_y], c32(title_col), cfg.title.as_str());
+            draw.add_text(
+                [cx.max(title_x), text_y],
+                c32(title_col),
+                cfg.title.as_str(),
+            );
         }
     }
 
@@ -279,7 +322,10 @@ fn render_titlebar_impl(
                     [cell_cx - ir - ipad, cy_btn - ir - ipad],
                     [cell_cx + ir + ipad, cy_btn + ir + ipad],
                     c32($hover_bg),
-                ).filled(true).rounding(3.0).build();
+                )
+                .filled(true)
+                .rounding(3.0)
+                .build();
             }
             hov && clicked && action == WindowAction::None
         }};
@@ -292,7 +338,7 @@ fn render_titlebar_impl(
         if btn_cell!(bx, colors.btn_close_hover_bg) {
             action = match cfg.close_mode {
                 CloseMode::Immediate => WindowAction::Close,
-                CloseMode::Confirm   => WindowAction::CloseRequested,
+                CloseMode::Confirm => WindowAction::CloseRequested,
             };
         }
         draw_icon_close(draw, cx_btn, cy_btn, ir, c32(colors.btn_close));
@@ -306,7 +352,14 @@ fn render_titlebar_impl(
             action = WindowAction::Maximize;
         }
         if state.maximized {
-            draw_icon_restore(draw, cx_btn, cy_btn, ir, c32(colors.btn_maximize), c32(colors.bg_erase));
+            draw_icon_restore(
+                draw,
+                cx_btn,
+                cy_btn,
+                ir,
+                c32(colors.btn_maximize),
+                c32(colors.bg_erase),
+            );
         } else {
             draw_icon_maximize(draw, cx_btn, cy_btn, ir, c32(colors.btn_maximize));
         }
@@ -332,8 +385,13 @@ fn render_titlebar_impl(
                 [cell_cx - ir - ipad, cy_btn - ir - ipad],
                 [cell_cx + ir + ipad, cy_btn + ir + ipad],
                 c32(colors.btn_hover_bg),
-            ).filled(true).rounding(3.0).build();
-            if let Some(tip) = extra.tooltip { ui.tooltip_text(tip); }
+            )
+            .filled(true)
+            .rounding(3.0)
+            .build();
+            if let Some(tip) = extra.tooltip {
+                ui.tooltip_text(tip);
+            }
             if clicked && action == WindowAction::None {
                 action = WindowAction::Extra(extra.id);
             }
@@ -363,11 +421,14 @@ fn render_titlebar_impl(
             [cursor[0], cursor[1]],
             [btn_area_start, cursor[1] + h],
             c32(colors.drag_hint),
-        ).filled(true).build();
+        )
+        .filled(true)
+        .build();
     }
 
     // ── Resize click ──────────────────────────────────────────────────────────
-    if action == WindowAction::None && clicked
+    if action == WindowAction::None
+        && clicked
         && let Some(edge) = hover_edge
     {
         action = WindowAction::ResizeStart(edge);
@@ -428,18 +489,42 @@ mod tests {
 
     #[test]
     fn resize_edge_corners() {
-        assert_eq!(resize_edge_at(1.0, 1.0, 800.0, 600.0, 6.0), Some(ResizeEdge::NorthWest));
-        assert_eq!(resize_edge_at(799.0, 1.0, 800.0, 600.0, 6.0), Some(ResizeEdge::NorthEast));
-        assert_eq!(resize_edge_at(1.0, 599.0, 800.0, 600.0, 6.0), Some(ResizeEdge::SouthWest));
-        assert_eq!(resize_edge_at(799.0, 599.0, 800.0, 600.0, 6.0), Some(ResizeEdge::SouthEast));
+        assert_eq!(
+            resize_edge_at(1.0, 1.0, 800.0, 600.0, 6.0),
+            Some(ResizeEdge::NorthWest)
+        );
+        assert_eq!(
+            resize_edge_at(799.0, 1.0, 800.0, 600.0, 6.0),
+            Some(ResizeEdge::NorthEast)
+        );
+        assert_eq!(
+            resize_edge_at(1.0, 599.0, 800.0, 600.0, 6.0),
+            Some(ResizeEdge::SouthWest)
+        );
+        assert_eq!(
+            resize_edge_at(799.0, 599.0, 800.0, 600.0, 6.0),
+            Some(ResizeEdge::SouthEast)
+        );
     }
 
     #[test]
     fn resize_edge_sides() {
-        assert_eq!(resize_edge_at(400.0, 1.0, 800.0, 600.0, 6.0), Some(ResizeEdge::North));
-        assert_eq!(resize_edge_at(400.0, 599.0, 800.0, 600.0, 6.0), Some(ResizeEdge::South));
-        assert_eq!(resize_edge_at(1.0, 300.0, 800.0, 600.0, 6.0), Some(ResizeEdge::West));
-        assert_eq!(resize_edge_at(799.0, 300.0, 800.0, 600.0, 6.0), Some(ResizeEdge::East));
+        assert_eq!(
+            resize_edge_at(400.0, 1.0, 800.0, 600.0, 6.0),
+            Some(ResizeEdge::North)
+        );
+        assert_eq!(
+            resize_edge_at(400.0, 599.0, 800.0, 600.0, 6.0),
+            Some(ResizeEdge::South)
+        );
+        assert_eq!(
+            resize_edge_at(1.0, 300.0, 800.0, 600.0, 6.0),
+            Some(ResizeEdge::West)
+        );
+        assert_eq!(
+            resize_edge_at(799.0, 300.0, 800.0, 600.0, 6.0),
+            Some(ResizeEdge::East)
+        );
         assert_eq!(resize_edge_at(400.0, 300.0, 800.0, 600.0, 6.0), None);
     }
 

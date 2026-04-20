@@ -39,7 +39,11 @@ fn display_names_are_non_empty() {
         let name = t.display_name();
         assert!(!name.is_empty(), "Theme::{t:?} has empty display_name");
         // No leading / trailing whitespace — it'd mis-render in ImGui.
-        assert_eq!(name.trim(), name, "Theme::{t:?} display_name has whitespace");
+        assert_eq!(
+            name.trim(),
+            name,
+            "Theme::{t:?} display_name has whitespace"
+        );
     }
 }
 

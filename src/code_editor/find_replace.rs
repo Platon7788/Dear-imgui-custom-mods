@@ -76,7 +76,9 @@ impl FindReplaceState {
         bounds: Option<(CursorPos, CursorPos)>,
     ) {
         self.matches.clear();
-        if self.query.is_empty() { return; }
+        if self.query.is_empty() {
+            return;
+        }
 
         let query = if self.case_sensitive {
             self.query.clone()
@@ -106,7 +108,9 @@ impl FindReplaceState {
         };
 
         for (line_idx, line) in lines.iter().enumerate() {
-            if line_idx < first_line || line_idx > last_line { continue; }
+            if line_idx < first_line || line_idx > last_line {
+                continue;
+            }
             let search_line: &str = if self.case_sensitive {
                 line.as_str()
             } else {

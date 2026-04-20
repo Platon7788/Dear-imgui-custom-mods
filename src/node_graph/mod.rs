@@ -101,11 +101,7 @@ impl<T> NodeGraph<T> {
     /// The caller is responsible for applying mutations (connect/disconnect)
     /// to the graph. Internal actions (`NodeToggled`, `SelectAll`) are handled
     /// automatically before returning.
-    pub fn render(
-        &mut self,
-        ui: &Ui,
-        viewer: &dyn NodeGraphViewer<T>,
-    ) -> Vec<GraphAction> {
+    pub fn render(&mut self, ui: &Ui, viewer: &dyn NodeGraphViewer<T>) -> Vec<GraphAction> {
         // Apply pending node drags (must mutate graph positions)
         self.apply_node_drags(ui);
 
@@ -232,18 +228,16 @@ impl<T> NodeGraph<T> {
     }
 
     /// Center the viewport on all nodes, using actual node sizes from the viewer.
-    pub fn fit_to_content(
-        &mut self,
-        canvas_size: [f32; 2],
-        viewer: &dyn NodeGraphViewer<T>,
-    ) {
+    pub fn fit_to_content(&mut self, canvas_size: [f32; 2], viewer: &dyn NodeGraphViewer<T>) {
         let mut min_x = f32::MAX;
         let mut min_y = f32::MAX;
         let mut max_x = f32::MIN;
         let mut max_y = f32::MIN;
 
         for (_, node) in self.graph.nodes() {
-            let w = viewer.node_width(&node.value).unwrap_or(self.config.node_min_width);
+            let w = viewer
+                .node_width(&node.value)
+                .unwrap_or(self.config.node_min_width);
             let h = self.config.node_height(
                 viewer.inputs(&node.value),
                 viewer.outputs(&node.value),
@@ -270,10 +264,8 @@ impl<T> NodeGraph<T> {
 
         self.state.viewport.zoom = zoom;
         self.state.zoom_target = zoom;
-        self.state.viewport.offset[0] =
-            canvas_size[0] * 0.5 - (min_x + max_x) * 0.5 * zoom;
-        self.state.viewport.offset[1] =
-            canvas_size[1] * 0.5 - (min_y + max_y) * 0.5 * zoom;
+        self.state.viewport.offset[0] = canvas_size[0] * 0.5 - (min_x + max_x) * 0.5 * zoom;
+        self.state.viewport.offset[1] = canvas_size[1] * 0.5 - (min_y + max_y) * 0.5 * zoom;
     }
 
     /// Reset viewport to default (zoom 1.0, centered at origin).

@@ -30,136 +30,307 @@ fn sample_instructions() -> Vec<InstructionEntry> {
     let mut block = 0usize;
 
     // ── Function prologue (block 0) ─────────────────────────
-    instrs.push(InstructionEntry::new(addr, vec![0x55], "push", "rbp")
-        .with_flow(FlowKind::Stack).with_block(block));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x55], "push", "rbp")
+            .with_flow(FlowKind::Stack)
+            .with_block(block),
+    );
     addr += 1;
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x89, 0xE5], "mov", "rbp, rsp")
-        .with_block(block));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x48, 0x89, 0xE5], "mov", "rbp, rsp").with_block(block),
+    );
     addr += 3;
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x83, 0xEC, 0x30], "sub", "rsp, 0x30")
-        .with_flow(FlowKind::Stack).with_block(block));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x48, 0x83, 0xEC, 0x30], "sub", "rsp, 0x30")
+            .with_flow(FlowKind::Stack)
+            .with_block(block),
+    );
     addr += 4;
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x89, 0x7D, 0xD8], "mov", "qword ptr [rbp-0x28], rdi")
-        .with_block(block).with_comment("save arg0"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x48, 0x89, 0x7D, 0xD8],
+            "mov",
+            "qword ptr [rbp-0x28], rdi",
+        )
+        .with_block(block)
+        .with_comment("save arg0"),
+    );
     addr += 4;
-    instrs.push(InstructionEntry::new(addr, vec![0x89, 0x75, 0xD4], "mov", "dword ptr [rbp-0x2C], esi")
-        .with_block(block).with_comment("save arg1"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x89, 0x75, 0xD4],
+            "mov",
+            "dword ptr [rbp-0x2C], esi",
+        )
+        .with_block(block)
+        .with_comment("save arg1"),
+    );
     addr += 3;
 
     // ── Null check (block 0) ────────────────────────────────
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x83, 0x7D, 0xD8, 0x00], "cmp", "qword ptr [rbp-0x28], 0")
-        .with_block(block));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x48, 0x83, 0x7D, 0xD8, 0x00],
+            "cmp",
+            "qword ptr [rbp-0x28], 0",
+        )
+        .with_block(block),
+    );
     addr += 5;
     let je_target = addr + 0x2A; // jump to error block
-    instrs.push(InstructionEntry::new(addr, vec![0x0F, 0x84, 0x26, 0x00, 0x00, 0x00], "je", format!("0x{:X}", je_target))
-        .with_flow(FlowKind::Jump).with_target(je_target).with_block(block)
-        .with_comment("jump if null"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x0F, 0x84, 0x26, 0x00, 0x00, 0x00],
+            "je",
+            format!("0x{:X}", je_target),
+        )
+        .with_flow(FlowKind::Jump)
+        .with_target(je_target)
+        .with_block(block)
+        .with_comment("jump if null"),
+    );
     addr += 6;
 
     // ── Main logic (block 1) ────────────────────────────────
     block = 1;
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x8B, 0x45, 0xD8], "mov", "rax, qword ptr [rbp-0x28]")
-        .with_block(block));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x48, 0x8B, 0x45, 0xD8],
+            "mov",
+            "rax, qword ptr [rbp-0x28]",
+        )
+        .with_block(block),
+    );
     addr += 4;
-    instrs.push(InstructionEntry::new(addr, vec![0x8B, 0x00], "mov", "eax, dword ptr [rax]")
-        .with_block(block).with_comment("dereference ptr"));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x8B, 0x00], "mov", "eax, dword ptr [rax]")
+            .with_block(block)
+            .with_comment("dereference ptr"),
+    );
     addr += 2;
-    instrs.push(InstructionEntry::new(addr, vec![0x03, 0x45, 0xD4], "add", "eax, dword ptr [rbp-0x2C]")
-        .with_block(block));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x03, 0x45, 0xD4],
+            "add",
+            "eax, dword ptr [rbp-0x2C]",
+        )
+        .with_block(block),
+    );
     addr += 3;
-    instrs.push(InstructionEntry::new(addr, vec![0x89, 0x45, 0xFC], "mov", "dword ptr [rbp-0x4], eax")
-        .with_block(block).with_comment("result"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x89, 0x45, 0xFC],
+            "mov",
+            "dword ptr [rbp-0x4], eax",
+        )
+        .with_block(block)
+        .with_comment("result"),
+    );
     addr += 3;
 
     // ── Range check (block 1) ───────────────────────────────
-    instrs.push(InstructionEntry::new(addr, vec![0x83, 0x7D, 0xFC, 0x64], "cmp", "dword ptr [rbp-0x4], 0x64")
-        .with_block(block));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x83, 0x7D, 0xFC, 0x64],
+            "cmp",
+            "dword ptr [rbp-0x4], 0x64",
+        )
+        .with_block(block),
+    );
     addr += 4;
     let jle_target = addr + 0x12; // skip clamp
-    instrs.push(InstructionEntry::new(addr, vec![0x7E, 0x10], "jle", format!("0x{:X}", jle_target))
-        .with_flow(FlowKind::Jump).with_target(jle_target).with_block(block)
-        .with_comment("skip if <= 100"));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x7E, 0x10], "jle", format!("0x{:X}", jle_target))
+            .with_flow(FlowKind::Jump)
+            .with_target(jle_target)
+            .with_block(block)
+            .with_comment("skip if <= 100"),
+    );
     addr += 2;
 
     // ── Clamp block (block 2) ───────────────────────────────
     block = 2;
-    instrs.push(InstructionEntry::new(addr, vec![0xC7, 0x45, 0xFC, 0x64, 0x00, 0x00, 0x00], "mov", "dword ptr [rbp-0x4], 0x64")
-        .with_block(block).with_comment("clamp to 100"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0xC7, 0x45, 0xFC, 0x64, 0x00, 0x00, 0x00],
+            "mov",
+            "dword ptr [rbp-0x4], 0x64",
+        )
+        .with_block(block)
+        .with_comment("clamp to 100"),
+    );
     addr += 7;
     let call_target = 0x0040_1200;
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x8D, 0x3D, 0x50, 0x01, 0x00, 0x00], "lea", "rdi, [rip+0x150]")
-        .with_block(block).with_comment("\"clamped!\""));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x48, 0x8D, 0x3D, 0x50, 0x01, 0x00, 0x00],
+            "lea",
+            "rdi, [rip+0x150]",
+        )
+        .with_block(block)
+        .with_comment("\"clamped!\""),
+    );
     addr += 7;
-    instrs.push(InstructionEntry::new(addr, vec![0xE8, 0x00, 0x02, 0x00, 0x00], "call", format!("0x{:X}", call_target))
-        .with_flow(FlowKind::Call).with_target(call_target).with_block(block)
-        .with_comment("log_warning"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0xE8, 0x00, 0x02, 0x00, 0x00],
+            "call",
+            format!("0x{:X}", call_target),
+        )
+        .with_flow(FlowKind::Call)
+        .with_target(call_target)
+        .with_block(block)
+        .with_comment("log_warning"),
+    );
     addr += 5;
 
     // ── After clamp / skip target (block 3) ─────────────────
     block = 3;
     // jle_target lands here
-    instrs.push(InstructionEntry::new(addr, vec![0x8B, 0x45, 0xFC], "mov", "eax, dword ptr [rbp-0x4]")
-        .with_block(block).with_comment("load result"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x8B, 0x45, 0xFC],
+            "mov",
+            "eax, dword ptr [rbp-0x4]",
+        )
+        .with_block(block)
+        .with_comment("load result"),
+    );
     addr += 3;
 
     // ── Return path (block 3) ───────────────────────────────
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x83, 0xC4, 0x30], "add", "rsp, 0x30")
-        .with_flow(FlowKind::Stack).with_block(block));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x48, 0x83, 0xC4, 0x30], "add", "rsp, 0x30")
+            .with_flow(FlowKind::Stack)
+            .with_block(block),
+    );
     addr += 4;
-    instrs.push(InstructionEntry::new(addr, vec![0x5D], "pop", "rbp")
-        .with_flow(FlowKind::Stack).with_block(block));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x5D], "pop", "rbp")
+            .with_flow(FlowKind::Stack)
+            .with_block(block),
+    );
     addr += 1;
-    instrs.push(InstructionEntry::new(addr, vec![0xC3], "ret", "")
-        .with_flow(FlowKind::Return).with_block(block));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0xC3], "ret", "")
+            .with_flow(FlowKind::Return)
+            .with_block(block),
+    );
     addr += 1;
 
     // ── Padding ─────────────────────────────────────────────
     for _ in 0..3 {
-        instrs.push(InstructionEntry::new(addr, vec![0xCC], "int3", "")
-            .with_flow(FlowKind::Nop).with_block(block));
+        instrs.push(
+            InstructionEntry::new(addr, vec![0xCC], "int3", "")
+                .with_flow(FlowKind::Nop)
+                .with_block(block),
+        );
         addr += 1;
     }
 
     // ── Error handler (block 4) — je_target ─────────────────
     block = 4;
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x8D, 0x3D, 0x80, 0x01, 0x00, 0x00], "lea", "rdi, [rip+0x180]")
-        .with_block(block).with_comment("\"null pointer!\""));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x48, 0x8D, 0x3D, 0x80, 0x01, 0x00, 0x00],
+            "lea",
+            "rdi, [rip+0x180]",
+        )
+        .with_block(block)
+        .with_comment("\"null pointer!\""),
+    );
     addr += 7;
-    instrs.push(InstructionEntry::new(addr, vec![0xE8, 0x20, 0x02, 0x00, 0x00], "call", format!("0x{:X}", 0x0040_1300))
-        .with_flow(FlowKind::Call).with_target(0x0040_1300).with_block(block)
-        .with_comment("log_error"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0xE8, 0x20, 0x02, 0x00, 0x00],
+            "call",
+            format!("0x{:X}", 0x0040_1300),
+        )
+        .with_flow(FlowKind::Call)
+        .with_target(0x0040_1300)
+        .with_block(block)
+        .with_comment("log_error"),
+    );
     addr += 5;
-    instrs.push(InstructionEntry::new(addr, vec![0xB8, 0xFF, 0xFF, 0xFF, 0xFF], "mov", "eax, 0xFFFFFFFF")
-        .with_block(block).with_comment("return -1"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0xB8, 0xFF, 0xFF, 0xFF, 0xFF],
+            "mov",
+            "eax, 0xFFFFFFFF",
+        )
+        .with_block(block)
+        .with_comment("return -1"),
+    );
     addr += 5;
-    instrs.push(InstructionEntry::new(addr, vec![0xEB, 0xD0], "jmp", format!("0x{:X}", addr - 0x30))
-        .with_flow(FlowKind::Jump).with_target(addr - 0x30).with_block(block)
-        .with_comment("goto epilogue"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0xEB, 0xD0],
+            "jmp",
+            format!("0x{:X}", addr - 0x30),
+        )
+        .with_flow(FlowKind::Jump)
+        .with_target(addr - 0x30)
+        .with_block(block)
+        .with_comment("goto epilogue"),
+    );
     addr += 2;
 
     // ── Second function — simple leaf (block 5) ─────────────
     block = 5;
-    instrs.push(InstructionEntry::new(addr, vec![0x90], "nop", "")
-        .with_flow(FlowKind::Nop).with_block(block));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x90], "nop", "")
+            .with_flow(FlowKind::Nop)
+            .with_block(block),
+    );
     addr += 1;
 
     // syscall example
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0xC7, 0xC0, 0x3C, 0x00, 0x00, 0x00], "mov", "rax, 0x3C")
-        .with_block(block).with_comment("SYS_exit"));
+    instrs.push(
+        InstructionEntry::new(
+            addr,
+            vec![0x48, 0xC7, 0xC0, 0x3C, 0x00, 0x00, 0x00],
+            "mov",
+            "rax, 0x3C",
+        )
+        .with_block(block)
+        .with_comment("SYS_exit"),
+    );
     addr += 7;
-    instrs.push(InstructionEntry::new(addr, vec![0x48, 0x31, 0xFF], "xor", "rdi, rdi")
-        .with_block(block).with_comment("exit code 0"));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x48, 0x31, 0xFF], "xor", "rdi, rdi")
+            .with_block(block)
+            .with_comment("exit code 0"),
+    );
     addr += 3;
-    instrs.push(InstructionEntry::new(addr, vec![0x0F, 0x05], "syscall", "")
-        .with_flow(FlowKind::System).with_block(block));
+    instrs.push(
+        InstructionEntry::new(addr, vec![0x0F, 0x05], "syscall", "")
+            .with_flow(FlowKind::System)
+            .with_block(block),
+    );
     let _ = addr + 2; // end of instructions
 
     // Set numbered breakpoints for demo.
-    instrs[6].breakpoint = true;   // je (null check)
+    instrs[6].breakpoint = true; // je (null check)
     instrs[6].bp_number = 1;
-    instrs[16].breakpoint = true;  // call log_warning
+    instrs[16].breakpoint = true; // call log_warning
     instrs[16].bp_number = 2;
-    instrs[24].breakpoint = true;  // call log_error
+    instrs[24].breakpoint = true; // call log_error
     instrs[24].bp_number = 3;
 
     // Mark one instruction as current execution point.
@@ -226,8 +397,12 @@ impl DemoState {
             if let Some(instr) = self.provider.instruction(idx) {
                 ui.text(format!(
                     "Addr: 0x{:X}  |  {} {}  |  {:?}  |  Instr {}/{}",
-                    instr.address(), instr.mnemonic(), instr.operands(),
-                    instr.flow_kind(), idx + 1, count,
+                    instr.address(),
+                    instr.mnemonic(),
+                    instr.operands(),
+                    instr.flow_kind(),
+                    idx + 1,
+                    count,
                 ));
             }
         } else {
@@ -344,12 +519,16 @@ struct App {
 }
 
 impl App {
-    fn new() -> Self { Self { gpu: None } }
+    fn new() -> Self {
+        Self { gpu: None }
+    }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gpu.is_some() { return; }
+        if self.gpu.is_some() {
+            return;
+        }
 
         let window = Arc::new(
             event_loop
@@ -373,8 +552,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -443,7 +621,10 @@ impl ApplicationHandler for App {
         gpu.platform.handle_event::<()>(
             &mut gpu.context,
             &gpu.window,
-            &Event::WindowEvent { window_id, event: event.clone() },
+            &Event::WindowEvent {
+                window_id,
+                event: event.clone(),
+            },
         );
 
         match event {
@@ -458,8 +639,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -469,7 +649,9 @@ impl ApplicationHandler for App {
                     }
                 };
 
-                let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
                 gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
 
                 let ui = gpu.context.frame();
@@ -478,9 +660,11 @@ impl ApplicationHandler for App {
 
                 let draw_data = gpu.context.render();
 
-                let mut encoder = gpu.device.create_command_encoder(
-                    &wgpu::CommandEncoderDescriptor { label: Some("imgui") },
-                );
+                let mut encoder =
+                    gpu.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("imgui"),
+                        });
 
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -491,7 +675,10 @@ impl ApplicationHandler for App {
                             depth_slice: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.06, g: 0.06, b: 0.08, a: 1.0,
+                                    r: 0.06,
+                                    g: 0.06,
+                                    b: 0.08,
+                                    a: 1.0,
                                 }),
                                 store: wgpu::StoreOp::Store,
                             },
@@ -503,7 +690,9 @@ impl ApplicationHandler for App {
                     });
 
                     if draw_data.total_vtx_count > 0 {
-                        gpu.renderer.render_draw_data(draw_data, &mut pass).expect("render");
+                        gpu.renderer
+                            .render_draw_data(draw_data, &mut pass)
+                            .expect("render");
                     }
                 }
 
@@ -566,7 +755,10 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::Tab, [0.14, 0.15, 0.19, 1.0]);
     style.set_color(StyleColor::TabHovered, accent_dim);
     style.set_color(StyleColor::TabSelected, [0.22, 0.24, 0.30, 1.0]);
-    style.set_color(StyleColor::TextSelectedBg, [accent[0], accent[1], accent[2], 0.30]);
+    style.set_color(
+        StyleColor::TextSelectedBg,
+        [accent[0], accent[1], accent[2], 0.30],
+    );
     style.set_color(StyleColor::Text, [0.92, 0.93, 0.95, 1.0]);
     style.set_color(StyleColor::TextDisabled, [0.42, 0.45, 0.52, 1.0]);
     style.set_color(StyleColor::PlotHistogram, accent_hi);

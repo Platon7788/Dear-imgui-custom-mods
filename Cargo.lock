@@ -528,7 +528,7 @@ checksum = "84c3df60376cc312903bee08d2c124eb66e5a400e6ed73b6b06cda750e9423d8"
 
 [[package]]
 name = "dear-imgui-custom-mod"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "criterion",
  "dear-imgui-rs",
@@ -537,6 +537,7 @@ dependencies = [
  "foldhash 0.2.0",
  "pollster",
  "proptest",
+ "slotmap",
  "wgpu",
  "windows-sys 0.61.2",
  "winit",

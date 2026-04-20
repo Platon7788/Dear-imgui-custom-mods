@@ -405,11 +405,17 @@ mod tests {
     #[test]
     fn pin_pos_lookup() {
         let mut state = InteractionState::default();
-        let pin = InPinId { node: NodeId(0), input: 0 };
+        let pin = InPinId {
+            node: NodeId(0),
+            input: 0,
+        };
         state.input_pin_pos.insert(pin, [50.0, 75.0]);
         assert_eq!(state.find_input_pos(pin), Some([50.0, 75.0]));
 
-        let opin = OutPinId { node: NodeId(0), output: 0 };
+        let opin = OutPinId {
+            node: NodeId(0),
+            output: 0,
+        };
         assert_eq!(state.find_output_pos(opin), None);
     }
 }

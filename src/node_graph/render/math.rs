@@ -33,7 +33,10 @@ pub(super) fn collect_node_aabbs<T>(
     let vp = &state.viewport;
     for (nid, node) in graph.nodes() {
         let [sx, sy] = vp.graph_to_screen(node.pos);
-        let w = viewer.node_width(&node.value).unwrap_or(config.node_min_width) * vp.zoom;
+        let w = viewer
+            .node_width(&node.value)
+            .unwrap_or(config.node_min_width)
+            * vp.zoom;
         let h = config.node_height(
             viewer.inputs(&node.value),
             viewer.outputs(&node.value),
@@ -41,7 +44,13 @@ pub(super) fn collect_node_aabbs<T>(
             node.open,
             viewer.body_height(&node.value),
         ) * vp.zoom;
-        aabbs.push(NodeAABB { x0: sx, y0: sy, x1: sx + w, y1: sy + h, id: nid });
+        aabbs.push(NodeAABB {
+            x0: sx,
+            y0: sy,
+            x1: sx + w,
+            y1: sy + h,
+            id: nid,
+        });
     }
 }
 
@@ -107,10 +116,17 @@ pub(super) fn ortho_wire_points(
             pts[1] = [mid_x, from[1]];
             pts[2] = [mid_x, to[1]];
             pts[3] = to;
-            OrthoPolyline { points: pts, len: 4 }
+            OrthoPolyline {
+                points: pts,
+                len: 4,
+            }
         } else {
             let go_above = (from[1] - obs_y_min).abs() < (from[1] - obs_y_max).abs();
-            let detour_y = if go_above { obs_y_min - margin } else { obs_y_max + margin };
+            let detour_y = if go_above {
+                obs_y_min - margin
+            } else {
+                obs_y_max + margin
+            };
             let out_x = from[0] + 25.0;
             let in_x = to[0] - 25.0;
             pts[1] = [out_x, from[1]];
@@ -118,14 +134,21 @@ pub(super) fn ortho_wire_points(
             pts[3] = [in_x, detour_y];
             pts[4] = [in_x, to[1]];
             pts[5] = to;
-            OrthoPolyline { points: pts, len: 6 }
+            OrthoPolyline {
+                points: pts,
+                len: 6,
+            }
         }
     } else {
         let out_x = from[0] + 30.0;
         let in_x = to[0] - 30.0;
         let mid_y = if has_obstacle {
             let go_above = (from[1] - obs_y_min).abs() < (from[1] - obs_y_max).abs();
-            if go_above { obs_y_min - margin } else { obs_y_max + margin }
+            if go_above {
+                obs_y_min - margin
+            } else {
+                obs_y_max + margin
+            }
         } else {
             (from[1] + to[1]) * 0.5
         };
@@ -134,7 +157,10 @@ pub(super) fn ortho_wire_points(
         pts[3] = [in_x, mid_y];
         pts[4] = [in_x, to[1]];
         pts[5] = to;
-        OrthoPolyline { points: pts, len: 6 }
+        OrthoPolyline {
+            points: pts,
+            len: 6,
+        }
     }
 }
 
@@ -143,7 +169,11 @@ pub(super) fn ortho_wire_points(
 /// Compute bezier control points for a wire.
 /// Adaptive curvature: larger tangent when wire goes backwards to avoid node overlap.
 #[inline]
-pub(super) fn bezier_control_points(from: [f32; 2], to: [f32; 2], curvature: f32) -> ([f32; 2], [f32; 2]) {
+pub(super) fn bezier_control_points(
+    from: [f32; 2],
+    to: [f32; 2],
+    curvature: f32,
+) -> ([f32; 2], [f32; 2]) {
     let horiz = to[0] - from[0];
     let vert = (to[1] - from[1]).abs();
     let dx = if horiz > 0.0 {
@@ -186,7 +216,13 @@ pub(super) fn obstacle_aware_bezier_cps(
 // ─── Core math ───────────────────────────────────────────────────────────────
 
 /// Evaluate cubic bezier at parameter `t`.
-pub(super) fn cubic_bezier(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], t: f32) -> [f32; 2] {
+pub(super) fn cubic_bezier(
+    p0: [f32; 2],
+    p1: [f32; 2],
+    p2: [f32; 2],
+    p3: [f32; 2],
+    t: f32,
+) -> [f32; 2] {
     let u = 1.0 - t;
     let uu = u * u;
     let tt = t * t;
@@ -245,18 +281,26 @@ pub(super) fn wire_hit_test(
                 point_to_segment_dist(mouse, from, to) <= max_dist
             } else {
                 let go_above = (from[1] - obs_y_min).abs() < (from[1] - obs_y_max).abs();
-                let detour_y = if go_above { obs_y_min - margin } else { obs_y_max + margin };
+                let detour_y = if go_above {
+                    obs_y_min - margin
+                } else {
+                    obs_y_max + margin
+                };
                 let mid_x = (from[0] + to[0]) * 0.5;
                 let p1 = [mid_x, detour_y];
-                point_to_segment_dist(mouse, from, p1)
-                    .min(point_to_segment_dist(mouse, p1, to))
+                point_to_segment_dist(mouse, from, p1).min(point_to_segment_dist(mouse, p1, to))
                     <= max_dist
             }
         }
         WireStyle::Bezier => {
             let (cp0, cp1) = obstacle_aware_bezier_cps(
-                from, to, config.wire_curvature,
-                has_obstacle, obs_y_min, obs_y_max, margin,
+                from,
+                to,
+                config.wire_curvature,
+                has_obstacle,
+                obs_y_min,
+                obs_y_max,
+                margin,
             );
             let samples = 20;
             let mut min_dist = f32::MAX;
@@ -274,9 +318,11 @@ pub(super) fn wire_hit_test(
             let poly = ortho_wire_points(from, to, has_obstacle, obs_y_min, obs_y_max, margin);
             let mut min_dist = f32::MAX;
             for i in 0..poly.len as usize - 1 {
-                min_dist = min_dist.min(
-                    point_to_segment_dist(mouse, poly.points[i], poly.points[i + 1])
-                );
+                min_dist = min_dist.min(point_to_segment_dist(
+                    mouse,
+                    poly.points[i],
+                    poly.points[i + 1],
+                ));
             }
             min_dist <= max_dist
         }
@@ -394,10 +440,15 @@ mod tests {
         let mid_y = 75.0;
         let mouse = [mid_x, mid_y];
         let hit = wire_hit_test(
-            from, to, mouse, 5.0,
+            from,
+            to,
+            mouse,
+            5.0,
             WireStyle::Orthogonal,
             &NodeGraphConfig::default(),
-            &[], src, dst,
+            &[],
+            src,
+            dst,
         );
         assert!(hit, "Point on vertical segment should be a hit");
     }
@@ -410,10 +461,15 @@ mod tests {
         let dst = NodeId(1);
         let mouse = [100.0, 200.0];
         let hit = wire_hit_test(
-            from, to, mouse, 5.0,
+            from,
+            to,
+            mouse,
+            5.0,
             WireStyle::Orthogonal,
             &NodeGraphConfig::default(),
-            &[], src, dst,
+            &[],
+            src,
+            dst,
         );
         assert!(!hit, "Distant point should not be a hit");
     }
@@ -425,28 +481,44 @@ mod tests {
         let src = NodeId(0);
         let dst = NodeId(1);
         let obstacles = vec![NodeAABB {
-            x0: 80.0, y0: 40.0, x1: 120.0, y1: 110.0,
+            x0: 80.0,
+            y0: 40.0,
+            x1: 120.0,
+            y1: 110.0,
             id: NodeId(2),
         }];
         let poly = ortho_wire_points(from, to, true, 40.0, 110.0, 10.0);
         let detour_y = poly.points[2][1];
         let mouse = [100.0, detour_y];
         let hit = wire_hit_test(
-            from, to, mouse, 5.0,
+            from,
+            to,
+            mouse,
+            5.0,
             WireStyle::Orthogonal,
             &NodeGraphConfig::default(),
-            &obstacles, src, dst,
+            &obstacles,
+            src,
+            dst,
         );
         assert!(hit, "Point on detour segment should be a hit");
 
         let mouse_old = [100.0, 75.0];
         let hit_old = wire_hit_test(
-            from, to, mouse_old, 5.0,
+            from,
+            to,
+            mouse_old,
+            5.0,
             WireStyle::Orthogonal,
             &NodeGraphConfig::default(),
-            &obstacles, src, dst,
+            &obstacles,
+            src,
+            dst,
         );
-        assert!(!hit_old, "Point on old simple path should miss when obstacle reroutes");
+        assert!(
+            !hit_old,
+            "Point on old simple path should miss when obstacle reroutes"
+        );
     }
 
     // ── obstacle_aware_bezier_cps ────────────────────────────────────────

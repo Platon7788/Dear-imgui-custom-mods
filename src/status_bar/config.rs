@@ -68,18 +68,17 @@ impl Default for StatusBarConfig {
             show_separators: true,
             highlight_hover: false,
 
-            color_bg:        [0.12, 0.12, 0.15, 1.0],
-            color_text:      [0.85, 0.87, 0.90, 1.0],
-            color_text_dim:  [0.50, 0.52, 0.58, 1.0],
+            color_bg: [0.12, 0.12, 0.15, 1.0],
+            color_text: [0.85, 0.87, 0.90, 1.0],
+            color_text_dim: [0.50, 0.52, 0.58, 1.0],
             color_separator: [0.25, 0.27, 0.32, 0.6],
-            color_hover:     [0.20, 0.22, 0.28, 1.0],
-            color_active:    [0.25, 0.28, 0.35, 1.0],
+            color_hover: [0.20, 0.22, 0.28, 1.0],
+            color_active: [0.25, 0.28, 0.35, 1.0],
 
-            color_success:   [0.30, 0.80, 0.40, 1.0],
-            color_warning:   [0.90, 0.75, 0.20, 1.0],
-            color_error:     [0.90, 0.30, 0.30, 1.0],
-            color_info:      [0.40, 0.65, 0.90, 1.0],
+            color_success: [0.30, 0.80, 0.40, 1.0],
+            color_warning: [0.90, 0.75, 0.20, 1.0],
+            color_error: [0.90, 0.30, 0.30, 1.0],
+            color_info: [0.40, 0.65, 0.90, 1.0],
         }
     }
 }
-

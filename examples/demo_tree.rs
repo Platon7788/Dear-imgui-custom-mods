@@ -41,7 +41,7 @@ struct TaskNode {
     name: String,
     kind: TaskKind,
     done: bool,
-    progress: f32,       // 0.0..1.0
+    progress: f32, // 0.0..1.0
     priority: Priority,
     size_bytes: u64,
 }
@@ -114,23 +114,23 @@ impl TaskKind {
 
     fn icon_char(self) -> char {
         match self {
-            TaskKind::Folder => '\u{F024B}',     // folder
-            TaskKind::RustFile => '\u{F0214}',    // code
-            TaskKind::Config => '\u{F0219}',      // settings
-            TaskKind::Document => '\u{F022E}',    // text
-            TaskKind::Test => '\u{F0293}',        // bug
-            TaskKind::Asset => '\u{F021A}',       // image
+            TaskKind::Folder => '\u{F024B}',   // folder
+            TaskKind::RustFile => '\u{F0214}', // code
+            TaskKind::Config => '\u{F0219}',   // settings
+            TaskKind::Document => '\u{F022E}', // text
+            TaskKind::Test => '\u{F0293}',     // bug
+            TaskKind::Asset => '\u{F021A}',    // image
         }
     }
 
     fn icon_color(self) -> [f32; 4] {
         match self {
             TaskKind::Folder => [0.90, 0.75, 0.30, 1.0],   // gold
-            TaskKind::RustFile => [0.85, 0.45, 0.20, 1.0],  // rust orange
-            TaskKind::Config => [0.55, 0.75, 0.85, 1.0],    // light blue
-            TaskKind::Document => [0.60, 0.80, 0.60, 1.0],  // green
-            TaskKind::Test => [0.80, 0.55, 0.85, 1.0],      // purple
-            TaskKind::Asset => [0.85, 0.65, 0.75, 1.0],     // pink
+            TaskKind::RustFile => [0.85, 0.45, 0.20, 1.0], // rust orange
+            TaskKind::Config => [0.55, 0.75, 0.85, 1.0],   // light blue
+            TaskKind::Document => [0.60, 0.80, 0.60, 1.0], // green
+            TaskKind::Test => [0.80, 0.55, 0.85, 1.0],     // purple
+            TaskKind::Asset => [0.85, 0.65, 0.75, 1.0],    // pink
         }
     }
 }
@@ -165,16 +165,24 @@ impl VirtualTreeNode for TaskNode {
     fn set_cell_value(&mut self, col: usize, value: &CellValue) {
         match col {
             COL_NAME => {
-                if let CellValue::Text(s) = value { self.name = s.clone(); }
+                if let CellValue::Text(s) = value {
+                    self.name = s.clone();
+                }
             }
             COL_DONE => {
-                if let CellValue::Bool(b) = value { self.done = *b; }
+                if let CellValue::Bool(b) = value {
+                    self.done = *b;
+                }
             }
             COL_PROGRESS => {
-                if let CellValue::Float(f) = value { self.progress = *f as f32; }
+                if let CellValue::Float(f) = value {
+                    self.progress = *f as f32;
+                }
             }
             COL_PRIORITY => {
-                if let CellValue::Choice(idx) = value { self.priority = Priority::from_index(*idx); }
+                if let CellValue::Choice(idx) = value {
+                    self.priority = Priority::from_index(*idx);
+                }
             }
             _ => {}
         }
@@ -197,7 +205,10 @@ impl VirtualTreeNode for TaskNode {
         match col {
             COL_NAME => self.name.to_lowercase().cmp(&other.name.to_lowercase()),
             COL_DONE => self.done.cmp(&other.done),
-            COL_PROGRESS => self.progress.partial_cmp(&other.progress).unwrap_or(Ordering::Equal),
+            COL_PROGRESS => self
+                .progress
+                .partial_cmp(&other.progress)
+                .unwrap_or(Ordering::Equal),
             COL_PRIORITY => self.priority.to_index().cmp(&other.priority.to_index()),
             COL_SIZE => self.size_bytes.cmp(&other.size_bytes),
             _ => Ordering::Equal,
@@ -268,14 +279,33 @@ struct DemoState {
 impl DemoState {
     fn new() -> Self {
         let columns = vec![
-            ColumnDef::new("Name").stretch(3.0).editor(CellEditor::TextInput),
-            ColumnDef::new("Done").fixed(50.0).editor(CellEditor::Checkbox),
-            ColumnDef::new("Progress").fixed(120.0).editor(CellEditor::SliderFloat { min: 0.0, max: 1.0 }),
-            ColumnDef::new("Priority").fixed(80.0).editor(CellEditor::ComboBox {
-                items: vec!["Low".into(), "Medium".into(), "High".into(), "Critical".into()],
-            }),
-            ColumnDef::new("Size").fixed(80.0).align(CellAlignment::Right),
-            ColumnDef::new("Action").fixed(70.0).editor(CellEditor::Button { label: "Open".into() }),
+            ColumnDef::new("Name")
+                .stretch(3.0)
+                .editor(CellEditor::TextInput),
+            ColumnDef::new("Done")
+                .fixed(50.0)
+                .editor(CellEditor::Checkbox),
+            ColumnDef::new("Progress")
+                .fixed(120.0)
+                .editor(CellEditor::SliderFloat { min: 0.0, max: 1.0 }),
+            ColumnDef::new("Priority")
+                .fixed(80.0)
+                .editor(CellEditor::ComboBox {
+                    items: vec![
+                        "Low".into(),
+                        "Medium".into(),
+                        "High".into(),
+                        "Critical".into(),
+                    ],
+                }),
+            ColumnDef::new("Size")
+                .fixed(80.0)
+                .align(CellAlignment::Right),
+            ColumnDef::new("Action")
+                .fixed(70.0)
+                .editor(CellEditor::Button {
+                    label: "Open".into(),
+                }),
         ];
 
         let config = TreeConfig {
@@ -297,33 +327,71 @@ impl DemoState {
         let mut tree = VirtualTree::new("##demo_tree", columns, config);
 
         // Build sample project tree
-        let src = tree.insert_root(TaskNode {
-            name: "src".into(), kind: TaskKind::Folder, done: false,
-            progress: 0.0, priority: Priority::High, size_bytes: 0,
-        }).unwrap();
-        let examples = tree.insert_root(TaskNode {
-            name: "examples".into(), kind: TaskKind::Folder, done: false,
-            progress: 0.0, priority: Priority::Medium, size_bytes: 0,
-        }).unwrap();
-        let docs = tree.insert_root(TaskNode {
-            name: "docs".into(), kind: TaskKind::Folder, done: true,
-            progress: 1.0, priority: Priority::Low, size_bytes: 0,
-        }).unwrap();
-        let tests = tree.insert_root(TaskNode {
-            name: "tests".into(), kind: TaskKind::Folder, done: false,
-            progress: 0.4, priority: Priority::High, size_bytes: 0,
-        }).unwrap();
-        let assets = tree.insert_root(TaskNode {
-            name: "assets".into(), kind: TaskKind::Folder, done: false,
-            progress: 0.75, priority: Priority::Low, size_bytes: 0,
-        }).unwrap();
+        let src = tree
+            .insert_root(TaskNode {
+                name: "src".into(),
+                kind: TaskKind::Folder,
+                done: false,
+                progress: 0.0,
+                priority: Priority::High,
+                size_bytes: 0,
+            })
+            .unwrap();
+        let examples = tree
+            .insert_root(TaskNode {
+                name: "examples".into(),
+                kind: TaskKind::Folder,
+                done: false,
+                progress: 0.0,
+                priority: Priority::Medium,
+                size_bytes: 0,
+            })
+            .unwrap();
+        let docs = tree
+            .insert_root(TaskNode {
+                name: "docs".into(),
+                kind: TaskKind::Folder,
+                done: true,
+                progress: 1.0,
+                priority: Priority::Low,
+                size_bytes: 0,
+            })
+            .unwrap();
+        let tests = tree
+            .insert_root(TaskNode {
+                name: "tests".into(),
+                kind: TaskKind::Folder,
+                done: false,
+                progress: 0.4,
+                priority: Priority::High,
+                size_bytes: 0,
+            })
+            .unwrap();
+        let assets = tree
+            .insert_root(TaskNode {
+                name: "assets".into(),
+                kind: TaskKind::Folder,
+                done: false,
+                progress: 0.75,
+                priority: Priority::Low,
+                size_bytes: 0,
+            })
+            .unwrap();
         tree.insert_root(TaskNode {
-            name: "Cargo.toml".into(), kind: TaskKind::Config, done: true,
-            progress: 1.0, priority: Priority::Medium, size_bytes: 892,
+            name: "Cargo.toml".into(),
+            kind: TaskKind::Config,
+            done: true,
+            progress: 1.0,
+            priority: Priority::Medium,
+            size_bytes: 892,
         });
         tree.insert_root(TaskNode {
-            name: "README.md".into(), kind: TaskKind::Document, done: false,
-            progress: 0.6, priority: Priority::Medium, size_bytes: 4521,
+            name: "README.md".into(),
+            kind: TaskKind::Document,
+            done: false,
+            progress: 0.6,
+            priority: Priority::Medium,
+            size_bytes: 4521,
         });
 
         // src/ subfolders
@@ -332,14 +400,28 @@ impl DemoState {
         let ng = Self::add_folder(&mut tree, src, "node_graph", Priority::Medium);
         let fm = Self::add_folder(&mut tree, src, "file_manager", Priority::Medium);
 
-        tree.insert_child(src, TaskNode {
-            name: "lib.rs".into(), kind: TaskKind::RustFile, done: true,
-            progress: 1.0, priority: Priority::Low, size_bytes: 1024,
-        });
-        tree.insert_child(src, TaskNode {
-            name: "icons.rs".into(), kind: TaskKind::RustFile, done: true,
-            progress: 1.0, priority: Priority::Low, size_bytes: 8192,
-        });
+        tree.insert_child(
+            src,
+            TaskNode {
+                name: "lib.rs".into(),
+                kind: TaskKind::RustFile,
+                done: true,
+                progress: 1.0,
+                priority: Priority::Low,
+                size_bytes: 1024,
+            },
+        );
+        tree.insert_child(
+            src,
+            TaskNode {
+                name: "icons.rs".into(),
+                kind: TaskKind::RustFile,
+                done: true,
+                progress: 1.0,
+                priority: Priority::Low,
+                size_bytes: 8192,
+            },
+        );
 
         // src/virtual_table/
         Self::add_file(&mut tree, vt, "mod.rs", 28540, Priority::High, 1.0);
@@ -353,7 +435,14 @@ impl DemoState {
         Self::add_file(&mut tree, vtree, "mod.rs", 22100, Priority::Critical, 0.85);
         Self::add_file(&mut tree, vtree, "arena.rs", 8900, Priority::High, 0.9);
         Self::add_file(&mut tree, vtree, "node.rs", 3200, Priority::Medium, 0.95);
-        Self::add_file(&mut tree, vtree, "flat_view.rs", 2100, Priority::Medium, 0.9);
+        Self::add_file(
+            &mut tree,
+            vtree,
+            "flat_view.rs",
+            2100,
+            Priority::Medium,
+            0.9,
+        );
         Self::add_file(&mut tree, vtree, "config.rs", 1500, Priority::Low, 1.0);
         Self::add_file(&mut tree, vtree, "drag.rs", 1200, Priority::Medium, 0.5);
         Self::add_file(&mut tree, vtree, "filter.rs", 1800, Priority::Medium, 0.8);
@@ -371,23 +460,108 @@ impl DemoState {
         Self::add_file(&mut tree, fm, "config.rs", 3800, Priority::Low, 1.0);
 
         // examples/
-        Self::add_file(&mut tree, examples, "demo_tree.rs", 9500, Priority::High, 0.7);
-        Self::add_file(&mut tree, examples, "demo_table.rs", 12400, Priority::Medium, 1.0);
-        Self::add_file(&mut tree, examples, "demo_node_graph.rs", 18700, Priority::Medium, 1.0);
+        Self::add_file(
+            &mut tree,
+            examples,
+            "demo_tree.rs",
+            9500,
+            Priority::High,
+            0.7,
+        );
+        Self::add_file(
+            &mut tree,
+            examples,
+            "demo_table.rs",
+            12400,
+            Priority::Medium,
+            1.0,
+        );
+        Self::add_file(
+            &mut tree,
+            examples,
+            "demo_node_graph.rs",
+            18700,
+            Priority::Medium,
+            1.0,
+        );
 
         // docs/
-        Self::add_file_kind(&mut tree, docs, "node_graph.md", 7800, TaskKind::Document, Priority::Low, 1.0);
-        Self::add_file_kind(&mut tree, docs, "virtual_table.md", 5400, TaskKind::Document, Priority::Low, 1.0);
+        Self::add_file_kind(
+            &mut tree,
+            docs,
+            "node_graph.md",
+            7800,
+            TaskKind::Document,
+            Priority::Low,
+            1.0,
+        );
+        Self::add_file_kind(
+            &mut tree,
+            docs,
+            "virtual_table.md",
+            5400,
+            TaskKind::Document,
+            Priority::Low,
+            1.0,
+        );
 
         // tests/
-        Self::add_file_kind(&mut tree, tests, "arena_tests.rs", 3200, TaskKind::Test, Priority::High, 0.85);
-        Self::add_file_kind(&mut tree, tests, "flat_view_tests.rs", 1800, TaskKind::Test, Priority::Medium, 0.6);
-        Self::add_file_kind(&mut tree, tests, "integration.rs", 5400, TaskKind::Test, Priority::Critical, 0.3);
+        Self::add_file_kind(
+            &mut tree,
+            tests,
+            "arena_tests.rs",
+            3200,
+            TaskKind::Test,
+            Priority::High,
+            0.85,
+        );
+        Self::add_file_kind(
+            &mut tree,
+            tests,
+            "flat_view_tests.rs",
+            1800,
+            TaskKind::Test,
+            Priority::Medium,
+            0.6,
+        );
+        Self::add_file_kind(
+            &mut tree,
+            tests,
+            "integration.rs",
+            5400,
+            TaskKind::Test,
+            Priority::Critical,
+            0.3,
+        );
 
         // assets/
-        Self::add_file_kind(&mut tree, assets, "logo.png", 24500, TaskKind::Asset, Priority::Low, 1.0);
-        Self::add_file_kind(&mut tree, assets, "icon_atlas.png", 128000, TaskKind::Asset, Priority::Low, 0.9);
-        Self::add_file_kind(&mut tree, assets, "font.ttf", 342000, TaskKind::Asset, Priority::Low, 1.0);
+        Self::add_file_kind(
+            &mut tree,
+            assets,
+            "logo.png",
+            24500,
+            TaskKind::Asset,
+            Priority::Low,
+            1.0,
+        );
+        Self::add_file_kind(
+            &mut tree,
+            assets,
+            "icon_atlas.png",
+            128000,
+            TaskKind::Asset,
+            Priority::Low,
+            0.9,
+        );
+        Self::add_file_kind(
+            &mut tree,
+            assets,
+            "font.ttf",
+            342000,
+            TaskKind::Asset,
+            Priority::Low,
+            1.0,
+        );
 
         // Expand src and virtual_tree by default
         tree.expand(src);
@@ -404,61 +578,131 @@ impl DemoState {
         }
     }
 
-    fn add_folder(tree: &mut VirtualTree<TaskNode>, parent: NodeId, name: &str, prio: Priority) -> NodeId {
-        tree.insert_child(parent, TaskNode {
-            name: name.into(), kind: TaskKind::Folder, done: false,
-            progress: 0.0, priority: prio, size_bytes: 0,
-        }).unwrap()
+    fn add_folder(
+        tree: &mut VirtualTree<TaskNode>,
+        parent: NodeId,
+        name: &str,
+        prio: Priority,
+    ) -> NodeId {
+        tree.insert_child(
+            parent,
+            TaskNode {
+                name: name.into(),
+                kind: TaskKind::Folder,
+                done: false,
+                progress: 0.0,
+                priority: prio,
+                size_bytes: 0,
+            },
+        )
+        .unwrap()
     }
 
-    fn add_file(tree: &mut VirtualTree<TaskNode>, parent: NodeId, name: &str, size: u64, prio: Priority, progress: f32) {
-        tree.insert_child(parent, TaskNode {
-            name: name.into(), kind: TaskKind::RustFile, done: progress >= 1.0,
-            progress, priority: prio, size_bytes: size,
-        });
+    fn add_file(
+        tree: &mut VirtualTree<TaskNode>,
+        parent: NodeId,
+        name: &str,
+        size: u64,
+        prio: Priority,
+        progress: f32,
+    ) {
+        tree.insert_child(
+            parent,
+            TaskNode {
+                name: name.into(),
+                kind: TaskKind::RustFile,
+                done: progress >= 1.0,
+                progress,
+                priority: prio,
+                size_bytes: size,
+            },
+        );
     }
 
-    fn add_file_kind(tree: &mut VirtualTree<TaskNode>, parent: NodeId, name: &str, size: u64, kind: TaskKind, prio: Priority, progress: f32) {
-        tree.insert_child(parent, TaskNode {
-            name: name.into(), kind, done: progress >= 1.0,
-            progress, priority: prio, size_bytes: size,
-        });
+    fn add_file_kind(
+        tree: &mut VirtualTree<TaskNode>,
+        parent: NodeId,
+        name: &str,
+        size: u64,
+        kind: TaskKind,
+        prio: Priority,
+        progress: f32,
+    ) {
+        tree.insert_child(
+            parent,
+            TaskNode {
+                name: name.into(),
+                kind,
+                done: progress >= 1.0,
+                progress,
+                priority: prio,
+                size_bytes: size,
+            },
+        );
     }
 
     fn stress_test(&mut self) {
         // Add 10,000 nodes in a deep hierarchy
         let root = match self.tree.insert_root(TaskNode {
             name: format!("stress_test_{}", self.next_id),
-            kind: TaskKind::Folder, done: false,
-            progress: 0.0, priority: Priority::Low, size_bytes: 0,
+            kind: TaskKind::Folder,
+            done: false,
+            progress: 0.0,
+            priority: Priority::Low,
+            size_bytes: 0,
         }) {
             Some(id) => id,
             None => return, // at capacity
         };
         self.next_id += 1;
 
-        let priorities = [Priority::Low, Priority::Medium, Priority::High, Priority::Critical];
-        let kinds = [TaskKind::RustFile, TaskKind::Config, TaskKind::Document, TaskKind::Test, TaskKind::Asset];
+        let priorities = [
+            Priority::Low,
+            Priority::Medium,
+            Priority::High,
+            Priority::Critical,
+        ];
+        let kinds = [
+            TaskKind::RustFile,
+            TaskKind::Config,
+            TaskKind::Document,
+            TaskKind::Test,
+            TaskKind::Asset,
+        ];
 
         for i in 0..100 {
-            let folder = match self.tree.insert_child(root, TaskNode {
-                name: format!("folder_{i:03}"), kind: TaskKind::Folder, done: false,
-                progress: (i as f32) / 100.0, priority: priorities[i % 4], size_bytes: 0,
-            }) {
+            let folder = match self.tree.insert_child(
+                root,
+                TaskNode {
+                    name: format!("folder_{i:03}"),
+                    kind: TaskKind::Folder,
+                    done: false,
+                    progress: (i as f32) / 100.0,
+                    priority: priorities[i % 4],
+                    size_bytes: 0,
+                },
+            ) {
                 Some(id) => id,
                 None => return, // at capacity
             };
 
             for j in 0..100 {
                 let idx = i * 100 + j;
-                if self.tree.insert_child(folder, TaskNode {
-                    name: format!("item_{idx:05}"),
-                    kind: kinds[j % 5],
-                    done: j % 3 == 0,
-                    progress: (j as f32) / 100.0,
-                    priority: priorities[j % 4],
-                    size_bytes: (idx as u64 + 1) * 128,
-                }).is_none() {
+                if self
+                    .tree
+                    .insert_child(
+                        folder,
+                        TaskNode {
+                            name: format!("item_{idx:05}"),
+                            kind: kinds[j % 5],
+                            done: j % 3 == 0,
+                            progress: (j as f32) / 100.0,
+                            priority: priorities[j % 4],
+                            size_bytes: (idx as u64 + 1) * 128,
+                        },
+                    )
+                    .is_none()
+                {
                     return; // at capacity
                 }
             }
@@ -491,12 +735,16 @@ impl DemoState {
     fn render_toolbar(&mut self, ui: &Ui) {
         ui.text("VirtualTree Demo");
         ui.same_line_with_spacing(0.0, 20.0);
-        ui.text_colored([0.55, 0.60, 0.68, 1.0], "Drag & drop nodes | Right-click for context menu | Double-click to edit");
+        ui.text_colored(
+            [0.55, 0.60, 0.68, 1.0],
+            "Drag & drop nodes | Right-click for context menu | Double-click to edit",
+        );
         ui.spacing();
 
         // Row 1: Filter + buttons
         ui.set_next_item_width(220.0);
-        if ui.input_text("##filter", &mut self.filter_buf)
+        if ui
+            .input_text("##filter", &mut self.filter_buf)
             .hint("Filter by name...")
             .build()
         {
@@ -508,9 +756,13 @@ impl DemoState {
             self.tree.clear_filter();
         }
         ui.same_line_with_spacing(0.0, 16.0);
-        if ui.button("Expand All") { self.tree.expand_all(); }
+        if ui.button("Expand All") {
+            self.tree.expand_all();
+        }
         ui.same_line();
-        if ui.button("Collapse All") { self.tree.collapse_all(); }
+        if ui.button("Collapse All") {
+            self.tree.collapse_all();
+        }
         ui.same_line_with_spacing(0.0, 16.0);
 
         if ui.button("+ Stress 10K") {
@@ -521,8 +773,11 @@ impl DemoState {
             self.next_id += 1;
             let _ = self.tree.insert_root(TaskNode {
                 name: format!("new_folder_{}", self.next_id),
-                kind: TaskKind::Folder, done: false,
-                progress: 0.0, priority: Priority::Medium, size_bytes: 0,
+                kind: TaskKind::Folder,
+                done: false,
+                progress: 0.0,
+                priority: Priority::Medium,
+                size_bytes: 0,
             });
         }
 
@@ -560,81 +815,107 @@ impl DemoState {
         }
 
         if let Some(_popup) = ui.begin_popup("##tree_ctx")
-            && let Some(id) = self.tree.context_node {
-                if let Some(node) = self.tree.get(id) {
-                    ui.text_disabled(&node.name);
-                    ui.separator();
-                }
-
-                // Add child (only for folders)
-                if self.tree.get(id).is_some_and(|n| n.kind == TaskKind::Folder) {
-                    if ui.selectable("Add Child File") {
-                        self.next_id += 1;
-                        self.tree.insert_child(id, TaskNode {
-                            name: format!("new_file_{}.rs", self.next_id),
-                            kind: TaskKind::RustFile, done: false,
-                            progress: 0.0, priority: Priority::Medium, size_bytes: 1024,
-                        });
-                        self.tree.expand(id);
-                    }
-                    if ui.selectable("Add Subfolder") {
-                        self.next_id += 1;
-                        self.tree.insert_child(id, TaskNode {
-                            name: format!("new_folder_{}", self.next_id),
-                            kind: TaskKind::Folder, done: false,
-                            progress: 0.0, priority: Priority::Medium, size_bytes: 0,
-                        });
-                        self.tree.expand(id);
-                    }
-                    ui.separator();
-                }
-
-                // Toggle done
-                if ui.selectable("Toggle Done")
-                    && let Some(data) = self.tree.get_mut(id) {
-                        data.done = !data.done;
-                        if data.done { data.progress = 1.0; }
-                    }
-
-                // Set priority submenu
-                if let Some(_sub) = ui.begin_menu("Set Priority") {
-                    for p in [Priority::Low, Priority::Medium, Priority::High, Priority::Critical] {
-                        if ui.selectable(p.label()) {
-                            let selected: Vec<NodeId> = self.tree.selected_nodes().collect();
-                            if selected.contains(&id) {
-                                for &sel_id in &selected {
-                                    if let Some(data) = self.tree.get_mut(sel_id) {
-                                        data.priority = p;
-                                    }
-                                }
-                            } else if let Some(data) = self.tree.get_mut(id) {
-                                data.priority = p;
-                            }
-                        }
-                    }
-                }
-
+            && let Some(id) = self.tree.context_node
+        {
+            if let Some(node) = self.tree.get(id) {
+                ui.text_disabled(&node.name);
                 ui.separator();
-                if ui.selectable("Delete") {
-                    let selected: Vec<NodeId> = self.tree.selected_nodes().collect();
-                    if selected.contains(&id) {
-                        for sel_id in selected {
-                            self.tree.remove(sel_id);
+            }
+
+            // Add child (only for folders)
+            if self
+                .tree
+                .get(id)
+                .is_some_and(|n| n.kind == TaskKind::Folder)
+            {
+                if ui.selectable("Add Child File") {
+                    self.next_id += 1;
+                    self.tree.insert_child(
+                        id,
+                        TaskNode {
+                            name: format!("new_file_{}.rs", self.next_id),
+                            kind: TaskKind::RustFile,
+                            done: false,
+                            progress: 0.0,
+                            priority: Priority::Medium,
+                            size_bytes: 1024,
+                        },
+                    );
+                    self.tree.expand(id);
+                }
+                if ui.selectable("Add Subfolder") {
+                    self.next_id += 1;
+                    self.tree.insert_child(
+                        id,
+                        TaskNode {
+                            name: format!("new_folder_{}", self.next_id),
+                            kind: TaskKind::Folder,
+                            done: false,
+                            progress: 0.0,
+                            priority: Priority::Medium,
+                            size_bytes: 0,
+                        },
+                    );
+                    self.tree.expand(id);
+                }
+                ui.separator();
+            }
+
+            // Toggle done
+            if ui.selectable("Toggle Done")
+                && let Some(data) = self.tree.get_mut(id)
+            {
+                data.done = !data.done;
+                if data.done {
+                    data.progress = 1.0;
+                }
+            }
+
+            // Set priority submenu
+            if let Some(_sub) = ui.begin_menu("Set Priority") {
+                for p in [
+                    Priority::Low,
+                    Priority::Medium,
+                    Priority::High,
+                    Priority::Critical,
+                ] {
+                    if ui.selectable(p.label()) {
+                        let selected: Vec<NodeId> = self.tree.selected_nodes().collect();
+                        if selected.contains(&id) {
+                            for &sel_id in &selected {
+                                if let Some(data) = self.tree.get_mut(sel_id) {
+                                    data.priority = p;
+                                }
+                            }
+                        } else if let Some(data) = self.tree.get_mut(id) {
+                            data.priority = p;
                         }
-                    } else {
-                        self.tree.remove(id);
                     }
                 }
             }
+
+            ui.separator();
+            if ui.selectable("Delete") {
+                let selected: Vec<NodeId> = self.tree.selected_nodes().collect();
+                if selected.contains(&id) {
+                    for sel_id in selected {
+                        self.tree.remove(sel_id);
+                    }
+                } else {
+                    self.tree.remove(id);
+                }
+            }
+        }
     }
 
     fn handle_button_clicks(&mut self, _ui: &Ui) {
         if let Some((node_id, _col)) = self.tree.button_clicked
-            && let Some(data) = self.tree.get(node_id) {
-                self.badge_buf.clear();
-                let _ = write!(self.badge_buf, "Opened: {}", data.name);
-                // In a real app this would open the file; here just log to tooltip
-            }
+            && let Some(data) = self.tree.get(node_id)
+        {
+            self.badge_buf.clear();
+            let _ = write!(self.badge_buf, "Opened: {}", data.name);
+            // In a real app this would open the file; here just log to tooltip
+        }
     }
 }
 
@@ -690,8 +971,7 @@ impl ApplicationHandler for App {
         }))
         .expect("adapter");
         let (device, queue) =
-            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("device");
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
 
         let phys = window.inner_size();
         let surface_cfg = wgpu::SurfaceConfiguration {
@@ -796,8 +1076,7 @@ impl ApplicationHandler for App {
                 let frame = match gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-                    wgpu::CurrentSurfaceTexture::Outdated
-                    | wgpu::CurrentSurfaceTexture::Lost => {
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                         gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
                         return;
                     }
@@ -824,30 +1103,27 @@ impl ApplicationHandler for App {
                         });
 
                 {
-                    let mut pass =
-                        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                            label: Some("imgui_pass"),
-                            color_attachments: &[Some(
-                                wgpu::RenderPassColorAttachment {
-                                    view: &view,
-                                    resolve_target: None,
-                                    depth_slice: None,
-                                    ops: wgpu::Operations {
-                                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                                            r: 0.08,
-                                            g: 0.09,
-                                            b: 0.11,
-                                            a: 1.0,
-                                        }),
-                                        store: wgpu::StoreOp::Store,
-                                    },
-                                },
-                            )],
-                            depth_stencil_attachment: None,
-                            timestamp_writes: None,
-                            occlusion_query_set: None,
-                            multiview_mask: None,
-                        });
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("imgui_pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            depth_slice: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.08,
+                                    g: 0.09,
+                                    b: 0.11,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
 
                     if draw_data.total_vtx_count > 0 {
                         gpu.renderer
@@ -917,7 +1193,10 @@ fn apply_dark_theme(style: &mut dear_imgui_rs::Style) {
     style.set_color(StyleColor::TabSelected, [0.22, 0.24, 0.30, 1.0]);
     style.set_color(StyleColor::Text, [0.92, 0.93, 0.95, 1.0]);
     style.set_color(StyleColor::TextDisabled, [0.42, 0.45, 0.52, 1.0]);
-    style.set_color(StyleColor::TextSelectedBg, [accent[0], accent[1], accent[2], 0.30]);
+    style.set_color(
+        StyleColor::TextSelectedBg,
+        [accent[0], accent[1], accent[2], 0.30],
+    );
     style.set_color(StyleColor::PlotHistogram, accent_hi);
 }
 
@@ -935,11 +1214,11 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use dear_imgui_custom_mod::virtual_tree::arena::{TreeArena, MAX_TREE_NODES};
+    use dear_imgui_custom_mod::virtual_table::row::CellValue;
+    use dear_imgui_custom_mod::virtual_tree::arena::{MAX_TREE_NODES, TreeArena};
     use dear_imgui_custom_mod::virtual_tree::filter::FilterState;
     use dear_imgui_custom_mod::virtual_tree::flat_view::{FlatRow, FlatView};
     use dear_imgui_custom_mod::virtual_tree::node::{NodeIcon, VirtualTreeNode};
-    use dear_imgui_custom_mod::virtual_table::row::CellValue;
 
     // ── TreeArena unit tests ─────────────────────────────────────────
 
@@ -1150,10 +1429,16 @@ mod tests {
 
     impl BenchNode {
         fn folder(name: impl Into<String>) -> Self {
-            Self { name: name.into(), is_folder: true }
+            Self {
+                name: name.into(),
+                is_folder: true,
+            }
         }
         fn file(name: impl Into<String>) -> Self {
-            Self { name: name.into(), is_folder: false }
+            Self {
+                name: name.into(),
+                is_folder: false,
+            }
         }
     }
 
@@ -1187,7 +1472,9 @@ mod tests {
         let mut parents = Vec::new();
 
         for i in 0..roots {
-            if count >= target { break; }
+            if count >= target {
+                break;
+            }
             if let Some(id) = arena.insert_root(BenchNode::folder(format!("root_{i}"))) {
                 parents.push(id);
                 count += 1;
@@ -1196,11 +1483,15 @@ mod tests {
 
         while count < target {
             let current_parents = std::mem::take(&mut parents);
-            if current_parents.is_empty() { break; }
+            if current_parents.is_empty() {
+                break;
+            }
 
             for parent in &current_parents {
                 for j in 0..children_per {
-                    if count >= target { break; }
+                    if count >= target {
+                        break;
+                    }
                     let is_folder = j % 5 == 0;
                     let node = if is_folder {
                         BenchNode::folder(format!("dir_{count}"))
@@ -1216,7 +1507,9 @@ mod tests {
                         break;
                     }
                 }
-                if count >= target { break; }
+                if count >= target {
+                    break;
+                }
             }
         }
     }
@@ -1255,8 +1548,8 @@ mod tests {
     }
 
     fn run_stress_test(target: usize, label: &str) {
-        use std::time::Instant;
         use dear_imgui_custom_mod::virtual_tree::arena::NodeSlot;
+        use std::time::Instant;
 
         let sep = "=".repeat(60);
         println!("\n{sep}");
@@ -1297,7 +1590,10 @@ mod tests {
             let _ = flat_view.index_of(id);
         }
         let lookup_ms = elapsed_ms(t);
-        println!("[INDEX_OF]  {sample_size} lookups in {lookup_ms:.3} ms ({:.0} ns/op)", lookup_ms * 1_000_000.0 / sample_size as f64);
+        println!(
+            "[INDEX_OF]  {sample_size} lookups in {lookup_ms:.3} ms ({:.0} ns/op)",
+            lookup_ms * 1_000_000.0 / sample_size as f64
+        );
 
         // ── 5. Collapse all + rebuild ────────────────────────────────
         arena.collapse_all();
@@ -1313,7 +1609,7 @@ mod tests {
         let t = Instant::now();
         filter_state.set_filter("file_1", &mut arena, true);
         let filter_ms = elapsed_ms(t);
-        let visible = filter_state.visible_set.len();
+        let visible = filter_state.visible_count();
         println!("[FILTER '\"file_1\"']  {visible} visible nodes in {filter_ms:.1} ms");
 
         // ── 7. Filter rebuild flat view ──────────────────────────────
@@ -1338,7 +1634,10 @@ mod tests {
         }
         let remove_ms = elapsed_ms(t);
         let remaining = arena.node_count();
-        println!("[REMOVE 10 root subtrees]  removed {} nodes in {remove_ms:.1} ms", actual_count - remaining);
+        println!(
+            "[REMOVE 10 root subtrees]  removed {} nodes in {remove_ms:.1} ms",
+            actual_count - remaining
+        );
 
         // ── 10. Deep chain test (stack depth) ────────────────────────
         let mut deep_arena = TreeArena::<BenchNode>::with_capacity(10_000);
@@ -1353,7 +1652,10 @@ mod tests {
         let t = Instant::now();
         deep_flat.rebuild(&deep_arena, &deep_filter);
         let deep_rebuild_ms = elapsed_ms(t);
-        println!("[DEEP FLAT_VIEW]  {} rows in {deep_rebuild_ms:.1} ms", deep_flat.len());
+        println!(
+            "[DEEP FLAT_VIEW]  {} rows in {deep_rebuild_ms:.1} ms",
+            deep_flat.len()
+        );
 
         // ── 11. Memory estimate ──────────────────────────────────────
         let slot_size = std::mem::size_of::<Option<NodeSlot<BenchNode>>>();
