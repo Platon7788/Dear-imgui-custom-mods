@@ -2,12 +2,19 @@
 //!
 //! Displays a virtualized table of processes with search and selection.
 //! Context menu is NOT rendered by this component — the caller handles
-//! `MonitorEvent::ContextMenuRequested` and renders their own popup.
+//! [`MonitorEvent::ContextMenuRequested`] and renders their own popup.
+//!
+//! # Layout
+//!
+//! 4 columns total, always in canonical order `Name | PID | Bits | Status`.
+//! Name stretches with the window; PID / Bits / Status are fixed-width and
+//! pinned to the right edge. `Bits` and `Status` can be hidden via
+//! [`ColumnConfig`] (they stay registered on the table with `visible(false)`
+//! so indices remain stable).
 
 use crate::proc_mon::config::MonitorConfig;
 use crate::proc_mon::types::{
-    format_bytes, format_cpu_percent, format_cpu_time, format_create_time, ColumnConfig,
-    MonitorColors, MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo,
+    ColumnConfig, MonitorColors, MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo,
 };
 use crate::virtual_table::{
     CellAlignment, CellValue, ColumnDef, RowDensity, RowStyle, SelectionMode, TableConfig,
@@ -23,23 +30,16 @@ type FxMap<K, V> = HashMap<K, V, foldhash::fast::FixedState>;
 
 // ─── ProcessRow adapter ──────────────────────────────────────────────────────
 
-/// Row adapter for VirtualTable with cached formatted strings.
+/// Row adapter for [`VirtualTable`].
 ///
-/// All volatile numeric columns (memory, I/O, CPU%, CPU-time) are pre-formatted
-/// once per upsert — the table's `cell_display_text` only pushes bytes into
-/// the scratch buffer, no allocation on render hot path.
+/// The minimal [`ProcessInfo`] only has three display fields beyond the
+/// always-visible name (`pid` → integer, `bits` → `x32` / `x64`, `status` →
+/// `"Running"` / `"Suspended"`). All three are cheap to format on demand
+/// and immutable per-PID after the first upsert, so there are no cached
+/// strings — `cell_display_text` formats directly into the shared scratch
+/// buffer the table owns.
 pub struct ProcessRow {
     info: ProcessInfo,
-    // Cached formatted columns.
-    mem_str: String,
-    private_str: String,
-    virtual_str: String,
-    peak_mem_str: String,
-    io_read_str: String,
-    io_write_str: String,
-    cpu_time_str: String,
-    cpu_pct_str: String,
-    create_time_str: String,
     /// Cached row background tint resolved from [`MonitorColors`] at upsert
     /// time — so rendering is pure lookup, no rule evaluation per frame.
     color_override: Option<[f32; 4]>,
@@ -47,57 +47,14 @@ pub struct ProcessRow {
 
 impl From<ProcessInfo> for ProcessRow {
     fn from(info: ProcessInfo) -> Self {
-        let mut row = Self {
+        Self {
             info,
-            mem_str: String::new(),
-            private_str: String::new(),
-            virtual_str: String::new(),
-            peak_mem_str: String::new(),
-            io_read_str: String::new(),
-            io_write_str: String::new(),
-            cpu_time_str: String::new(),
-            cpu_pct_str: String::new(),
-            create_time_str: String::new(),
             color_override: None,
-        };
-        row.update_cached_strings();
-        row
+        }
     }
 }
 
 impl ProcessRow {
-    /// Update cached formatted strings.
-    fn update_cached_strings(&mut self) {
-        format_bytes(self.info.working_set, &mut self.mem_str);
-        format_bytes(self.info.private_bytes, &mut self.private_str);
-        format_bytes(self.info.virtual_size, &mut self.virtual_str);
-        format_bytes(self.info.peak_working_set, &mut self.peak_mem_str);
-        format_bytes(self.info.io_read_bytes as usize, &mut self.io_read_str);
-        format_bytes(self.info.io_write_bytes as usize, &mut self.io_write_str);
-        format_cpu_time(
-            self.info.kernel_time.saturating_add(self.info.user_time),
-            &mut self.cpu_time_str,
-        );
-        format_cpu_percent(self.info.cpu_percent, &mut self.cpu_pct_str);
-        format_create_time(self.info.create_time, &mut self.create_time_str);
-    }
-
-    /// Update only the volatile caches that change per tick (memory, I/O, CPU).
-    /// Avoids reformatting `create_time_str` which never changes.
-    fn update_volatile(&mut self) {
-        format_bytes(self.info.working_set, &mut self.mem_str);
-        format_bytes(self.info.private_bytes, &mut self.private_str);
-        format_bytes(self.info.virtual_size, &mut self.virtual_str);
-        format_bytes(self.info.peak_working_set, &mut self.peak_mem_str);
-        format_bytes(self.info.io_read_bytes as usize, &mut self.io_read_str);
-        format_bytes(self.info.io_write_bytes as usize, &mut self.io_write_str);
-        format_cpu_time(
-            self.info.kernel_time.saturating_add(self.info.user_time),
-            &mut self.cpu_time_str,
-        );
-        format_cpu_percent(self.info.cpu_percent, &mut self.cpu_pct_str);
-    }
-
     /// Get the PID.
     pub const fn pid(&self) -> u32 {
         self.info.pid
@@ -118,11 +75,6 @@ impl ProcessRow {
         self.info.status
     }
 
-    /// Get the CPU usage percent.
-    pub const fn cpu_percent(&self) -> f32 {
-        self.info.cpu_percent
-    }
-
     /// Apply a pre-resolved color override (used by `ProcessMonitor` during
     /// upsert / `set_colors` so row rendering stays pure lookup).
     #[inline]
@@ -133,9 +85,9 @@ impl ProcessRow {
 
 // ─── Table cell dispatch ──────────────────────────────────────────────────────
 
-/// Column index is canonical (0..=17): `ProcessMonitor` always registers
+/// Column index is canonical (0..=3): `ProcessMonitor` always registers
 /// every column in the same order and uses `ColumnDef::visible(flag)` to
-/// hide the ones disabled in `ColumnConfig`. ImGui's `table_set_column_enabled`
+/// hide `Bits` / `Status` when disabled. ImGui's `table_set_column_enabled`
 /// suppresses rendering but does not reorder indices, so the match below
 /// stays correct regardless of which columns are hidden.
 impl VirtualTableRow for ProcessRow {
@@ -147,12 +99,7 @@ impl VirtualTableRow for ProcessRow {
         // Read-only.
     }
 
-    /// Default dispatch assumes no columns are hidden (column index = key).
-    /// When columns are hidden `ProcessMonitor` routes through its own mapper,
-    /// but `VirtualTable` also calls this for tooltip fallbacks — use the
-    /// canonical layout order.
     fn cell_display_text(&self, col: usize, buf: &mut String) {
-        // Canonical order matches `build_columns` when everything is visible.
         match col {
             0 => buf.push_str(&self.info.name),
             1 => {
@@ -162,30 +109,6 @@ impl VirtualTableRow for ProcessRow {
                 let _ = write!(buf, "x{}", self.info.bits);
             }
             3 => buf.push_str(self.info.status.label()),
-            4 => buf.push_str(&self.mem_str),
-            5 => buf.push_str(&self.cpu_pct_str),
-            6 => {
-                let _ = write!(buf, "{}", self.info.ppid);
-            }
-            7 => {
-                let _ = write!(buf, "{}", self.info.session_id);
-            }
-            8 => {
-                let _ = write!(buf, "{}", self.info.priority);
-            }
-            9 => {
-                let _ = write!(buf, "{}", self.info.thread_count);
-            }
-            10 => {
-                let _ = write!(buf, "{}", self.info.handle_count);
-            }
-            11 => buf.push_str(&self.private_str),
-            12 => buf.push_str(&self.virtual_str),
-            13 => buf.push_str(&self.peak_mem_str),
-            14 => buf.push_str(&self.io_read_str),
-            15 => buf.push_str(&self.io_write_str),
-            16 => buf.push_str(&self.cpu_time_str),
-            17 => buf.push_str(&self.create_time_str),
             _ => {}
         }
     }
@@ -235,26 +158,13 @@ pub struct ProcessMonitor {
     window_title: String,
     /// Whether to show search bar.
     show_search: bool,
-    /// Cached system-wide CPU% (sum across processes). Recomputed only on
-    /// `apply_delta` / `set_full_list` — avoids per-frame iteration.
-    cached_system_cpu: f32,
 }
 
 impl ProcessMonitor {
     /// Create a new process monitor with the given configuration.
     pub fn new(config: MonitorConfig) -> Self {
         let columns = Self::build_columns(&config.columns);
-        let table_config = TableConfig {
-            auto_scroll: false,
-            selection_mode: SelectionMode::Single,
-            sortable: false, // Fixed sort by create_time
-            resizable: true,
-            row_density: RowDensity::Dense,
-            highlight_hovered: false,
-            default_clip_tooltip: false,
-            ..TableConfig::default()
-        };
-        let table = VirtualTable::new("##proc_table", columns, 10_000, table_config);
+        let table = VirtualTable::new("##proc_table", columns, 10_000, default_table_config());
 
         Self {
             table,
@@ -265,19 +175,18 @@ impl ProcessMonitor {
             search_buf: String::with_capacity(128),
             search_lower: String::with_capacity(128),
             pid_scratch: String::with_capacity(12),
-            fmt_buf: String::with_capacity(64),
+            fmt_buf: String::with_capacity(32),
             columns: config.columns,
             colors: config.colors,
             self_pid: std::process::id(),
             window_title: config.window_title.to_string(),
             show_search: config.show_search,
-            cached_system_cpu: 0.0,
         }
     }
 
     /// Build column definitions from configuration.
     ///
-    /// **Canonical layout**: indices 0..=17 are fixed. Hidden columns are still
+    /// **Canonical layout**: indices 0..=3 are fixed. Hidden columns are still
     /// registered but marked `.visible(false)` — this keeps `col_idx` stable
     /// across configurations and lets `VirtualTableRow::cell_display_text`
     /// match on raw indices without a dynamic mapping.
@@ -288,65 +197,16 @@ impl ProcessMonitor {
             ColumnDef::new("Process Name").stretch(1.0).clip_tooltip(true),
             // 1 — PID: center-aligned numeric.
             ColumnDef::new("PID").fixed(70.0).align(CellAlignment::Center),
-            // 2 — Bits: center-aligned (already was).
+            // 2 — Bits: center-aligned `x32` / `x64`.
             ColumnDef::new("Bits")
                 .fixed(45.0)
                 .align(CellAlignment::Center)
                 .visible(cfg.bits),
-            // 3 — Status: center-aligned, 70 px per request.
+            // 3 — Status: center-aligned.
             ColumnDef::new("Status")
                 .fixed(70.0)
                 .align(CellAlignment::Center)
                 .visible(cfg.status),
-            // 4
-            ColumnDef::new("Memory")
-                .fixed(90.0)
-                .align(CellAlignment::Right)
-                .visible(cfg.memory),
-            // 5
-            ColumnDef::new("CPU %")
-                .fixed(65.0)
-                .align(CellAlignment::Right)
-                .visible(cfg.cpu_percent),
-            // 6
-            ColumnDef::new("PPID").fixed(70.0).visible(cfg.ppid),
-            // 7
-            ColumnDef::new("Session").fixed(70.0).visible(cfg.session_id),
-            // 8
-            ColumnDef::new("Priority").fixed(70.0).visible(cfg.priority),
-            // 9
-            ColumnDef::new("Threads").fixed(70.0).visible(cfg.threads),
-            // 10
-            ColumnDef::new("Handles").fixed(70.0).visible(cfg.handles),
-            // 11
-            ColumnDef::new("Private")
-                .fixed(90.0)
-                .align(CellAlignment::Right)
-                .visible(cfg.private_bytes),
-            // 12
-            ColumnDef::new("VM Size")
-                .fixed(90.0)
-                .align(CellAlignment::Right)
-                .visible(cfg.virtual_size),
-            // 13
-            ColumnDef::new("Peak Mem")
-                .fixed(90.0)
-                .align(CellAlignment::Right)
-                .visible(cfg.peak_memory),
-            // 14
-            ColumnDef::new("I/O Read")
-                .fixed(90.0)
-                .align(CellAlignment::Right)
-                .visible(cfg.io_read),
-            // 15
-            ColumnDef::new("I/O Write")
-                .fixed(90.0)
-                .align(CellAlignment::Right)
-                .visible(cfg.io_write),
-            // 16
-            ColumnDef::new("CPU Time").fixed(100.0).visible(cfg.cpu_time),
-            // 17
-            ColumnDef::new("Created").fixed(120.0).visible(cfg.create_time),
         ]
     }
 
@@ -360,15 +220,13 @@ impl ProcessMonitor {
         }
         self.total_count = procs.len();
         self.dirty = true;
-        self.recompute_system_cpu();
     }
 
     /// Handle incremental delta update.
     ///
-    /// In-place update: when a PID already exists, mutate its `ProcessInfo`,
-    /// refresh volatile cached strings and re-resolve the color override
-    /// (status may have flipped Running ↔ Suspended) — but the immutable
-    /// columns (name, create_time) stay cached from the original insert.
+    /// In-place update: when a PID already exists, mutate its `ProcessInfo`
+    /// and re-resolve the color override (status may have flipped Running ↔
+    /// Suspended). No cached strings to refresh.
     pub fn apply_delta(&mut self, delta: &ProcessDelta) {
         let mut changed = false;
 
@@ -382,7 +240,6 @@ impl ProcessMonitor {
             match self.processes.get_mut(&p.pid) {
                 Some(row) => {
                     row.info = p.clone();
-                    row.update_volatile();
                     let c = self.colors.resolve(&row.info, self.self_pid);
                     row.set_color_override(c);
                 }
@@ -400,19 +257,6 @@ impl ProcessMonitor {
         if changed {
             self.dirty = true;
         }
-        self.recompute_system_cpu();
-    }
-
-    /// Recompute cached system-wide CPU aggregate. Called once per
-    /// `apply_delta` / `set_full_list`, not per frame. Skipped when the
-    /// CPU% column is hidden — all values would be `0.0` anyway.
-    fn recompute_system_cpu(&mut self) {
-        if !self.columns.cpu_percent {
-            self.cached_system_cpu = 0.0;
-            return;
-        }
-        let sum: f32 = self.processes.values().map(|r| r.info.cpu_percent).sum();
-        self.cached_system_cpu = sum.clamp(0.0, 100.0);
     }
 
     /// Rebuild the sorted PID list if dirty.
@@ -510,23 +354,113 @@ impl ProcessMonitor {
         self.self_pid
     }
 
-    /// Update column visibility. Rebuilds the underlying `VirtualTable` with
-    /// the new column set.
+    /// Update column visibility (`Bits` / `Status`). Rebuilds the underlying
+    /// `VirtualTable` with the new visibility flags — indices stay canonical.
     pub fn set_columns(&mut self, columns: ColumnConfig) {
         self.columns = columns;
         let new_cols = Self::build_columns(&self.columns);
-        let table_config = TableConfig {
-            auto_scroll: false,
-            selection_mode: SelectionMode::Single,
-            sortable: false,
-            resizable: true,
-            row_density: RowDensity::Dense,
-            highlight_hovered: false,
-            default_clip_tooltip: false,
-            ..TableConfig::default()
-        };
-        self.table = VirtualTable::new("##proc_table", new_cols, 10_000, table_config);
+        self.table = VirtualTable::new("##proc_table", new_cols, 10_000, default_table_config());
         self.dirty = true;
+    }
+
+    /// Look up a tracked process by PID. Returns `None` if the PID is not
+    /// currently present in the monitor.
+    pub fn process(&self, pid: u32) -> Option<&ProcessRow> {
+        self.processes.get(&pid)
+    }
+
+    /// Render the monitor body (header + search + table) without opening
+    /// an `ui.window`. Use this when embedding the widget inside an existing
+    /// parent container with fixed layout (e.g. a panel inside a docked
+    /// main-view window). The caller owns the outer window/positioning and
+    /// is responsible for clipping / sizing the content region.
+    pub fn render_contents(&mut self, ui: &Ui) -> Option<MonitorEvent> {
+        self.rebuild_sorted();
+        let mut action: Option<MonitorEvent> = None;
+
+        // Suppress header hover/active highlight — keeps the header
+        // row a flat, non-clickable strip (we're not sortable and
+        // don't want imgui's default button-like header feedback).
+        let _hdr_hover = ui.push_style_color(
+            dear_imgui_rs::StyleColor::HeaderHovered,
+            [0.0, 0.0, 0.0, 0.0],
+        );
+        let _hdr_active = ui.push_style_color(
+            dear_imgui_rs::StyleColor::HeaderActive,
+            [0.0, 0.0, 0.0, 0.0],
+        );
+
+        // Header: total count only — no system-CPU aggregate any more.
+        self.fmt_buf.clear();
+        let _ = write!(&mut self.fmt_buf, "Total: {}", self.total_count);
+        ui.text(&self.fmt_buf);
+        ui.separator();
+
+        // Search bar.
+        if self.show_search {
+            let search_width = ui.content_region_avail()[0] - 140.0;
+            ui.set_next_item_width(search_width.max(100.0));
+            let search_changed = ui.input_text("##search", &mut self.search_buf).build();
+
+            if search_changed {
+                self.invalidate();
+            }
+
+            ui.same_line();
+            {
+                let _c = [
+                    ui.push_style_color(
+                        dear_imgui_rs::StyleColor::Button,
+                        [0.24, 0.48, 0.28, 1.0],
+                    ),
+                    ui.push_style_color(
+                        dear_imgui_rs::StyleColor::ButtonHovered,
+                        [0.30, 0.58, 0.34, 1.0],
+                    ),
+                    ui.push_style_color(
+                        dear_imgui_rs::StyleColor::ButtonActive,
+                        [0.20, 0.42, 0.24, 1.0],
+                    ),
+                ];
+                if ui.button("Search") {
+                    self.invalidate();
+                }
+            }
+            ui.same_line();
+            if ui.button("Clear") {
+                self.search_buf.clear();
+                self.invalidate();
+            }
+            ui.separator();
+        }
+
+        // Render table from sorted view.
+        let sorted_pids = &self.sorted_pids;
+        let processes = &self.processes;
+        let sorted_len = sorted_pids.len();
+
+        self.table.render_lookup(ui, sorted_len, |idx| {
+            sorted_pids.get(idx).and_then(|pid| processes.get(pid))
+        });
+
+        // Check for events.
+        if let Some(idx) = self.table.double_clicked_row
+            && let Some(pid) = sorted_pids.get(idx)
+        {
+            action = Some(MonitorEvent::RowDoubleClicked(*pid));
+        }
+
+        if self.table.open_context_menu {
+            if let Some(idx) = self.table.context_row
+                && let Some(pid) = sorted_pids.get(idx)
+            {
+                action = Some(MonitorEvent::ContextMenuRequested(*pid));
+            }
+            // Reset flag so caller can render their own popup.
+            self.table.open_context_menu = false;
+        }
+
+        action
     }
 
     /// Render the process monitor window.
@@ -537,8 +471,6 @@ impl ProcessMonitor {
         let [dw, dh] = ui.io().display_size();
         let win_w = 600.0_f32;
         let win_h = 500.0_f32;
-
-        self.rebuild_sorted();
 
         let mut opened = *show;
         let mut action: Option<MonitorEvent> = None;
@@ -554,96 +486,7 @@ impl ProcessMonitor {
             .flags(dear_imgui_rs::WindowFlags::NO_COLLAPSE)
             .opened(&mut opened)
             .build(|| {
-                // Suppress header hover/active highlight — keeps the header
-                // row a flat, non-clickable strip (we're not sortable and
-                // don't want imgui's default button-like header feedback).
-                // Scope covers the entire window body including the table.
-                let _hdr_hover = ui.push_style_color(
-                    dear_imgui_rs::StyleColor::HeaderHovered,
-                    [0.0, 0.0, 0.0, 0.0],
-                );
-                let _hdr_active = ui.push_style_color(
-                    dear_imgui_rs::StyleColor::HeaderActive,
-                    [0.0, 0.0, 0.0, 0.0],
-                );
-
-                // Header: total count (+ system CPU% only when tracked).
-                self.fmt_buf.clear();
-                if self.columns.cpu_percent {
-                    let _ = write!(
-                        &mut self.fmt_buf,
-                        "Total: {}   |   System CPU: {:.1}%",
-                        self.total_count, self.cached_system_cpu,
-                    );
-                } else {
-                    let _ = write!(&mut self.fmt_buf, "Total: {}", self.total_count);
-                }
-                ui.text(&self.fmt_buf);
-                ui.separator();
-
-                // Search bar.
-                if self.show_search {
-                    let search_width = ui.content_region_avail()[0] - 140.0;
-                    ui.set_next_item_width(search_width.max(100.0));
-                    let search_changed = ui.input_text("##search", &mut self.search_buf).build();
-
-                    if search_changed {
-                        self.invalidate();
-                    }
-
-                    ui.same_line();
-                    {
-                        let _c = [
-                            ui.push_style_color(
-                                dear_imgui_rs::StyleColor::Button,
-                                [0.24, 0.48, 0.28, 1.0],
-                            ),
-                            ui.push_style_color(
-                                dear_imgui_rs::StyleColor::ButtonHovered,
-                                [0.30, 0.58, 0.34, 1.0],
-                            ),
-                            ui.push_style_color(
-                                dear_imgui_rs::StyleColor::ButtonActive,
-                                [0.20, 0.42, 0.24, 1.0],
-                            ),
-                        ];
-                        if ui.button("Search") {
-                            self.invalidate();
-                        }
-                    }
-                    ui.same_line();
-                    if ui.button("Clear") {
-                        self.search_buf.clear();
-                        self.invalidate();
-                    }
-                    ui.separator();
-                }
-
-                // Render table from sorted view.
-                let sorted_pids = &self.sorted_pids;
-                let processes = &self.processes;
-                let sorted_len = sorted_pids.len();
-
-                self.table.render_lookup(ui, sorted_len, |idx| {
-                    sorted_pids.get(idx).and_then(|pid| processes.get(pid))
-                });
-
-                // Check for events.
-                if let Some(idx) = self.table.double_clicked_row
-                    && let Some(pid) = sorted_pids.get(idx)
-                {
-                    action = Some(MonitorEvent::RowDoubleClicked(*pid));
-                }
-
-                if self.table.open_context_menu {
-                    if let Some(idx) = self.table.context_row
-                        && let Some(pid) = sorted_pids.get(idx)
-                    {
-                        action = Some(MonitorEvent::ContextMenuRequested(*pid));
-                    }
-                    // Reset flag so caller can render their own popup.
-                    self.table.open_context_menu = false;
-                }
+                action = self.render_contents(ui);
             });
 
         if !opened {
@@ -654,3 +497,16 @@ impl ProcessMonitor {
     }
 }
 
+/// Default `TableConfig` shared between `new` and `set_columns`.
+fn default_table_config() -> TableConfig {
+    TableConfig {
+        auto_scroll: false,
+        selection_mode: SelectionMode::Single,
+        sortable: false, // Fixed sort by create_time
+        resizable: true,
+        row_density: RowDensity::Dense,
+        highlight_hovered: false,
+        default_clip_tooltip: false,
+        ..TableConfig::default()
+    }
+}

@@ -8,10 +8,10 @@
 //!
 //! - WoW64 bits cached per PID (process bitness never changes).
 //! - Reusable syscall buffer across ticks (avoids reallocation).
-//! - Delta diff via direct field compare (`SnapDiff: PartialEq`) — no hashing,
-//!   no false-positives from ever-growing CPU counters.
+//! - Delta detection: direct `ProcStatus` compare vs previous tick — the
+//!   only volatile field on the minimal `ProcessInfo`. Matches the
+//!   `IMGUI_NXT` reference engine approach.
 //! - `foldhash` (non-crypto) for all `u32`-keyed maps — faster than SipHash.
-//! - CPU% computed from wall-time delta vs kernel+user time delta per tick.
 //!
 //! # Safety
 //!
@@ -110,7 +110,7 @@ const PROCESS_QUERY_LIMITED_INFO: u32 = 0x1000;
 const THREAD_STATE_WAITING: u32 = 5;
 const THREAD_WAIT_REASON_SUSPENDED: u32 = 5;
 
-/// Prune dead PIDs from caches every N ticks.
+/// Prune dead PIDs from the bits cache every N ticks.
 const CACHE_PRUNE_INTERVAL: u32 = 15;
 
 /// Maximum allowed size for the syscall buffer (64 MiB).
@@ -150,58 +150,6 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-// ─── Diff snapshot ────────────────────────────────────────────────────────────
-
-/// Subset of `ProcessInfo` fields that trigger a delta upsert when changed.
-///
-/// Fields excluded from comparison:
-/// - `kernel_time` / `user_time` / `cycle_time` — monotonically grow, would
-///   mark every active process as "changed" every tick (defeats delta).
-///   CPU activity is still visible via `working_set` / I/O moves.
-/// - `cpu_percent` — derived quantity with inherent jitter; re-sent when
-///   any real field moves.
-/// - `name` / `bits` / `create_time` / `pid` / `ppid` / `session_id` —
-///   immutable for a given PID.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SnapDiff {
-    status: ProcStatus,
-    priority: i32,
-    working_set: usize,
-    private_bytes: usize,
-    virtual_size: usize,
-    peak_working_set: usize,
-    thread_count: u32,
-    handle_count: u32,
-    io_read_bytes: u64,
-    io_write_bytes: u64,
-}
-
-impl SnapDiff {
-    #[inline]
-    fn from_info(p: &ProcessInfo) -> Self {
-        Self {
-            status: p.status,
-            priority: p.priority,
-            working_set: p.working_set,
-            private_bytes: p.private_bytes,
-            virtual_size: p.virtual_size,
-            peak_working_set: p.peak_working_set,
-            thread_count: p.thread_count,
-            handle_count: p.handle_count,
-            io_read_bytes: p.io_read_bytes,
-            io_write_bytes: p.io_write_bytes,
-        }
-    }
-}
-
-/// Per-PID state retained between ticks for diff + CPU% computation.
-#[derive(Clone, Copy)]
-struct PrevState {
-    diff: SnapDiff,
-    /// Sum of kernel + user time (100-ns units) at previous tick — for CPU% delta.
-    cpu_time: i64,
-}
-
 // ─── Monitor context (persists across ticks) ──────────────────────────────────
 
 /// Internal state for the process enumerator.
@@ -210,9 +158,11 @@ struct MonitorCtx {
     sys_buf: Vec<u8>,
     /// Cache: PID → bitness (32/64).
     bits_cache: FxMap<u32, u8>,
-    /// Previous snapshot for delta calculation (PID → SnapDiff + prev CPU time).
-    prev: FxMap<u32, PrevState>,
-    /// Whether first tick (send full list, CPU%=0).
+    /// Previous snapshot for delta calculation (PID → status). `ProcStatus`
+    /// is the only volatile field on the minimal `ProcessInfo`; anything
+    /// else (name, bits, create_time) is immutable per-PID.
+    prev: FxMap<u32, ProcStatus>,
+    /// Whether first tick (send full list).
     first_tick: bool,
     /// Tick counter (for periodic cache pruning).
     tick: u32,
@@ -222,18 +172,6 @@ struct MonitorCtx {
     upsert_buf: Vec<ProcessInfo>,
     /// Reusable buffer for delta removed list.
     removed_buf: Vec<u32>,
-    /// Wall-clock tick time in 100-ns units (NT FILETIME scale) of the previous tick.
-    /// 0 on the first tick.
-    prev_tick_time_100ns: i64,
-    /// Logical cores count — divisor for CPU% normalization.
-    logical_cores: u32,
-    /// Whether to compute `ProcessInfo::cpu_percent` per tick.
-    ///
-    /// When `false` (default): `cpu_percent` stays `0.0`, `filetime_now_100ns()`
-    /// is skipped entirely, and per-process CPU math is bypassed — matching
-    /// the overhead profile of a "list-only" monitor like NxT. Enable via
-    /// [`ProcessEnumerator::set_cpu_tracking`] when the CPU% column is shown.
-    track_cpu: bool,
 }
 
 impl Default for MonitorCtx {
@@ -244,9 +182,6 @@ impl Default for MonitorCtx {
 
 impl MonitorCtx {
     fn new() -> Self {
-        let logical_cores = std::thread::available_parallelism()
-            .map(std::num::NonZeroUsize::get)
-            .unwrap_or(1) as u32;
         Self {
             sys_buf: Vec::with_capacity(512 * 1024),
             bits_cache: fx_map_with_cap(512),
@@ -256,9 +191,6 @@ impl MonitorCtx {
             current_pids_buf: fx_map_with_cap(512),
             upsert_buf: Vec::with_capacity(64),
             removed_buf: Vec::with_capacity(64),
-            prev_tick_time_100ns: 0,
-            logical_cores: logical_cores.max(1),
-            track_cpu: false,
         }
     }
 }
@@ -287,36 +219,9 @@ impl ProcessEnumerator {
         }
     }
 
-    /// Number of logical CPU cores used for `cpu_percent` normalization.
-    pub const fn logical_cores(&self) -> u32 {
-        self.ctx.logical_cores
-    }
-
-    /// Enable / disable per-process CPU% computation.
-    ///
-    /// Disabled by default. When disabled, `ProcessInfo::cpu_percent` is
-    /// always `0.0` and the enumerator skips the wall-clock query plus all
-    /// per-process `HashMap` lookups that CPU% delta requires — matching the
-    /// overhead of a list-only monitor. Toggling state automatically invalidates
-    /// the baseline tick so the first CPU% reading after enabling is `0.0`.
-    pub fn set_cpu_tracking(&mut self, enabled: bool) {
-        if self.ctx.track_cpu != enabled {
-            self.ctx.track_cpu = enabled;
-            // Force fresh baseline on the next tick so we don't diff against
-            // a stale `cpu_time` captured under the opposite regime.
-            self.ctx.prev_tick_time_100ns = 0;
-        }
-    }
-
-    /// Returns `true` if CPU% tracking is enabled.
-    pub const fn cpu_tracking(&self) -> bool {
-        self.ctx.track_cpu
-    }
-
     /// Enumerate all processes (full snapshot).
     ///
     /// Returns a `Vec<ProcessInfo>` sorted by CreateTime (newest first).
-    /// `cpu_percent` is `0.0` on the first call (no baseline to diff against).
     #[cfg(windows)]
     pub fn enumerate(&mut self) -> Result<Vec<ProcessInfo>, Error> {
         self.ctx.tick = self.ctx.tick.wrapping_add(1);
@@ -336,7 +241,7 @@ impl ProcessEnumerator {
     ///
     /// First call returns a delta with all processes in `upsert` (equivalent
     /// to a full snapshot). Subsequent calls return only new, changed, or
-    /// removed processes — using direct `SnapDiff` field comparison.
+    /// removed processes — change = `status` flip Running ↔ Suspended.
     #[cfg(windows)]
     pub fn enumerate_delta(&mut self) -> Result<ProcessDelta, Error> {
         self.ctx.tick = self.ctx.tick.wrapping_add(1);
@@ -359,13 +264,14 @@ impl ProcessEnumerator {
             self.ctx.current_pids_buf.insert(p.pid, i);
         }
 
-        // Walk current: compare by SnapDiff, upsert new/changed.
+        // Walk current: new PID or status flip → upsert.
         self.ctx.upsert_buf.clear();
         for p in &current {
-            let new_diff = SnapDiff::from_info(p);
             match self.ctx.prev.get(&p.pid) {
                 None => self.ctx.upsert_buf.push(p.clone()),
-                Some(prev) if prev.diff != new_diff => self.ctx.upsert_buf.push(p.clone()),
+                Some(prev_status) if *prev_status != p.status => {
+                    self.ctx.upsert_buf.push(p.clone());
+                }
                 _ => {}
             }
         }
@@ -378,7 +284,7 @@ impl ProcessEnumerator {
                 !self.ctx.current_pids_buf.contains_key(pid)
             }));
 
-        // Update prev_state from current snapshot.
+        // Update prev snapshot.
         self.commit_snapshot(&current);
 
         let total = current.len();
@@ -400,28 +306,14 @@ impl ProcessEnumerator {
         self.ctx.bits_cache.clear();
         self.ctx.prev.clear();
         self.ctx.first_tick = true;
-        self.ctx.prev_tick_time_100ns = 0;
     }
 
-    /// Replace `ctx.prev` with a SnapDiff+cpu_time view of `current`.
-    /// Reuses existing allocations (clear + insert) — no drop+alloc.
+    /// Replace `ctx.prev` with the status view of `current`. Reuses the
+    /// existing allocation (clear + insert) — no drop+alloc.
     fn commit_snapshot(&mut self, current: &[ProcessInfo]) {
         self.ctx.prev.clear();
-        let track_cpu = self.ctx.track_cpu;
         for p in current {
-            self.ctx.prev.insert(
-                p.pid,
-                PrevState {
-                    diff: SnapDiff::from_info(p),
-                    // Store `cpu_time` only if tracking — saves one add per
-                    // process per commit when CPU% is disabled.
-                    cpu_time: if track_cpu {
-                        p.kernel_time.saturating_add(p.user_time)
-                    } else {
-                        0
-                    },
-                },
-            );
+            self.ctx.prev.insert(p.pid, p.status);
         }
     }
 }
@@ -433,16 +325,6 @@ impl ProcessEnumerator {
     /// Query all processes via NtQuerySystemInformation.
     /// Returns sorted by CreateTime (newest first).
     fn query_all_processes(&mut self) -> Result<Vec<ProcessInfo>, Error> {
-        // Capture wall-clock "now" in NT FILETIME (100-ns since 1601-01-01)
-        // only when CPU% tracking is active — otherwise skip the SystemTime
-        // syscall entirely. Anchored off the kernel-provided CreateTime epoch
-        // so arithmetic stays in the same scale as kernel_time/user_time.
-        let now_100ns = if self.ctx.track_cpu {
-            filetime_now_100ns()
-        } else {
-            0
-        };
-
         // SAFETY: The block performs direct syscalls (NtQuerySystemInformation)
         // followed by a walk over the returned linked list. The kernel writes
         // exactly `return_length` bytes into `sys_buf` which we resize to match.
@@ -481,15 +363,6 @@ impl ProcessEnumerator {
             if !NT_SUCCESS(status) {
                 return Err(Error::SyscallFailed(status));
             }
-
-            // Wall-time delta for CPU% normalization. Only meaningful when
-            // tracking is on; otherwise stays 0 → cpu_percent = 0 for all.
-            let cpu_divisor = if self.ctx.track_cpu && self.ctx.prev_tick_time_100ns != 0 {
-                let wall_delta_100ns = (now_100ns - self.ctx.prev_tick_time_100ns).max(0);
-                wall_delta_100ns.saturating_mul(i64::from(self.ctx.logical_cores))
-            } else {
-                0
-            };
 
             // 4. Parse linked list.
             let mut result = Vec::with_capacity(512);
@@ -532,49 +405,16 @@ impl ProcessEnumerator {
 
                 let suspended = Self::is_process_suspended(spi);
 
-                // CPU% = (delta_cpu / (delta_wall * cores)) × 100.
-                // Gated entirely behind `track_cpu` — when off we skip the
-                // HashMap lookup, subtractions, and float division so the
-                // enumerator's per-process cost matches a list-only monitor.
-                let cpu_percent = if cpu_divisor > 0 {
-                    let cpu_time_total = spi.KernelTime.saturating_add(spi.UserTime);
-                    match self.ctx.prev.get(&pid) {
-                        Some(prev) => {
-                            let dcpu = (cpu_time_total - prev.cpu_time).max(0);
-                            let pct = (dcpu as f64 * 100.0) / cpu_divisor as f64;
-                            pct.clamp(0.0, 100.0) as f32
-                        }
-                        None => 0.0,
-                    }
-                } else {
-                    0.0
-                };
-
                 result.push(ProcessInfo {
                     pid,
                     name,
                     bits,
-                    ppid: spi.InheritedFromUniqueProcessId as u32,
-                    session_id: spi.SessionId,
                     status: if suspended {
                         ProcStatus::Suspended
                     } else {
                         ProcStatus::Running
                     },
                     create_time: spi.CreateTime,
-                    priority: spi.BasePriority,
-                    working_set: spi.WorkingSetSize,
-                    private_bytes: spi.PrivatePageCount,
-                    virtual_size: spi.VirtualSize,
-                    peak_working_set: spi.PeakWorkingSetSize,
-                    kernel_time: spi.KernelTime,
-                    user_time: spi.UserTime,
-                    cycle_time: spi.CycleTime,
-                    thread_count: spi.NumberOfThreads,
-                    handle_count: spi.HandleCount,
-                    io_read_bytes: spi.ReadTransferCount as u64,
-                    io_write_bytes: spi.WriteTransferCount as u64,
-                    cpu_percent,
                 });
 
                 if spi.NextEntryOffset == 0 {
@@ -593,11 +433,6 @@ impl ProcessEnumerator {
 
             // Sort by CreateTime descending (newest first).
             result.sort_by_key(|p| std::cmp::Reverse(p.create_time));
-
-            // Record tick time for next CPU% delta — only when tracking.
-            if self.ctx.track_cpu {
-                self.ctx.prev_tick_time_100ns = now_100ns;
-            }
 
             Ok(result)
         }
@@ -679,34 +514,6 @@ impl ProcessEnumerator {
     }
 }
 
-// ─── Wall-clock helper ────────────────────────────────────────────────────────
-
-/// Current time in NT FILETIME scale (100-ns units since 1601-01-01 UTC).
-///
-/// Same scale as `SYSTEM_PROCESS_INFORMATION.CreateTime` / `KernelTime` /
-/// `UserTime`, so arithmetic stays dimensionally consistent for CPU% math.
-#[cfg(windows)]
-#[inline]
-fn filetime_now_100ns() -> i64 {
-    // NT epoch diff from Unix epoch, in 100-ns units (11_644_473_600 s).
-    const EPOCH_DIFF_100NS: i64 = 116_444_736_000_000_000;
-    let dur = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    // 1 s = 10_000_000 × 100-ns. u64→i64: safe for any realistic time.
-    let unix_100ns = dur
-        .as_secs()
-        .saturating_mul(10_000_000)
-        .saturating_add(u64::from(dur.subsec_nanos()) / 100);
-    EPOCH_DIFF_100NS.saturating_add(unix_100ns as i64)
-}
-
-#[cfg(not(windows))]
-#[inline]
-fn filetime_now_100ns() -> i64 {
-    0
-}
-
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(all(windows, test))]
@@ -754,27 +561,5 @@ mod tests {
             delta2.upsert.len() <= delta1.upsert.len(),
             "delta upsert should be a subset on steady state"
         );
-    }
-
-    #[test]
-    fn test_snapdiff_stable_for_static_fields() {
-        let base = ProcessInfo {
-            pid: 123,
-            status: ProcStatus::Running,
-            working_set: 1024,
-            ..ProcessInfo::default()
-        };
-        let mut grown = base.clone();
-        // CPU counters grow but should NOT trigger diff.
-        grown.kernel_time += 1_000_000;
-        grown.user_time += 2_000_000;
-        grown.cycle_time += 500_000;
-        grown.cpu_percent = 42.0;
-        assert_eq!(SnapDiff::from_info(&base), SnapDiff::from_info(&grown));
-
-        // A real memory move DOES trigger diff.
-        let mut moved = base.clone();
-        moved.working_set = 2048;
-        assert_ne!(SnapDiff::from_info(&base), SnapDiff::from_info(&moved));
     }
 }

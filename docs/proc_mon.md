@@ -1,57 +1,49 @@
 # proc_mon
 
 Windows-only process monitor with direct NT-syscall enumeration and a
-virtualized `dear-imgui` table view.
+virtualized `dear-imgui` table view. Mirrors the minimal 5-field
+`ProcessInfo` from the `IMGUI_NXT` reference engine — list-only,
+zero-overhead, production-ready.
 
 ## Overview
 
-`proc_mon` gives you everything needed to display and track live OS processes
-with minimal overhead:
+`proc_mon` ships two halves:
 
 - [`ProcessEnumerator`] — calls `NtQuerySystemInformation`
-  (`SystemProcessInformation`) once per tick, parses the returned linked list,
-  and produces either a full snapshot (`enumerate()`) or an incremental
-  [`ProcessDelta`] (`enumerate_delta()`) with only new / changed / removed
-  processes. Uses a reusable syscall buffer, cached WoW64 bitness per PID,
-  and `foldhash`-backed maps for all `u32`-keyed lookups.
+  (`SystemProcessInformation`) once per tick, parses the returned linked
+  list, and produces either a full snapshot (`enumerate()`) or an
+  incremental [`ProcessDelta`] (`enumerate_delta()`). Uses a reusable
+  syscall buffer, cached WoW64 bitness per PID, and `foldhash`-backed
+  maps for all `u32`-keyed lookups. Delta detection is a direct
+  `ProcStatus` compare — the only volatile field.
 - [`ProcessMonitor`] — UI widget built on [`virtual_table`](virtual_table.md).
   Renders up to 10 000 processes at 30–60 FPS, handles selection, search,
-  context-menu routing, and pre-formats every volatile column into
-  reusable `String`s so rendering is allocation-free on the hot path.
-- Shared [`ProcessInfo`] — 19-field record with full metrics (memory, threads,
-  handles, I/O bytes, kernel+user CPU time, optional `cpu_percent`).
+  context-menu routing, and row highlighting via [`MonitorColors`].
+- Shared [`ProcessInfo`] — five fields: `pid`, `name`, `bits`, `status`,
+  `create_time`.
 
-Gated behind the `proc_mon` feature (on by default via `full`). The feature
-requires `virtual_table` + `syscalls` + `serde` and compiles only on Windows.
+Gated behind the `proc_mon` feature (on by default via `full`). The
+feature requires `virtual_table` + `syscalls` + `serde` and compiles
+only on Windows.
 
 ## Features
 
 - **Direct NT syscalls** via the local `syscalls` crate — no
   `kernel32`/`psapi` roundtrip, fewer dependencies.
-- **Full process metrics** — PID, PPID, name, 32/64-bit, session ID, status
-  (Running / Suspended), priority, working set, private bytes, virtual size,
-  peak working set, thread count, handle count, I/O read/write bytes,
-  kernel + user + cycle time, create time.
-- **Optional CPU% tracking** — opt-in via
-  [`ProcessEnumerator::set_cpu_tracking(true)`]. When disabled, the enumerator
-  skips the wall-clock query, per-process `HashMap` lookups, and float math
-  — matching the overhead profile of a list-only monitor. When enabled,
-  `cpu_percent` is normalized across all logical cores: `Δ(kernel+user) /
-  (Δwall × cores) × 100`, clamped to `[0, 100]`.
+- **Minimal 5-field `ProcessInfo`** matching `IMGUI_NXT`: `pid`, `name`,
+  `bits` (32/64), `status` (Running / Suspended), `create_time`. Every
+  other metric (memory / CPU% / threads / handles / I/O) is
+  **intentionally absent** to keep the overhead profile identical to a
+  headless service monitor.
 - **Suspended detection** — walks the `SYSTEM_THREAD_INFORMATION` records
   that follow each process entry and checks if every thread is in
   `Waiting / WaitReason=Suspended`.
-- **Zero-hash delta** — change detection uses direct field comparison on a
-  10-field [`SnapDiff`] struct with `PartialEq`, not `std::hash`. Cheaper,
-  collision-free, and excludes monotonically-growing CPU counters so active
-  processes don't spam upserts.
-- **In-place row updates** — `ProcessMonitor::apply_delta` mutates existing
-  `ProcessRow`s for known PIDs and only refreshes the volatile formatted
-  strings (Memory, I/O, CPU%), avoiding drop/realloc + re-formatting of
-  immutable columns (name, create time).
+- **Zero-hash delta** — change detection is a single `ProcStatus`
+  equality check per PID; no hashing, no false positives. Matches the
+  exact mechanism used by the reference engine.
 - **`foldhash` everywhere** — all `HashMap<u32, _>` use
-  `foldhash::fast::FixedState` (~5× faster than `std`'s SipHash on `u32`
-  keys). Same pattern as `virtual_table` / `virtual_tree`.
+  `foldhash::fast::FixedState` (~5× faster than `std`'s SipHash on
+  `u32` keys). Same pattern as `virtual_table` / `virtual_tree`.
 - **Reusable syscall buffer** — capped at 64 MiB, grown on demand. Bitness
   cache pruned every 15 ticks against the live PID list.
 - **Stable ordering** — results sorted by `CreateTime` descending (newest
@@ -59,15 +51,18 @@ requires `virtual_table` + `syscalls` + `serde` and compiles only on Windows.
   position back.
 - **Virtualized rendering** — built-in [`virtual_table`](virtual_table.md)
   integration with a fixed sort; scrolls through 10 000 processes at 60 FPS.
-- **Canonical column layout** — 18 columns, indexed 0..=17, hidden ones
-  registered with `.visible(false)` so column indices stay stable regardless
-  of `ColumnConfig`.
+- **Row highlighting** via [`MonitorColors`] — tint individual rows by
+  PID, name, self-process, or suspended state. Resolved once per upsert
+  and cached into `ProcessRow` so rendering is pure lookup.
 - **Search filter** — case-insensitive substring match on process name +
   PID, using a pre-lowercased query and a reusable PID-scratch buffer (no
   per-frame allocation).
 - **Context menu routing** — the widget emits
-  [`MonitorEvent::ContextMenuRequested(pid)`] and clears the flag; the caller
-  renders their own popup with arbitrary actions.
+  [`MonitorEvent::ContextMenuRequested(pid)`] and clears the flag; the
+  caller renders their own popup with arbitrary actions.
+- **Embedded mode** — `render_contents(ui)` for use inside a parent panel
+  (skipping the built-in `ui.window` wrapper); `render(ui, &mut show)`
+  for a standalone pop-up.
 
 ## Quick Start
 
@@ -80,8 +75,6 @@ use std::time::{Duration, Instant};
 // Persistent state — keep on your app struct.
 let config = MonitorConfig::default();
 let mut enumerator = ProcessEnumerator::new();
-// Opt-in only when the CPU% column is actually shown.
-enumerator.set_cpu_tracking(config.columns.cpu_percent);
 let mut monitor = ProcessMonitor::new(config.clone());
 let mut last_tick = Instant::now();
 let mut show = true;
@@ -107,7 +100,6 @@ if let Some(event) = monitor.render(ui, show) {
         MonitorEvent::RowSelected(pid)          => { /* single click */ }
         MonitorEvent::RowDoubleClicked(pid)     => { /* open details */ }
         MonitorEvent::ContextMenuRequested(pid) => {
-            // Open your own popup — the widget doesn't draw one.
             ui.open_popup("##proc_ctx");
         }
     }
@@ -121,18 +113,16 @@ caller-drawn context menu with Kill / Copy PID / Details buttons.
 ## Configuration
 
 ```rust
-use dear_imgui_custom_mod::proc_mon::{ColumnConfig, MonitorConfig};
+use dear_imgui_custom_mod::proc_mon::{ColumnConfig, MonitorConfig, MonitorColors};
 
 let config = MonitorConfig {
     columns: ColumnConfig {
         bits: true,
         status: true,
-        memory: true,        // opt-in
-        cpu_percent: true,   // opt-in — also enable enumerator.set_cpu_tracking(true)
-        threads: true,
-        handles: true,
-        ..ColumnConfig::default()
     },
+    colors: MonitorColors::default()
+        .with_self([0.20, 0.60, 0.35, 0.25])
+        .with_name("chrome.exe", [0.25, 0.50, 0.85, 0.22]),
     interval_ms: 1000,
     max_processes: 10_000,
     show_search: true,
@@ -140,31 +130,9 @@ let config = MonitorConfig {
 };
 
 // Or use presets:
-let minimal = MonitorConfig::minimal();      // Name, PID, Bits, Status
-let full    = MonitorConfig::all_columns();  // all 18 columns enabled
+let minimal = MonitorConfig::minimal();      // Name + PID only
+let full    = MonitorConfig::all_columns();  // Name + PID + Bits + Status
 ```
-
-### Default column set
-
-`ColumnConfig::default()` shows only four columns — **Process Name, PID,
-Bits, Status** — matching a minimal monitoring UI. Working set, CPU%, and
-everything else are **opt-in** to keep per-frame draw calls low. The
-defaults are intentionally conservative: adding every column can double the
-render cost on a 300-process box.
-
-### CPU% tracking is opt-in
-
-`ProcessEnumerator` starts with `track_cpu = false`. With tracking off:
-- `filetime_now_100ns()` (one `SystemTime::now()` per tick) is skipped
-- Per-process `HashMap` lookup for previous `cpu_time` is skipped
-- Subtractions + float division + clamp are skipped
-- `ProcessInfo::cpu_percent` stays `0.0`
-
-Enable via `enumerator.set_cpu_tracking(true)`. Toggling automatically
-resets the baseline so the first reading after enabling is `0.0`.
-
-If the UI column is hidden, the `ProcessMonitor` also skips
-`recompute_system_cpu` and the header "System CPU: X%" line.
 
 ## Row highlighting
 
@@ -192,7 +160,7 @@ let config = MonitorConfig {
 let mut monitor = ProcessMonitor::new(config);
 ```
 
-Runtime updates (without reconstructing the monitor):
+Runtime updates:
 
 ```rust
 monitor.colors_mut().add_pid(my_pid, [1.0, 0.9, 0.1, 0.30]);
@@ -212,58 +180,44 @@ monitor.set_colors(MonitorColors::default().with_self([0.1, 0.7, 0.4, 0.25]));
 | 4 | `suspended` if `status == Suspended` | Default palette has amber tint; set to `None` to disable |
 | 5 | no highlight | Default row background |
 
-**Zero-cost rendering.** `ProcessMonitor::apply_delta` and
+**Zero-cost rendering.** `ProcessMonitor::apply_delta` /
 `set_full_list` resolve the palette once per row at upsert time and
 cache the result in `ProcessRow::color_override`. Rendering is a pure
 `Option<[f32; 4]>` copy — no rule evaluation, no `to_lowercase` allocs,
 no hash lookups per frame. Status flips (Running ↔ Suspended) re-resolve
-automatically because `status` is in the upsert diff.
+automatically because `status` drives the upsert.
 
 ## Columns
 
-Canonical layout, indices `0..=17`. Hidden columns are registered but marked
-`.visible(false)` — this keeps indices stable and the `cell_display_text`
-match compact.
+Canonical layout, indices `0..=3`. Hidden columns are registered but
+marked `.visible(false)` — this keeps indices stable and the
+`cell_display_text` match compact.
 
-| # | Column | Default | Alignment | Width | Notes |
-|---|--------|---------|-----------|-------|-------|
-| 0 | Process Name | ✅ | Left | **stretch** | Absorbs leftover width |
-| 1 | PID | ✅ | Center | 70 px | |
-| 2 | Bits | ✅ | Center | 45 px | `x32` / `x64` |
-| 3 | Status | ✅ | Center | 70 px | `Running` / `Suspended` |
-| 4 | Memory | — | Right | 90 px | Working set |
-| 5 | CPU % | — | Right | 65 px | Requires `set_cpu_tracking(true)` |
-| 6 | PPID | — | Left | 70 px | |
-| 7 | Session | — | Left | 70 px | Terminal-services session id |
-| 8 | Priority | — | Left | 70 px | Base priority class |
-| 9 | Threads | — | Left | 70 px | |
-| 10 | Handles | — | Left | 70 px | |
-| 11 | Private | — | Right | 90 px | Private bytes (`PrivatePageCount`) |
-| 12 | VM Size | — | Right | 90 px | `VirtualSize` |
-| 13 | Peak Mem | — | Right | 90 px | Peak working set |
-| 14 | I/O Read | — | Right | 90 px | Read transfer bytes |
-| 15 | I/O Write | — | Right | 90 px | Write transfer bytes |
-| 16 | CPU Time | — | Left | 100 px | Kernel + user (human) |
-| 17 | Created | — | Left | 120 px | NT FILETIME → date |
+| # | Column | Default | Alignment | Width |
+|---|--------|---------|-----------|-------|
+| 0 | Process Name | ✅ | Left | **stretch** |
+| 1 | PID | ✅ | Center | 70 px |
+| 2 | Bits | ✅ | Center | 45 px (`x32` / `x64`) |
+| 3 | Status | ✅ | Center | 70 px (`Running` / `Suspended`) |
 
-**Layout mechanics.** Process Name uses `.stretch(1.0)`; the other three
-default-visible columns are fixed-width. On window resize, Name grows /
-shrinks while PID/Bits/Status stay pinned to the right edge. Header hover /
-active highlights are suppressed inside `ProcessMonitor::render` via
-`push_style_color(HeaderHovered/Active, transparent)` — sortable is off, so
-headers are informative-only (no button-like feedback).
+**Layout mechanics.** Process Name uses `.stretch(1.0)`; the other
+columns are fixed-width. On window resize, Name grows / shrinks while
+PID / Bits / Status stay pinned to the right edge. Header hover /
+active highlights are suppressed inside `ProcessMonitor::render_contents`
+via `push_style_color(HeaderHovered / Active, transparent)` — sortable
+is off, so headers are informative-only (no button-like feedback).
 
 ## Architecture
 
 ```
 src/proc_mon/
   mod.rs        # Public re-exports, feature gate
-  types.rs      # ProcessInfo, ProcStatus, ProcessDelta, ColumnConfig,
-                # MonitorEvent, format_* helpers
-  core.rs       # ProcessEnumerator, SnapDiff, MonitorCtx,
-                # NtQuerySystemInformation syscall, WoW64 query
+  types.rs      # ProcessInfo (5 fields), ProcStatus, ProcessDelta,
+                # ColumnConfig (2 flags), MonitorColors, MonitorEvent
+  core.rs       # ProcessEnumerator, MonitorCtx, NtQuerySystemInformation
+                # syscall, WoW64 query, status-based delta
   config.rs     # MonitorConfig + presets (default / minimal / all_columns)
-  ui.rs         # ProcessMonitor, ProcessRow, column build + cell dispatch
+  ui.rs         # ProcessMonitor, ProcessRow, canonical 4-column layout
 ```
 
 ### Delta pipeline
@@ -275,29 +229,13 @@ src/proc_mon/
 │   │   ├─ NtQuerySystemInformation → reusable sys_buf (64 MiB cap)     │
 │   │   ├─ walk SYSTEM_PROCESS_INFORMATION list                         │
 │   │   ├─ per-process: UTF-16 name, bits_cache.entry(pid), suspended   │
-│   │   │                 detection, optional CPU% delta                │
+│   │   │                 detection                                     │
 │   │   └─ sort_by_key(Reverse(create_time))                            │
-│   ├─ for each current: SnapDiff::from_info vs prev  → upsert          │
-│   ├─ for each prev PID not in current               → removed         │
-│   └─ commit_snapshot(current) → prev: FxMap<u32, PrevState>           │
+│   ├─ for each current: new PID or status flip → upsert                │
+│   ├─ for each prev PID not in current            → removed            │
+│   └─ commit_snapshot(current) → prev: FxMap<u32, ProcStatus>          │
 └───────────────────────────────────────────────────────────────────────┘
 ```
-
-### Why `SnapDiff` and not a hash
-
-`std`'s `DefaultHasher` (SipHash-2-4) is a cryptographic hash — strong, but
-slow, and prone to false positives if you include ever-growing counters in
-the hash input. Earlier iterations of `proc_mon` hashed `kernel_time` and
-`user_time`, which tick upward monotonically on every active process →
-every active process was always "changed" → delta optimization was
-effectively disabled.
-
-`SnapDiff` captures the 10 fields that *actually* change in practice:
-`status`, `priority`, `working_set`, `private_bytes`, `virtual_size`,
-`peak_working_set`, `thread_count`, `handle_count`, `io_read_bytes`,
-`io_write_bytes`. CPU counters are excluded — if they meaningfully moved,
-memory or I/O almost always moved with them, so CPU% is still refreshed in
-practice without triggering false upserts on every idle kernel tick.
 
 ### Optimization summary
 
@@ -305,14 +243,11 @@ practice without triggering false upserts on every idle kernel tick.
 |------|-----------|---------|
 | PID maps | `foldhash::fast::FixedState` | ~5× faster lookups vs `std` |
 | Bitness | `bits_cache` entry-or-insert, prune every 15 ticks | Expensive `NtOpenProcess` + query happens once per PID |
-| Delta | `SnapDiff: PartialEq`, no hashing | Zero false-positives, exclude CPU counters |
+| Delta | Direct `ProcStatus` equality, no hashing | Zero false-positives, no allocations |
 | Syscall | Reusable `sys_buf`, grown on demand, capped at 64 MiB | No per-tick realloc; defense-in-depth cap |
-| Rendering | Pre-formatted `String`s for every volatile column | Zero alloc in `cell_display_text` |
-| Upsert | In-place mutation for known PIDs | Immutable fields (name, create_time) formatted once |
-| CPU% | Opt-in via `set_cpu_tracking` | List-only monitor = zero CPU math overhead |
+| Row rendering | No cached strings — three short integer formats per row | Whole `ProcessRow` fits in a couple of cache lines |
 | Sorting | Fixed `CreateTime` desc, done once per delta | Stable PID-reuse ordering without per-frame sort |
 | Search | Lowercased query cached, reusable PID scratch buffer | No `io::Cursor`, no per-frame alloc |
-| System CPU | Cached on apply_delta, not per-frame | Saves N float adds per render |
 
 ## API Reference
 
@@ -320,12 +255,9 @@ practice without triggering false upserts on every idle kernel tick.
 
 | Method | Description |
 |--------|-------------|
-| `new()` / `default()` | Fresh enumerator, CPU tracking off. |
+| `new()` / `default()` | Fresh enumerator. |
 | `enumerate()` | Full snapshot as `Vec<ProcessInfo>`, sorted newest first. |
 | `enumerate_delta()` | Incremental `ProcessDelta`; first call returns full list in `upsert`. |
-| `set_cpu_tracking(bool)` | Toggle CPU% computation (resets baseline). |
-| `cpu_tracking()` | Current tracking flag. |
-| `logical_cores()` | Core count used for CPU% normalization. |
 | `clear_cache()` | Forget bits cache + prev snapshot (next tick returns full list). |
 
 ### `ProcessMonitor`
@@ -341,8 +273,10 @@ practice without triggering false upserts on every idle kernel tick.
 | `set_colors(colors)` | Replace the palette and re-resolve every row in one call. |
 | `refresh_colors()` | Re-resolve overrides after editing via `colors_mut()`. |
 | `self_pid()` | PID of the host process (cached at construction). |
+| `process(pid)` | Look up a tracked `ProcessRow` by PID. |
 | `invalidate()` | Force re-sort (call after changing `search_buf`). |
-| `render(ui, &mut show)` | Draw the window; returns `Option<MonitorEvent>`. |
+| `render_contents(ui)` | Render header + search + table without opening a window. |
+| `render(ui, &mut show)` | Draw the standalone window; returns `Option<MonitorEvent>`. |
 
 ### `MonitorColors`
 
@@ -365,48 +299,28 @@ practice without triggering false upserts on every idle kernel tick.
 | `RowDoubleClicked(pid)` | Double-click on a row. |
 | `ContextMenuRequested(pid)` | Right-click on a row — caller draws the popup. |
 
-### `ProcessInfo` (19 fields)
+### `ProcessInfo` (5 fields)
 
 ```rust
 pub struct ProcessInfo {
-    // Identity
     pub pid: u32,
     pub name: String,
-    pub bits: u8,            // 32 or 64
-    pub ppid: u32,
-    pub session_id: u32,
-    // State
-    pub status: ProcStatus,  // Running | Suspended
-    pub create_time: i64,    // NT FILETIME
-    pub priority: i32,
-    // Memory (bytes)
-    pub working_set: usize,
-    pub private_bytes: usize,
-    pub virtual_size: usize,
-    pub peak_working_set: usize,
-    // CPU
-    pub kernel_time: i64,    // 100-ns
-    pub user_time: i64,      // 100-ns
-    pub cycle_time: u64,
-    // Threads & handles
-    pub thread_count: u32,
-    pub handle_count: u32,
-    // I/O
-    pub io_read_bytes: u64,
-    pub io_write_bytes: u64,
-    // Derived
-    pub cpu_percent: f32,    // 0..=100, only non-zero if enumerator tracking is on
+    pub bits: u8,             // 32 or 64
+    pub status: ProcStatus,   // Running | Suspended
+    pub create_time: i64,     // NT FILETIME — stable sort key
 }
 ```
 
-### Formatting helpers
+### `ColumnConfig`
 
-| Function | Output |
-|----------|--------|
-| `format_bytes(n, &mut buf)` | `"512 B"` / `"2.0 KB"` / `"5.0 MB"` / `"3.0 GB"` |
-| `format_cpu_time(t_100ns, &mut buf)` | `"123ms"` / `"1.500s"` / `"1:30.500"` |
-| `format_cpu_percent(pct, &mut buf)` | `"—"` (0) / `"0.3%"` (<10%) / `"42%"` (≥10%) |
-| `format_create_time(t_filetime, &mut buf)` | Rough `"YYYY-DDD HH:MM:SS"` (chrono-free) |
+```rust
+pub struct ColumnConfig {
+    pub bits: bool,   // default true
+    pub status: bool, // default true
+}
+```
+
+`Name` + `PID` are always visible.
 
 ## Performance notes
 
@@ -417,10 +331,11 @@ pub struct ProcessInfo {
 - **Demo render loop caps at 30 FPS** via `ControlFlow::WaitUntil(now + 33ms)`.
   Monitoring UIs do not benefit from 60 Hz — halving the cap cuts CPU roughly
   in half for idle windows.
-- **Headless / service-grade monitors** — if you don't need the UI, use
-  `ProcessEnumerator` directly. With CPU tracking off, the per-tick cost is
-  a single `NtQuerySystemInformation` plus ~300 field comparisons — matching
-  the overhead of the reference engine monitor in `IMGUI_NXT`.
+- **Overhead parity with `IMGUI_NXT`**: the enumerator now does only what
+  the NxT reference engine does — one `NtQuerySystemInformation` per tick,
+  one `ProcStatus` compare per tracked PID, no float math, no wall-clock
+  queries. In release, a headless user (enumerator only, no UI) hits the
+  same 0.2% CPU baseline as the NxT engine task.
 
 ## Platform support
 
@@ -431,8 +346,9 @@ non-Windows builds compile without it.
 
 ## Safety
 
-All raw pointer work lives in `core.rs::query_all_processes` and two helper
-functions. Each `unsafe` block is preceded by a SAFETY comment documenting:
+All raw pointer work lives in `core.rs::query_all_processes` and two
+helper functions. Each `unsafe` block is preceded by a SAFETY comment
+documenting:
 - Bounds checks on `sys_buf` before dereferencing `SYSTEM_PROCESS_INFORMATION`
 - Null-`Buffer` handling for `UNICODE_STRING` process names
 - Handle lifetime for `NtOpenProcess` / `NtClose` in the WoW64 query

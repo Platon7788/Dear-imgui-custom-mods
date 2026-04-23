@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+### Changed — BREAKING: `proc_mon` reduced to minimal 5-field `ProcessInfo` (NxT parity)
+Alignment with the `IMGUI_NXT` reference engine — the monitor is now
+**list-only**, not a full Process Hacker clone. Everything that was
+previously opt-in (memory, CPU%, threads, handles, I/O, priority, PPID,
+session ID, etc.) has been removed from the module surface entirely.
+
+**Migration:** any code that read `process.working_set`, called
+`set_cpu_tracking(true)`, enabled `ColumnConfig { memory: true, .. }`,
+or used `format_bytes` / `format_cpu_time` / `format_cpu_percent` /
+`format_create_time` will not compile. Bring the needed logic into your
+app directly (parse `SYSTEM_PROCESS_INFORMATION` or call `GetProcessMemoryInfo`
+from the `windows-sys` crate) — or stay on the 0.9.x tag that included
+the full `ProcessInfo`.
+
+- **`ProcessInfo` fields: 19 → 5**. Kept: `pid`, `name`, `bits`, `status`,
+  `create_time`. Removed: `ppid`, `session_id`, `priority`, `working_set`,
+  `private_bytes`, `virtual_size`, `peak_working_set`, `kernel_time`,
+  `user_time`, `cycle_time`, `thread_count`, `handle_count`,
+  `io_read_bytes`, `io_write_bytes`, `cpu_percent`.
+- **`ColumnConfig` fields: 15 → 2**. Kept: `bits`, `status` (both `true`
+  by default). Removed all other toggles.
+- **`ProcessMonitor` canonical column layout: 18 → 4** (`Name`, `PID`,
+  `Bits`, `Status`). Hidden columns still use `.visible(false)` so
+  `cell_display_text` indices remain stable.
+- **Removed public items**:
+  - `ProcessEnumerator::set_cpu_tracking`, `cpu_tracking`, `logical_cores`
+  - Free functions `format_bytes`, `format_cpu_time`, `format_cpu_percent`,
+    `format_create_time` (and their re-exports from `proc_mon::*`)
+  - Internal helpers `SnapDiff`, `PrevState`, `filetime_now_100ns`
+- **Delta detection simplified** — was field-by-field `SnapDiff: PartialEq`
+  on 10 fields, now a single `ProcStatus` equality check per PID.
+  Matches the NxT engine exactly.
+- **Overhead parity**: a headless `ProcessEnumerator`-only user now has
+  the same per-tick cost profile as the NxT engine task (one syscall +
+  ~300 status compares). GUI cost unchanged from the previous minimum
+  (still 30 FPS capped in the demo, 4 columns, no per-frame allocation).
+- **Tests:** removed `test_format_bytes`, `test_format_cpu_time`,
+  `test_format_cpu_percent`, `test_snapdiff_stable_for_static_fields`.
+  Added `test_column_config_visible_count`. `test_monitor_colors_priority`
+  updated for the new 5-field `ProcessInfo`. Total lib: **419 passing**,
+  2 `#[ignore]` syscall tests.
+- `docs/proc_mon.md` rewritten against the new surface (column table
+  dropped from 18 rows to 4; CPU-tracking section removed).
+
 ### Fixed — `code_editor` hex auto-space double-insert on 2nd-nibble replace
 - **Double-space bug fixed.** With `hex_auto_space = true`, editing
   the second nibble of an existing byte (e.g. `"AA "` → replace 2nd A with

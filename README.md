@@ -31,7 +31,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`timeline`** | Zoomable profiler timeline — nested spans, multi-track with collapse, flame graph view, markers, tooltips, pan/zoom with Shift+scroll, adaptive time ruler, color-by-duration/category/name modes, configurable track height | [docs/timeline.md](docs/timeline.md) |
 | **`diff_viewer`** | Side-by-side and unified diff viewer — Myers diff algorithm (O((N+M)D)), synchronized scrolling, fold unchanged regions, hunk navigation, hover row highlights, hunk accent bars, +/- prefixes in unified mode, context line control | [docs/diff_viewer.md](docs/diff_viewer.md) |
 | **`property_inspector`** | Hierarchical property editor — 15+ value types (bool, i32/i64, f32/f64, String, Color3/4, Vec2/3/4, Enum, Flags, Object, Array), categories with collapse, search/filter, diff highlighting, nested objects with expand/collapse, type badges, hover highlights | [docs/property_inspector.md](docs/property_inspector.md) |
-| **`proc_mon`** | Windows process monitor — `NtQuerySystemInformation` enumeration with reusable syscall buffer, WoW64 bitness cache, `foldhash` u32-keyed maps, `SnapDiff` delta (no hashing, no false positives on CPU counters), optional CPU% tracking (opt-in, normalized across cores), in-place row mutation, canonical 18-column layout (stretch Name + fixed PID/Bits/Status), virtualized rendering (`virtual_table` integration), context-menu routing, case-insensitive search. Gated `proc_mon` feature (Windows only) | [docs/proc_mon.md](docs/proc_mon.md) |
+| **`proc_mon`** | Windows process monitor — `NtQuerySystemInformation` enumeration with reusable syscall buffer, WoW64 bitness cache, `foldhash` u32-keyed maps, status-based delta (direct `ProcStatus` equality — same mechanism as the `IMGUI_NXT` engine), row highlighting via `MonitorColors` (per-PID / per-name / self / suspended), canonical 4-column layout (`Name` stretch + fixed `PID`/`Bits`/`Status` pinned right), virtualized rendering (`virtual_table` integration), context-menu routing, case-insensitive search. Minimal 5-field `ProcessInfo`. Gated `proc_mon` feature (Windows only) | [docs/proc_mon.md](docs/proc_mon.md) |
 | **`toolbar`** | Configurable horizontal toolbar — buttons, toggles, separators, dropdowns, spacers, builder API, icon support, hover underline accent, window-hovered guard, flexible spacer layout | [docs/toolbar.md](docs/toolbar.md) |
 | **`status_bar`** | Composable bottom status bar — left/center/right sections, status indicators (Success/Warning/Error/Info), progress bars, clickable items with events, tooltips, icon support, hover highlights, overlay variant (`render_overlay`) | [docs/status_bar.md](docs/status_bar.md) |
 | **`icons`** | Material Design Icons v7.4 codepoint constants (7400+ icons) | |
@@ -183,10 +183,10 @@ src/
     config.rs                       StatusBarConfig, Alignment
   proc_mon/
     mod.rs                          Feature-gate, Windows-only re-exports
-    core.rs                         ProcessEnumerator, SnapDiff, NT syscalls, WoW64 cache
-    types.rs                        ProcessInfo (19 fields), ProcStatus, ProcessDelta, ColumnConfig, format_* helpers
+    core.rs                         ProcessEnumerator — NT syscalls, WoW64 cache, status-based delta
+    types.rs                        ProcessInfo (5 fields), ProcStatus, ProcessDelta, ColumnConfig (2 flags), MonitorColors, MonitorEvent
     config.rs                       MonitorConfig + default / minimal / all_columns presets
-    ui.rs                           ProcessMonitor + ProcessRow — canonical 18-column layout, cached formatted strings
+    ui.rs                           ProcessMonitor + ProcessRow — canonical 4-column layout (Name stretch + PID/Bits/Status fixed)
   demo/mod.rs                       Interactive showcase
 
 examples/

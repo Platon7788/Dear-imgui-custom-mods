@@ -44,9 +44,7 @@ struct DemoState {
 impl DemoState {
     fn new() -> Self {
         let config = MonitorConfig::default();
-        let mut enumerator = ProcessEnumerator::new();
-        // Only pay the CPU% delta cost when the column is actually shown.
-        enumerator.set_cpu_tracking(config.columns.cpu_percent);
+        let enumerator = ProcessEnumerator::new();
         Self {
             enumerator,
             monitor: ProcessMonitor::new(config.clone()),

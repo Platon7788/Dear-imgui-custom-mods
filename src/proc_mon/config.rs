@@ -3,6 +3,10 @@
 use crate::proc_mon::types::{ColumnConfig, MonitorColors};
 
 /// Process monitor configuration.
+///
+/// With the minimal 5-field `ProcessInfo` the only user-visible knobs are
+/// the two optional columns (`Bits`, `Status`), the row-highlight palette,
+/// and the poll interval — everything else is UI chrome.
 #[derive(Debug, Clone)]
 pub struct MonitorConfig {
     /// Which columns to display.
@@ -36,40 +40,28 @@ impl Default for MonitorConfig {
 }
 
 impl MonitorConfig {
-    /// Create config with all optional columns visible.
-    pub fn all_columns() -> Self {
+    /// Minimal config: only `Name` + `PID` visible.
+    ///
+    /// Useful for dense list UIs where status / bitness aren't needed.
+    pub fn minimal() -> Self {
         Self {
             columns: ColumnConfig {
-                bits: true,
-                status: true,
-                memory: true,
-                cpu_percent: true,
-                ppid: true,
-                session_id: true,
-                priority: true,
-                threads: true,
-                handles: true,
-                private_bytes: true,
-                virtual_size: true,
-                peak_memory: true,
-                io_read: true,
-                io_write: true,
-                cpu_time: true,
-                create_time: true,
+                bits: false,
+                status: false,
             },
             ..Default::default()
         }
     }
 
-    /// Create minimal config (only essential columns).
-    pub fn minimal() -> Self {
+    /// All four columns visible (Name / PID / Bits / Status).
+    ///
+    /// Equivalent to [`ColumnConfig::default`] — kept as a named preset for
+    /// call-site readability.
+    pub fn all_columns() -> Self {
         Self {
             columns: ColumnConfig {
                 bits: true,
                 status: true,
-                memory: false,
-                cpu_percent: false,
-                ..ColumnConfig::default()
             },
             ..Default::default()
         }
