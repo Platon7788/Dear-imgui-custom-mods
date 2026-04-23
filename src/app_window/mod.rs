@@ -29,7 +29,7 @@ pub mod gpu;
 pub mod state;
 pub mod style;
 
-pub use config::{AppConfig, StartPosition};
+pub use config::{AppConfig, FpsMode, StartPosition};
 pub use state::AppState;
 pub use style::apply_imgui_style_for_theme;
 
@@ -127,7 +127,7 @@ impl AppWindow {
         handler: H,
     ) -> Result<(), winit::error::EventLoopError> {
         let event_loop = EventLoop::new()?;
-        // Initial ControlFlow is set per-frame inside about_to_wait based on fps_limit.
+        // Initial ControlFlow is set per-frame inside about_to_wait based on fps_mode.
         let mut app = WinitApp::new(self.config, handler);
         event_loop.run_app(&mut app)
     }
@@ -200,10 +200,15 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
             cfg.merge_mdi_icons,
         );
 
-        let fps_interval = if cfg.fps_limit > 0 {
-            Duration::from_secs_f64(1.0 / cfg.fps_limit as f64)
-        } else {
-            Duration::ZERO
+        let fps_interval = match cfg.fps_mode {
+            // Auto: Poll + wgpu Fifo vsync.
+            // get_current_texture() blocks until the GPU is ready for the next
+            // vsync, so frame timing is controlled by display hardware rather
+            // than the OS timer (which on Windows has ~15.6 ms granularity and
+            // causes the stutter visible in progress-bar animations).
+            FpsMode::Auto | FpsMode::Unlimited => Duration::ZERO,
+            FpsMode::Fixed(n) if n > 0 => Duration::from_secs_f64(1.0 / n as f64),
+            FpsMode::Fixed(_) => Duration::ZERO,
         };
 
         self.gpu = Some(gpu::GpuState {
@@ -279,7 +284,7 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
                 event_loop
                     .set_control_flow(ControlFlow::WaitUntil(Instant::now() + g.fps_interval));
             } else {
-                // fps_limit = 0: render as fast as possible (Poll mode).
+                // FpsMode::Unlimited / Fixed(0): render as fast as possible (Poll mode).
                 event_loop.set_control_flow(ControlFlow::Poll);
             }
         }

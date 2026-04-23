@@ -396,7 +396,6 @@ impl AppHandler for DemoApp {
 fn main() {
     let config = AppConfig::new("NavPanel Demo", 1100.0, 700.0)
         .with_min_size(800.0, 500.0)
-        .with_fps_limit(60)
         .with_start_position(StartPosition::CenterScreen)
         .with_theme(Theme::Dark);
 

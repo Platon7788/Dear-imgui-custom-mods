@@ -56,19 +56,14 @@ pub(super) fn init_wgpu(
         .create_surface(window.clone())
         .expect("wgpu: create_surface failed");
 
-    let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: Some(&surface),
-        force_fallback_adapter: false,
-    }))
-    .or_else(|_| {
-        block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::None,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: true,
-        }))
-    })
-    .expect("wgpu: no suitable adapter found");
+    let adapter = pick_adapter(&instance, &surface, backends)
+        .expect("wgpu: no usable adapter found (tried DX12, Vulkan, GL)");
+
+    let info = adapter.get_info();
+    eprintln!(
+        "wgpu: adapter = \"{}\" | backend = {:?} | type = {:?}",
+        info.name, info.backend, info.device_type
+    );
 
     let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
         .expect("wgpu: request_device failed");
@@ -98,6 +93,48 @@ pub(super) fn init_wgpu(
     surface.configure(&device, &surface_cfg);
 
     (device, queue, surface, surface_cfg)
+}
+
+// ── Adapter selection ────────────────────────────────────────────────────────
+
+/// Score an adapter so we can pick the best available without triggering
+/// GPU power-on transitions (Optimus / hybrid graphics).
+///
+/// Priority: real hardware (discrete > integrated) first,
+/// then backend quality (DX12 > Vulkan > GL).
+/// Software renderers (WARP / llvmpipe) score lowest and are only used
+/// if no real-hardware adapter is surface-compatible.
+fn adapter_score(info: &wgpu::AdapterInfo) -> i32 {
+    let device = match info.device_type {
+        wgpu::DeviceType::DiscreteGpu   => 40,
+        wgpu::DeviceType::IntegratedGpu => 30,
+        wgpu::DeviceType::Other         => 20,
+        wgpu::DeviceType::VirtualGpu    => 10,
+        wgpu::DeviceType::Cpu           =>  0, // WARP / llvmpipe — avoid
+    };
+    let backend = match info.backend {
+        wgpu::Backend::Dx12   => 4,
+        wgpu::Backend::Vulkan => 3,
+        wgpu::Backend::Metal  => 3,
+        wgpu::Backend::Gl     => 1,
+        _                     => 0,
+    };
+    device + backend
+}
+
+/// Enumerate all adapters that can present to `surface`, score them,
+/// and return the winner.  Never calls `request_adapter` with
+/// `HighPerformance` or `force_fallback_adapter` — both can cause
+/// driver-level stalls on hybrid-GPU / old-Intel hardware.
+fn pick_adapter(
+    instance: &wgpu::Instance,
+    surface: &wgpu::Surface<'_>,
+    backends: wgpu::Backends,
+) -> Option<wgpu::Adapter> {
+    block_on(instance.enumerate_adapters(backends))
+        .into_iter()
+        .filter(|a| a.is_surface_supported(surface))
+        .max_by_key(|a| adapter_score(&a.get_info()))
 }
 
 // ── ImGui setup ───────────────────────────────────────────────────────────────

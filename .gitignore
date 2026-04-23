@@ -40,6 +40,14 @@ credentials.json
 *.bak
 *.log
 
+# ─── Archives / local backups (never commit) ─────────────────────────────────
+*.rar
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+
 # ─── Stray / temp files in root ───────────────────────────────────────────────
 /0
 /1.png

@@ -3,6 +3,24 @@
 use crate::borderless_window::BorderlessConfig;
 use crate::theme::Theme;
 
+/// Frame-rate strategy for an [`AppWindow`](super::AppWindow).
+#[derive(Debug, Clone, Default)]
+pub enum FpsMode {
+    /// Match the primary monitor's refresh rate (auto-detected at startup).
+    ///
+    /// This is the recommended default: the app renders no faster than the
+    /// display can show frames, so CPU/GPU load stays proportional to the
+    /// actual refresh rate (60 Hz, 144 Hz, 240 Hz, …).
+    #[default]
+    Auto,
+    /// Cap to exactly `N` frames per second.
+    Fixed(u32),
+    /// No software cap — render as fast as possible (`Poll` mode).
+    ///
+    /// Useful for benchmarking; otherwise burns CPU/GPU needlessly.
+    Unlimited,
+}
+
 /// Where to place the window on startup.
 #[derive(Debug, Clone, Default)]
 pub enum StartPosition {
@@ -19,11 +37,12 @@ pub enum StartPosition {
 ///
 /// # Example
 /// ```rust,no_run
-/// use dear_imgui_custom_mod::app_window::{AppConfig, StartPosition};
+/// use dear_imgui_custom_mod::app_window::{AppConfig, FpsMode, StartPosition};
 ///
 /// let cfg = AppConfig::new("My App", 1100.0, 680.0)
 ///     .with_min_size(640.0, 400.0)
-///     .with_fps_limit(60)
+///     // FpsMode::Auto is the default — matches monitor refresh rate.
+///     .with_fps_mode(FpsMode::Auto)
 ///     .with_start_position(StartPosition::CenterScreen);
 /// ```
 #[derive(Debug, Clone)]
@@ -36,8 +55,8 @@ pub struct AppConfig {
     pub min_size: [f64; 2],
     /// Where to place the window on startup. Default: `CenterScreen`.
     pub start_position: StartPosition,
-    /// Target frames per second (0 = unlimited). Default: `60`.
-    pub fps_limit: u32,
+    /// Frame-rate strategy. Default: [`FpsMode::Auto`] (match monitor Hz).
+    pub fps_mode: FpsMode,
     /// Base font size in logical pixels. Default: `15.0`.
     pub font_size: f32,
     /// Rounded-corner radius in pixels (Win10 fallback path; Win11 DWM ignores it).
@@ -58,7 +77,7 @@ impl Default for AppConfig {
             size: [1100.0, 680.0],
             min_size: [640.0, 400.0],
             start_position: StartPosition::CenterScreen,
-            fps_limit: 60,
+            fps_mode: FpsMode::Auto,
             font_size: 15.0,
             corner_radius: 8,
             titlebar: BorderlessConfig::default(),
@@ -86,9 +105,17 @@ impl AppConfig {
         self
     }
 
-    /// Set the target frames per second (0 = unlimited).
+    /// Set the frame-rate mode explicitly.
+    pub fn with_fps_mode(mut self, mode: FpsMode) -> Self {
+        self.fps_mode = mode;
+        self
+    }
+
+    /// Convenience: cap to a fixed number of frames per second.
+    ///
+    /// Equivalent to `.with_fps_mode(FpsMode::Fixed(fps))`.
     pub fn with_fps_limit(mut self, fps: u32) -> Self {
-        self.fps_limit = fps;
+        self.fps_mode = FpsMode::Fixed(fps);
         self
     }
 

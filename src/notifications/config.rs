@@ -136,6 +136,8 @@ pub struct Notification {
     pub duration: Duration,
     pub closable: bool,
     pub show_progress: bool,
+    /// Show remaining seconds as text in the top-right of the toast ("4.2s").
+    pub show_countdown: bool,
     pub show_icon: bool,
     pub actions: Vec<NotificationAction>,
     /// Overrides the severity accent color (icon, left strip, progress bar).
@@ -157,7 +159,8 @@ impl Notification {
             severity,
             duration: Duration::default(),
             closable: true,
-            show_progress: true,
+            show_progress: false,
+            show_countdown: false,
             show_icon: true,
             actions: Vec::new(),
             custom_color: None,
@@ -231,6 +234,16 @@ impl Notification {
     /// Disable the bottom progress bar (still ticks toward auto-dismiss).
     pub fn without_progress(mut self) -> Self {
         self.show_progress = false;
+        self
+    }
+
+    /// Show remaining seconds as compact text in the top-right of the toast.
+    ///
+    /// Displays `"10s"` for ≥ 10 s remaining, `"4.2s"` for < 10 s.
+    /// Has no effect on sticky notifications. Can be combined with or without
+    /// the bottom progress bar.
+    pub fn with_countdown(mut self) -> Self {
+        self.show_countdown = true;
         self
     }
 

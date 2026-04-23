@@ -86,9 +86,9 @@ const ANIMATIONS: &[(&str, AnimationKind)] = &[
 
 impl AppHandler for DemoApp {
     fn render(&mut self, ui: &Ui, state: &mut AppState) {
-        // Compute dt once per frame.
+        // Compute dt once per frame; cap at 100 ms to absorb init/resize spikes.
         let now = std::time::Instant::now();
-        let dt = (now - self.last_time).as_secs_f32();
+        let dt = (now - self.last_time).as_secs_f32().min(0.1);
         self.last_time = now;
 
         let [avail_w, avail_h] = ui.content_region_avail();
@@ -168,6 +168,15 @@ impl AppHandler for DemoApp {
                         Notification::success("Saved")
                             .with_body("Your changes have been written to disk.")
                             .with_duration_secs(3.0),
+                    );
+                }
+                ui.same_line();
+                if ui.button("Countdown") {
+                    self.center.push(
+                        Notification::info("Countdown demo")
+                            .with_countdown()
+                            .without_progress()
+                            .with_duration_secs(8.0),
                     );
                 }
                 ui.same_line();
@@ -403,7 +412,6 @@ impl AppHandler for DemoApp {
 fn main() {
     let config = AppConfig::new("AppWindow + Notifications Demo", 1100.0, 680.0)
         .with_min_size(700.0, 420.0)
-        .with_fps_limit(60)
         .with_start_position(StartPosition::CenterScreen)
         .with_theme(Theme::Dark);
 

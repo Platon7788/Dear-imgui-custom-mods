@@ -214,10 +214,18 @@ impl NotificationCenter {
             let n = &self.queue[i];
 
             let est_h = estimate_height(n, &cfg);
+
+            // Slot fraction drives how much vertical space this toast claims
+            // in the stack — animating from 0→1 (enter) or 1→0 (exit) so
+            // neighboring toasts glide rather than jump.
+            let slot_frac = ease_out_cubic(n.enter_t) * (1.0 - ease_in_cubic(n.exit_t));
+
             let (px, py, alpha) = animated_pos(n, &cfg, anchor_x, base_y, cum_y, est_h, grows_up);
 
+            // Always advance by animated slot so the gap opens/closes smoothly.
+            cum_y += (est_h + cfg.spacing) * slot_frac;
+
             if alpha <= 0.001 && n.dismissing {
-                cum_y += est_h + cfg.spacing;
                 continue;
             }
 
@@ -238,8 +246,6 @@ impl NotificationCenter {
             if outcome.body_clicked {
                 events.push(NotificationEvent::Clicked(n.id));
             }
-
-            cum_y += est_h + cfg.spacing;
         }
 
         // ── Pass 3: advance elapsed timers (paused while hovered) ───────────
@@ -331,9 +337,8 @@ fn animated_pos(
     est_h: f32,
     grows_up: bool,
 ) -> (f32, f32, f32) {
-    let t_in = n.enter_t;
-    let t_out = 1.0 - n.exit_t;
-
+    // Eased enter: decelerates as it arrives (feels like it "lands").
+    // Eased exit: accelerates as it leaves (feels like it "flies off").
     let alpha = match cfg.animation {
         AnimationKind::None => {
             if n.dismissing {
@@ -342,7 +347,9 @@ fn animated_pos(
                 1.0
             }
         }
-        AnimationKind::Fade | AnimationKind::SlideIn => t_in * t_out,
+        AnimationKind::Fade | AnimationKind::SlideIn => {
+            ease_out_cubic(n.enter_t) * (1.0 - ease_in_cubic(n.exit_t))
+        }
     };
 
     let slide_dx = if matches!(cfg.animation, AnimationKind::SlideIn) {
@@ -353,8 +360,9 @@ fn animated_pos(
         } else {
             0.0
         };
-        // entry slide + exit slide back toward the same edge.
-        from * (1.0 - t_in) + from * n.exit_t * 0.6
+        // Entry: slide from edge, decelerating to rest position.
+        // Exit: accelerate back toward the same edge.
+        from * (1.0 - ease_out_cubic(n.enter_t)) + from * ease_in_cubic(n.exit_t) * 0.6
     } else {
         0.0
     };
@@ -474,7 +482,28 @@ fn render_toast(
             // ── Inner content laid out with manual cursor positioning ────────
             let content_left =
                 cfg.accent_strip + cfg.padding[0] + if n.show_icon { 22.0 } else { 0.0 };
-            let content_right = cfg.width - cfg.padding[0] - if n.closable { 18.0 } else { 0.0 };
+
+            // Pre-compute countdown label so we can reserve its width for title clipping.
+            let countdown_label: Option<String> =
+                if n.show_countdown && let Duration::Timed(secs) = n.duration && secs > 0.0 {
+                    let rem = (secs - n.elapsed).max(0.0);
+                    Some(if rem >= 10.0 {
+                        format!("{:.0}s", rem)
+                    } else {
+                        format!("{:.1}s", rem)
+                    })
+                } else {
+                    None
+                };
+            let countdown_w = countdown_label
+                .as_deref()
+                .map(|l| calc_text_size(l)[0] + 6.0) // 6 px gap before close
+                .unwrap_or(0.0);
+
+            let content_right = cfg.width
+                - cfg.padding[0]
+                - if n.closable { 18.0 } else { 0.0 }
+                - countdown_w;
             let content_w = (content_right - content_left).max(1.0);
 
             // Title
@@ -482,6 +511,21 @@ fn render_toast(
             let _tc = ui.push_style_color(StyleColor::Text, c.title);
             ui.text(&n.title);
             drop(_tc);
+
+            // Countdown text — right-aligned, left of the close button.
+            if let Some(label) = &countdown_label {
+                let lw = calc_text_size(label.as_str())[0];
+                let close_x = if n.closable {
+                    cfg.width - cfg.padding[0] - 14.0
+                } else {
+                    cfg.width - cfg.padding[0]
+                };
+                let tx = close_x - lw - 4.0;
+                let ty = cfg.padding[1] + 1.0; // nudge down 1px for optical alignment
+                ui.set_cursor_pos([tx, ty]);
+                let _dc = ui.push_style_color(StyleColor::Text, c.body);
+                ui.text(label.as_str());
+            }
 
             // Body
             if !n.body.is_empty() {
@@ -556,6 +600,20 @@ fn render_toast(
         });
 
     outcome
+}
+
+// ─── Easing ──────────────────────────────────────────────────────────────────
+
+/// Decelerates into the target — fast start, smooth landing.
+#[inline]
+fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+/// Accelerates away from the origin — slow start, fast finish.
+#[inline]
+fn ease_in_cubic(t: f32) -> f32 {
+    t * t * t
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
