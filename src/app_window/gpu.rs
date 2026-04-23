@@ -34,9 +34,19 @@ pub(super) struct GpuState {
 
 // ── wgpu setup ────────────────────────────────────────────────────────────────
 
+use super::config::PowerMode;
+
 /// Create and configure a `wgpu` surface + device/queue for the given window.
+///
+/// Adapter selection is power-aware and **cascaded** — every surface-
+/// compatible adapter is scored, sorted descending, and
+/// [`Adapter::request_device`] is tried in order. The first successful
+/// device is returned. This survives a buggy driver on the preferred
+/// adapter without panicking; it also lets [`PowerMode::HighPerformance`]
+/// reject software (CPU) fallback by filtering the sorted list.
 pub(super) fn init_wgpu(
     window: &Arc<Window>,
+    power: PowerMode,
 ) -> (
     wgpu::Device,
     wgpu::Queue,
@@ -56,17 +66,22 @@ pub(super) fn init_wgpu(
         .create_surface(window.clone())
         .expect("wgpu: create_surface failed");
 
-    let adapter = pick_adapter(&instance, &surface, backends)
+    let (adapter, device, queue) = pick_and_open_adapter(&instance, &surface, backends, power)
         .expect("wgpu: no usable adapter found (tried DX12, Vulkan, GL)");
 
+    // Warn explicitly when we end up on a software (CPU) renderer — WARP on
+    // Windows, llvmpipe on Linux. These deliver single-digit FPS on any
+    // non-trivial UI; the message helps users understand why before filing
+    // a performance bug.
     let info = adapter.get_info();
-    eprintln!(
-        "wgpu: adapter = \"{}\" | backend = {:?} | type = {:?}",
-        info.name, info.backend, info.device_type
-    );
-
-    let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-        .expect("wgpu: request_device failed");
+    if info.device_type == wgpu::DeviceType::Cpu {
+        eprintln!(
+            "wgpu: WARNING — using software renderer \"{}\" ({:?}); \
+             expect degraded performance. No hardware adapter was \
+             surface-compatible.",
+            info.name, info.backend,
+        );
+    }
 
     let phys = window.inner_size();
     let surface_caps = surface.get_capabilities(&adapter);
@@ -100,17 +115,25 @@ pub(super) fn init_wgpu(
 /// Score an adapter so we can pick the best available without triggering
 /// GPU power-on transitions (Optimus / hybrid graphics).
 ///
-/// Priority: real hardware (discrete > integrated) first,
-/// then backend quality (DX12 > Vulkan > GL).
-/// Software renderers (WARP / llvmpipe) score lowest and are only used
-/// if no real-hardware adapter is surface-compatible.
-fn adapter_score(info: &wgpu::AdapterInfo) -> i32 {
-    let device = match info.device_type {
-        wgpu::DeviceType::DiscreteGpu   => 40,
-        wgpu::DeviceType::IntegratedGpu => 30,
-        wgpu::DeviceType::Other         => 20,
-        wgpu::DeviceType::VirtualGpu    => 10,
-        wgpu::DeviceType::Cpu           =>  0, // WARP / llvmpipe — avoid
+/// Default priority ([`PowerMode::Auto`] / `HighPerformance`):
+/// real hardware (discrete > integrated) first, then backend quality
+/// (DX12 > Vulkan > GL). [`PowerMode::LowPower`] swaps discrete and
+/// integrated so battery-sensitive UI apps stay on the iGPU.
+///
+/// Software renderers (WARP / llvmpipe) always score lowest and are only
+/// used if no real-hardware adapter is surface-compatible — and
+/// [`PowerMode::HighPerformance`] filters them out entirely upstream.
+fn adapter_score(info: &wgpu::AdapterInfo, power: PowerMode) -> i32 {
+    let device = match (info.device_type, power) {
+        // LowPower: iGPU wins over dGPU — otherwise identical scoring.
+        (wgpu::DeviceType::IntegratedGpu, PowerMode::LowPower) => 40,
+        (wgpu::DeviceType::DiscreteGpu,   PowerMode::LowPower) => 30,
+        // Auto / HighPerformance: dGPU preferred.
+        (wgpu::DeviceType::DiscreteGpu,   _) => 40,
+        (wgpu::DeviceType::IntegratedGpu, _) => 30,
+        (wgpu::DeviceType::Other,         _) => 20,
+        (wgpu::DeviceType::VirtualGpu,    _) => 10,
+        (wgpu::DeviceType::Cpu,           _) =>  0, // WARP / llvmpipe
     };
     let backend = match info.backend {
         wgpu::Backend::Dx12   => 4,
@@ -122,19 +145,59 @@ fn adapter_score(info: &wgpu::AdapterInfo) -> i32 {
     device + backend
 }
 
-/// Enumerate all adapters that can present to `surface`, score them,
-/// and return the winner.  Never calls `request_adapter` with
-/// `HighPerformance` or `force_fallback_adapter` — both can cause
-/// driver-level stalls on hybrid-GPU / old-Intel hardware.
-fn pick_adapter(
+/// Enumerate every surface-compatible adapter, score and sort them
+/// descending, then try [`Adapter::request_device`] on each in turn.
+/// Returns the first `(adapter, device, queue)` triple that succeeds.
+///
+/// This gives us a real fallback chain — if the top-scored adapter has
+/// a buggy driver that fails `request_device` (rare but reproducible on
+/// old Intel HD + outdated drivers), the next candidate is tried rather
+/// than panicking. [`PowerMode::HighPerformance`] filters out software
+/// renderers (`DeviceType::Cpu`) so the function returns `None` instead
+/// of falling back to WARP / llvmpipe.
+fn pick_and_open_adapter(
     instance: &wgpu::Instance,
     surface: &wgpu::Surface<'_>,
     backends: wgpu::Backends,
-) -> Option<wgpu::Adapter> {
-    block_on(instance.enumerate_adapters(backends))
+    power: PowerMode,
+) -> Option<(wgpu::Adapter, wgpu::Device, wgpu::Queue)> {
+    let mut candidates: Vec<wgpu::Adapter> = block_on(instance.enumerate_adapters(backends))
         .into_iter()
         .filter(|a| a.is_surface_supported(surface))
-        .max_by_key(|a| adapter_score(&a.get_info()))
+        .filter(|a| {
+            // HighPerformance refuses software fallback outright.
+            power != PowerMode::HighPerformance
+                || a.get_info().device_type != wgpu::DeviceType::Cpu
+        })
+        .collect();
+
+    candidates.sort_by_key(|a| std::cmp::Reverse(adapter_score(&a.get_info(), power)));
+
+    for adapter in candidates {
+        let info = adapter.get_info();
+        eprintln!(
+            "wgpu: trying adapter \"{}\" | backend = {:?} | type = {:?}",
+            info.name, info.backend, info.device_type
+        );
+        match block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())) {
+            Ok((device, queue)) => {
+                eprintln!(
+                    "wgpu: using  adapter \"{}\" | backend = {:?} | type = {:?}",
+                    info.name, info.backend, info.device_type
+                );
+                return Some((adapter, device, queue));
+            }
+            Err(e) => {
+                eprintln!(
+                    "wgpu: skip   adapter \"{}\": request_device failed ({e})",
+                    info.name,
+                );
+                // Continue to the next candidate in the sorted list.
+            }
+        }
+    }
+
+    None
 }
 
 // ── ImGui setup ───────────────────────────────────────────────────────────────

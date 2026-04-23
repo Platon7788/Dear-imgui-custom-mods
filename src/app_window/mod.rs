@@ -29,7 +29,7 @@ pub mod gpu;
 pub mod state;
 pub mod style;
 
-pub use config::{AppConfig, FpsMode, StartPosition};
+pub use config::{AppConfig, FpsMode, PowerMode, StartPosition};
 pub use state::AppState;
 pub use style::apply_imgui_style_for_theme;
 
@@ -185,8 +185,8 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
         gpu::position_window(&window, &cfg.start_position, event_loop);
         window.set_visible(true);
 
-        // Initialise wgpu.
-        let (device, queue, surface, surface_cfg) = gpu::init_wgpu(&window);
+        // Initialise wgpu with the configured power preference.
+        let (device, queue, surface, surface_cfg) = gpu::init_wgpu(&window, cfg.power_mode);
         let surface_format = surface_cfg.format;
 
         // Initialise Dear ImGui.

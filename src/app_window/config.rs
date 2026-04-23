@@ -21,6 +21,41 @@ pub enum FpsMode {
     Unlimited,
 }
 
+/// GPU power preference — drives adapter selection on hybrid-GPU
+/// (NVIDIA Optimus / AMD Hybrid) systems.
+///
+/// This is a preference, not a guarantee: if the preferred class is not
+/// available (e.g. `LowPower` on a desktop with only a discrete card) the
+/// other class is picked. The runtime still enumerates *every* adapter and
+/// chooses the best **surface-compatible** one — this enum only flips the
+/// priority between discrete and integrated within the scoring table.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PowerMode {
+    /// Prefer the discrete GPU when available (default on desktops).
+    ///
+    /// Best for the **fastest rendering** — GUI stays smooth under heavy
+    /// load, high-DPI displays render comfortably at high refresh rates.
+    /// On battery-powered laptops this drains battery faster and may
+    /// trigger the dGPU power-on transition (adds ~200–500 ms to startup).
+    #[default]
+    Auto,
+    /// Prefer the integrated GPU (iGPU) — saves battery on laptops.
+    ///
+    /// Ideal for **monitoring tools, editors, and other UI-only apps**
+    /// where rendering cost is trivial. Avoids waking the discrete GPU,
+    /// keeps fans quiet, extends battery life. The discrete card is still
+    /// used as a fallback if no iGPU is available.
+    LowPower,
+    /// Force the highest-performance adapter — identical scoring to `Auto`
+    /// but never fails silently to a software (CPU) renderer.
+    ///
+    /// If no hardware-backed adapter is surface-compatible, startup
+    /// returns an error rather than falling back to WARP / llvmpipe
+    /// (which would deliver single-digit FPS). Use for performance-
+    /// critical apps that must not run on software emulation.
+    HighPerformance,
+}
+
 /// Where to place the window on startup.
 #[derive(Debug, Clone, Default)]
 pub enum StartPosition {
@@ -57,6 +92,12 @@ pub struct AppConfig {
     pub start_position: StartPosition,
     /// Frame-rate strategy. Default: [`FpsMode::Auto`] (match monitor Hz).
     pub fps_mode: FpsMode,
+    /// GPU power preference. Default: [`PowerMode::Auto`] (discrete preferred).
+    ///
+    /// Set to [`PowerMode::LowPower`] for battery-sensitive UI apps
+    /// (monitoring, editors). [`PowerMode::HighPerformance`] refuses
+    /// software (CPU) fallback instead of silently degrading to WARP.
+    pub power_mode: PowerMode,
     /// Base font size in logical pixels. Default: `15.0`.
     pub font_size: f32,
     /// Rounded-corner radius in pixels (Win10 fallback path; Win11 DWM ignores it).
@@ -78,6 +119,7 @@ impl Default for AppConfig {
             min_size: [640.0, 400.0],
             start_position: StartPosition::CenterScreen,
             fps_mode: FpsMode::Auto,
+            power_mode: PowerMode::Auto,
             font_size: 15.0,
             corner_radius: 8,
             titlebar: BorderlessConfig::default(),
@@ -116,6 +158,12 @@ impl AppConfig {
     /// Equivalent to `.with_fps_mode(FpsMode::Fixed(fps))`.
     pub fn with_fps_limit(mut self, fps: u32) -> Self {
         self.fps_mode = FpsMode::Fixed(fps);
+        self
+    }
+
+    /// Set the GPU power preference (discrete / integrated / strict-hardware).
+    pub fn with_power_mode(mut self, mode: PowerMode) -> Self {
+        self.power_mode = mode;
         self
     }
 

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added — `app_window` power-aware GPU selection
+- **`PowerMode` enum** in `AppConfig` — `Auto` (default, discrete preferred),
+  `LowPower` (iGPU preferred, saves battery on laptops), `HighPerformance`
+  (refuses silent fallback to software / CPU renderers like WARP / llvmpipe).
+  Accessed via `AppConfig::with_power_mode(PowerMode::..)`.
+- **Cascaded adapter fallback chain** — `init_wgpu` now enumerates every
+  surface-compatible adapter, scores them, sorts descending, and tries
+  `request_device` on each in turn. If a buggy driver on the top-scored
+  adapter fails `request_device` (rare but reproducible on old Intel HD
+  with outdated drivers), the next candidate is tried instead of panicking.
+- **Software-renderer warning** — explicit `eprintln!` when the selected
+  adapter is `DeviceType::Cpu` (WARP / llvmpipe), so users understand why
+  performance is degraded rather than filing a perf bug.
+- **Per-adapter tracing** — every trial logs `"trying adapter … | backend
+  … | type …"` with a final `"using adapter …"` or `"skip adapter …"`
+  decision, making GPU-selection issues self-diagnosing.
+
 ### Added — `proc_mon` module (Windows only)
 - **`proc_mon` module** — production-ready process monitor with direct
   NT-syscall enumeration and virtualized `dear-imgui` table view.

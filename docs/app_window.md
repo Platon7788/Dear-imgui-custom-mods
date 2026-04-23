@@ -9,10 +9,15 @@ Zero-boilerplate borderless application window for Rust + Dear ImGui.
 ## Features
 
 - **Zero boilerplate** — one `run()` call replaces ~300 lines of setup code
-- **Auto GPU backend selection** — tries DX12 → Vulkan → GL on Windows, falls back to software adapter
+- **Power-aware GPU selection** — scores every surface-compatible adapter
+  (DX12 > Vulkan > GL; Discrete > Integrated by default), cascades through
+  candidates on `request_device` failure, and warns when falling back to a
+  software renderer. `PowerMode::LowPower` flips the iGPU/dGPU priority
+  for battery-sensitive UI apps; `PowerMode::HighPerformance` refuses
+  silent fallback to WARP / llvmpipe.
 - **Auto surface format detection** — prefers sRGB, gracefully falls back
 - **Auto HiDPI** — DPI scale clamped to `[1.0, 3.0]`, font scaled accordingly
-- **FPS cap** — configurable via `fps_limit` (default 60), `0` = unlimited (Poll mode)
+- **FPS strategy** — `FpsMode::{Auto, Fixed(n), Unlimited}` (default `Auto` = match monitor refresh via wgpu Fifo vsync)
 - **Window start position** — `CenterScreen`, `TopLeft`, or `Custom(x, y)`
 - **Full theme system** — `AppState::set_theme()` updates both titlebar colors and full ImGui widget palette
 - **Clean event routing** — `on_close_requested`, `on_extra_button`, `on_icon_click`, `on_theme_changed` callbacks
@@ -43,12 +48,13 @@ fn main() {
 ## Configuration
 
 ```rust
-use dear_imgui_custom_mod::app_window::{AppConfig, StartPosition};
+use dear_imgui_custom_mod::app_window::{AppConfig, FpsMode, PowerMode, StartPosition};
 use dear_imgui_custom_mod::theme::Theme;
 
 let _config = AppConfig::new("My App", 1100.0, 680.0)
     .with_min_size(640.0, 400.0)
-    .with_fps_limit(60)                              // 0 = unlimited
+    .with_fps_mode(FpsMode::Auto)                    // or Fixed(60) / Unlimited
+    .with_power_mode(PowerMode::Auto)                // or LowPower / HighPerformance
     .with_font_size(15.0)                            // logical px
     .with_start_position(StartPosition::CenterScreen)
     .with_theme(Theme::Dark);
@@ -61,6 +67,31 @@ let _config = AppConfig::new("My App", 1100.0, 680.0)
 | `CenterScreen` | Centered on primary monitor (default) |
 | `TopLeft` | Top-left corner of primary monitor |
 | `Custom(x, y)` | Explicit physical-pixel coordinates |
+
+### `FpsMode`
+
+| Variant | Behavior |
+|---------|----------|
+| `Auto` (default) | Match display refresh via wgpu Fifo vsync — no OS-timer stutter |
+| `Fixed(u32)` | Cap to exactly N frames per second via `WaitUntil` |
+| `Unlimited` | `Poll` mode, render as fast as possible (benchmarking only) |
+
+### `PowerMode`
+
+Preference only — the runtime still enumerates every adapter and picks
+the best surface-compatible one. The mode flips iGPU/dGPU priority within
+the scoring table and optionally filters software (CPU) renderers.
+
+| Variant | Behavior | Best for |
+|---------|----------|----------|
+| `Auto` (default) | Discrete GPU preferred when available | Desktops, 3D / graphics apps |
+| `LowPower` | Integrated GPU preferred; iGPU wins over dGPU | Battery-powered laptops, monitoring tools, editors |
+| `HighPerformance` | Same priority as `Auto`, but refuses software fallback | Apps that must not silently run on WARP / llvmpipe |
+
+On hybrid-GPU laptops (NVIDIA Optimus / AMD Hybrid), `LowPower` avoids
+the ~200–500 ms dGPU power-on transition, keeps fans quiet, and extends
+battery life. For a process monitor or editor it's usually the right
+choice — rendering cost is trivial.
 
 ## AppHandler Trait
 
@@ -186,7 +217,9 @@ AppWindow::run(handler)
 |--------|---------|-------------|
 | `new(title, w, h)` | — | Create config with title and size |
 | `with_min_size(w, h)` | `640×400` | Minimum window size |
-| `with_fps_limit(fps)` | `60` | Frame rate cap (`0` = unlimited) |
+| `with_fps_mode(mode)` | `Auto` | FPS strategy: `Auto` (monitor Hz) / `Fixed(n)` / `Unlimited` |
+| `with_fps_limit(fps)` | — | Shortcut for `with_fps_mode(FpsMode::Fixed(fps))` |
+| `with_power_mode(mode)` | `Auto` | GPU preference: `Auto` (dGPU) / `LowPower` (iGPU) / `HighPerformance` (no software fallback) |
 | `with_font_size(px)` | `15.0` | Base font size in logical pixels |
 | `with_start_position(p)` | `CenterScreen` | Where to place the window on startup |
 | `with_theme(theme)` | `Dark` | Initial color theme |
