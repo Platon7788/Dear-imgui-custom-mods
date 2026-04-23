@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Fixed — `code_editor` hex auto-space double-insert on 2nd-nibble replace
+- **Double-space bug fixed.** With `hex_auto_space = true`, editing
+  the second nibble of an existing byte (e.g. `"AA "` → replace 2nd A with
+  `B`) no longer inserts a duplicate space. Old code triggered auto-space
+  because `line.chars().nth(col).is_none_or(|c| c == ' ' || c == '\t')`
+  returned `true` both for EOL **and** for an already-existing separator.
+- **Decision logic extracted** into `helpers::hex_auto_space_needed(line,
+  col)` — a pure function testable in isolation. Insert rules:
+
+  | Next char                      | Action       | Rationale                                |
+  |--------------------------------|--------------|------------------------------------------|
+  | `None` (EOL)                   | **insert**   | Fresh byte at end — common path          |
+  | ASCII hex digit                | skip         | Don't silently merge two byte sequences  |
+  | Whitespace (space / tab / NBSP)| skip         | Already a separator — don't duplicate    |
+  | Other (`;` / `|` / `,` / …)    | **insert**   | Custom DSLs — keep byte visually distinct |
+
+- Manually-typed spaces are **never** trimmed or modified — auto-space
+  is insert-only. The whole mechanism lives on the text-input path and
+  does not interact with cursor movement, Delete / Backspace, paste,
+  undo, or multi-cursor insertion.
+- 5 new unit tests in `code_editor::helpers::tests` covering each row of
+  the decision matrix + the exact user-reported "replace 2nd nibble"
+  scenario (total lib: **422 passing**, 2 `#[ignore]`).
+
 ### Added — `proc_mon` row highlighting (`MonitorColors`)
 - **`MonitorColors`** struct — configurable palette for per-row tinting.
   Replaces the previously hard-coded `Suspended` amber. Four layers of

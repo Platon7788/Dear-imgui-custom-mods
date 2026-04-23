@@ -249,6 +249,31 @@ pub(super) fn is_closing_quote(ch: char) -> bool {
     QUOTE_PAIRS.iter().any(|(_, c)| *c == ch)
 }
 
+// ── Hex auto-space decision ─────────────────────────────────────────────────
+
+/// Decide whether to insert a separator space at column `col` of `line`
+/// after the user completed the second nibble of a byte in hex-edit mode.
+///
+/// Called only when `nibbles_before == 2` at the upstream site, so the
+/// only remaining question is: "what is to the right of the cursor?".
+///
+/// | Next char                 | Decision | Why                                    |
+/// |---------------------------|----------|----------------------------------------|
+/// | `None` (end of line)      | `true`   | Fresh byte at the end — common path    |
+/// | ASCII hex digit           | `false`  | Merging would corrupt the byte boundary |
+/// | Any whitespace            | `false`  | Separator already present — don't dup  |
+/// | Anything else (`;`, `,`, `|`, …) | `true` | Non-hex separator deserves a visual break |
+///
+/// Prevents the "replace 2nd nibble produces double space" bug: if the
+/// cursor now sits just before an existing `' '` we no longer add a
+/// second one.
+pub(super) fn hex_auto_space_needed(line: &str, col: usize) -> bool {
+    match line.chars().nth(col) {
+        None => true,
+        Some(c) => !c.is_ascii_hexdigit() && !c.is_whitespace(),
+    }
+}
+
 // ── Line-count digit width ──────────────────────────────────────────────────
 
 /// Number of digits in `n` — used to size the line-number gutter.
@@ -289,5 +314,50 @@ mod tests {
         assert_eq!(digit_count(99), 2);
         assert_eq!(digit_count(100), 3);
         assert_eq!(digit_count(9999), 4);
+    }
+
+    #[test]
+    fn test_hex_auto_space_end_of_line() {
+        // Fresh byte at the end — the common path, must insert.
+        assert!(hex_auto_space_needed("AA", 2));
+        assert!(hex_auto_space_needed("DEADBEEF", 8));
+    }
+
+    #[test]
+    fn test_hex_auto_space_existing_space_not_duplicated() {
+        // Regression: "AA " + cursor at col=2 (right before the existing
+        // space) must NOT insert a second space — this is the bug fix.
+        assert!(!hex_auto_space_needed("AA ", 2));
+        assert!(!hex_auto_space_needed("AA\t", 2));
+    }
+
+    #[test]
+    fn test_hex_auto_space_replace_second_nibble_scenario() {
+        // Exact user scenario: "AA " → delete 2nd A → type B → "AB " with
+        // cursor at col=2. Auto-space trigger: nibbles_before==2, next=' '.
+        // Must NOT insert another space (was the double-space bug).
+        assert!(!hex_auto_space_needed("AB ", 2));
+    }
+
+    #[test]
+    fn test_hex_auto_space_merging_hex_not_split() {
+        // Typing "CC" right before existing "BB" → "CCBB". We don't insert
+        // a space — that would require knowing the user *wanted* a byte
+        // boundary here, which this heuristic can't infer. Covers each
+        // ASCII hex class (0-9, a-f, A-F) as the next char.
+        assert!(!hex_auto_space_needed("CCBB", 2));
+        assert!(!hex_auto_space_needed("CC0", 2));
+        assert!(!hex_auto_space_needed("CCf", 2));
+        assert!(!hex_auto_space_needed("CCF", 2));
+    }
+
+    #[test]
+    fn test_hex_auto_space_before_non_hex_separator() {
+        // Custom hex DSLs sometimes use `|`, `;`, `,` as structural
+        // separators. Insert an auto-space so the byte stays visually
+        // distinct from the separator — new behavior vs the pre-fix code.
+        assert!(hex_auto_space_needed("AA|BB", 2));
+        assert!(hex_auto_space_needed("AA;", 2));
+        assert!(hex_auto_space_needed("AA,CC", 2));
     }
 }

@@ -72,7 +72,8 @@ mod wrap;
 use fold::{FoldRegion, detect_fold_regions};
 use helpers::{
     calc_char_advance, closing_bracket, closing_quote, col_to_x, col32, digit_count, get_clipboard,
-    hash_line, is_closing_bracket, is_closing_quote, parse_hex_color, read_input_chars,
+    hash_line, hex_auto_space_needed, is_closing_bracket, is_closing_quote, parse_hex_color,
+    read_input_chars,
     set_clipboard, title_case, x_to_col,
 };
 use wrap::compute_wrap_points;
@@ -1522,7 +1523,24 @@ impl CodeEditor {
                     self.buffer.insert_char(ch);
                     self.invalidate_token_cache_at(self.buffer.cursor().line);
 
-                    // Auto-space: after 2 consecutive hex digits insert a space
+                    // Auto-space: after 2 consecutive hex digits insert a
+                    // separator space.
+                    //
+                    // The decision matrix is intentionally narrow so we neither
+                    // duplicate an existing separator nor silently merge two
+                    // hex runs:
+                    //
+                    //   next char | action     | why
+                    //   ----------+------------+------------------------------
+                    //   <EOL>     | insert ' ' | fresh byte at the end — common
+                    //   ' ' / \t  | skip       | separator already there
+                    //   hex (0-9  | skip       | merging would corrupt the byte
+                    //     a-f A-F)|            | boundary the user expects
+                    //   other     | insert ' ' | non-hex separators (`|` `;` `,`)
+                    //                           still warrant a visual break
+                    //
+                    // This fixes the "replace 2nd nibble → double space" bug
+                    // (next was ' ' and old code inserted another ' ').
                     if self.config.hex_auto_space && ch.is_ascii_hexdigit() {
                         let line_idx = self.buffer.cursor().line;
                         let line = self.buffer.line(line_idx).to_string();
@@ -1533,13 +1551,11 @@ impl CodeEditor {
                             .rev()
                             .take_while(|c| c.is_ascii_hexdigit())
                             .count();
-                        if nibbles_before == 2 {
-                            let next_is_space =
-                                line.chars().nth(col).is_none_or(|c| c == ' ' || c == '\t');
-                            if next_is_space {
-                                self.buffer.insert_char(' ');
-                                self.invalidate_token_cache_at(line_idx);
-                            }
+                        if nibbles_before == 2
+                            && hex_auto_space_needed(&line, col)
+                        {
+                            self.buffer.insert_char(' ');
+                            self.invalidate_token_cache_at(line_idx);
                         }
                     }
                 }
@@ -1619,10 +1635,12 @@ impl CodeEditor {
 
         // For wrapped sub-rows, map into the column range.
         let (col_start, col_end) = self.sub_row_col_range(line, sub_row);
+        // saturating_sub: defensive against stale wrap caches (see
+        // sub_row_col_range) — we never want to trigger usize underflow here.
         let sub_str: String = line_content
             .chars()
             .skip(col_start)
-            .take(col_end - col_start)
+            .take(col_end.saturating_sub(col_start))
             .collect();
 
         let raw_col = col_start
@@ -3016,10 +3034,14 @@ impl CodeEditor {
         } else {
             wraps.get(sub_row - 1).copied().unwrap_or(0)
         };
-        let end = wraps
-            .get(sub_row)
-            .copied()
-            .unwrap_or_else(|| self.buffer.line(line).chars().count());
+        let line_chars = self.buffer.line(line).chars().count();
+        let end = wraps.get(sub_row).copied().unwrap_or(line_chars);
+        // Clamp: during the in-frame window between a buffer edit (Ctrl+A +
+        // Delete, paste, etc.) and the next `update_wrap_cache` call, wraps
+        // may reference columns past the now-shorter line. Returning start>end
+        // would underflow the `end - start` subtraction in `handle_mouse`.
+        let start = start.min(line_chars);
+        let end = end.max(start);
         (start, end)
     }
 
@@ -3383,6 +3405,67 @@ mod tests {
         // Toggle again to uncomment
         editor.buffer.toggle_line_comment(1..2);
         assert_eq!(editor.buffer.line(1), "    let x = 1;");
+    }
+
+    #[test]
+    fn test_sub_row_col_range_stale_wrap_cols() {
+        // Reproduces the packet-editor panic: when the buffer shrinks but
+        // wrap_cols is still sized for the old content (the in-frame window
+        // between handle_keyboard editing the buffer and update_wrap_cache
+        // refreshing the cache), sub_row_col_range can return start > end.
+        // handle_mouse then computes `end - start` as a usize subtraction and
+        // panics with attempt-to-subtract-with-overflow.
+        let mut editor = CodeEditor::new("test");
+        editor.config_mut().word_wrap = true;
+
+        // Pretend the cache reflects a long wrapped line that has since been
+        // cleared — wrap_cols still has 5 wrap points, but buffer.line(0) is
+        // now empty.
+        editor.wrap_cols = vec![vec![10, 20, 30, 40, 50]];
+        editor.wrap_row_offsets = vec![0, 6];
+        // buffer is empty (default state — one empty line).
+
+        // sub_row = wraps.len() falls off the end: wraps.get(sub_row) is None
+        // so `end = buffer.line(0).chars().count() = 0`, while `start =
+        // wraps.get(sub_row - 1) = 50`. Before the fix this returned (50, 0).
+        let (start, end) = editor.sub_row_col_range(0, 5);
+        assert!(start <= end, "sub_row_col_range returned start={start} > end={end}");
+    }
+
+    #[test]
+    fn test_nxt_hex_editor_select_all_delete() {
+        // Reproduces NxT packet-editor crash: select-all + delete on a
+        // hex editor configured like packet_monitor's send buffer.
+        let mut editor = CodeEditor::new("##hex_editor");
+        {
+            let cfg = editor.config_mut();
+            cfg.language = Language::Hex;
+            cfg.hex_auto_uppercase = true;
+            cfg.hex_auto_space = true;
+            cfg.word_wrap = true;
+            cfg.force_english_on_focus = true;
+            cfg.smooth_scrolling = false;
+            cfg.show_fold_indicators = false;
+            cfg.max_lines = 999;
+            cfg.max_line_length = 65000;
+        }
+        // Simulate 50 captured packets.
+        let mut text = String::new();
+        for _ in 0..50 {
+            text.push_str("AA BB CC DD EE FF 01 02 03 04\n");
+        }
+        editor.set_text(&text);
+        assert!(editor.line_count() > 10);
+
+        // Ctrl+A
+        editor.buffer.select_all();
+        // Delete — the same path the editor takes for Delete/Backspace.
+        editor.snapshot_undo(true);
+        editor.buffer.delete();
+        editor.invalidate_token_cache_from(editor.buffer.cursor().line);
+
+        assert_eq!(editor.line_count(), 1);
+        assert_eq!(editor.get_text(), "");
     }
 
     #[test]
