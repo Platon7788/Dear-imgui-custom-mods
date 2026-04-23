@@ -2,6 +2,86 @@
 
 ## [Unreleased]
 
+### Added — `proc_mon` module (Windows only)
+- **`proc_mon` module** — production-ready process monitor with direct
+  NT-syscall enumeration and virtualized `dear-imgui` table view.
+  Gated behind the `proc_mon` feature (on by default via `full`);
+  requires `virtual_table` + `syscalls` + `serde`; Windows-only.
+  - `ProcessEnumerator` — `NtQuerySystemInformation(SystemProcessInformation)`
+    with a reusable syscall buffer capped at 64 MiB, bitness cache pruned
+    every 15 ticks against the live PID list, stable sort by `CreateTime`
+    descending.
+  - `ProcessInfo` (19 fields): `pid`, `name`, `bits` (32/64), `ppid`,
+    `session_id`, `status` (Running / Suspended via thread-state walk),
+    `create_time`, `priority`, `working_set`, `private_bytes`,
+    `virtual_size`, `peak_working_set`, `kernel_time`, `user_time`,
+    `cycle_time`, `thread_count`, `handle_count`, `io_read_bytes`,
+    `io_write_bytes`, `cpu_percent`.
+  - **Zero-hash delta** — change detection uses direct field comparison
+    on a 10-field `SnapDiff` struct with `PartialEq`, not `std::hash`.
+    CPU counters (`kernel_time`, `user_time`, `cycle_time`) excluded
+    from the diff so active processes don't spam upserts; memory / I/O
+    moves are what actually drive updates.
+  - **Optional CPU% tracking** — opt-in via
+    `ProcessEnumerator::set_cpu_tracking(true)`. When disabled, the
+    enumerator skips `SystemTime::now()`, per-process `HashMap` lookups,
+    subtractions, and float math — matching the overhead of a list-only
+    monitor like `IMGUI_NXT`'s engine task. CPU% is normalized across
+    logical cores: `Δ(kernel+user) / (Δwall × cores) × 100`, clamped
+    `[0, 100]`. Toggling resets the baseline automatically.
+  - **`foldhash` everywhere** — every `HashMap<u32, _>` uses
+    `foldhash::fast::FixedState` (~5× faster than `std`'s SipHash on
+    `u32` keys). Same pattern used by `virtual_table` / `virtual_tree`.
+  - `ProcessMonitor` UI widget — canonical 18-column layout with stable
+    indices regardless of visibility (hidden columns registered with
+    `.visible(false)` rather than omitted). Process Name uses
+    `.stretch(1.0)`; PID / Bits / Status are fixed-width and pinned to
+    the right edge. In-place `ProcessRow` mutation on upsert for known
+    PIDs — volatile columns (Memory, I/O, CPU%, CPU time) re-formatted
+    via `update_volatile()`, immutable columns (name, create_time)
+    stay cached from the initial insert.
+  - `ColumnConfig::default()` = Name / PID / Bits / Status (minimal, like
+    NxT reference UI). `MonitorConfig::minimal()` / `all_columns()`
+    helpers for common presets.
+  - Header hover / active highlights suppressed via
+    `push_style_color(HeaderHovered/Active, transparent)` inside
+    `ProcessMonitor::render` — headers are informative-only since sort
+    is fixed.
+  - Context-menu routing via `MonitorEvent::ContextMenuRequested(pid)` —
+    the widget clears the flag and the caller renders their own popup
+    with arbitrary actions (Kill / Copy PID / Details / …).
+  - Case-insensitive search across name + PID using a pre-lowercased
+    query and a reusable PID-scratch buffer (no `io::Cursor`, no
+    per-frame allocation on search hot path).
+  - `format_bytes`, `format_cpu_time`, `format_cpu_percent`,
+    `format_create_time` helpers — all take `&mut String` for zero-alloc
+    formatting into caller-owned buffers.
+  - 5 unit tests: `test_format_bytes`, `test_format_cpu_time`,
+    `test_format_cpu_percent`, `test_column_config_default`,
+    `test_snapdiff_stable_for_static_fields`. Two syscall-hitting tests
+    (`test_enumerate_processes`, `test_delta_update`) marked `#[ignore]`
+    because they require live NT stubs — run with `cargo test -- --ignored`.
+- **`docs/proc_mon.md`** — full component reference (features, quick
+  start, configuration, column table, architecture diagram, performance
+  notes, API reference, platform support, safety).
+- **`examples/demo_proc_mon.rs`** — complete end-to-end app with live
+  monitor, search bar, caller-drawn context menu (Copy PID / Details /
+  Kill — styled green/red like other demos), status line, manual refresh
+  button. Render loop caps at ~30 FPS via `ControlFlow::WaitUntil`.
+
+### Changed — Build profiles
+- **`[profile.dev.package."*"] opt-level = 2`** — all dependency crates
+  (wgpu, imgui, winit, serde, syscalls, …) now build with near-release
+  optimization in debug, keeping our own code at `opt-level = 0` for fast
+  iterative compiles and full `debug_assertions`. Render hot paths (wgpu /
+  imgui) no longer run as the pathologically-slow debug builds — essential
+  for GUI apps where a debug-compiled wgpu is ~10–30× slower than release.
+- **`[profile.release]` tightened** to `lto = "fat"`, `codegen-units = 1`,
+  `strip = "symbols"`, `panic = "abort"` — matches the aggressive profile
+  used by the `IMGUI_NXT` reference engine. Cross-crate inlining, no unwind
+  machinery, no PDB data. Release binary for `demo_proc_mon` dropped from
+  8.9 MB to 6.5 MB (−27%).
+
 ### Changed — MSRV
 - **MSRV bumped from 1.94 → 1.95.** Pins updated in `rust-toolchain.toml`,
   `Cargo.toml (rust-version)`, `clippy.toml (msrv)`, and the

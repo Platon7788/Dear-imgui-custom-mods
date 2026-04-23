@@ -35,6 +35,7 @@ full = [
     "node_graph",
     "notifications",
     "page_control",
+    "proc_mon",
     "property_inspector",
     "status_bar",
     "timeline",
@@ -86,9 +87,13 @@ timeline = []
 force_graph = ["nav_panel", "dep:slotmap"]
 # Keep old name as alias so existing users aren't broken immediately.
 knowledge_graph = ["force_graph"]
+# Process monitor with NT syscall enumeration (Windows-only).
+# Uses virtual_table for display. Requires syscalls crate.
+proc_mon = ["virtual_table", "dep:syscalls", "dep:serde"]
 
 [dependencies]
 slotmap = { version = "1.0", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
 dear-imgui-rs = "0.11.0"
 dear-imgui-wgpu = "0.11.0"
 dear-imgui-winit = "0.11.0"
@@ -96,6 +101,21 @@ foldhash = "0.2.0"
 pollster = "0.4.0"
 wgpu = "29.0.1"
 winit = "0.30.13"
+
+# ─── Optional: syscalls (Windows-only) ───────────────────────────────────────
+# Direct NT syscall library for process monitoring.
+# Path dependency for local development; replace with crates.io when published.
+[target.'cfg(windows)'.dependencies]
+syscalls = { path = "../syscalls-rust", optional = true }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Storage_FileSystem",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Performance",
+    "Win32_System_SystemInformation",
+] }
 
 [dev-dependencies]
 # Microbenchmarks via Criterion — gate behind the `bench` runner so
@@ -112,15 +132,6 @@ harness = false
 [[bench]]
 name = "color_packing"
 harness = false
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = [
-    "Win32_Storage_FileSystem",
-    "Win32_Graphics_Dwm",
-    "Win32_Graphics_Gdi",
-    "Win32_Foundation",
-    "Win32_UI_WindowsAndMessaging",
-] }
 
 # ─── Examples ────────────────────────────────────────────────────────────────
 # Each demo declares `required-features` so `cargo build --examples
@@ -212,3 +223,31 @@ required-features = ["force_graph", "app_window"]
 name = "demo_knowledge_graph"
 path = "examples/demo_knowledge_graph.rs"
 required-features = ["force_graph", "app_window"]
+
+[[example]]
+name = "demo_proc_mon"
+path = "examples/demo_proc_mon.rs"
+required-features = ["proc_mon", "app_window"]
+
+# ─── Build profiles ──────────────────────────────────────────────────────────
+#
+# `dev.package."*" opt-level = 2` builds all *dependencies* (wgpu, imgui,
+# winit, serde, syscalls, …) with near-release optimization while keeping
+# our own crate at `opt-level = 0` for fast iterative compiles and full
+# `debug_assertions`. Render hot paths (wgpu/imgui) then behave as if they
+# were release-compiled — essential for GUI apps where a debug-compiled
+# wgpu is ~10–30× slower.
+#
+# `release` mirrors the aggressive profile used by `IMGUI_NXT`: LTO=fat +
+# single codegen unit give cross-crate inlining; `strip = symbols` removes
+# PDB info; `panic = abort` drops the unwind machinery from the binary.
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

@@ -154,6 +154,8 @@ pub mod node_graph;
 pub mod notifications;
 #[cfg(feature = "page_control")]
 pub mod page_control;
+#[cfg(feature = "proc_mon")]
+pub mod proc_mon;
 #[cfg(feature = "property_inspector")]
 pub mod property_inspector;
 #[cfg(feature = "status_bar")]
