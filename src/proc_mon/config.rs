@@ -1,12 +1,15 @@
 //! Configuration for process monitor.
 
-use crate::proc_mon::types::ColumnConfig;
+use crate::proc_mon::types::{ColumnConfig, MonitorColors};
 
 /// Process monitor configuration.
 #[derive(Debug, Clone)]
 pub struct MonitorConfig {
     /// Which columns to display.
     pub columns: ColumnConfig,
+    /// Row-highlight palette — suspended tint, self-process, per-name, per-PID.
+    /// Default: only `Suspended` is tinted (amber, matches pre-0.9 behavior).
+    pub colors: MonitorColors,
     /// Monitor update interval in milliseconds.
     /// Range: 1-5000ms. Default: 1000ms (1 update per second).
     pub interval_ms: u32,
@@ -23,6 +26,7 @@ impl Default for MonitorConfig {
     fn default() -> Self {
         Self {
             columns: ColumnConfig::default(),
+            colors: MonitorColors::default(),
             interval_ms: 1000,
             max_processes: 10_000,
             show_search: true,

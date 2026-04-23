@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### Added — `proc_mon` row highlighting (`MonitorColors`)
+- **`MonitorColors`** struct — configurable palette for per-row tinting.
+  Replaces the previously hard-coded `Suspended` amber. Four layers of
+  resolution, first non-`None` wins: `by_pid > by_name > self_process
+  > suspended`. Ships with `with_*` / `add_*` / `remove_*` / `clear_all`
+  / `resolve` helpers.
+- **`MonitorConfig::colors`** — palette is now part of the config.
+  Default mirrors previous behavior (only `Suspended` tinted in amber).
+- **`ProcessMonitor::colors()` / `colors_mut()` / `set_colors(colors)` /
+  `refresh_colors()`** — read, mutate, or replace the palette at runtime.
+  `set_colors` automatically re-resolves every tracked row; after using
+  `colors_mut` callers invoke `refresh_colors` to apply in-place edits.
+- **Self-process highlighting** — `MonitorColors::self_process`, matched
+  against `std::process::id()` captured once in `ProcessMonitor::new`.
+- **Per-name & per-PID maps** — case-insensitive `by_name` (names stored
+  lowercased for O(1) lookup) and explicit `by_pid` overrides.
+- **Zero-cost rendering** — color resolution runs once per upsert and
+  is cached into `ProcessRow::color_override`. The render path is a
+  single `Option<[f32;4]>` copy — no hashing, no `to_lowercase` allocs,
+  no rule evaluation per frame. Status flips re-resolve via the delta.
+- **`MonitorColors` re-exported** from `proc_mon::*`, serde-serializable
+  so full palettes can be shipped as JSON / TOML / config files.
+- New `test_monitor_colors_priority` unit test verifying the four-layer
+  resolution order (6 passing tests total, 2 `#[ignore]`).
+- `docs/proc_mon.md` gains a **Row highlighting** section with examples,
+  priority table, and `MonitorColors` API reference.
+
 ### Added — `app_window` power-aware GPU selection
 - **`PowerMode` enum** in `AppConfig` — `Auto` (default, discrete preferred),
   `LowPower` (iGPU preferred, saves battery on laptops), `HighPerformance`

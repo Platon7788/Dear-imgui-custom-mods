@@ -7,7 +7,7 @@
 use crate::proc_mon::config::MonitorConfig;
 use crate::proc_mon::types::{
     format_bytes, format_cpu_percent, format_cpu_time, format_create_time, ColumnConfig,
-    MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo,
+    MonitorColors, MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo,
 };
 use crate::virtual_table::{
     CellAlignment, CellValue, ColumnDef, RowDensity, RowStyle, SelectionMode, TableConfig,
@@ -40,6 +40,9 @@ pub struct ProcessRow {
     cpu_time_str: String,
     cpu_pct_str: String,
     create_time_str: String,
+    /// Cached row background tint resolved from [`MonitorColors`] at upsert
+    /// time — so rendering is pure lookup, no rule evaluation per frame.
+    color_override: Option<[f32; 4]>,
 }
 
 impl From<ProcessInfo> for ProcessRow {
@@ -55,6 +58,7 @@ impl From<ProcessInfo> for ProcessRow {
             cpu_time_str: String::new(),
             cpu_pct_str: String::new(),
             create_time_str: String::new(),
+            color_override: None,
         };
         row.update_cached_strings();
         row
@@ -118,6 +122,13 @@ impl ProcessRow {
     pub const fn cpu_percent(&self) -> f32 {
         self.info.cpu_percent
     }
+
+    /// Apply a pre-resolved color override (used by `ProcessMonitor` during
+    /// upsert / `set_colors` so row rendering stays pure lookup).
+    #[inline]
+    fn set_color_override(&mut self, color: Option<[f32; 4]>) {
+        self.color_override = color;
+    }
 }
 
 // ─── Table cell dispatch ──────────────────────────────────────────────────────
@@ -180,13 +191,12 @@ impl VirtualTableRow for ProcessRow {
     }
 
     fn row_style(&self) -> Option<RowStyle> {
-        match self.info.status {
-            ProcStatus::Suspended => Some(RowStyle {
-                bg_color: Some([0.88, 0.55, 0.10, 0.20]),
-                ..RowStyle::default()
-            }),
-            ProcStatus::Running => None,
-        }
+        // Pre-resolved in `ProcessMonitor::apply_delta` / `set_colors`.
+        // Render path is pure lookup — no rule evaluation per frame.
+        self.color_override.map(|bg| RowStyle {
+            bg_color: Some(bg),
+            ..RowStyle::default()
+        })
     }
 }
 
@@ -214,6 +224,13 @@ pub struct ProcessMonitor {
     fmt_buf: String,
     /// Column configuration.
     columns: ColumnConfig,
+    /// Row-highlight palette. Resolved into `ProcessRow::color_override` at
+    /// upsert time (or on `set_colors` refresh) so rendering is pure lookup.
+    colors: MonitorColors,
+    /// PID of the current process — captured once at construction so
+    /// [`MonitorColors::self_process`] matches without calling
+    /// `std::process::id()` every frame.
+    self_pid: u32,
     /// Window title.
     window_title: String,
     /// Whether to show search bar.
@@ -250,6 +267,8 @@ impl ProcessMonitor {
             pid_scratch: String::with_capacity(12),
             fmt_buf: String::with_capacity(64),
             columns: config.columns,
+            colors: config.colors,
+            self_pid: std::process::id(),
             window_title: config.window_title.to_string(),
             show_search: config.show_search,
             cached_system_cpu: 0.0,
@@ -335,7 +354,9 @@ impl ProcessMonitor {
     pub fn set_full_list(&mut self, procs: &[ProcessInfo]) {
         self.processes.clear();
         for p in procs {
-            self.processes.insert(p.pid, ProcessRow::from(p.clone()));
+            let mut row = ProcessRow::from(p.clone());
+            row.set_color_override(self.colors.resolve(&row.info, self.self_pid));
+            self.processes.insert(p.pid, row);
         }
         self.total_count = procs.len();
         self.dirty = true;
@@ -344,9 +365,10 @@ impl ProcessMonitor {
 
     /// Handle incremental delta update.
     ///
-    /// In-place update: when a PID already exists, mutate its `ProcessInfo`
-    /// and refresh only volatile cached strings — avoids dropping the whole
-    /// row and re-formatting immutable columns (name, create_time).
+    /// In-place update: when a PID already exists, mutate its `ProcessInfo`,
+    /// refresh volatile cached strings and re-resolve the color override
+    /// (status may have flipped Running ↔ Suspended) — but the immutable
+    /// columns (name, create_time) stay cached from the original insert.
     pub fn apply_delta(&mut self, delta: &ProcessDelta) {
         let mut changed = false;
 
@@ -361,9 +383,13 @@ impl ProcessMonitor {
                 Some(row) => {
                     row.info = p.clone();
                     row.update_volatile();
+                    let c = self.colors.resolve(&row.info, self.self_pid);
+                    row.set_color_override(c);
                 }
                 None => {
-                    self.processes.insert(p.pid, ProcessRow::from(p.clone()));
+                    let mut row = ProcessRow::from(p.clone());
+                    row.set_color_override(self.colors.resolve(&row.info, self.self_pid));
+                    self.processes.insert(p.pid, row);
                 }
             }
             changed = true;
@@ -446,6 +472,42 @@ impl ProcessMonitor {
         self.search_lower.clear();
         self.search_lower.push_str(&self.search_buf);
         self.search_lower.make_ascii_lowercase();
+    }
+
+    /// Read-only access to the current highlight palette.
+    pub const fn colors(&self) -> &MonitorColors {
+        &self.colors
+    }
+
+    /// Mutable access for small edits (e.g. `monitor.colors_mut().add_pid(42, ...)`).
+    /// Call [`refresh_colors`](Self::refresh_colors) afterwards so the change
+    /// is reflected on already-tracked rows.
+    pub fn colors_mut(&mut self) -> &mut MonitorColors {
+        &mut self.colors
+    }
+
+    /// Replace the highlight palette and re-resolve overrides for every
+    /// tracked row. This is the only way colors take effect without waiting
+    /// for a fresh upsert.
+    pub fn set_colors(&mut self, colors: MonitorColors) {
+        self.colors = colors;
+        self.refresh_colors();
+    }
+
+    /// Re-resolve [`MonitorColors`] against every tracked process. Call this
+    /// after mutating via [`colors_mut`](Self::colors_mut) — otherwise only
+    /// newly-upserted rows pick up the edit.
+    pub fn refresh_colors(&mut self) {
+        let colors = &self.colors;
+        let self_pid = self.self_pid;
+        for row in self.processes.values_mut() {
+            row.set_color_override(colors.resolve(&row.info, self_pid));
+        }
+    }
+
+    /// PID of the host process — what [`MonitorColors::self_process`] matches.
+    pub const fn self_pid(&self) -> u32 {
+        self.self_pid
     }
 
     /// Update column visibility. Rebuilds the underlying `VirtualTable` with

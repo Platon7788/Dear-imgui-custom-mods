@@ -166,6 +166,59 @@ resets the baseline so the first reading after enabling is `0.0`.
 If the UI column is hidden, the `ProcessMonitor` also skips
 `recompute_system_cpu` and the header "System CPU: X%" line.
 
+## Row highlighting
+
+[`MonitorColors`] lets callers tint individual rows — useful for
+identifying the host process, tracking a specific PID, or grouping
+related executables without wrapping the widget in an outer UI.
+
+```rust
+use dear_imgui_custom_mod::proc_mon::{MonitorColors, MonitorConfig, ProcessMonitor};
+
+let colors = MonitorColors::default()
+    // Soft green for the current process (uses std::process::id()).
+    .with_self([0.20, 0.60, 0.35, 0.25])
+    // Case-insensitive name match for well-known tools.
+    .with_name("chrome.exe",    [0.25, 0.50, 0.85, 0.22])
+    .with_name("firefox.exe",   [0.90, 0.35, 0.15, 0.22])
+    .with_name("svchost.exe",   [0.40, 0.40, 0.45, 0.16])
+    // Explicit PID override — always wins.
+    .with_pid(4, [0.70, 0.20, 0.20, 0.20]);                // System
+
+let config = MonitorConfig {
+    colors,
+    ..MonitorConfig::default()
+};
+let mut monitor = ProcessMonitor::new(config);
+```
+
+Runtime updates (without reconstructing the monitor):
+
+```rust
+monitor.colors_mut().add_pid(my_pid, [1.0, 0.9, 0.1, 0.30]);
+monitor.refresh_colors();          // re-resolve overrides for existing rows
+
+// Or swap the whole palette:
+monitor.set_colors(MonitorColors::default().with_self([0.1, 0.7, 0.4, 0.25]));
+```
+
+**Resolution priority** (first non-`None` wins):
+
+| # | Source | Notes |
+|---|--------|-------|
+| 1 | `by_pid[pid]` | Highest — explicit override |
+| 2 | `by_name[name.to_lowercase()]` | Case-insensitive, O(1) lookup; skipped when map empty |
+| 3 | `self_process` if `pid == std::process::id()` | Requires `Some(color)` |
+| 4 | `suspended` if `status == Suspended` | Default palette has amber tint; set to `None` to disable |
+| 5 | no highlight | Default row background |
+
+**Zero-cost rendering.** `ProcessMonitor::apply_delta` and
+`set_full_list` resolve the palette once per row at upsert time and
+cache the result in `ProcessRow::color_override`. Rendering is a pure
+`Option<[f32; 4]>` copy — no rule evaluation, no `to_lowercase` allocs,
+no hash lookups per frame. Status flips (Running ↔ Suspended) re-resolve
+automatically because `status` is in the upsert diff.
+
 ## Columns
 
 Canonical layout, indices `0..=17`. Hidden columns are registered but marked
@@ -284,8 +337,25 @@ practice without triggering false upserts on every idle kernel tick.
 | `apply_delta(delta)` | Upsert / remove based on `ProcessDelta`; in-place mutation for known PIDs. |
 | `selected_pid()` | PID of the currently-selected row, if any. |
 | `set_columns(cfg)` | Change visible columns (rebuilds the `VirtualTable`). |
+| `colors()` / `colors_mut()` | Read / mutate the current highlight palette. |
+| `set_colors(colors)` | Replace the palette and re-resolve every row in one call. |
+| `refresh_colors()` | Re-resolve overrides after editing via `colors_mut()`. |
+| `self_pid()` | PID of the host process (cached at construction). |
 | `invalidate()` | Force re-sort (call after changing `search_buf`). |
 | `render(ui, &mut show)` | Draw the window; returns `Option<MonitorEvent>`. |
+
+### `MonitorColors`
+
+| Field / Method | Description |
+|----------------|-------------|
+| `suspended: Option<[f32;4]>` | Fallback tint for `Suspended` rows (default amber, set `None` to disable). |
+| `self_process: Option<[f32;4]>` | Tint for the host process (default `None`). |
+| `by_name: HashMap<String, [f32;4]>` | Case-insensitive name → color. Keys are lowercased. |
+| `by_pid: HashMap<u32, [f32;4]>` | PID → color. Highest resolution priority. |
+| `with_suspended / with_self / with_name / with_pid` | Builder-style setters (consume self). |
+| `add_name / add_pid / remove_name / remove_pid` | In-place mutation on `colors_mut()`. |
+| `clear_all()` | Reset every field to `None` / empty. |
+| `resolve(&info, self_pid) -> Option<[f32;4]>` | Public resolver — useful for custom renderers that want the same priority rules. |
 
 ### `MonitorEvent`
 

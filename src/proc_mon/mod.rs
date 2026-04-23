@@ -81,6 +81,6 @@ pub use config::MonitorConfig;
 pub use core::{Error, ProcessEnumerator};
 pub use types::{
     format_bytes, format_cpu_percent, format_cpu_time, format_create_time, ColumnConfig,
-    MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo,
+    MonitorColors, MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo,
 };
 pub use ui::{ProcessMonitor, ProcessRow};
