@@ -67,6 +67,19 @@ pub struct TreeConfig {
     /// Alternate row background (zebra striping) for readability. Default: true.
     pub striped: bool,
 
+    /// Suppress the default hover/active highlight on column-header
+    /// captions. Useful for informational tables where headers are
+    /// non-interactive (sort disabled) — keeps the caption row a flat
+    /// strip instead of a button-like surface.
+    ///
+    /// Implementation: `render_header` wraps each `ui.table_header`
+    /// call in a two-entry style-color stack (HeaderHovered +
+    /// HeaderActive → transparent). The same colors are used by
+    /// `Selectable` rows for the selection state, so the style stack
+    /// is strictly scoped to the header call to keep row feedback
+    /// intact. Default: false.
+    pub flat_headers: bool,
+
     /// Maximum number of nodes the tree can hold.
     /// Must be in range `1..=MAX_TREE_NODES` (clamped automatically).
     /// Default: [`MAX_TREE_NODES`](super::arena::MAX_TREE_NODES) (10,000,000).
@@ -93,6 +106,7 @@ impl Default for TreeConfig {
             drag_drop_enabled: false,
             multi_select_flat: true,
             striped: true,
+            flat_headers: false,
             max_nodes: super::arena::MAX_TREE_NODES,
             evict_on_overflow: false,
         }

@@ -798,7 +798,24 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 let cursor = ui.cursor_pos();
                 ui.set_cursor_pos([cursor[0] + pad, cursor[1]]);
             }
-            ui.table_header(&col.name);
+            // Tightly scope the header-flatten style so it can't bleed
+            // into `Selectable` rows below (those share
+            // `HeaderHovered`/`HeaderActive` for the selection
+            // highlight). Tokens drop at the close-brace, before the
+            // next column or row is rendered.
+            if self.config.flat_headers {
+                let _hdr_hover = ui.push_style_color(
+                    dear_imgui_rs::StyleColor::HeaderHovered,
+                    [0.0, 0.0, 0.0, 0.0],
+                );
+                let _hdr_active = ui.push_style_color(
+                    dear_imgui_rs::StyleColor::HeaderActive,
+                    [0.0, 0.0, 0.0, 0.0],
+                );
+                ui.table_header(&col.name);
+            } else {
+                ui.table_header(&col.name);
+            }
         }
     }
 
