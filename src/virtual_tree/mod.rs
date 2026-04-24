@@ -880,16 +880,24 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
         let is_selected = self.selected_nodes.contains(&node_id);
 
-        // Row background (striped + custom) — skip for selected rows to avoid
-        // double-highlight (Selectable already draws its own selection bg).
-        if !is_selected {
+        // Row background:
+        // - Unselected: `row_style.bg_color` overrides the striped zebra.
+        // - Selected:   `row_style.selection_color` override (per-row); if
+        //   absent, leave the bg to `Selectable`'s built-in `Header` tint
+        //   so the default selection highlight stays intact.
+        if is_selected {
             if let Some(ref style) = row_style
-                && let Some(bg) = style.bg_color
+                && let Some(sel_bg) = style.selection_color
+                && sel_bg[3] > 0.0
             {
-                ui.table_set_bg_color(TableBgTarget::RowBg1, bg, -1);
-            } else if self.config.striped && flat_idx % 2 == 1 {
-                ui.table_set_bg_color(TableBgTarget::RowBg1, [1.0, 1.0, 1.0, 0.02], -1);
+                ui.table_set_bg_color(TableBgTarget::RowBg1, sel_bg, -1);
             }
+        } else if let Some(ref style) = row_style
+            && let Some(bg) = style.bg_color
+        {
+            ui.table_set_bg_color(TableBgTarget::RowBg1, bg, -1);
+        } else if self.config.striped && flat_idx % 2 == 1 {
+            ui.table_set_bg_color(TableBgTarget::RowBg1, [1.0, 1.0, 1.0, 0.02], -1);
         }
 
         let _row_id = ui.push_id(flat_idx);
@@ -1010,7 +1018,16 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         }
 
         // ── Render cells ────────────────────────────────────────────
-        let row_text_color = row_style.as_ref().and_then(|s| s.text_color);
+        // Priority for selected rows: per-row selection_text_color
+        // → per-row text_color (fallback). Unselected: per-row text_color only.
+        let row_text_color = if is_selected {
+            row_style
+                .as_ref()
+                .and_then(|s| s.selection_text_color)
+                .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
+        } else {
+            row_style.as_ref().and_then(|s| s.text_color)
+        };
         let col_count = self.columns.len();
         let tree_col = self.config.tree_column.min(col_count.saturating_sub(1));
 

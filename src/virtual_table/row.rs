@@ -95,11 +95,27 @@ pub struct CellStyle {
 }
 
 /// Per-row visual overrides.
+///
+/// Returned from `VirtualTableRow::row_style` (and `VirtualTreeNode::row_style`
+/// by extension). `None` on any field means "use the table's defaults".
 #[derive(Clone, Debug, Default)]
 pub struct RowStyle {
+    /// Background tint painted over the row when **not** selected.
     pub bg_color: Option<[f32; 4]>,
+    /// Text color for every cell in the row.
     pub text_color: Option<[f32; 4]>,
+    /// Override row height in pixels.
     pub height: Option<f32>,
+    /// Background tint painted over the row when it **is** selected.
+    ///
+    /// `None` → use the table-wide `TableConfig::selection_color`.
+    /// Useful when severity rows (e.g. errors) should keep their
+    /// identity instead of flipping to the generic blue selection.
+    pub selection_color: Option<[f32; 4]>,
+    /// Text color for cells when the row is selected.
+    ///
+    /// `None` → use the table-wide `TableConfig::selection_text_color`.
+    pub selection_text_color: Option<[f32; 4]>,
 }
 
 // ─── Row trait ──────────────────────────────────────────────────────────────

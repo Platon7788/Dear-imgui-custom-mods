@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Added — `RowStyle::selection_color` + `selection_text_color` (per-row selection override)
+Callers can now override the selected-row tint on a per-row basis without
+touching the table-wide `TableConfig::selection_color` / `selection_text_color`.
+Two new `Option<[f32; 4]>` fields on `RowStyle`:
+
+| Field | Used when |
+|-------|-----------|
+| `selection_color`      | Row is selected; overrides `TableConfig::selection_color`      |
+| `selection_text_color` | Row is selected; overrides `TableConfig::selection_text_color` |
+
+Both default to `None` → no behavior change for existing code. Works in both
+`VirtualTable` and `VirtualTree` (tree shares `RowStyle` via re-export).
+
+Priority when a row is selected:
+
+1. `row_style().selection_text_color` (per-row override)
+2. `TableConfig::selection_text_color` (table-wide)
+3. `row_style().text_color` (fallback)
+
+Resolution is runtime — the `row_style()` trait method is called each frame
+for visible rows (ListClipper-virtualized, so cost stays O(visible)).
+
+**Example — error rows keep their red identity when selected:**
+
+```rust
+impl VirtualTreeNode for MyNode {
+    fn row_style(&self) -> Option<RowStyle> {
+        match self.severity {
+            Severity::Error => Some(RowStyle {
+                text_color: Some([1.0, 0.55, 0.55, 1.0]),
+                bg_color:   Some([0.40, 0.10, 0.10, 0.18]),
+                // When selected, keep a dark-red tint instead of generic blue:
+                selection_color: Some([0.60, 0.15, 0.15, 0.70]),
+                selection_text_color: Some([1.0, 0.85, 0.85, 1.0]),
+                ..Default::default()
+            }),
+            _ => None,
+        }
+    }
+}
+```
+
 ### Added — `virtual_table::TableConfig::flat_headers` (symmetry with `TreeConfig::flat_headers`)
 - **`flat_headers: bool`** field on `TableConfig` (default `false`, no
   behavior change for existing users). When `true`, `render_header`

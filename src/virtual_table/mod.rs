@@ -715,8 +715,16 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Selection state — O(1) via foldhash-backed HashSet
         let is_selected = self.selected_rows.contains(&idx);
 
-        if is_selected && self.config.selection_color[3] > 0.0 {
-            ui.table_set_bg_color(TableBgTarget::RowBg1, self.config.selection_color, -1);
+        if is_selected {
+            // Per-row override wins; otherwise fall back to the table-wide
+            // default from `TableConfig::selection_color`.
+            let sel_bg = row_style
+                .as_ref()
+                .and_then(|s| s.selection_color)
+                .unwrap_or(self.config.selection_color);
+            if sel_bg[3] > 0.0 {
+                ui.table_set_bg_color(TableBgTarget::RowBg1, sel_bg, -1);
+            }
         }
 
         let _row_id = ui.push_id(idx);
@@ -765,9 +773,16 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         }
 
         // ── Render cells (read-only: text + custom only) ───────────
+        // Priority when selected:
+        //   per-row selection_text_color
+        //   → config-wide selection_text_color
+        //   → per-row text_color (legacy fallback)
+        // Priority when not selected: per-row text_color only.
         let row_text_color = if is_selected {
-            self.config
-                .selection_text_color
+            row_style
+                .as_ref()
+                .and_then(|s| s.selection_text_color)
+                .or(self.config.selection_text_color)
                 .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
         } else {
             row_style.as_ref().and_then(|s| s.text_color)
@@ -957,9 +972,16 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         // Paint the whole row with the selection color so it is clearly visible
         // even when many rows are selected. Applied after row_style so selection
-        // always wins over custom row backgrounds.
-        if is_selected && self.config.selection_color[3] > 0.0 {
-            ui.table_set_bg_color(TableBgTarget::RowBg1, self.config.selection_color, -1);
+        // always wins over custom row backgrounds. Per-row override takes
+        // precedence over the table-wide default.
+        if is_selected {
+            let sel_bg = row_style
+                .as_ref()
+                .and_then(|s| s.selection_color)
+                .unwrap_or(self.config.selection_color);
+            if sel_bg[3] > 0.0 {
+                ui.table_set_bg_color(TableBgTarget::RowBg1, sel_bg, -1);
+            }
         }
 
         // Push row-level ID scope (covers selectable + ALL cells)
@@ -1048,10 +1070,16 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         }
 
         // ── Render cells ────────────────────────────────────────────
-        // Selection text color takes precedence over row_style text color
+        // Selected priority:
+        //   per-row selection_text_color
+        //   → config-wide selection_text_color
+        //   → per-row text_color (legacy fallback)
+        // Not selected: per-row text_color only.
         let row_text_color = if is_selected {
-            self.config
-                .selection_text_color
+            row_style
+                .as_ref()
+                .and_then(|s| s.selection_text_color)
+                .or(self.config.selection_text_color)
                 .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
         } else {
             row_style.as_ref().and_then(|s| s.text_color)
