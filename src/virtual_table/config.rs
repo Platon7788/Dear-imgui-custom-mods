@@ -247,7 +247,12 @@ impl TableConfig {
         if self.scroll_y {
             f |= TableFlags::SCROLL_Y;
         }
-        if self.highlight_hovered {
+        // `flat_headers` overrides `highlight_hovered`: the whole point of
+        // flat headers is a calm, non-interactive caption row; letting
+        // `HIGHLIGHT_HOVERED_COLUMN` paint a column-wide tint under the
+        // header defeats the per-column transparent push in `render_header`.
+        // This way callers only need to flip one flag.
+        if self.highlight_hovered && !self.flat_headers {
             f |= TableFlags::HIGHLIGHT_HOVERED_COLUMN;
         }
         if self.context_menu {

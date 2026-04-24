@@ -675,6 +675,13 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         }
 
         let mut flags = self.config.table.to_table_flags();
+        // `TreeConfig::flat_headers` overrides `TableConfig::highlight_hovered`:
+        // the column-wide tint painted by `HIGHLIGHT_HOVERED_COLUMN` would
+        // defeat the per-header transparent push in `render_header` below.
+        // Callers only need to flip `flat_headers` — nothing else.
+        if self.config.flat_headers {
+            flags &= !dear_imgui_rs::TableFlags::HIGHLIGHT_HOVERED_COLUMN;
+        }
         // Always enable ScrollY for fill_height — required for outer_size to work.
         if fill_height {
             flags |= dear_imgui_rs::TableFlags::SCROLL_Y;
