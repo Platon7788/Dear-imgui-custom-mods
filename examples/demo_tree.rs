@@ -232,14 +232,32 @@ impl VirtualTreeNode for TaskNode {
     }
 
     fn row_style(&self) -> Option<RowStyle> {
+        // Completed leaf tasks: muted grey, and keep the muted tone on
+        // selection so "done" items stay visually distinct from active
+        // work even while highlighted.
         if self.done && self.kind != TaskKind::Folder {
-            Some(RowStyle {
+            return Some(RowStyle {
                 text_color: Some([0.50, 0.52, 0.55, 0.7]),
+                selection_color: Some([0.25, 0.28, 0.33, 0.75]),
+                selection_text_color: Some([0.80, 0.82, 0.85, 1.0]),
                 ..Default::default()
-            })
-        } else {
-            None
+            });
         }
+
+        // Critical priority files (not folders): persistent red tint
+        // that survives selection — mirrors how IDE error markers stay
+        // red even when the line is selected.
+        if self.priority == Priority::Critical && self.kind != TaskKind::Folder {
+            return Some(RowStyle {
+                text_color: Some([1.00, 0.65, 0.65, 1.0]),
+                bg_color:   Some([0.40, 0.10, 0.10, 0.18]),
+                selection_color: Some([0.60, 0.15, 0.15, 0.75]),
+                selection_text_color: Some([1.0, 0.95, 0.95, 1.0]),
+                ..Default::default()
+            });
+        }
+
+        None
     }
 
     fn cell_style(&self, col: usize) -> Option<CellStyle> {

@@ -127,15 +127,25 @@ impl VirtualTableRow for TestRow {
     }
 
     fn row_style(&self) -> Option<RowStyle> {
-        if self.status == 3 {
-            // Critical
-            Some(RowStyle {
+        match self.status {
+            // Critical — deep red always, even when selected.
+            3 => Some(RowStyle {
                 bg_color: Some([0.35, 0.12, 0.12, 1.0]),
-                text_color: Some([1.0, 0.7, 0.7, 1.0]),
+                text_color: Some([1.0, 0.70, 0.70, 1.0]),
+                // Keep the red identity on selection (otherwise the
+                // table-wide blue `selection_color` would wash it out).
+                selection_color: Some([0.55, 0.15, 0.15, 0.80]),
+                selection_text_color: Some([1.0, 0.95, 0.95, 1.0]),
                 ..Default::default()
-            })
-        } else {
-            None
+            }),
+            // Pending — no bg by default, but flip to amber on selection
+            // so users instantly see a "this needs attention" highlight.
+            1 => Some(RowStyle {
+                selection_color: Some([0.50, 0.35, 0.05, 0.75]),
+                selection_text_color: Some([1.00, 0.95, 0.80, 1.0]),
+                ..Default::default()
+            }),
+            _ => None,
         }
     }
 
