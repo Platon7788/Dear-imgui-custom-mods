@@ -272,6 +272,11 @@ struct DemoState {
     show_tree_lines: bool,
     show_striped: bool,
     drag_drop_enabled: bool,
+    /// Mirrors `tree.config.flat_headers` — suppresses the default
+    /// HeaderHovered/HeaderActive tint on column captions.
+    flat_headers: bool,
+    /// Mirrors `tree.config.table.sortable` — click-to-sort on headers.
+    sortable: bool,
     badge_buf: String,
     next_id: u32,
 }
@@ -573,6 +578,8 @@ impl DemoState {
             show_tree_lines: true,
             show_striped: true,
             drag_drop_enabled: true,
+            flat_headers: false, // matches TreeConfig default
+            sortable: true,      // matches the `tc.sortable = true` above
             badge_buf: String::new(),
             next_id: 0,
         }
@@ -792,6 +799,19 @@ impl DemoState {
         ui.same_line();
         if ui.checkbox("Drag & Drop", &mut self.drag_drop_enabled) {
             self.tree.config.drag_drop_enabled = self.drag_drop_enabled;
+        }
+        ui.same_line();
+        if ui.checkbox("Flat Headers", &mut self.flat_headers) {
+            // Suppresses HeaderHovered/HeaderActive tint on column
+            // captions. `virtual_tree::render_header` scopes the push
+            // per-column so row selection feedback stays intact.
+            self.tree.config.flat_headers = self.flat_headers;
+        }
+        ui.same_line();
+        if ui.checkbox("Sortable", &mut self.sortable) {
+            // Toggles click-to-sort on headers. Disabling it turns the
+            // captions into passive labels — pairs well with Flat Headers.
+            self.tree.config.table.sortable = self.sortable;
         }
 
         ui.same_line_with_spacing(0.0, 20.0);
