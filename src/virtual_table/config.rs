@@ -118,6 +118,18 @@ pub struct TableConfig {
     pub scroll_x: bool,
     pub scroll_y: bool,
     pub highlight_hovered: bool,
+    /// Suppress the default hover/active highlight on column-header
+    /// captions. Useful for informational tables where headers are
+    /// non-interactive (sort disabled) — keeps the caption row a flat
+    /// strip instead of a button-like surface.
+    ///
+    /// Implementation: `render_header` wraps each `ui.table_header`
+    /// call in a two-entry style-color stack (HeaderHovered +
+    /// HeaderActive → transparent). The same colors are used elsewhere
+    /// for the row selection highlight, so the style stack is strictly
+    /// scoped to the individual header call to keep row feedback
+    /// intact. Default: false.
+    pub flat_headers: bool,
     pub context_menu: bool,
     pub freeze_cols: i32,
     pub freeze_rows: i32,
@@ -184,6 +196,7 @@ impl Default for TableConfig {
             scroll_x: false,
             scroll_y: true,
             highlight_hovered: true,
+            flat_headers: false,
             context_menu: true,
             freeze_cols: 0,
             freeze_rows: 1,

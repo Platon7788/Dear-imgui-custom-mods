@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Added — `virtual_table::TableConfig::flat_headers` (symmetry with `TreeConfig::flat_headers`)
+- **`flat_headers: bool`** field on `TableConfig` (default `false`, no
+  behavior change for existing users). When `true`, `render_header`
+  wraps each `ui.table_header` call in a **per-column** style-color
+  scope pushing `HeaderHovered` / `HeaderActive` to transparent —
+  suppresses the default button-like hover/active tint on captions
+  for informational (sort-disabled) tables.
+- **Per-column scope** (not window-wide): the style guards drop at
+  the close-brace before the next column renders, so row-selection
+  highlight (which reuses the same style colors) stays intact. Same
+  implementation as `virtual_tree::render_header`.
+- **`proc_mon/ui.rs` simplified** — the previous window-wide manual
+  `push_style_color(HeaderHovered/Active, transparent)` guard is gone
+  (12 lines removed); `default_table_config()` now sets
+  `flat_headers: true` + `sortable: false` and `VirtualTable` handles
+  the rest per-column.
+- **`demo_table.rs`** gains a `Flat Headers` checkbox alongside the
+  existing `Sortable` toggle — pairs well for informational layouts.
+
 ### Changed — BREAKING: `proc_mon` reduced to minimal 5-field `ProcessInfo` (NxT parity)
 Alignment with the `IMGUI_NXT` reference engine — the monitor is now
 **list-only**, not a full Process Hacker clone. Everything that was

@@ -311,6 +311,11 @@ impl DemoState {
                 ui.same_line();
                 ui.checkbox("Sortable", &mut self.table.config.sortable);
                 ui.same_line();
+                // Flat Headers — suppresses the HeaderHovered/Active tint on
+                // column captions. Scoped per-header inside `render_header`
+                // so row selection feedback (same style colors) stays intact.
+                ui.checkbox("Flat Headers", &mut self.table.config.flat_headers);
+                ui.same_line();
                 ui.checkbox("Reorderable", &mut self.table.config.reorderable);
                 ui.same_line();
                 ui.checkbox("H-Lines", &mut self.table.config.show_row_lines);

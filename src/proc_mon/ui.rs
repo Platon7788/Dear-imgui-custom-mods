@@ -378,17 +378,11 @@ impl ProcessMonitor {
         self.rebuild_sorted();
         let mut action: Option<MonitorEvent> = None;
 
-        // Suppress header hover/active highlight — keeps the header
-        // row a flat, non-clickable strip (we're not sortable and
-        // don't want imgui's default button-like header feedback).
-        let _hdr_hover = ui.push_style_color(
-            dear_imgui_rs::StyleColor::HeaderHovered,
-            [0.0, 0.0, 0.0, 0.0],
-        );
-        let _hdr_active = ui.push_style_color(
-            dear_imgui_rs::StyleColor::HeaderActive,
-            [0.0, 0.0, 0.0, 0.0],
-        );
+        // Flat headers (no hover/active tint on captions) come from the
+        // underlying `VirtualTable` via `TableConfig::flat_headers = true`
+        // in `default_table_config` — no window-wide style push is needed
+        // here, and row selection highlight (which reuses the same style
+        // colors) stays intact.
 
         // Header: total count only — no system-CPU aggregate any more.
         self.fmt_buf.clear();
@@ -502,7 +496,8 @@ fn default_table_config() -> TableConfig {
     TableConfig {
         auto_scroll: false,
         selection_mode: SelectionMode::Single,
-        sortable: false, // Fixed sort by create_time
+        sortable: false,       // Fixed sort by create_time
+        flat_headers: true,    // Non-interactive captions — no hover tint
         resizable: true,
         row_density: RowDensity::Dense,
         highlight_hovered: false,
