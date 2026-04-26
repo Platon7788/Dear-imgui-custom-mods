@@ -90,6 +90,13 @@ pub fn set_titlebar_dark_mode(_hwnd: isize, _dark: bool) {}
 
 // ── Rounded corners ───────────────────────────────────────────────────────────
 
+// Process-wide cache for the Win11 DWM rounded-corners probe. Set by the first
+// successful `set_rounded_corners` call; read by `update_rounded_region` so it
+// can skip `SetWindowRgn` on Win11 — where mixing SetWindowRgn with the DWM
+// rounded frame causes a phantom caption strip to appear above the client area.
+#[cfg(windows)]
+static WIN11_DWM_CORNERS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
 /// Apply rounded corners to a borderless window.
 ///
 /// On **Windows 11** this uses the DWM `DWMWA_WINDOW_CORNER_PREFERENCE` attribute
@@ -124,7 +131,9 @@ pub fn set_rounded_corners(hwnd: isize, radius: i32) -> bool {
             std::mem::size_of::<u32>() as u32,
         )
     };
-    if hr == 0 {
+    let win11 = hr == 0;
+    let _ = WIN11_DWM_CORNERS.set(win11);
+    if win11 {
         return true;
     }
 
@@ -142,14 +151,23 @@ pub fn set_rounded_corners(_hwnd: isize, _radius: i32) -> bool {
 
 /// Re-apply the rounded window region after a resize (Win10-only path).
 ///
-/// On Windows 11 this is a no-op because the DWM draws the rounded corners itself.
-/// On Windows 10 it recreates the region from the current `GetClientRect` so the
-/// rounded shape follows the new window size.
+/// On Windows 11 this is a genuine no-op because the DWM draws the rounded
+/// corners itself — issuing `SetWindowRgn` there clips the DWM frame and
+/// leaves a phantom caption strip above the window.
+/// On Windows 10 it recreates the region from the current `GetClientRect` so
+/// the rounded shape follows the new window size.
+///
+/// Requires a prior [`set_rounded_corners`] call so the Win11 probe result is
+/// cached; otherwise this conservatively applies the Win10 region.
 ///
 /// Safe to call with `hwnd == 0` (returns immediately).
 #[cfg(windows)]
 pub fn update_rounded_region(hwnd: isize, radius: i32) {
     if hwnd == 0 {
+        return;
+    }
+    // Win11 DWM owns the corners; SetWindowRgn would conflict with the DWM frame.
+    if WIN11_DWM_CORNERS.get().copied().unwrap_or(false) {
         return;
     }
     apply_rounded_region_raw(hwnd, radius);
@@ -159,6 +177,26 @@ pub fn update_rounded_region(hwnd: isize, radius: i32) {
 #[allow(unused_variables)]
 /// No-op on non-Windows platforms.
 pub fn update_rounded_region(_hwnd: isize, _radius: i32) {}
+
+/// Returns `true` when the Win11 DWM rounded-corners path was successfully
+/// applied during the last [`set_rounded_corners`] call.
+///
+/// Used by the application layer to gate Win11-specific workarounds for
+/// borderless windows (e.g. the restore-then-minimize sequence required to
+/// keep `WM_SYSCOMMAND(SC_RESTORE)` working when the user clicks the taskbar
+/// icon after minimizing from a maximized state — Win10 does not need this).
+///
+/// Returns `false` on Windows 10 / earlier and on non-Windows platforms.
+#[cfg(windows)]
+pub fn is_win11_dwm_active() -> bool {
+    WIN11_DWM_CORNERS.get().copied().unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+/// Always `false` on non-Windows platforms.
+pub fn is_win11_dwm_active() -> bool {
+    false
+}
 
 #[cfg(windows)]
 fn apply_rounded_region_raw(hwnd: isize, radius: i32) {

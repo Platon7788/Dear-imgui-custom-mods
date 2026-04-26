@@ -11,7 +11,7 @@ use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
 use pollster::block_on;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
 use super::AppHandler;
@@ -30,6 +30,33 @@ pub(super) struct GpuState {
     pub app_state: AppState,
     pub titlebar_cfg: crate::borderless_window::BorderlessConfig,
     pub fps_interval: Duration,
+    /// Last value passed to `window.set_cursor` — used to skip per-frame
+    /// `set_cursor` calls when the hover edge has not changed. On Win11 the
+    /// OS owns the cursor during a non-client drag/resize and per-frame
+    /// re-setting from the render thread causes visible cursor flicker.
+    pub last_hover_edge_set: Option<crate::borderless_window::ResizeEdge>,
+    /// `true` once `set_cursor` has been called at least once for the current
+    /// hover state. Reset to `false` after dispatching DragStart/ResizeStart
+    /// so the cursor is re-asserted on the first post-drag frame (the OS may
+    /// have left a stale resize cursor lingering during the drag).
+    pub cursor_set: bool,
+    /// Timestamp of the last DragStart/ResizeStart dispatch. Used by
+    /// `WindowEvent::Focused(false)` to debounce spurious `WM_ACTIVATE(WA_INACTIVE)`
+    /// events that Win11 fires during the `ReleaseCapture + SendMessage(WM_NCLBUTTONDOWN)`
+    /// roundtrip — without the debounce the titlebar dim flickers visibly.
+    pub last_drag_at: Option<Instant>,
+    /// Win11 borderless windows lock up if `set_minimized(true)` is called
+    /// while the window is in `set_maximized(true)` state — the OS drops
+    /// `WM_SYSCOMMAND(SC_RESTORE)` from the taskbar afterwards and the window
+    /// can never be brought back. Workaround: restore first, then minimize,
+    /// and re-apply maximize when the user clicks the taskbar to restore.
+    /// `pending_remax` is set during that workaround sequence and consumed
+    /// when [`was_minimized`](Self::was_minimized) transitions `true`→`false`
+    /// in `WindowEvent::Resized`.
+    pub pending_remax: bool,
+    /// Last observed `window.is_minimized()` state. Used to detect the
+    /// restore-from-minimize transition that triggers `pending_remax`.
+    pub was_minimized: bool,
 }
 
 // ── wgpu setup ────────────────────────────────────────────────────────────────
@@ -331,7 +358,16 @@ pub(super) fn render_frame<H: AppHandler>(
             });
     } // _no_pad, _no_sp dropped here
 
-    gpu.window.set_cursor(cursor_icon_for_edge(hover_edge));
+    // Cursor: only call `set_cursor` when the hover edge actually changes
+    // (or the cache was invalidated by a recent drag/resize dispatch). On
+    // Win11 the OS owns the cursor during a non-client drag — issuing
+    // set_cursor every frame from the render thread races with the OS and
+    // causes the resize-arrow cursor to flicker.
+    if !gpu.cursor_set || hover_edge != gpu.last_hover_edge_set {
+        gpu.window.set_cursor(cursor_icon_for_edge(hover_edge));
+        gpu.last_hover_edge_set = hover_edge;
+        gpu.cursor_set = true;
+    }
     gpu.platform.prepare_render_with_ui(ui, &gpu.window);
     let draw_data = gpu.context.render();
 
@@ -378,20 +414,44 @@ pub(super) fn render_frame<H: AppHandler>(
     // Dispatch OS window actions from titlebar.
     match winit_action {
         WindowAction::Minimize => {
+            // Win11 borderless workaround: minimizing directly from a
+            // maximized state leaves the window stuck — `WM_SYSCOMMAND(SC_RESTORE)`
+            // from the taskbar is dropped because the OS computes the
+            // pre-minimize state incorrectly for `with_decorations(false)`.
+            // Restore first, then minimize, then re-apply maximize when the
+            // user brings the window back (via `pending_remax` consumed in
+            // the `WindowEvent::Resized` handler).
+            //
+            // Win10 does not need this; the gate keeps it untouched.
+            #[cfg(windows)]
+            if crate::borderless_window::platform::is_win11_dwm_active()
+                && gpu.window.is_maximized()
+            {
+                gpu.window.set_maximized(false);
+                gpu.pending_remax = true;
+            }
             gpu.window.set_minimized(true);
         }
         WindowAction::Maximize => {
-            let next = !gpu.app_state.titlebar.maximized;
+            // Read the OS state for the toggle, not the local flag — the
+            // local flag can drift on Win11 via Aero Snap / Win+arrows /
+            // snap layouts. The Resized event will sync state back.
+            let next = !gpu.window.is_maximized();
             gpu.window.set_maximized(next);
-            gpu.app_state.titlebar.set_maximized(next);
             // Clear any same-frame AppState request to prevent double-toggle.
             gpu.app_state.maximize_toggle = None;
         }
         WindowAction::DragStart => {
             gpu.window.drag_window().ok();
+            // OS owns the cursor during the drag; force a re-set on the
+            // first post-drag frame so any leftover cursor is cleared.
+            gpu.cursor_set = false;
+            gpu.last_drag_at = Some(Instant::now());
         }
         WindowAction::ResizeStart(e) => {
             gpu.window.drag_resize_window(resize_direction_of(e)).ok();
+            gpu.cursor_set = false;
+            gpu.last_drag_at = Some(Instant::now());
         }
         _ => {}
     }

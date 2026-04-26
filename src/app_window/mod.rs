@@ -49,6 +49,15 @@ use winit::{
     window::Window,
 };
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+/// Window inside which a `WindowEvent::Focused(false)` arriving after a
+/// `DragStart` / `ResizeStart` is treated as a Win11 WM_ACTIVATE artefact
+/// and dropped instead of dimming the titlebar. 250 ms is comfortably above
+/// the SendMessage roundtrip latency seen on Win11 24H2 while staying under
+/// the perceptible Alt-Tab / click-out-of-window threshold.
+const FOCUS_DEBOUNCE: Duration = Duration::from_millis(250);
+
 // ── AppHandler trait ──────────────────────────────────────────────────────────
 
 /// Implement this trait to provide your application's render logic.
@@ -223,6 +232,11 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
             app_state: AppState::new(),
             titlebar_cfg: cfg.titlebar.clone(),
             fps_interval,
+            last_hover_edge_set: None,
+            cursor_set: false,
+            last_drag_at: None,
+            pending_remax: false,
+            was_minimized: false,
         });
     }
 
@@ -254,12 +268,60 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
                 }
             }
             WindowEvent::Focused(focused) => {
+                // Win11 fires a spurious `WM_ACTIVATE(WA_INACTIVE)` during the
+                // `ReleaseCapture + SendMessage(WM_NCLBUTTONDOWN)` roundtrip
+                // that begins an OS-driven titlebar drag or border resize.
+                // Without debouncing, the titlebar dim/undim flickers visibly
+                // when `focus_dim = true`. We ignore Focused(false) for a
+                // short window after the most recent drag/resize dispatch.
+                if !focused
+                    && let Some(t) = g.last_drag_at
+                    && t.elapsed() < FOCUS_DEBOUNCE
+                {
+                    return;
+                }
                 g.app_state.titlebar.set_focused(focused);
             }
             WindowEvent::Resized(s) => {
+                // Track minimize transition (used by the Win11 minimize-from-max
+                // workaround to detect when the user brings the window back from
+                // the taskbar so we can re-apply maximize).
+                let is_minimized = g.window.is_minimized().unwrap_or(false);
+                let restored_from_min = g.was_minimized && !is_minimized;
+                g.was_minimized = is_minimized;
+
+                // Skip surface reconfigure for minimize (zero-size) — wgpu
+                // rejects 0x0 surfaces and the next non-zero Resized will
+                // configure correctly anyway.
+                if s.width == 0 || s.height == 0 {
+                    return;
+                }
+
                 g.surface_cfg.width = s.width.max(1);
                 g.surface_cfg.height = s.height.max(1);
                 g.surface.configure(&g.device, &g.surface_cfg);
+
+                // Win11 recovery: if we were maximized before a minimize and
+                // worked around it via restore-then-minimize, re-apply maximize
+                // now that the window is visible again. Done before state sync
+                // so the next Resized (after this set_maximized call) writes
+                // the correct flag.
+                let is_max = g.window.is_maximized();
+                if restored_from_min && g.pending_remax && !is_max {
+                    g.pending_remax = false;
+                    g.window.set_maximized(true);
+                    g.window.request_redraw();
+                    return;
+                }
+
+                // Source-of-truth state sync from OS — handles Aero Snap,
+                // Win+Up/Down, snap layouts, double-click on titlebar, and any
+                // other path that changes maximized state without going
+                // through our titlebar action dispatcher.
+                if g.app_state.titlebar.maximized != is_max {
+                    g.app_state.titlebar.set_maximized(is_max);
+                }
+
                 #[cfg(windows)]
                 if let Some(hwnd) = crate::borderless_window::platform::hwnd_of(&g.window) {
                     crate::borderless_window::platform::update_rounded_region(

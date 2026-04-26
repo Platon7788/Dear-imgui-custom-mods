@@ -239,8 +239,8 @@ cfg.max_arrows = 64;            // max arrows per frame
 
 ```rust
 pub struct ColumnWidths {
-    pub margin: f32,     // 20.0  — breakpoint gutter
-    pub arrows: f32,     // 60.0  — branch arrow area
+    pub margin: f32,     // 14.0  — breakpoint gutter
+    pub arrows: f32,     // 36.0  — branch arrow area
     pub address: f32,    // 130.0 — address column
     pub bytes: f32,      // 180.0 — hex bytes column
     pub mnemonic: f32,   // 70.0  — mnemonic column

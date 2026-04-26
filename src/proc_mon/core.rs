@@ -15,19 +15,24 @@
 //!
 //! # Safety
 //!
-//! All unsafe blocks perform direct NT syscalls via the `syscalls` crate.
-//! Buffer bounds are checked before pointer dereferencing.
+//! All unsafe blocks perform direct NT syscalls via the `rsc-runtime`
+//! crate (SysCalls / RSC). Buffer bounds are checked before pointer
+//! dereferencing.
 
 use crate::proc_mon::types::{ProcStatus, ProcessDelta, ProcessInfo};
 use std::collections::HashMap;
 
-// Import syscalls (Windows-only)
+// Import rsc-runtime (Windows-only)
 #[cfg(windows)]
-use syscalls::{
-    nt_close, nt_open_process, nt_query_information_process, nt_query_system_information,
-    CLIENT_ID, HANDLE, NT_SUCCESS, OBJECT_ATTRIBUTES, PVOID, STATUS_INFO_LENGTH_MISMATCH, ULONG,
-    UNICODE_STRING,
+use rsc_runtime::constants::PROCESS_QUERY_LIMITED_INFORMATION;
+#[cfg(windows)]
+use rsc_runtime::error::STATUS_INFO_LENGTH_MISMATCH;
+#[cfg(windows)]
+use rsc_runtime::syscalls::{
+    NtClose, NtOpenProcess, NtQueryInformationProcess, NtQuerySystemInformation,
 };
+#[cfg(windows)]
+use rsc_runtime::types::{CLIENT_ID, HANDLE, OBJECT_ATTRIBUTES, PVOID, ULONG, UNICODE_STRING};
 
 // ─── Fast hasher alias ────────────────────────────────────────────────────────
 
@@ -105,7 +110,6 @@ struct SYSTEM_THREAD_INFORMATION {
 
 const SYSTEM_PROCESS_INFORMATION_CLASS: u32 = 5;
 const PROCESS_WOW64_INFORMATION: u32 = 26;
-const PROCESS_QUERY_LIMITED_INFO: u32 = 0x1000;
 
 const THREAD_STATE_WAITING: u32 = 5;
 const THREAD_WAIT_REASON_SUSPENDED: u32 = 5;
@@ -332,14 +336,15 @@ impl ProcessEnumerator {
         unsafe {
             // 1. Query required buffer size.
             let mut return_length: ULONG = 0;
-            let status = nt_query_system_information(
+            let status = NtQuerySystemInformation(
                 SYSTEM_PROCESS_INFORMATION_CLASS,
                 core::ptr::null_mut(),
                 0,
                 &mut return_length,
             );
 
-            if status != STATUS_INFO_LENGTH_MISMATCH && !NT_SUCCESS(status) {
+            // NTSTATUS: sign bit = error (NT_SUCCESS ≡ status >= 0).
+            if status != STATUS_INFO_LENGTH_MISMATCH.code() && status < 0 {
                 return Err(Error::SyscallFailed(status));
             }
 
@@ -353,14 +358,14 @@ impl ProcessEnumerator {
             }
 
             // 3. Query actual data.
-            let status = nt_query_system_information(
+            let status = NtQuerySystemInformation(
                 SYSTEM_PROCESS_INFORMATION_CLASS,
                 self.ctx.sys_buf.as_mut_ptr() as PVOID,
                 self.ctx.sys_buf.len() as ULONG,
                 &mut return_length,
             );
 
-            if !NT_SUCCESS(status) {
+            if status < 0 {
                 return Err(Error::SyscallFailed(status));
             }
 
@@ -446,6 +451,11 @@ impl ProcessEnumerator {
 
         // SAFETY: Standard NtOpenProcess + NtQueryInformationProcess pattern.
         // Handle is closed on every path.
+        //
+        // The canonical RSC signatures use `HANDLE` / `*mut c_void` for
+        // parameters the auto-layer could not type (opaque_signature).
+        // ABI-wise both are 8-byte pointers — we cast from the semantically
+        // correct type at the call site.
         unsafe {
             let mut handle: HANDLE = core::ptr::null_mut();
             let mut client_id = CLIENT_ID {
@@ -455,31 +465,37 @@ impl ProcessEnumerator {
             let mut oa: OBJECT_ATTRIBUTES = core::mem::zeroed();
             oa.Length = core::mem::size_of::<OBJECT_ATTRIBUTES>() as ULONG;
 
-            let status = nt_open_process(
+            // NtOpenProcess: upstream rsc-runtime now emits
+            // `ProcessHandle: *mut HANDLE` (out-direction honoured),
+            // so pass `&mut handle` directly — no cast needed.
+            let status = NtOpenProcess(
                 &mut handle,
-                PROCESS_QUERY_LIMITED_INFO,
-                &mut oa,
+                PROCESS_QUERY_LIMITED_INFORMATION,
+                &mut oa as *mut OBJECT_ATTRIBUTES as PVOID,
                 &mut client_id,
             );
 
-            if !NT_SUCCESS(status) || handle.is_null() {
+            if status < 0 || handle.is_null() {
                 return 64;
             }
 
             // ProcessWow64Information returns ULONG_PTR (usize on x64).
             let mut is_wow64: usize = 0;
             let mut ret_len: ULONG = 0;
-            let status = nt_query_information_process(
+            // NtQueryInformationProcess: canonical declares `ProcessInformationClass:
+            // *mut c_void`, semantically a u32 enum. Cast the class value through
+            // usize so it ends up in the same register slot.
+            let status = NtQueryInformationProcess(
                 handle,
-                PROCESS_WOW64_INFORMATION,
+                PROCESS_WOW64_INFORMATION as usize as PVOID,
                 &mut is_wow64 as *mut _ as PVOID,
                 core::mem::size_of::<usize>() as ULONG,
                 &mut ret_len,
             );
 
-            nt_close(handle);
+            NtClose(handle);
 
-            if NT_SUCCESS(status) && is_wow64 != 0 {
+            if status >= 0 && is_wow64 != 0 {
                 32
             } else {
                 64

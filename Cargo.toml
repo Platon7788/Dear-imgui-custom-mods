@@ -49,6 +49,16 @@ borderless_window = []
 # app_window is the composite wgpu+winit+ImGui host — pulls the chrome it
 # depends on transitively. Big feature (~MB of wgpu glue).
 app_window = ["borderless_window", "code_editor"]
+# v2 redesign — uses Win32 WndProc subclassing (NCCALCSIZE / NCHITTEST /
+# GETMINMAXINFO) so the OS owns drag/resize/snap/minimize/maximize lifecycle
+# natively. No workarounds, no state sync, no focus debounce required.
+# Win10 + Win11 both get pixel-perfect native behavior; Win11 additionally
+# gets Snap Layouts popup on hover-maximize for free. Experimental — opt-in only.
+#
+# Reuses borderless_window's TitlebarColors palette type (data only — none
+# of the render/state logic is shared); the unified Theme::titlebar()
+# accessor is gated behind the borderless_window feature in the theme module.
+app_window_v2 = ["code_editor", "borderless_window"]
 
 # ── Dialogs & small widgets ─────────────────────────────────────────────────
 confirm_dialog = []
@@ -88,8 +98,8 @@ force_graph = ["nav_panel", "dep:slotmap"]
 # Keep old name as alias so existing users aren't broken immediately.
 knowledge_graph = ["force_graph"]
 # Process monitor with NT syscall enumeration (Windows-only).
-# Uses virtual_table for display. Requires syscalls crate.
-proc_mon = ["virtual_table", "dep:syscalls", "dep:serde"]
+# Uses virtual_table for display. Requires rsc-runtime (SysCalls) crate.
+proc_mon = ["virtual_table", "dep:rsc-runtime", "dep:serde"]
 
 [dependencies]
 slotmap = { version = "1.0", optional = true }
@@ -102,17 +112,24 @@ pollster = "0.4.0"
 wgpu = "29.0.1"
 winit = "0.30.13"
 
-# ─── Optional: syscalls (Windows-only) ───────────────────────────────────────
+# ─── Optional: rsc-runtime (Windows-only) ───────────────────────────────────
 # Direct NT syscall library for process monitoring.
-# Path dependency for local development; replace with crates.io when published.
+# SysCalls (RSC): modern #![no_std] stubs, PDB-grounded canonical DB,
+# JUMPER random-slide dispatch. Path dep to sibling workspace for now;
+# switch to git dep (github.com/Platon7788/SysCalls) when publishing.
 [target.'cfg(windows)'.dependencies]
-syscalls = { path = "../syscalls-rust", optional = true }
+rsc-runtime = { path = "../SysCalls/crates/rsc-runtime", optional = true }
 windows-sys = { version = "0.61.2", features = [
     "Win32_Storage_FileSystem",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Controls",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_System_LibraryLoader",
     "Win32_System_Performance",
     "Win32_System_SystemInformation",
 ] }
@@ -228,6 +245,11 @@ required-features = ["force_graph", "app_window"]
 name = "demo_proc_mon"
 path = "examples/demo_proc_mon.rs"
 required-features = ["proc_mon", "app_window"]
+
+[[example]]
+name = "demo_app_window_v2"
+path = "examples/demo_app_window_v2.rs"
+required-features = ["app_window_v2"]
 
 # ─── Build profiles ──────────────────────────────────────────────────────────
 #

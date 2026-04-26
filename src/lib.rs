@@ -130,6 +130,8 @@ pub mod utils;
 
 #[cfg(feature = "app_window")]
 pub mod app_window;
+#[cfg(feature = "app_window_v2")]
+pub mod app_window_v2;
 #[cfg(feature = "borderless_window")]
 pub mod borderless_window;
 #[cfg(feature = "code_editor")]

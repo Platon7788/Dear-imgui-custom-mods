@@ -23,13 +23,15 @@ zero-overhead, production-ready.
   `create_time`.
 
 Gated behind the `proc_mon` feature (on by default via `full`). The
-feature requires `virtual_table` + `syscalls` + `serde` and compiles
+feature requires `virtual_table` + `rsc-runtime` + `serde` and compiles
 only on Windows.
 
 ## Features
 
-- **Direct NT syscalls** via the local `syscalls` crate — no
-  `kernel32`/`psapi` roundtrip, fewer dependencies.
+- **Direct NT syscalls** via `rsc-runtime` (SysCalls RSC v1.0) — PDB-grounded
+  canonical database, PascalCase `Nt*` API, `#![no_std]`, zero runtime
+  dependencies, SSNs resolved at runtime from live ntdll.dll via PEB walk.
+  No `kernel32`/`psapi` roundtrip.
 - **Minimal 5-field `ProcessInfo`** matching `IMGUI_NXT`: `pid`, `name`,
   `bits` (32/64), `status` (Running / Suspended), `create_time`. Every
   other metric (memory / CPU% / threads / handles / I/O) is
@@ -341,7 +343,7 @@ pub struct ColumnConfig {
 
 Windows only. The module is `#[cfg(windows)]`; `enumerate()` /
 `enumerate_delta()` return `Error::NotSupported` on other platforms. The
-`syscalls` dependency is gated `[target.'cfg(windows)'.dependencies]` so
+`rsc-runtime` dependency is gated `[target.'cfg(windows)'.dependencies]` so
 non-Windows builds compile without it.
 
 ## Safety
