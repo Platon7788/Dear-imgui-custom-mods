@@ -19,13 +19,11 @@
 //! causes Win11 DWM to composite a permanent ~30 px dark caption strip at
 //! the top — it treats the explicit override as "app manages its own NC area".
 //!
-//! **`DwmExtendFrameIntoClientArea({-1,-1,-1,-1})`** ("full-glass" mode) is
-//! called unconditionally: it tells DWM the entire client area is part of the
-//! frame, eliminating the reserved ~30 px caption zone that Win11 DWM would
-//! otherwise composite as a black strip over the top of the window. On Win10
-//! the Aero-glass layer is hidden by the `CompositeAlphaMode::Opaque` swap
-//! chain. **Do not use `{1,1,1,1}`** — that causes Win11 to reserve the
-//! caption zone and composite the ~30 px strip.
+//! `DwmExtendFrameIntoClientArea` is **not** called. On Win11 22H2+, any
+//! extension call (including full-glass `{-1,-1,-1,-1}`) causes DWM to
+//! composite native caption chrome (title bar + min/max/close buttons) over
+//! the client area even with `CompositeAlphaMode::Opaque`. Drop shadow and
+//! rounded corners are provided by `enable_dwm_rounded_corners`.
 //!
 //! Caption drag is driven by **ImGui detection + `drag_window()`**: the
 //! titlebar reports `HTCLIENT` for the drag area (not `HTCAPTION`), detects
@@ -134,12 +132,6 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler for WinitAppV2<H> {
                 // DWM attributes applied before show to avoid colour flash.
                 super::win32::dwm::set_immersive_dark_mode(hwnd, true);
                 super::win32::dwm::enable_dwm_rounded_corners(hwnd);
-
-                // Full-glass DWM extension: tells DWM the entire client area
-                // is part of the frame → no reserved caption zone → no black
-                // strip at the top. On Win10, CompositeAlphaMode::Opaque in
-                // the swap chain makes the Aero glass invisible.
-                super::win32::dwm::extend_frame_into_client(hwnd);
 
                 // Win11-only extras: suppress caption tint and Mica/Acrylic.
                 if super::win32::dwm::is_win11_dwm_corners() {

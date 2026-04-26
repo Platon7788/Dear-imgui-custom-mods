@@ -14,12 +14,11 @@
 //! 2. **`WM_GETMINMAXINFO`** — clamps `ptMaxPosition` / `ptMaxSize` to the
 //!    work area of the monitor, so a maximized borderless window does not
 //!    cover the taskbar.
-//! 3. **`WM_NCACTIVATE`** — forces `wParam = TRUE` and `lParam = -1` so the
-//!    OS does not repaint the (invisible) inactive frame on focus changes.
-//!    The `-1` lParam suppresses the NC region paint request, preventing the
-//!    "flash of native chrome" on Win11 while keeping IME, accessibility, and
-//!    Snap Group animations working correctly. This is the pattern used by
-//!    VS Code, Tauri, and Qt 6 for Win11 borderless windows.
+//! 3. **`WM_NCACTIVATE`** — returns `TRUE` (1) directly, **without** calling
+//!    `DefWindowProc`. Any path through `DefWindowProc` for `WM_NCACTIVATE`
+//!    causes Win11 22H2+ DWM to composite native caption chrome (title bar +
+//!    min/max/close buttons) over the client area. Returning here prevents
+//!    DWM from seeing the message. `WS_POPUP` has no visible NC area anyway.
 //! 4. **`WM_NCPAINT`** — forwarded to `DefSubclassProc` (not suppressed).
 //!    With `WS_POPUP` and no caption style, the default handler paints nothing
 //!    visible, and intercepting with `return 0` causes Win11 to continuously
@@ -141,13 +140,13 @@ unsafe extern "system" fn subclass_proc(
             // continuously re-send WM_NCPAINT and burning CPU.
             WM_NCPAINT => unsafe { DefSubclassProc(hwnd, umsg, wparam, lparam) },
 
-            // wParam=TRUE: keep the "active" frame appearance so Win11 doesn't
-            // paint the inactive frame chrome. lParam=-1: suppress the NC
-            // region repaint request entirely. This is the canonical Win11
-            // borderless pattern (VS Code / Tauri / Qt6) — prevents the
-            // "flash of native caption" on focus change while keeping IME,
-            // accessibility, and Snap Group animations working correctly.
-            WM_NCACTIVATE => unsafe { DefSubclassProc(hwnd, umsg, 1, -1i32 as LPARAM) },
+            // Return TRUE (keep active appearance) without forwarding to
+            // DefWindowProc. Forwarding — even with (wParam=1, lParam=-1) —
+            // causes Win11 22H2+ DWM to composite native caption chrome
+            // (title bar + min/max/close) over the client area whenever it
+            // receives WM_NCACTIVATE. Returning here directly prevents DWM
+            // from ever seeing the message and rendering the strip.
+            WM_NCACTIVATE => 1,
 
             WM_NCHITTEST => handle_nc_hit_test(hwnd, lparam, regions),
             WM_GETMINMAXINFO => handle_min_max_info(hwnd, lparam),
