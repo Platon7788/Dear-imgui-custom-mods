@@ -1,15 +1,17 @@
-//! Pure-visual titlebar renderer.
+//! Pure-visual titlebar renderer with ImGui drag detection.
 //!
-//! All hit-testing for v2 is done by the OS via the WndProc subclass
-//! ([`super::win32::subclass`]). This module is **only** responsible for
-//! drawing the visual elements (background, separator, icon, title, button
-//! glyphs, hover highlights for buttons we know are hovered via OS hover
-//! state) and for updating the [`SharedHitRegions`] each frame so the
-//! WndProc knows which screen rectangles map to which semantic region.
+//! This module is responsible for:
+//! - Drawing the visual titlebar (background, separator, icon, title, buttons).
+//! - Detecting clicks/double-clicks in the caption (drag) area and reporting
+//!   them back via [`TitlebarFrame`] so `app.rs` can call `drag_window()`.
+//! - Updating [`SharedHitRegions`] each frame so the WndProc subclass knows
+//!   which screen rectangles map to system-button regions (HTMAXBUTTON for
+//!   Snap Layouts, HTCLOSE for OS close, resize edges for resize).
 //!
-//! There is **no** drag detection, **no** resize edge detection, **no**
-//! `WM_NCLBUTTONDOWN` faking — the OS does all of that natively because
-//! we report the right HT* codes from `WM_NCHITTEST`.
+//! The caption area returns **`HTCLIENT`** from `WM_NCHITTEST` (not `HTCAPTION`).
+//! Returning `HTCAPTION` causes Win11 DWM to composite a permanent ~30 px
+//! dark strip over that region on every frame. Drag is instead initiated
+//! explicitly via `window.drag_window()` when ImGui reports a click here.
 
 use dear_imgui_rs::{DrawListMut, MouseButton, Ui};
 
@@ -23,14 +25,17 @@ use crate::utils::text::calc_text_size;
 /// One frame's titlebar render result.
 ///
 /// - `extra_clicked`: id of an extra (custom) button clicked this frame.
-/// - `minimize_clicked`: the minimize button was clicked this frame.
-///   The minimize button returns `HTCLIENT` from `WM_NCHITTEST` so ImGui
-///   owns its clicks; the caller must apply the Win11 pending_remax
-///   workaround before calling `window.set_minimized(true)`.
+/// - `minimize_clicked`: minimize button clicked; caller applies Win11
+///   pending_remax workaround before `window.set_minimized(true)`.
+/// - `drag_started`: cursor clicked the caption drag area; caller must call
+///   `window.drag_window()` to hand the move to the OS.
+/// - `maximize_toggled`: double-click on caption area; caller toggles maximize.
 #[derive(Debug, Clone, Default)]
 pub(super) struct TitlebarFrame {
     pub extra_clicked: Option<&'static str>,
     pub minimize_clicked: bool,
+    pub drag_started: bool,
+    pub maximize_toggled: bool,
 }
 
 #[inline]
@@ -250,10 +255,17 @@ pub(super) fn render_titlebar_v2(
         extra_rects_logical.push(([bx, cursor[1], bx + btn_w, cursor[1] + h], extra.id));
     }
 
-    // System buttons (close, max, min) and the icon are handled by the OS
-    // via WM_NCHITTEST → HTCLOSE / HTMAXBUTTON / HTMINBUTTON / HTSYSMENU.
-    // We never see the click through ImGui — the OS sends WM_SYSCOMMAND
-    // which winit translates into the appropriate WindowEvent.
+    // ── Caption drag / double-click-maximize ─────────────────────────────
+    // The caption area returns HTCLIENT from WM_NCHITTEST. Drag must be
+    // initiated here via window.drag_window() — we cannot use HTCAPTION
+    // because Win11 DWM would composite its own caption strip over it.
+    if in_row && mx >= icon_end_x && mx < btn_area_start {
+        if cfg.double_click_maximize && ui.is_mouse_double_clicked(MouseButton::Left) {
+            frame.maximize_toggled = true;
+        } else if clicked {
+            frame.drag_started = true;
+        }
+    }
 
     // ── Update shared hit regions (logical → physical) ────────────────────
     let to_phys = |r: [f32; 4]| -> PixelRect {

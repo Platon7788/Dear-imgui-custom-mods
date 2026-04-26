@@ -14,19 +14,21 @@
 //!   - Aero Snap (drag to edge)
 //!   - Win11 Snap Layouts popup (hover the Maximize button)
 //!
-//! `WM_NCCALCSIZE → 0` (installed by our WndProc subclass) removes all NC area
-//! so the client rect covers the entire window rect.
+//! `WM_NCCALCSIZE` is **not** intercepted. With `WS_POPUP` the default
+//! handler already makes client ≈ window rect. Intercepting and returning 0
+//! causes Win11 DWM to composite a permanent ~30 px dark caption strip at
+//! the top — it treats the explicit override as "app manages its own NC area".
 //!
-//! **`DwmExtendFrameIntoClientArea({1,1,1,1})`** is called unconditionally:
-//!   - Win11: extends the DWM compositing frame 1 px into the client on every
-//!     side, which covers the phantom DWM resize-border pixels (the dark strip
-//!     that appears at the window edges when the NC area is zeroed).
-//!   - Win10: enables the native drop-shadow. The swap chain is configured with
-//!     **`CompositeAlphaMode::Opaque`** (see `gpu.rs`) so DWM composites the
-//!     wgpu pixels as fully opaque — no "glass transparency" visible.
+//! `DwmExtendFrameIntoClientArea` is **not** called. Any extension call
+//! (positive or full-negative margins) causes Win11 DWM to impose a ~30 px
+//! caption region and composite a dark strip over it. Drop shadow and rounded
+//! corners are provided by `enable_dwm_rounded_corners` + DWM defaults.
 //!
-//! This is the same approach used by VS Code (Electron), Tauri, and
-//! Flutter/Windows for their custom-chrome borderless windows.
+//! Caption drag is driven by **ImGui detection + `drag_window()`**: the
+//! titlebar reports `HTCLIENT` for the drag area (not `HTCAPTION`), detects
+//! clicks via ImGui, and signals the app layer to call `window.drag_window()`.
+//! Only `HTMAXBUTTON` (Win11 Snap Layouts) and `HTCLOSE` (OS close) are
+//! returned from `WM_NCHITTEST`; everything else is `HTCLIENT`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -77,6 +79,10 @@ struct GpuState {
     /// Whether the window was minimized on the previous Resized event. Used to
     /// detect the restore-from-minimize transition that triggers `pending_remax`.
     was_minimized: bool,
+    /// Instant the last caption-area drag or resize was initiated by ImGui.
+    /// Used to debounce the spurious `Focused(false)` Win11 fires after
+    /// `drag_window()` (which internally sends `WM_NCLBUTTONDOWN`).
+    last_drag_at: Option<Instant>,
 }
 
 impl<H: AppHandlerV2> WinitAppV2<H> {
@@ -127,9 +133,9 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler for WinitAppV2<H> {
                     SetWindowLongPtrW(hwnd, GWL_STYLE, (cur | WS_CLIPCHILDREN) as isize);
                 }
 
-                // Subclass BEFORE SWP_FRAMECHANGED so the resulting
-                // WM_NCCALCSIZE is intercepted immediately (→ 0, client = full
-                // window rect).
+                // Subclass BEFORE SWP_FRAMECHANGED so WM_NCHITTEST,
+                // WM_GETMINMAXINFO, and WM_NCACTIVATE are handled correctly
+                // from the very first message pump.
                 // SAFETY: hwnd is a valid Win32 HWND we just created.
                 unsafe {
                     let _ = super::win32::subclass::install(hwnd, self.regions.clone());
@@ -140,13 +146,11 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler for WinitAppV2<H> {
                 super::win32::dwm::enable_dwm_rounded_corners(hwnd);
 
                 // NOTE: DwmExtendFrameIntoClientArea is intentionally NOT
-                // called here. On Win11, any call to that API (with positive
-                // OR full-negative margins) causes DWM to internally impose a
-                // ~30px "caption region" NC area that overrides our
-                // WM_NCCALCSIZE→0 handler, producing a permanent black strip
-                // at the top of the window. Drop shadow and rounded corners
-                // are provided by enable_dwm_rounded_corners + DWM defaults
-                // for WS_POPUP windows — no frame extension needed.
+                // called here. Any call (positive or full-negative margins)
+                // causes Win11 DWM to impose a ~30 px caption region and
+                // composite a dark strip at the top. Drop shadow and rounded
+                // corners are provided by enable_dwm_rounded_corners + DWM
+                // defaults for WS_POPUP windows.
 
                 // Win11-only extras: suppress caption tint and Mica/Acrylic.
                 if super::win32::dwm::is_win11_dwm_corners() {
@@ -217,6 +221,7 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler for WinitAppV2<H> {
             fps_interval,
             pending_remax: false,
             was_minimized: false,
+            last_drag_at: None,
         });
     }
 
@@ -247,14 +252,20 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler for WinitAppV2<H> {
                 }
             }
             WindowEvent::Focused(focused) => {
-                // Win11 fires a spurious WM_ACTIVATE(WA_INACTIVE) during
-                // OS-driven HTCAPTION drags. Debounce by ignoring Focused(false)
-                // if it arrives within FOCUS_DEBOUNCE of the last WM_NCLBUTTONDOWN.
-                if !focused
-                    && self.regions.nc_down_elapsed_ms()
-                        < FOCUS_DEBOUNCE.as_millis() as u64
-                {
-                    return;
+                // Win11 fires a spurious WM_ACTIVATE(WA_INACTIVE) after a
+                // caption drag (drag_window()) or a resize-edge drag. Debounce:
+                // ignore Focused(false) that arrives within FOCUS_DEBOUNCE of
+                // either the last ImGui-detected drag start OR the last
+                // WM_NCLBUTTONDOWN (covers native resize-edge drags).
+                if !focused {
+                    let drag_recent = g
+                        .last_drag_at
+                        .is_some_and(|t| t.elapsed() < FOCUS_DEBOUNCE);
+                    let nc_recent = self.regions.nc_down_elapsed_ms()
+                        < FOCUS_DEBOUNCE.as_millis() as u64;
+                    if drag_recent || nc_recent {
+                        return;
+                    }
                 }
                 g.app_state.titlebar.focused = focused;
             }
@@ -422,6 +433,18 @@ fn render_frame<H: AppHandlerV2>(
 
     if let Some(id) = titlebar_frame.extra_clicked {
         handler.on_extra_button(id, &mut g.app_state);
+    }
+
+    // Caption drag — HTCLIENT in WM_NCHITTEST so the OS won't start a native
+    // drag; we initiate it explicitly. Record the time first so the Focused(false)
+    // debounce is set before drag_window() sends WM_NCLBUTTONDOWN internally.
+    if titlebar_frame.drag_started {
+        g.last_drag_at = Some(Instant::now());
+        g.window.drag_window().ok();
+    }
+
+    if titlebar_frame.maximize_toggled {
+        g.window.set_maximized(!g.window.is_maximized());
     }
 
     // Minimize button is HTCLIENT so ImGui owns the click. Apply the Win11

@@ -42,7 +42,7 @@ use windows_sys::Win32::UI::Shell::{
     DefSubclassProc, GetWindowSubclass, RemoveWindowSubclass, SetWindowSubclass,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTCLOSE, HTLEFT, HTMAXBUTTON,
+    HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTCLOSE, HTLEFT, HTMAXBUTTON,
     HTMINBUTTON, HTNOWHERE, HTRIGHT, HTSYSMENU, HTTOP, HTTOPLEFT, HTTOPRIGHT, MINMAXINFO,
     WM_DESTROY, WM_GETMINMAXINFO, WM_NCACTIVATE, WM_NCHITTEST,
     WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_NCPAINT,
@@ -280,11 +280,10 @@ fn handle_nc_hit_test(hwnd: HWND, lparam: LPARAM, regions: &SharedHitRegions) ->
         }
     }
 
-    // Caption (drag area) — anywhere in the titlebar not covered by a button.
-    if ly < r.titlebar_height && r.caption.contains(lx, ly) {
-        return HTCAPTION as LRESULT;
-    }
-
+    // The drag area is HTCLIENT — drag is initiated by app code via
+    // window.drag_window() when ImGui detects a click. Returning HTCAPTION
+    // from WM_NCHITTEST causes Win11 DWM to continuously composite its own
+    // caption layer over that area, producing a black strip at the top.
     HTCLIENT as LRESULT
 }
 

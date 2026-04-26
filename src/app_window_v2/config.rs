@@ -150,6 +150,8 @@ pub struct TitlebarConfig {
     pub focus_dim: bool,
     /// Left padding before the icon / title text.
     pub title_padding_left: f32,
+    /// Double-clicking the drag area toggles maximize/restore.
+    pub double_click_maximize: bool,
 }
 
 impl Default for TitlebarConfig {
@@ -167,6 +169,7 @@ impl Default for TitlebarConfig {
             separator_visible: true,
             focus_dim: true,
             title_padding_left: 12.0,
+            double_click_maximize: true,
         }
     }
 }
