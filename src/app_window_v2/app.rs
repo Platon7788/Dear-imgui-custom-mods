@@ -19,10 +19,13 @@
 //! causes Win11 DWM to composite a permanent ~30 px dark caption strip at
 //! the top — it treats the explicit override as "app manages its own NC area".
 //!
-//! `DwmExtendFrameIntoClientArea` is **not** called. Any extension call
-//! (positive or full-negative margins) causes Win11 DWM to impose a ~30 px
-//! caption region and composite a dark strip over it. Drop shadow and rounded
-//! corners are provided by `enable_dwm_rounded_corners` + DWM defaults.
+//! **`DwmExtendFrameIntoClientArea({-1,-1,-1,-1})`** ("full-glass" mode) is
+//! called unconditionally: it tells DWM the entire client area is part of the
+//! frame, eliminating the reserved ~30 px caption zone that Win11 DWM would
+//! otherwise composite as a black strip over the top of the window. On Win10
+//! the Aero-glass layer is hidden by the `CompositeAlphaMode::Opaque` swap
+//! chain. **Do not use `{1,1,1,1}`** — that causes Win11 to reserve the
+//! caption zone and composite the ~30 px strip.
 //!
 //! Caption drag is driven by **ImGui detection + `drag_window()`**: the
 //! titlebar reports `HTCLIENT` for the drag area (not `HTCAPTION`), detects
@@ -120,20 +123,7 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler for WinitAppV2<H> {
             if let Some(hwnd) = hwnd_of(&window) {
                 let hwnd = hwnd as windows_sys::Win32::Foundation::HWND;
 
-                // Add WS_CLIPCHILDREN so child HWNDs don't paint over our
-                // wgpu surface during DWM compositing.
-                // Read-modify-write: preserves WS_POPUP, WS_THICKFRAME, and
-                // any other flags winit already set.
-                use windows_sys::Win32::UI::WindowsAndMessaging::{
-                    GWL_STYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_CLIPCHILDREN,
-                };
-                // SAFETY: documented Win32 API.
-                unsafe {
-                    let cur = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-                    SetWindowLongPtrW(hwnd, GWL_STYLE, (cur | WS_CLIPCHILDREN) as isize);
-                }
-
-                // Subclass BEFORE SWP_FRAMECHANGED so WM_NCHITTEST,
+                // Install subclass before any DWM calls so WM_NCHITTEST,
                 // WM_GETMINMAXINFO, and WM_NCACTIVATE are handled correctly
                 // from the very first message pump.
                 // SAFETY: hwnd is a valid Win32 HWND we just created.
@@ -145,38 +135,16 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler for WinitAppV2<H> {
                 super::win32::dwm::set_immersive_dark_mode(hwnd, true);
                 super::win32::dwm::enable_dwm_rounded_corners(hwnd);
 
-                // NOTE: DwmExtendFrameIntoClientArea is intentionally NOT
-                // called here. Any call (positive or full-negative margins)
-                // causes Win11 DWM to impose a ~30 px caption region and
-                // composite a dark strip at the top. Drop shadow and rounded
-                // corners are provided by enable_dwm_rounded_corners + DWM
-                // defaults for WS_POPUP windows.
+                // Full-glass DWM extension: tells DWM the entire client area
+                // is part of the frame → no reserved caption zone → no black
+                // strip at the top. On Win10, CompositeAlphaMode::Opaque in
+                // the swap chain makes the Aero glass invisible.
+                super::win32::dwm::extend_frame_into_client(hwnd);
 
                 // Win11-only extras: suppress caption tint and Mica/Acrylic.
                 if super::win32::dwm::is_win11_dwm_corners() {
                     super::win32::dwm::suppress_caption_color(hwnd);
                     super::win32::dwm::suppress_system_backdrop(hwnd);
-                }
-
-                // SWP_FRAMECHANGED triggers WM_NCCALCSIZE so the subclass
-                // handler fires and the DWM attributes take visual effect
-                // before the first paint.
-                use windows_sys::Win32::UI::WindowsAndMessaging::{
-                    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-                    SWP_NOZORDER, SetWindowPos,
-                };
-                // SAFETY: documented Win32 API.
-                unsafe {
-                    SetWindowPos(
-                        hwnd,
-                        std::ptr::null_mut(),
-                        0, 0, 0, 0,
-                        SWP_FRAMECHANGED
-                            | SWP_NOMOVE
-                            | SWP_NOSIZE
-                            | SWP_NOZORDER
-                            | SWP_NOACTIVATE,
-                    );
                 }
             }
         }
