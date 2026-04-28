@@ -14,11 +14,10 @@ impl DisasmView {
             return;
         }
 
-        let label = format!("##dv_goto_{}", self.id);
-        ui.open_popup(&label);
+        ui.open_popup(&self.goto_popup_id);
         self.show_goto = false;
 
-        if let Some(_popup) = ui.begin_popup(&label) {
+        if let Some(_popup) = ui.begin_popup(&self.goto_popup_id) {
             ui.text("Goto address (hex):");
             ui.input_text("##dv_goto_input", &mut self.goto_buf).build();
 
@@ -44,11 +43,10 @@ impl DisasmView {
             return;
         }
 
-        let label = format!("##dv_ctx_{}", self.id);
-        ui.open_popup(&label);
+        ui.open_popup(&self.ctx_popup_id);
         self.show_context_menu = false;
 
-        if let Some(_popup) = ui.begin_popup(&label) {
+        if let Some(_popup) = ui.begin_popup(&self.ctx_popup_id) {
             let idx = self.context_idx.unwrap_or(0);
             let instr_addr = provider.instruction(idx).map(|i| i.address());
             let has_target = provider

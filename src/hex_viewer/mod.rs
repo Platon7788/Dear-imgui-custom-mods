@@ -18,6 +18,7 @@ pub use config::{
 
 use crate::utils::clipboard::{self, VK_A, VK_C, VK_F, VK_G, VK_Y, VK_Z, set_clipboard, vk_down};
 use crate::utils::color::rgba_f32;
+use crate::utils::hex::byte_hex;
 use crate::utils::text::calc_text_size;
 
 /// Convert `[r, g, b, a]` to packed u32 color.
@@ -211,6 +212,10 @@ pub struct HexViewer {
     regions: Vec<ColorRegion>,
     pub config: HexViewerConfig,
 
+    // ── Cached ImGui IDs (built once at construction) ─────────
+    goto_popup_id: String,
+    search_popup_id: String,
+
     nav: NavHistory,
     undo: UndoStack,
 
@@ -239,12 +244,17 @@ pub struct HexViewer {
 
 impl HexViewer {
     pub fn new(id: impl Into<String>) -> Self {
+        let id: String = id.into();
+        let goto_popup_id = format!("##goto_{id}");
+        let search_popup_id = format!("##search_{id}");
         Self {
-            id: id.into(),
+            id,
             data: Vec::new(),
             reference: Vec::new(),
             regions: Vec::new(),
             config: HexViewerConfig::default(),
+            goto_popup_id,
+            search_popup_id,
             nav: NavHistory::new(64),
             undo: UndoStack::default(),
             cursor: 0,
@@ -280,6 +290,9 @@ impl HexViewer {
         self.data = data;
         self.clamp_cursor();
         self.selection = Selection::default();
+        // Mirror set_data: cancel any in-progress edit so a stale layout
+        // switch can't hold over a fresh buffer.
+        self.stop_editing();
     }
 
     pub fn data(&self) -> &[u8] {
@@ -377,6 +390,24 @@ impl HexViewer {
         &self.nav
     }
 
+    /// Returns `true` exactly once each time the auto-refresh counter
+    /// (driven by [`HexViewerConfig::auto_refresh_frames`]) wraps. Caller
+    /// should respond by re-fetching live data and pushing it via
+    /// `set_data*`. Returns `false` when the feature is disabled
+    /// (`auto_refresh_frames == 0`).
+    pub fn take_refresh_pending(&mut self) -> bool {
+        let interval = self.config.auto_refresh_frames;
+        if interval == 0 {
+            return false;
+        }
+        if self.frame_count >= interval {
+            self.frame_count = 0;
+            true
+        } else {
+            false
+        }
+    }
+
     // ── Undo / Redo ──────────────────────────────────────────────────
 
     pub fn undo(&mut self) {
@@ -432,12 +463,15 @@ impl HexViewer {
         }
 
         if self.config.auto_refresh_frames > 0 {
-            self.frame_count += 1;
+            self.frame_count = self.frame_count.wrapping_add(1);
         }
 
+        // Cache font metrics. Guard against the rare zero-glyph case (e.g.
+        // before the font atlas is fully built or in test stubs) — division
+        // by zero in the row math below would produce inf-cast UB.
         let [cw, ch] = calc_text_size("0");
-        self.char_advance = cw;
-        self.line_height = ch + 2.0;
+        self.char_advance = cw.max(1.0);
+        self.line_height = (ch + 2.0).max(1.0);
 
         let bpr = self.config.bytes_per_row.value();
         let total_rows = self.data.len().div_ceil(bpr);
@@ -454,6 +488,7 @@ impl HexViewer {
         let child_h = avail[1] - inspector_h;
 
         let child_id = format!("##hv_child_{}", self.id);
+
         ui.child_window(&child_id)
             .size([avail[0], child_h])
             .build(ui, || {
@@ -559,12 +594,8 @@ impl HexViewer {
         let hex_x = origin_x + self.offset_col_width();
         let mut x = hex_x;
         for i in 0..bpr {
-            let txt = if self.config.uppercase {
-                format!("{:02X}", i)
-            } else {
-                format!("{:02x}", i)
-            };
-            draw_list.add_text([x, y], hdr_col, &txt);
+            // Column index 0..63 always fits in u8 — safe cast.
+            draw_list.add_text([x, y], hdr_col, byte_hex(i as u8, self.config.uppercase));
             x += self.char_advance * 3.0;
             if group > 0 && (i + 1) % group == 0 && i + 1 < bpr {
                 x += self.char_advance;
@@ -647,22 +678,22 @@ impl HexViewer {
                 // Show text: either the editing nibble or the byte value.
                 if is_editing {
                     if let Some(hi_nibble) = self.edit_nibble {
-                        // Show first nibble + underscore for second.
-                        let txt = if cfg.uppercase {
-                            format!("{:X}_", hi_nibble)
+                        // Show first nibble + underscore for second. Two-byte
+                        // staticbuffer avoids a per-byte heap alloc.
+                        let mut buf = [b'_'; 2];
+                        buf[0] = if cfg.uppercase {
+                            b"0123456789ABCDEF"[hi_nibble as usize & 0xF]
                         } else {
-                            format!("{:x}_", hi_nibble)
+                            b"0123456789abcdef"[hi_nibble as usize & 0xF]
                         };
-                        draw_list.add_text([x, y], col32([1.0, 1.0, 0.5, 1.0]), &txt);
+                        // SAFETY: `buf` is two ASCII bytes from the hex
+                        // alphabet (or `_`), valid UTF-8 by construction.
+                        let txt = unsafe { std::str::from_utf8_unchecked(&buf) };
+                        draw_list.add_text([x, y], col32([1.0, 1.0, 0.5, 1.0]), txt);
                     } else {
                         // Show current value with blinking underline.
-                        let txt = if cfg.uppercase {
-                            format!("{:02X}", byte)
-                        } else {
-                            format!("{:02x}", byte)
-                        };
-                        draw_list.add_text([x, y], col32([1.0, 1.0, 0.5, 1.0]), &txt);
-                        // Underline to indicate edit mode.
+                        let txt = byte_hex(byte, cfg.uppercase);
+                        draw_list.add_text([x, y], col32([1.0, 1.0, 0.5, 1.0]), txt);
                         draw_list
                             .add_line(
                                 [x, y + self.line_height - 1.0],
@@ -673,12 +704,7 @@ impl HexViewer {
                             .build();
                     }
                 } else {
-                    let txt = if cfg.uppercase {
-                        format!("{:02X}", byte)
-                    } else {
-                        format!("{:02x}", byte)
-                    };
-                    draw_list.add_text([x, y], fg, &txt);
+                    draw_list.add_text([x, y], fg, byte_hex(byte, cfg.uppercase));
                 }
 
                 // Hover tooltip.
@@ -1230,11 +1256,10 @@ impl HexViewer {
             return;
         }
 
-        let label = format!("##goto_{}", self.id);
-        ui.open_popup(&label);
+        ui.open_popup(&self.goto_popup_id);
         self.show_goto = false;
 
-        if let Some(_popup) = ui.begin_popup(&label) {
+        if let Some(_popup) = ui.begin_popup(&self.goto_popup_id) {
             ui.text("Goto offset (hex or decimal):");
             ui.input_text("##goto_input", &mut self.goto_buf).build();
 
@@ -1259,11 +1284,10 @@ impl HexViewer {
             return;
         }
 
-        let label = format!("##search_{}", self.id);
-        ui.open_popup(&label);
+        ui.open_popup(&self.search_popup_id);
         self.show_search = false;
 
-        if let Some(_popup) = ui.begin_popup(&label) {
+        if let Some(_popup) = ui.begin_popup(&self.search_popup_id) {
             let mode_name = self.config.search_mode.display_name();
             if ui.button(mode_name) {
                 self.config.search_mode = match self.config.search_mode {

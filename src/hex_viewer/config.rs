@@ -4,8 +4,14 @@
 
 /// Trait for abstracting the data source.
 ///
-/// Default implementation works with `Vec<u8>` in memory.
-/// Implement this for page-cached remote memory, memory-mapped files, etc.
+/// **Status:** the bundled [`HexViewer`](super::HexViewer) widget currently
+/// owns its own `Vec<u8>` (see `set_data` / `data` / `data_mut`) and does
+/// **not** read through this trait. The trait + [`VecDataProvider`] are
+/// kept as a stable contract for downstream extensions: a future
+/// `HexViewer::render_with(provider)` overload, or callers building their
+/// own hex widgets from the same primitives. Existing implementors of
+/// this trait remain valid; nothing here is deprecated, just not yet
+/// wired into the default render path.
 pub trait HexDataProvider {
     /// Total data length in bytes (may be `u64::MAX` for streaming).
     fn len(&self) -> u64;
@@ -193,10 +199,11 @@ impl BytesPerRow {
         Self::THIRTY_TWO,
     ];
 
-    /// Create from an arbitrary value (clamped to 4..=64, rounded to multiple of 4).
+    /// Create from an arbitrary value (clamped to 4..=64, rounded down to a
+    /// multiple of 4).
     pub fn new(n: usize) -> Self {
         let n = n.clamp(4, 64);
-        Self(n - (n % 4).min(n)) // round down to multiple of 4, minimum 4
+        Self(n - (n % 4))
     }
 
     pub fn value(self) -> usize {
@@ -481,8 +488,13 @@ pub struct HexViewerConfig {
     pub category_colors: bool,
     /// Zero-byte display style: dim dots instead of "00".
     pub dim_zeros: bool,
-    /// Auto-refresh interval in frames (0 = disabled).
-    /// When > 0, calls `HexDataProvider::refresh()` every N frames.
+    /// Auto-refresh interval in frames (0 = disabled). When non-zero, the
+    /// viewer increments an internal frame counter on each render; once
+    /// `auto_refresh_frames` is reached, [`HexViewer::take_refresh_pending`]
+    /// returns `true` exactly once so the caller can re-fetch live data
+    /// (process memory, MMAP, remote target) and call `set_data*` to
+    /// replace the buffer. The viewer itself never invokes the data
+    /// provider — refresh policy stays explicit on the caller's side.
     pub auto_refresh_frames: u32,
     /// Search mode.
     pub search_mode: HexSearchMode,

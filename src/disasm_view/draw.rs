@@ -5,6 +5,7 @@
 use super::config::{DisasmColors, FlowKind, Instruction, MAX_ARROW_DEPTH};
 use super::tokens::{OperandTokenizer, TokenKind};
 use super::{DisasmView, EditColumn, col32};
+use crate::utils::hex::byte_hex;
 
 impl DisasmView {
     pub(super) fn draw_header(
@@ -209,18 +210,17 @@ impl DisasmView {
                     )
                     .build();
             } else {
-                let bytes_str: String = instr
-                    .bytes()
-                    .iter()
-                    .map(|b| {
-                        if cfg.uppercase {
-                            format!("{:02X} ", b)
-                        } else {
-                            format!("{:02x} ", b)
-                        }
-                    })
-                    .collect();
-                draw_list.add_text([x, y], col32(colors.bytes), bytes_str.trim_end());
+                // Reuse a single buffer (3 chars/byte) instead of N per-byte
+                // String allocations from `format!` in a `map().collect()`.
+                let bytes = instr.bytes();
+                let mut bytes_str = String::with_capacity(bytes.len() * 3);
+                for (i, b) in bytes.iter().enumerate() {
+                    if i > 0 {
+                        bytes_str.push(' ');
+                    }
+                    bytes_str.push_str(byte_hex(*b, cfg.uppercase));
+                }
+                draw_list.add_text([x, y], col32(colors.bytes), &bytes_str);
             }
             x += cols.bytes;
         }

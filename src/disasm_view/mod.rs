@@ -95,6 +95,11 @@ pub struct DisasmView {
     /// Configuration.
     pub config: DisasmViewConfig,
 
+    // ── Cached ImGui IDs (built once at construction) ─────────
+    pub(super) edit_label: String,
+    pub(super) goto_popup_id: String,
+    pub(super) ctx_popup_id: String,
+
     // ── Navigation ───────────────────────────────────────────
     nav: NavHistory,
 
@@ -138,9 +143,16 @@ pub struct DisasmView {
 impl DisasmView {
     /// Create a new disassembly view with the given ImGui ID.
     pub fn new(id: impl Into<String>) -> Self {
+        let id: String = id.into();
+        let edit_label = format!("##dv_edit_{id}");
+        let goto_popup_id = format!("##dv_goto_{id}");
+        let ctx_popup_id = format!("##dv_ctx_{id}");
         Self {
-            id: id.into(),
+            id,
             config: DisasmViewConfig::default(),
+            edit_label,
+            goto_popup_id,
+            ctx_popup_id,
             nav: NavHistory::new(64),
             cursor_idx: None,
             selection: BTreeSet::new(),
@@ -267,10 +279,12 @@ impl DisasmView {
 
         self.frame_counter = self.frame_counter.wrapping_add(1);
 
-        // Cache font metrics.
+        // Cache font metrics. Guard against the rare zero-glyph case (e.g.
+        // before the font atlas is fully built or in test stubs) — division
+        // by zero in the row math below would produce inf-cast UB.
         let [cw, ch] = calc_text_size("0");
-        self.char_advance = cw;
-        self.line_height = ch + 4.0; // slightly more padding than hex viewer
+        self.char_advance = cw.max(1.0);
+        self.line_height = (ch + 4.0).max(1.0);
 
         // Auto-scroll to current execution point.
         if self.config.follow_execution && self.scroll_to.is_none() {
@@ -383,7 +397,6 @@ impl DisasmView {
                     ui.set_cursor_screen_pos(pos);
                     ui.set_next_item_width(input_w);
                     if let Some(edit) = &mut self.edit {
-                        let label = format!("##dv_edit_{}", self.id);
                         // Auto-focus on first frame.
                         if edit.frames == 0 {
                             ui.set_keyboard_focus_here();
@@ -395,7 +408,10 @@ impl DisasmView {
                             | dear_imgui_rs::InputTextFlags::AUTO_SELECT_ALL
                             | dear_imgui_rs::InputTextFlags::ENTER_RETURNS_TRUE;
 
-                        let entered = ui.input_text(&label, &mut edit.buf).flags(flags).build();
+                        let entered = ui
+                            .input_text(&self.edit_label, &mut edit.buf)
+                            .flags(flags)
+                            .build();
 
                         if entered {
                             // Enter pressed — commit.
