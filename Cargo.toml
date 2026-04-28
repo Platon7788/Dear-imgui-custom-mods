@@ -24,6 +24,7 @@ default = ["full"]
 # Meta-feature: every component.
 full = [
     "app_window",
+    "app_window_v2",
     "borderless_window",
     "code_editor",
     "confirm_dialog",
@@ -34,7 +35,7 @@ full = [
     "nav_panel",
     "node_graph",
     "notifications",
-    "page_control",
+    "tab_control",
     "proc_mon",
     "property_inspector",
     "status_bar",
@@ -49,16 +50,9 @@ borderless_window = []
 # app_window is the composite wgpu+winit+ImGui host — pulls the chrome it
 # depends on transitively. Big feature (~MB of wgpu glue).
 app_window = ["borderless_window", "code_editor"]
-# v2 redesign — uses Win32 WndProc subclassing (NCCALCSIZE / NCHITTEST /
-# GETMINMAXINFO) so the OS owns drag/resize/snap/minimize/maximize lifecycle
-# natively. No workarounds, no state sync, no focus debounce required.
-# Win10 + Win11 both get pixel-perfect native behavior; Win11 additionally
-# gets Snap Layouts popup on hover-maximize for free. Experimental — opt-in only.
-#
-# Reuses borderless_window's TitlebarColors palette type (data only — none
-# of the render/state logic is shared); the unified Theme::titlebar()
-# accessor is gated behind the borderless_window feature in the theme module.
-app_window_v2 = ["code_editor", "borderless_window"]
+# app_window_v2: redesigned borderless host — pure ImGui hit detection, flat
+# config, WM_GETMINMAXINFO-only Win32 subclass, no DWM frame extension.
+app_window_v2 = ["borderless_window", "code_editor"]
 
 # ── Dialogs & small widgets ─────────────────────────────────────────────────
 confirm_dialog = []
@@ -88,15 +82,18 @@ virtual_tree = ["virtual_table"]
 code_editor = []
 # Full visual node editor — bezier wires, selection, pan/zoom, mini-map.
 node_graph = []
-page_control = []
+# Modern tab controller (DevExpress XtraTabControl-inspired). 3 styles
+# (Pill / Underline / Square), pinned tabs, drag-reorder, scroll, overflow
+# dropdown, close confirmation, dirty indicator, badges, status pulses,
+# smooth scroll, single-pass hit-test, hover preview thumbnail. Pure tab
+# strip — no dashboard/tile grid (use plain ImGui inside `render_content`).
+tab_control = []
 timeline = []
 # Force-directed interactive graph viewer — Obsidian-style with Barnes-Hut
 # physics, pan/zoom/drag/select, sidebar, PageRank/betweenness metrics,
 # color groups, BFS depth filter, and SVG/DOT/Mermaid export (Phase D).
 # Re-uses nav_panel palette for the sidebar. Requires slotmap for stable NodeId/EdgeId.
 force_graph = ["nav_panel", "dep:slotmap"]
-# Keep old name as alias so existing users aren't broken immediately.
-knowledge_graph = ["force_graph"]
 # Process monitor with NT syscall enumeration (Windows-only).
 # Uses virtual_table for display. Requires rsc-runtime (SysCalls) crate.
 proc_mon = ["virtual_table", "dep:rsc-runtime", "dep:serde"]
@@ -126,12 +123,14 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_HiDpi",
-    "Win32_UI_Controls",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
+    "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
     "Win32_System_Performance",
     "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
 ] }
 
 [dev-dependencies]
@@ -192,9 +191,9 @@ path = "examples/demo_file_manager.rs"
 required-features = ["file_manager", "app_window"]
 
 [[example]]
-name = "demo_page_control"
-path = "examples/demo_page_control.rs"
-required-features = ["page_control", "app_window"]
+name = "demo_tab_control"
+path = "examples/demo_tab_control.rs"
+required-features = ["tab_control", "app_window"]
 
 [[example]]
 name = "demo_timeline"
@@ -227,6 +226,11 @@ path = "examples/demo_app_window.rs"
 required-features = ["app_window", "notifications", "confirm_dialog"]
 
 [[example]]
+name = "demo_app_window_v2"
+path = "examples/demo_app_window_v2.rs"
+required-features = ["app_window_v2", "confirm_dialog", "nav_panel", "status_bar"]
+
+[[example]]
 name = "demo_nav_panel"
 path = "examples/demo_nav_panel.rs"
 required-features = ["nav_panel", "app_window"]
@@ -237,19 +241,10 @@ path = "examples/demo_force_graph.rs"
 required-features = ["force_graph", "app_window"]
 
 [[example]]
-name = "demo_knowledge_graph"
-path = "examples/demo_knowledge_graph.rs"
-required-features = ["force_graph", "app_window"]
-
-[[example]]
 name = "demo_proc_mon"
 path = "examples/demo_proc_mon.rs"
 required-features = ["proc_mon", "app_window"]
 
-[[example]]
-name = "demo_app_window_v2"
-path = "examples/demo_app_window_v2.rs"
-required-features = ["app_window_v2"]
 
 # ─── Build profiles ──────────────────────────────────────────────────────────
 #

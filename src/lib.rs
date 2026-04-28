@@ -14,8 +14,10 @@
 //!   inline editing (text, checkbox, combo, slider, color, custom), multi-select
 //! - [`virtual_tree`] — Virtualized tree-table for 500k+ nodes with drag-drop, filter,
 //!   tree lines, keyboard navigation
-//! - [`page_control`] — Generic tabbed container with Dashboard (tile grid) and Tabs
-//!   (4 styles: Pill, Underline, Card, Square) views, close confirmation, badges, keyboard nav
+//! - [`tab_control`] — Modern tab controller (DevExpress XtraTabControl-inspired). Pure
+//!   tab strip with 3 styles (Pill, Underline, Square), pinned tabs, drag-reorder, scroll,
+//!   overflow dropdown, hover-preview thumbnail, badges, status indicators, dirty state,
+//!   keyboard shortcuts (Ctrl+T/W/Tab/1..9), single-pass hit-test, zero per-frame allocs
 //! - [`node_graph`] — Visual node graph editor with pan/zoom, bezier wires, pin shapes,
 //!   multi-select, rectangle selection, mini-map, snap-to-grid
 //! - [`code_editor`] — Full code editor with token-level syntax highlighting (Rust/TOML/RON),
@@ -120,7 +122,9 @@ pub use winit;
 // Gating them behind features would force every leaf-component flag to
 // depend on them, adding noise to `Cargo.toml` for no payoff.
 
+pub mod clipboard_backend;
 pub mod fonts;
+pub mod frame_demand;
 pub mod icons;
 pub mod input;
 pub mod theme;
@@ -154,14 +158,14 @@ pub mod nav_panel;
 pub mod node_graph;
 #[cfg(feature = "notifications")]
 pub mod notifications;
-#[cfg(feature = "page_control")]
-pub mod page_control;
 #[cfg(feature = "proc_mon")]
 pub mod proc_mon;
 #[cfg(feature = "property_inspector")]
 pub mod property_inspector;
 #[cfg(feature = "status_bar")]
 pub mod status_bar;
+#[cfg(feature = "tab_control")]
+pub mod tab_control;
 #[cfg(feature = "timeline")]
 pub mod timeline;
 #[cfg(feature = "toolbar")]
@@ -170,13 +174,4 @@ pub mod toolbar;
 pub mod virtual_table;
 #[cfg(feature = "virtual_tree")]
 pub mod virtual_tree;
-#[cfg(feature = "force_graph")]
-pub use force_graph as knowledge_graph; // backwards-compat alias
 
-// ─── Demo helpers (internal; only compiled when `full` is on) ────────────────
-//
-// `demo/` references many components, so it needs every feature they bring.
-// Keep it gated behind `full` — it's just internal test scaffolding.
-
-#[cfg(feature = "full")]
-pub mod demo;

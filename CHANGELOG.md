@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Added — `tab_control` module (modern tab controller)
+DevExpress XtraTabControl-inspired pure tab strip with contemporary touches:
+
+- **3 visual styles** — `Pill` (default), `Underline` (Material), `Square` (classic).
+- **Pinned tabs** — compact, non-scrolling left strip; `is_pinned()` per-tab opt-in.
+  Pinned-prefix invariant maintained automatically across `add()` / `move_tab()` /
+  per-frame `enforce_pinned_partition` (in-place `rotate_right`, no allocations).
+- **Drag-and-drop reorder** within a group (pinned ↔ pinned, regular ↔ regular).
+- **Hover preview popup** — Windows-taskbar-peek-style live thumbnail of the tab's
+  content via `render_preview` (defaults to `render_content` re-render). Width-locked
+  tooltip auto-grows vertically; never shows a scrollbar. Per-tab opt-out via
+  `show_preview()`. Suppressed during drag and for the active tab.
+- **Hover-activate** — `cfg.hover_activate_ms = Some(N)` for Edge / Win11-style
+  auto-switch on dwell.
+- **Keyboard shortcuts** — Left/Right step, Ctrl+Tab cycle (with wrap), Ctrl+1..9
+  jump (Chrome convention: Ctrl+9 → last), Ctrl+T add, Ctrl+W close.
+- **Status indicators** — Active / Inactive / Warning / Error / Dirty / None. Dot is
+  three-way controllable: globally via `cfg.show_status_dot`, per-tab via
+  `TabStatus::None`, per-tab color via `dot_color()`.
+- **Dirty state** — cyan circle replaces the close button visually; close popup
+  switches to a stronger "unsaved changes" confirmation text.
+- **Customizable close glyph** — `Cross` / `CrossBold` / `SquareX` / `CircleX`,
+  all rendered via the draw list (no font dependency).
+- **Smooth scroll** with overflow `…` dropdown auto-closing on selection.
+- **Animations** — open (grow), close (shrink), hover transitions.
+- **Single-pass hit-test** — pre-pass fills `hit_scratch` once; both drawing
+  and event handling read from the same scratch — no duplicate geometry.
+- **Cached popup IDs** + **zero per-frame allocations** in steady state.
+- **Nested `TabControl` trivially supported** — just embed in `render_content`.
+
+API: `TabControl<T: TabItem>` with 14 public methods; `TabItem` trait with 14
+methods (2 required, 12 with defaults). 32 unit tests covering pinned-prefix
+invariant, pinned-aware `add`/`move_tab`, lifecycle hooks, status & color
+overrides, popup-ID isolation, opt-out flags. See `docs/tab_control.md`.
+
+### Removed — `page_control` module
+The dashboard-with-tile-grid feature was removed. Use plain ImGui inside the
+new `tab_control::TabItem::render_content` if you need a tile dashboard. The
+demo, feature flag (`page_control`), example (`demo_page_control`), and the
+internal `src/demo/` scaffolding (used only by `demo_page_control`) are all
+gone. `tab_control` is the focused, modernized successor.
+
 ### Added — `RowStyle::selection_color` + `selection_text_color` (per-row selection override)
 Callers can now override the selected-row tint on a per-row basis without
 touching the table-wide `TableConfig::selection_color` / `selection_text_color`.

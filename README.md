@@ -24,7 +24,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`file_manager`** | Universal file/folder picker dialog — SelectFolder, OpenFile, SaveFile modes. Breadcrumb navigation, favorites sidebar, back/forward history, type-to-search, file filters, overwrite confirmation | [docs/file_manager.md](docs/file_manager.md) |
 | **`virtual_table`** | Virtualized table for up to 10M rows — ListClipper, sortable columns (single + multi), inline editing (text, checkbox, combo, slider, color, custom, button), selection with vivid highlight + white text, keyboard navigation (Up/Down/Home/End/PageUp/PageDown), scroll-to-row, clip tooltips, freeze cols/rows, `copy_to_clipboard`, `snap_last_row`, `RingBuffer<T>` FIFO eviction, `MAX_TABLE_ROWS` (10,000,000) capacity | [docs/virtual_table.md](docs/virtual_table.md) |
 | **`virtual_tree`** | Virtualized tree-table for up to 10M nodes — slab/arena with generational `NodeId`, flat view cache, multi-column, inline editing, sibling-scoped sorting, drag-and-drop, filter/search, tree lines, striped rows, icons, badges, lazy children loading, configurable per-instance capacity with optional FIFO eviction | [docs/virtual_tree.md](docs/virtual_tree.md) |
-| **`page_control`** | Generic tabbed container — Dashboard (tile grid) and Tabs (4 styles: Pill, Underline, Card, Square) views. Close confirmation, badges, status indicators, keyboard navigation | [docs/page_control.md](docs/page_control.md) |
+| **`tab_control`** | Modern tab controller (DevExpress XtraTabControl-inspired) — 3 styles (Pill, Underline, Square), pinned tabs, drag-reorder, scroll, overflow dropdown, hover-preview thumbnail, badges, status indicators (Active/Inactive/Warning/Error/Dirty/None), per-tab dot color, keyboard shortcuts (Ctrl+T/W/Tab/1..9), single-pass hit-test, zero per-frame allocations | [docs/tab_control.md](docs/tab_control.md) |
 | **`node_graph`** | Visual node graph editor — pan/zoom, bezier/straight/orthogonal wires, 4 pin shapes, multi-select, rectangle selection, mini-map, snap-to-grid, wire yanking, frustum culling, stats overlay, context menus, node shadow, wire flow animation, LOD, smooth zoom | [docs/node_graph.md](docs/node_graph.md) |
 | **`force_graph`** | Obsidian-style force-directed knowledge graph — Barnes-Hut O(N log N) physics, pan/zoom/box-select, sidebar (search, tag filter, depth focus, time-travel slider), minimap overlay, 6 node shapes, color modes (static/tag/community/PageRank/betweenness), SVG/DOT/Mermaid export, Louvain community detection, drag/pin, context menus | [docs/force_graph.md](docs/force_graph.md) |
 | **`hex_viewer`** | Binary hex dump viewer — offset/hex/ASCII columns, color regions, data inspector, goto address, pattern search, selection, diff highlighting, hover byte tooltips with binary/octal/decimal display, configurable bytes-per-row, endianness control | [docs/hex_viewer.md](docs/hex_viewer.md) |
@@ -120,11 +120,12 @@ src/
     sort.rs                         Sibling-scoped sort state
     filter.rs                       FilterState — search with auto-expand
     drag.rs                         DragDropState for node reparenting
-  page_control/
-    mod.rs                          PageControl<T>, PageItem trait
-    config.rs                       PageControlConfig, TabStyle, PageAction
-    render.rs                       Dashboard tiles, tab strip (4 styles)
-    types.rs                        PageId, PageStatus, Badge, ContentView
+  tab_control/
+    mod.rs                          TabControl<T>, TabItem trait, public API
+    config.rs                       TabControlConfig, TabStyle, TabStatus, CloseGlyph, …
+    layout.rs                       compute_tab_width, layout constants, pinned-prefix repair
+    render.rs                       single-file renderer (strip, styles, events, popups)
+    tests.rs                        32 unit tests
   node_graph/
     mod.rs                          NodeGraph<T> struct, public API
     graph.rs                        Graph<T> — slab storage + HashSet<Wire>
@@ -191,7 +192,7 @@ src/
 
 examples/
   demo_code_editor.rs               CodeEditor demo (wgpu + winit)
-  demo_page_control.rs              PageControl demo (wgpu + winit)
+  demo_tab_control.rs               TabControl demo (wgpu + winit)
   demo_file_manager.rs              FileManager demo
   demo_table.rs                     VirtualTable demo
   demo_node_graph.rs                NodeGraph demo
@@ -320,18 +321,25 @@ tree.insert_child(root, MyNode { name: "Child".into(), .. });
 tree.render(&ui);
 ```
 
-### Page Control
+### Tab Control
 
 ```rust
-use dear_imgui_custom_mod::page_control::{PageControl, PageItem};
+use dear_imgui_custom_mod::tab_control::{TabControl, TabItem, TabAction};
 
-let mut pc = PageControl::new();
-pc.add(my_page);
+struct MyTab { name: String }
+impl TabItem for MyTab {
+    fn title(&self) -> &str { &self.name }
+    fn render_content(&mut self, ui: &Ui) { ui.text(&self.name); }
+}
 
-if let Some(action) = pc.render(&ui) {
+let mut tc: TabControl<MyTab> = TabControl::new("##my_tabs");
+tc.add(MyTab { name: "First".into() });
+
+if let Some(action) = tc.render(ui) {
     match action {
-        PageAction::Activated(id) => { /* tab clicked */ }
-        PageAction::Closed(id) => { pc.remove(id); }
+        TabAction::Activated(id)     => { /* tab clicked */ }
+        TabAction::Closed(id)        => { /* tab closed */ }
+        TabAction::AddRequested      => { tc.add(MyTab { name: "New".into() }); }
         _ => {}
     }
 }
@@ -383,7 +391,7 @@ cargo run --example demo_nav_panel --release
 cargo run --example demo_code_editor --release
 cargo run --example demo_table --release
 cargo run --example demo_tree --release
-cargo run --example demo_page_control --release
+cargo run --example demo_tab_control --features "tab_control,app_window" --release
 cargo run --example demo_file_manager --release
 cargo run --example demo_node_graph --release
 cargo run --example demo_force_graph --release

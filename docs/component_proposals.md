@@ -11,8 +11,8 @@ Analysis of missing components for: **Debugger**, **Package Manager**, **Rust ID
 │ code_editor  │ file_manager │ virtual_table│ virtual_tree      │
 │ (editing)    │ (file I/O)   │ (data grid)  │ (hierarchy)       │
 ├──────────────┼──────────────┼──────────────┼───────────────────┤
-│ node_graph   │ page_control │ icons        │ theme / utils     │
-│ (visual flow)│ (tabs/pages) │ (MDI 7.4)   │ (colors, helpers) │
+│ node_graph   │ tab_control  │ icons        │ theme / utils     │
+│ (visual flow)│ (tabs)       │ (MDI 7.4)   │ (colors, helpers) │
 └──────────────┴──────────────┴──────────────┴───────────────────┘
 ```
 
@@ -460,7 +460,7 @@ hierarchical editing).
 
 ```
                          ┌─────────────┐
-                    ┌───▶│ page_control │◀──── tab per tool window
+                    ┌───▶│ tab_control  │◀──── tab per tool window
                     │    └──────┬──────┘
                     │           │ hosts
                     │           ▼
