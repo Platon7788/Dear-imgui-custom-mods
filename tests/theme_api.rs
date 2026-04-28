@@ -11,13 +11,16 @@ use dear_imgui_custom_mod::theme::Theme;
 fn all_variants_are_iterable() {
     // `Theme::ALL` is the canonical iteration order — used by the theme
     // picker in demos. Size must match the enum; duplicates or omissions
-    // are public-API regressions.
-    assert_eq!(Theme::ALL.len(), 5, "Theme should have exactly 5 variants");
+    // are public-API regressions. Catppuccin + Nord were added by the
+    // bundle-refactors session (decision 015).
+    assert_eq!(Theme::ALL.len(), 7, "Theme should have exactly 7 variants");
     assert!(Theme::ALL.contains(&Theme::Dark));
     assert!(Theme::ALL.contains(&Theme::Light));
     assert!(Theme::ALL.contains(&Theme::Midnight));
     assert!(Theme::ALL.contains(&Theme::Solarized));
     assert!(Theme::ALL.contains(&Theme::Monokai));
+    assert!(Theme::ALL.contains(&Theme::Catppuccin));
+    assert!(Theme::ALL.contains(&Theme::Nord));
 }
 
 #[test]

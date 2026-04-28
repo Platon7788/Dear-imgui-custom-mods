@@ -37,6 +37,7 @@ pub enum DialogMode {
 /// Extensions are stored without the leading dot and in lowercase.
 /// An empty `extensions` vec matches all files.
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct FileFilter {
     /// Display name, e.g. "Image Files (*.png, *.jpg)"
     pub label: String,
@@ -46,8 +47,22 @@ pub struct FileFilter {
 
 impl FileFilter {
     /// Create a new filter. Pass extensions without dots.
-    pub fn new(label: impl Into<String>, extensions: &[&str]) -> Self {
-        let extensions: Vec<String> = extensions.iter().map(|e| e.to_lowercase()).collect();
+    ///
+    /// Accepts any iterable yielding string-like values, so all of these work:
+    /// ```ignore
+    /// FileFilter::new("Rust", &["rs", "toml"]);
+    /// FileFilter::new("Rust", ["rs", "toml"]);
+    /// FileFilter::new("Rust", vec!["rs".to_string(), "toml".to_string()]);
+    /// ```
+    pub fn new<I, S>(label: impl Into<String>, extensions: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let extensions: Vec<String> = extensions
+            .into_iter()
+            .map(|e| e.as_ref().to_lowercase())
+            .collect();
         Self {
             label: label.into(),
             extensions,
@@ -60,6 +75,12 @@ impl FileFilter {
             label: "All Files (*.*)".into(),
             extensions: vec![],
         }
+    }
+
+    /// Add an extension to this filter, returning self for chaining.
+    pub fn with_extension(mut self, ext: impl AsRef<str>) -> Self {
+        self.extensions.push(ext.as_ref().to_lowercase());
+        self
     }
 
     /// Test whether a lowercase file extension matches this filter.
@@ -244,6 +265,7 @@ pub static STRINGS_EN: FmStrings = FmStrings {
 /// };
 /// let fm = FileManager::new_with_config(config);
 /// ```
+#[must_use]
 pub struct FileManagerConfig {
     /// Localized UI strings. Default: [`STRINGS_EN`].
     pub strings: &'static FmStrings,
@@ -281,9 +303,9 @@ pub struct FileManagerConfig {
     /// Whether directories are always sorted before files. Default: `true`.
     /// When `false`, directories and files are sorted together alphabetically.
     pub dirs_first: bool,
-    /// Button width in the footer (Confirm / Cancel). Default: `120.0`.
+    /// Button width in the footer (Confirm / Cancel). Default: `100.0`.
     pub button_width: f32,
-    /// Button height in the footer. Default: `28.0`.
+    /// Button height in the footer. Default: `24.0`.
     pub button_height: f32,
     /// Width of the filter dropdown in the footer. Default: `180.0`.
     pub filter_width: f32,
@@ -312,11 +334,11 @@ impl Default for FileManagerConfig {
             show_column_date: true,
             show_column_type: true,
             custom_title: None,
-            max_history: 100,
+            max_history: super::history::DEFAULT_MAX_HISTORY,
             search_timeout: 0.5,
             dirs_first: true,
-            button_width: 120.0,
-            button_height: 28.0,
+            button_width: 100.0,
+            button_height: 24.0,
             filter_width: 180.0,
             inline_input_width: 200.0,
             icon_override: None,

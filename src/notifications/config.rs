@@ -149,6 +149,9 @@ pub struct Notification {
     pub(crate) enter_t: f32, // 0..=1 appear-animation progress
     pub(crate) exit_t: f32,  // 0..=1 dismiss-animation progress (0 = not dismissing)
     pub(crate) dismissing: bool,
+    /// Pre-formatted ImGui window ID — built once at `push()` time so the
+    /// hot render path doesn't `format!("##toast_{}", id)` every frame.
+    pub(crate) win_id: String,
 }
 
 impl Notification {
@@ -169,6 +172,10 @@ impl Notification {
             enter_t: 0.0,
             exit_t: 0.0,
             dismissing: false,
+            // `NotificationCenter::push` overwrites this with the real id-bearing
+            // string; the placeholder here keeps the struct constructible from
+            // any of the severity-named factories.
+            win_id: String::new(),
         }
     }
 
@@ -287,7 +294,7 @@ pub struct CenterConfig {
     /// Color theme. Default: `Dark`.
     pub theme: Theme,
     /// Optional custom palette (overrides [`theme`](Self::theme)).
-    pub colors_override: Option<Box<NotificationColors>>,
+    pub colors_override: Option<NotificationColors>,
 }
 
 impl Default for CenterConfig {
@@ -363,15 +370,14 @@ impl CenterConfig {
     }
     /// Use a custom [`NotificationColors`] palette instead of the built-in theme.
     pub fn with_colors(mut self, c: NotificationColors) -> Self {
-        self.colors_override = Some(Box::new(c));
+        self.colors_override = Some(c);
         self
     }
     /// Resolved palette for rendering.
     pub(crate) fn resolved_colors(&self) -> NotificationColors {
-        if let Some(c) = &self.colors_override {
-            (**c).clone()
-        } else {
-            self.theme.notifications()
+        match &self.colors_override {
+            Some(c) => c.clone(),
+            None => self.theme.notifications(),
         }
     }
 }

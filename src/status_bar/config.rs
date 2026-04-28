@@ -1,7 +1,12 @@
 //! Configuration types for [`StatusBar`](super::StatusBar).
 //!
-//! For per-theme palettes use [`crate::theme::Theme::statusbar()`] — it
-//! returns a fully configured `StatusBarConfig`.
+//! The colour subset lives in [`crate::theme::StatusBarColors`] — this
+//! struct only owns layout fields. For per-theme palettes use
+//! [`crate::theme::Theme::statusbar`] (full config) or
+//! [`crate::theme::Theme::statusbar_colors`] (palette only, no feature
+//! gate).
+
+use crate::theme::StatusBarColors;
 
 /// Alignment of a status bar section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -13,6 +18,10 @@ pub enum Alignment {
 }
 
 /// Configuration for the StatusBar widget.
+///
+/// Layout fields live here; colour tokens are bundled in
+/// [`StatusBarColors`] (defined in the [`crate::theme`] module so that
+/// custom themes can construct one without depending on this widget).
 #[derive(Debug, Clone, Copy)]
 pub struct StatusBarConfig {
     /// Total height of the bar in pixels.
@@ -34,29 +43,15 @@ pub struct StatusBarConfig {
     /// Set to `true` when you want the pre-0.8.1 behavior with Windows-style
     /// button feedback on hover and press.
     pub highlight_hover: bool,
-
-    // ── Colors ──────────────────────────────────────────────
-    /// Bar background color.
-    pub color_bg: [f32; 4],
-    /// Default text color.
-    pub color_text: [f32; 4],
-    /// Dimmed/secondary text color.
-    pub color_text_dim: [f32; 4],
-    /// Separator line color.
-    pub color_separator: [f32; 4],
-    /// Hovered item background.
-    pub color_hover: [f32; 4],
-    /// Clicked item background.
-    pub color_active: [f32; 4],
-
-    /// Success indicator color (green dot).
-    pub color_success: [f32; 4],
-    /// Warning indicator color (yellow dot).
-    pub color_warning: [f32; 4],
-    /// Error indicator color (red dot).
-    pub color_error: [f32; 4],
-    /// Info indicator color (blue dot).
-    pub color_info: [f32; 4],
+    /// Width of the inline progress-bar widget rendered by
+    /// [`StatusItem::progress`](super::StatusItem::progress) (px).
+    /// Default: `60.0`.
+    pub progress_width: f32,
+    /// Height of the inline progress bar (px). Default: `8.0`.
+    pub progress_height: f32,
+    /// Colour palette. Pluggable via [`Theme::statusbar_colors`](crate::theme::Theme::statusbar_colors)
+    /// or built directly. Default: NxT-dark.
+    pub colors: StatusBarColors,
 }
 
 impl Default for StatusBarConfig {
@@ -67,18 +62,9 @@ impl Default for StatusBarConfig {
             separator_width: 1.0,
             show_separators: true,
             highlight_hover: false,
-
-            color_bg: [0.12, 0.12, 0.15, 1.0],
-            color_text: [0.85, 0.87, 0.90, 1.0],
-            color_text_dim: [0.50, 0.52, 0.58, 1.0],
-            color_separator: [0.25, 0.27, 0.32, 0.6],
-            color_hover: [0.20, 0.22, 0.28, 1.0],
-            color_active: [0.25, 0.28, 0.35, 1.0],
-
-            color_success: [0.30, 0.80, 0.40, 1.0],
-            color_warning: [0.90, 0.75, 0.20, 1.0],
-            color_error: [0.90, 0.30, 0.30, 1.0],
-            color_info: [0.40, 0.65, 0.90, 1.0],
+            progress_width: 60.0,
+            progress_height: 8.0,
+            colors: StatusBarColors::default(),
         }
     }
 }

@@ -15,7 +15,7 @@
 //!
 //! ## Architecture
 //!
-//! ```
+//! ```text
 //! proc_mon/
 //! ├── mod.rs        # Public API re-exports
 //! ├── types.rs      # ProcessInfo, ProcStatus, ProcessDelta, ColumnConfig
@@ -79,7 +79,5 @@ pub mod ui;
 
 pub use config::MonitorConfig;
 pub use core::{Error, ProcessEnumerator};
-pub use types::{
-    ColumnConfig, MonitorColors, MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo,
-};
+pub use types::{ColumnConfig, MonitorColors, MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo};
 pub use ui::{ProcessMonitor, ProcessRow};

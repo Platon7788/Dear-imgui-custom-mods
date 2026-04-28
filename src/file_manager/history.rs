@@ -7,6 +7,10 @@
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
+/// Default cap for back/forward stacks (P2-11: was duplicated as a literal `100`
+/// in `FileManagerConfig::default` and `NavigationHistory::default`).
+pub(super) const DEFAULT_MAX_HISTORY: usize = 100;
+
 /// Simple back/forward navigation stack.
 ///
 /// `push()` records the current path before navigating away.
@@ -74,6 +78,6 @@ impl NavigationHistory {
 
 impl Default for NavigationHistory {
     fn default() -> Self {
-        Self::new(100)
+        Self::new(DEFAULT_MAX_HISTORY)
     }
 }

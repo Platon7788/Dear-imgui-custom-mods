@@ -121,12 +121,15 @@ Returns:
 | `icon` | `DialogIcon` | `Warning` | Icon type |
 | `confirm_style` | `ConfirmStyle` | `Destructive` | Button color style |
 | `theme` | `Theme` | `Dark` | Color theme |
-| `colors_override` | `Option<Box<DialogColors>>` | `None` | Per-instance palette override |
+| `colors_override` | `Option<DialogColors>` | `None` | Per-instance palette override (no longer boxed — `DialogColors` is small) |
 | `width` | `f32` | `340.0` | Dialog width (px) |
 | `height` | `f32` | `160.0` | Dialog height (px) |
 | `padding` | `f32` | `16.0` | Inner padding (px) |
 | `button_height` | `f32` | `30.0` | Base button height (px) |
-| `button_gap` | `f32` | `20.0` | Gap between buttons (px) |
+| `button_gap` | `f32` | `20.0` | Pixel gap between buttons (literal — no implicit `× 1.6` multiplier) |
+| `button_padding_x` | `f32` | `22.0` | Horizontal padding inside each button cell |
+| `header_icon_size` | `f32` | `16.0` | Header icon canvas radius |
+| `button_bottom_factor` | `f32` | `0.35` | Button-row bottom margin as fraction of `padding` |
 | `dim_background` | `bool` | `true` | Draw overlay behind dialog |
 | `keyboard_shortcuts` | `bool` | `true` | Esc/Enter handling |
 | `rounding` | `f32` | `6.0` | Border radius (px) |

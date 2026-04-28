@@ -250,7 +250,7 @@ impl VirtualTreeNode for TaskNode {
         if self.priority == Priority::Critical && self.kind != TaskKind::Folder {
             return Some(RowStyle {
                 text_color: Some([1.00, 0.65, 0.65, 1.0]),
-                bg_color:   Some([0.40, 0.10, 0.10, 0.18]),
+                bg_color: Some([0.40, 0.10, 0.10, 0.18]),
                 selection_color: Some([0.60, 0.15, 0.15, 0.75]),
                 selection_text_color: Some([1.0, 0.95, 0.95, 1.0]),
                 ..Default::default()

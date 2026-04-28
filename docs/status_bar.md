@@ -154,13 +154,18 @@ flows with regular ImGui layout) stick with `render`.
 ## Events
 
 ```rust
+pub enum StatusSection { Left, Center, Right }
+
 pub struct StatusBarEvent {
-    pub label: String,  // clicked item's label
-    pub item_id: u32,   // unique item ID
+    pub label: String,        // clicked item's label
+    pub section: StatusSection, // which section the item lives in
+    pub index: usize,         // 0-based position within its section
 }
 ```
 
-Only emitted for items created with `StatusItem::clickable()`.
+Only emitted for items created with `StatusItem::clickable()`. Identify the
+clicked item by `(section, index)` — no global ID counter (the old `item_id:
+u32` was removed in 0.9 in favour of position-based addressing).
 
 ## Configuration
 

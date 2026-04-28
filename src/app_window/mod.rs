@@ -250,15 +250,48 @@ impl<H: AppHandler + 'static> ApplicationHandler for WinitApp<H> {
             return;
         };
 
-        // Forward events to the winit platform for Dear ImGui input.
-        g.platform.handle_event::<()>(
-            &mut g.context,
-            &g.window,
-            &Event::WindowEvent {
-                window_id,
-                event: event.clone(),
-            },
-        );
+        // Layout-independent keyboard / IME fixes — see
+        // `app_window_v2::window_event` for the full rationale.
+        // Russian / Greek / CJK layouts otherwise break `Ctrl+C`,
+        // `Ctrl+V`, numpad digit input, and IME commits.
+        let mut kbd_handled = false;
+        let mut kbd_event: Option<winit::event::KeyEvent> = None;
+        match &event {
+            WindowEvent::KeyboardInput { event: ke, .. } => {
+                let io = g.context.io_mut();
+                if crate::input::keyboard::try_inject_numpad_text(io, ke)
+                    || crate::input::keyboard::try_inject_ctrl_alt_shortcut(io, ke)
+                {
+                    kbd_handled = true;
+                } else {
+                    kbd_event = Some(ke.clone());
+                }
+            }
+            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
+                crate::input::keyboard::inject_ime_commit(g.context.io_mut(), text);
+                kbd_handled = true;
+            }
+            _ => {}
+        }
+
+        if !kbd_handled {
+            // Forward events to the winit platform for Dear ImGui input.
+            g.platform.handle_event::<()>(
+                &mut g.context,
+                &g.window,
+                &Event::WindowEvent {
+                    window_id,
+                    event: event.clone(),
+                },
+            );
+            // Reinforce physical-key state after the platform forward —
+            // ensures the eventual release matches the press we recorded
+            // (otherwise `Key::C` stays "stuck" when Ctrl is released
+            // before the letter on non-Latin layouts).
+            if let Some(ref ke) = kbd_event {
+                crate::input::keyboard::reinforce_physical_key_state(g.context.io_mut(), ke);
+            }
+        }
 
         match event {
             WindowEvent::CloseRequested => {

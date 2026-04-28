@@ -161,13 +161,26 @@ Wrap NavPanel + content in a child_window sized to `avail_h - status_bar_height`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `&'static str` | Unique identifier returned in events |
-| `icon` | `&'static str` | Icon glyph or text label |
+| `id` | `Cow<'static, str>` | Unique identifier returned in events. Accepts `&'static str` literals (zero-cost borrow) **or** runtime `String`s (loaded from JSON, plugin-generated, localised). |
+| `icon` | `Cow<'static, str>` | Icon glyph / text label — same `&'static str`-or-`String` flavour as `id`. |
 | `tooltip` | `String` | Hover tooltip text (supports runtime-localised strings) |
 | `color` | `Option<[f32; 4]>` | Custom icon RGBA tint (overrides theme default) |
 | `submenu` | `Vec<SubMenuItem>` | Flyout submenu items (`Item` or `Separator`) |
 | `badge` | `Option<String>` | Badge text anchored to button corner (e.g. `"3"` or `"●"`) |
 | `show_tooltip` | `bool` | Show tooltip on hover (default: `true`) |
+
+> **Migration note (0.9 → 0.10):** `id` and `icon` were `&'static str` before
+> 0.10 — the `Cow<'static, str>` swap is back-compat for static call-sites
+> (`NavButton::action("home", "H", "Home")` still compiles unchanged), but
+> any code that pattern-matched on the raw `&'static str` from
+> `NavEvent::ButtonClicked(id)` must now compare via `id.as_ref()`:
+>
+> ```rust
+> NavEvent::ButtonClicked(id) => match id.as_ref() {
+>     "exit" => state.exit(),
+>     _ => {}
+> }
+> ```
 
 ### `NavButton` Builder Methods
 

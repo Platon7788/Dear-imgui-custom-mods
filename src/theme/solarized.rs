@@ -6,12 +6,7 @@
 //! Accent is Solarized blue (#268bd2), semantic colors are the published
 //! red / green / yellow.
 
-#[cfg(feature = "borderless_window")]
-use crate::borderless_window::TitlebarColors;
-#[cfg(feature = "confirm_dialog")]
-use crate::confirm_dialog::DialogColors;
-#[cfg(feature = "nav_panel")]
-use crate::nav_panel::NavColors;
+use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
 use dear_imgui_rs::{Style, StyleColor};
@@ -50,18 +45,18 @@ const BG_FRAME_ACTIVE: u32 = 0x18607a;
 
 // ─── Titlebar ────────────────────────────────────────────────────────────────
 
-#[cfg(feature = "borderless_window")]
 pub fn titlebar_colors() -> TitlebarColors {
     let bg = hex(BASE02, 1.0);
     let icon = hex(BASE00, 1.0);
-    let icon_light = hex(BASE1, 1.0);
     TitlebarColors {
         bg,
         separator: hex(BASE01, 0.60),
         title: icon,
-        btn_minimize: icon_light,
-        btn_maximize: icon_light,
-        btn_close: icon_light,
+        // Vex0r-style accents tuned to the Solarized warm-teal palette:
+        // yellow / cyan / red. Solarized colors retained when possible.
+        btn_minimize: hex(YELLOW, 1.0),
+        btn_maximize: hex(CYAN, 1.0),
+        btn_close: hex(RED, 1.0),
         btn_hover_bg: hex(BG_FRAME, 0.85),
         btn_close_hover_bg: hex(RED, 0.85),
         icon,
@@ -74,7 +69,6 @@ pub fn titlebar_colors() -> TitlebarColors {
 
 // ─── Nav panel ───────────────────────────────────────────────────────────────
 
-#[cfg(feature = "nav_panel")]
 pub fn nav_colors() -> NavColors {
     let bg = hex(BASE03, 1.0);
     let btn_hover = hex(BG_FRAME, 1.0);
@@ -102,7 +96,6 @@ pub fn nav_colors() -> NavColors {
 
 // ─── Confirm dialog ──────────────────────────────────────────────────────────
 
-#[cfg(feature = "confirm_dialog")]
 pub fn dialog_colors() -> DialogColors {
     let bg = hex(BASE02, 1.0);
     let bg_float = [
@@ -145,16 +138,25 @@ pub fn statusbar_config() -> StatusBarConfig {
         separator_width: 1.0,
         show_separators: false,
         highlight_hover: false,
-        color_bg: hex(BASE03, 1.0),
-        color_text: hex(BASE1, 1.0),
-        color_text_dim: hex(BASE00, 1.0),
-        color_separator: hex(BASE01, 0.60),
-        color_hover: hex(BG_FRAME, 0.60),
-        color_active: hex(BG_FRAME, 0.90),
-        color_success: hex(GREEN, 1.0),
-        color_warning: hex(YELLOW, 1.0),
-        color_error: hex(RED, 1.0),
-        color_info: hex(CYAN, 1.0),
+        progress_width: 60.0,
+        progress_height: 8.0,
+        colors: statusbar_colors(),
+    }
+}
+
+/// Status-bar colour subset for this theme.
+pub fn statusbar_colors() -> StatusBarColors {
+    StatusBarColors {
+        bg: hex(BASE03, 1.0),
+        text: hex(BASE1, 1.0),
+        text_dim: hex(BASE00, 1.0),
+        separator: hex(BASE01, 0.60),
+        hover: hex(BG_FRAME, 0.60),
+        active: hex(BG_FRAME, 0.90),
+        success: hex(GREEN, 1.0),
+        warning: hex(YELLOW, 1.0),
+        error: hex(RED, 1.0),
+        info: hex(CYAN, 1.0),
     }
 }
 

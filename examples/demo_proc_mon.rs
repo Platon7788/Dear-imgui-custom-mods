@@ -4,7 +4,9 @@
 //!
 //! Note: Windows-only. Uses direct NT syscalls for process enumeration.
 
-use dear_imgui_custom_mod::proc_mon::{MonitorEvent, MonitorConfig, ProcessEnumerator, ProcessMonitor};
+use dear_imgui_custom_mod::proc_mon::{
+    MonitorConfig, MonitorEvent, ProcessEnumerator, ProcessMonitor,
+};
 use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_rs::{Condition, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
@@ -91,7 +93,9 @@ impl DemoState {
                 ui.separator();
 
                 // Instructions
-                ui.text_wrapped("Right-click a process to see the context menu (handled by caller).");
+                ui.text_wrapped(
+                    "Right-click a process to see the context menu (handled by caller).",
+                );
                 ui.text_wrapped("This demo shows how to integrate proc_mon with your own actions.");
 
                 ui.spacing();
@@ -119,7 +123,10 @@ impl DemoState {
                 if self.show_context_menu {
                     let _popup = ui
                         .begin_modal_popup_config("##proc_ctx")
-                        .flags(dear_imgui_rs::WindowFlags::NO_TITLE_BAR | dear_imgui_rs::WindowFlags::ALWAYS_AUTO_RESIZE)
+                        .flags(
+                            dear_imgui_rs::WindowFlags::NO_TITLE_BAR
+                                | dear_imgui_rs::WindowFlags::ALWAYS_AUTO_RESIZE,
+                        )
                         .begin();
 
                     if let Some(_popup) = _popup {
@@ -144,16 +151,23 @@ impl DemoState {
                             ui.separator();
 
                             // Destructive action with confirmation style
-                            let _red = ui.push_style_color(StyleColor::Button, [0.6, 0.2, 0.2, 1.0]);
-                            let _red_hover = ui.push_style_color(StyleColor::ButtonHovered, [0.8, 0.25, 0.25, 1.0]);
+                            let _red =
+                                ui.push_style_color(StyleColor::Button, [0.6, 0.2, 0.2, 1.0]);
+                            let _red_hover = ui.push_style_color(
+                                StyleColor::ButtonHovered,
+                                [0.8, 0.25, 0.25, 1.0],
+                            );
                             if ui.button("Kill Process") {
-                                self.status = format!("Kill PID: {} (not implemented in demo)", pid);
+                                self.status =
+                                    format!("Kill PID: {} (not implemented in demo)", pid);
                                 ui.close_current_popup();
                             }
                         }
 
                         // Close on click outside
-                        if !ui.is_item_hovered() && ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left) {
+                        if !ui.is_item_hovered()
+                            && ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left)
+                        {
                             ui.close_current_popup();
                         }
                     } else {

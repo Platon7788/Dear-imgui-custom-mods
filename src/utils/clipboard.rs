@@ -1,4 +1,12 @@
 //! Clipboard, physical-key helpers, and keyboard layout management.
+//!
+//! Consumers are gated by feature: `hex_viewer` and `disasm_view` use the
+//! `VK_*` codes + `vk_down`; `code_editor` / `file_manager` / `force_graph`
+//! use `set_clipboard`. Building without any of those modules makes the
+//! corresponding helpers unreachable — the `#[allow(dead_code)]` below
+//! keeps `cargo build` quiet under every feature combination.
+
+#![allow(dead_code)]
 
 /// Returns `true` if the physical key with the given VK code is currently held.
 ///

@@ -80,6 +80,13 @@ pub enum NotificationEvent {
 
 // ─── Notification center ─────────────────────────────────────────────────────
 
+/// Maximum per-frame `dt` accepted by [`NotificationCenter::render`]. Prevents
+/// catastrophic timer / animation jumps after the host app is suspended
+/// (Alt-Tab away, debugger pause, sleeping system) — without the clamp a
+/// 5-second pause makes every active notification fast-forward through its
+/// entire lifecycle in one frame.
+const MAX_FRAME_DT: f32 = 0.5;
+
 /// Holds the live stack of notifications between frames.
 ///
 /// `NotificationCenter` is not `Copy` and persists across frames — keep it in
@@ -136,6 +143,9 @@ impl NotificationCenter {
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1).max(1);
         n.id = id;
+        // Pre-format the ImGui window ID once — saves a per-frame `format!`
+        // allocation on every visible toast.
+        n.win_id = format!("##toast_{id}");
         self.queue.push(n);
         id
     }
@@ -149,24 +159,43 @@ impl NotificationCenter {
         }
     }
 
-    /// Dismiss every active notification.
-    pub fn dismiss_all(&mut self) {
+    /// Dismiss every active notification. Returns the number of toasts that
+    /// were not already in the dismissing state — useful for "Cleared N"
+    /// status feedback.
+    pub fn dismiss_all(&mut self) -> usize {
+        let mut count = 0;
         for n in &mut self.queue {
-            n.dismissing = true;
+            if !n.dismissing {
+                n.dismissing = true;
+                count += 1;
+            }
         }
+        count
     }
 
-    /// Number of notifications currently on the stack (including fading-out).
+    /// Number of notifications currently on the stack — **including** ones
+    /// that are fading out. For "how many are still alive and counting
+    /// down" use [`active_count`](Self::active_count).
     pub fn count(&self) -> usize {
         self.queue.len()
+    }
+
+    /// Number of notifications that are still active (not yet dismissed).
+    /// Excludes toasts that are mid-exit-animation.
+    pub fn active_count(&self) -> usize {
+        self.queue.iter().filter(|n| !n.dismissing).count()
     }
 
     /// Advance state and draw the stack. Returns events that fired this frame.
     pub fn render(&mut self, ui: &Ui, dt: f32) -> Vec<NotificationEvent> {
         let mut events = Vec::new();
+        // Sanitise `dt`: NaN / negative → 0 (skip frame); huge `dt` (host
+        // suspended for several seconds) → clamp so animations don't
+        // collapse to a single tick, swallowing the entry / exit phases.
         if dt.is_nan() || dt < 0.0 {
             return events;
         }
+        let dt = dt.min(MAX_FRAME_DT);
 
         // Clone the config for the duration of the frame so we can freely
         // interleave `&self.queue` reads with `&mut self` mutations (dismiss).
@@ -175,14 +204,7 @@ impl NotificationCenter {
         let anim_dur = cfg.animation_duration.max(0.0001);
 
         // ── Pass 1: advance animations for every notification ───────────────
-        for n in &mut self.queue {
-            if !n.dismissing && n.enter_t < 1.0 {
-                n.enter_t = (n.enter_t + dt / anim_dur).min(1.0);
-            }
-            if n.dismissing && n.exit_t < 1.0 {
-                n.exit_t = (n.exit_t + dt / anim_dur).min(1.0);
-            }
-        }
+        advance_animations(&mut self.queue, dt, anim_dur);
 
         // ── Layout parameters ───────────────────────────────────────────────
         let [dw, dh] = ui.io().display_size();
@@ -249,22 +271,7 @@ impl NotificationCenter {
         }
 
         // ── Pass 3: advance elapsed timers (paused while hovered) ───────────
-        for n in &mut self.queue {
-            if n.dismissing {
-                continue;
-            }
-            let hovered = cfg.pause_on_hover && hover_flags.iter().any(|&(id, h)| id == n.id && h);
-            if hovered {
-                continue;
-            }
-
-            if let Duration::Timed(secs) = n.duration {
-                n.elapsed += dt;
-                if n.elapsed >= secs {
-                    n.dismissing = true;
-                }
-            }
-        }
+        tick_timers(&mut self.queue, dt, &hover_flags, cfg.pause_on_hover);
 
         // ── Pass 4: apply requested dismissals ──────────────────────────────
         for id in to_dismiss {
@@ -272,17 +279,80 @@ impl NotificationCenter {
         }
 
         // ── Pass 5: reap notifications whose exit animation has finished ────
-        let none_anim = matches!(cfg.animation, AnimationKind::None);
-        self.queue.retain(|n| {
-            let done = n.dismissing && (none_anim || n.exit_t >= 1.0);
-            if done {
-                events.push(NotificationEvent::Dismissed(n.id));
-            }
-            !done
-        });
+        reap_dismissed(&mut self.queue, cfg.animation, &mut events);
+
+        // ── Pass 6: keep the renderer alive while toasts are animating ──
+        // In event-driven hosts (e.g. `app_window_v2` default) the loop
+        // would otherwise sleep mid-fade or stop ticking the auto-dismiss
+        // countdown. Any non-dismissed toast (timer ticking) or any toast
+        // mid-animation (enter_t < 1 or exit_t > 0) demands the next frame.
+        let needs_frame = self
+            .queue
+            .iter()
+            .any(|n| !n.dismissing || n.enter_t < 1.0 || (n.exit_t > 0.0 && n.exit_t < 1.0));
+        if needs_frame {
+            crate::frame_demand::request(1);
+        }
 
         events
     }
+}
+
+// ─── Pure animation / timer helpers (testable without a `Ui`) ───────────────
+
+/// Pass 1 — advance enter/exit animation timelines toward their targets.
+fn advance_animations(queue: &mut [Notification], dt: f32, anim_dur: f32) {
+    for n in queue {
+        if !n.dismissing && n.enter_t < 1.0 {
+            n.enter_t = (n.enter_t + dt / anim_dur).min(1.0);
+        }
+        if n.dismissing && n.exit_t < 1.0 {
+            n.exit_t = (n.exit_t + dt / anim_dur).min(1.0);
+        }
+    }
+}
+
+/// Pass 3 — tick auto-dismiss timers, skipping toasts the cursor is over
+/// when `pause_on_hover` is enabled. Toasts whose elapsed time crosses
+/// their `Timed(secs)` budget are flagged `dismissing`.
+fn tick_timers(
+    queue: &mut [Notification],
+    dt: f32,
+    hover_flags: &[(u64, bool)],
+    pause_on_hover: bool,
+) {
+    for n in queue {
+        if n.dismissing {
+            continue;
+        }
+        let hovered = pause_on_hover && hover_flags.iter().any(|&(id, h)| id == n.id && h);
+        if hovered {
+            continue;
+        }
+        if let Duration::Timed(secs) = n.duration {
+            n.elapsed += dt;
+            if n.elapsed >= secs {
+                n.dismissing = true;
+            }
+        }
+    }
+}
+
+/// Pass 5 — drop notifications whose exit animation has finished. Pushes
+/// `Dismissed` events for each one removed.
+fn reap_dismissed(
+    queue: &mut Vec<Notification>,
+    animation: AnimationKind,
+    events: &mut Vec<NotificationEvent>,
+) {
+    let none_anim = matches!(animation, AnimationKind::None);
+    queue.retain(|n| {
+        let done = n.dismissing && (none_anim || n.exit_t >= 1.0);
+        if done {
+            events.push(NotificationEvent::Dismissed(n.id));
+        }
+        !done
+    });
 }
 
 // ─── Per-toast render result ─────────────────────────────────────────────────
@@ -400,10 +470,9 @@ fn render_toast(
     let _bg = ui.push_style_color(StyleColor::WindowBg, c.bg);
     let _brdc = ui.push_style_color(StyleColor::Border, c.border);
 
-    let win_id = format!("##toast_{}", n.id);
     let est_h = estimate_height(n, cfg);
 
-    ui.window(&win_id)
+    ui.window(&n.win_id)
         .position([x, y], Condition::Always)
         .size([cfg.width, est_h], Condition::Always)
         .flags(
@@ -484,26 +553,26 @@ fn render_toast(
                 cfg.accent_strip + cfg.padding[0] + if n.show_icon { 22.0 } else { 0.0 };
 
             // Pre-compute countdown label so we can reserve its width for title clipping.
-            let countdown_label: Option<String> =
-                if n.show_countdown && let Duration::Timed(secs) = n.duration && secs > 0.0 {
-                    let rem = (secs - n.elapsed).max(0.0);
-                    Some(if rem >= 10.0 {
-                        format!("{:.0}s", rem)
-                    } else {
-                        format!("{:.1}s", rem)
-                    })
+            let countdown_label: Option<String> = if n.show_countdown
+                && let Duration::Timed(secs) = n.duration
+                && secs > 0.0
+            {
+                let rem = (secs - n.elapsed).max(0.0);
+                Some(if rem >= 10.0 {
+                    format!("{:.0}s", rem)
                 } else {
-                    None
-                };
+                    format!("{:.1}s", rem)
+                })
+            } else {
+                None
+            };
             let countdown_w = countdown_label
                 .as_deref()
                 .map(|l| calc_text_size(l)[0] + 6.0) // 6 px gap before close
                 .unwrap_or(0.0);
 
-            let content_right = cfg.width
-                - cfg.padding[0]
-                - if n.closable { 18.0 } else { 0.0 }
-                - countdown_w;
+            let content_right =
+                cfg.width - cfg.padding[0] - if n.closable { 18.0 } else { 0.0 } - countdown_w;
             let content_w = (content_right - content_left).max(1.0);
 
             // Title
@@ -682,5 +751,116 @@ mod tests {
         assert_eq!(n.actions.len(), 2);
         assert_eq!(n.actions[0].id, 1);
         assert_eq!(n.actions[1].label, "Two");
+    }
+
+    // ── Pure animation / timer helpers (no Ui needed) ─────────────────────────
+
+    #[test]
+    fn dismiss_all_returns_count_and_skips_already_dismissing() {
+        let mut c = NotificationCenter::new();
+        c.push(Notification::info("a"));
+        c.push(Notification::info("b"));
+        let id = c.push(Notification::info("c"));
+        c.dismiss(id); // c already dismissing
+        assert_eq!(c.dismiss_all(), 2);
+        assert_eq!(c.active_count(), 0);
+    }
+
+    #[test]
+    fn active_count_excludes_dismissing() {
+        let mut c = NotificationCenter::new();
+        c.push(Notification::info("a"));
+        let id = c.push(Notification::info("b"));
+        c.dismiss(id);
+        assert_eq!(c.count(), 2, "count includes fading toasts");
+        assert_eq!(c.active_count(), 1, "active excludes them");
+    }
+
+    #[test]
+    fn push_assigns_win_id() {
+        let mut c = NotificationCenter::new();
+        let id = c.push(Notification::info("a"));
+        let n = c.queue.iter().find(|n| n.id == id).unwrap();
+        assert_eq!(n.win_id, format!("##toast_{id}"));
+    }
+
+    #[test]
+    fn advance_animations_ramps_enter_then_exit() {
+        let mut q = vec![Notification::info("x")];
+        q[0].id = 1;
+        // Half the entry — enter_t goes to ~0.5.
+        advance_animations(&mut q, 0.125, 0.25);
+        assert!((q[0].enter_t - 0.5).abs() < 1e-3);
+        assert_eq!(q[0].exit_t, 0.0, "exit doesn't move while not dismissing");
+        // Finish entry, then start dismissing.
+        advance_animations(&mut q, 0.125, 0.25);
+        assert_eq!(q[0].enter_t, 1.0);
+        q[0].dismissing = true;
+        advance_animations(&mut q, 0.125, 0.25);
+        assert!((q[0].exit_t - 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn tick_timers_dismisses_on_budget_exceed() {
+        let mut q = vec![Notification::info("x").with_duration_secs(2.0)];
+        q[0].id = 1;
+        tick_timers(&mut q, 1.0, &[], false);
+        assert!(!q[0].dismissing, "1s of 2s — still alive");
+        tick_timers(&mut q, 1.5, &[], false); // total 2.5s
+        assert!(q[0].dismissing, "2.5s ≥ 2s budget — should dismiss");
+    }
+
+    #[test]
+    fn tick_timers_pauses_while_hovered() {
+        let mut q = vec![Notification::info("x").with_duration_secs(2.0)];
+        q[0].id = 7;
+        // Hovered + pause_on_hover = true → elapsed shouldn't tick.
+        tick_timers(&mut q, 5.0, &[(7, true)], true);
+        assert_eq!(q[0].elapsed, 0.0);
+        assert!(!q[0].dismissing);
+        // pause_on_hover = false ignores hover flag.
+        tick_timers(&mut q, 5.0, &[(7, true)], false);
+        assert!(q[0].dismissing);
+    }
+
+    #[test]
+    fn reap_dismissed_emits_event_and_drops() {
+        let mut q = vec![Notification::info("a"), Notification::info("b")];
+        q[0].id = 1;
+        q[0].dismissing = true;
+        q[0].exit_t = 1.0;
+        q[1].id = 2;
+        // q[1] not dismissing → kept.
+        let mut events = Vec::new();
+        reap_dismissed(&mut q, AnimationKind::Fade, &mut events);
+        assert_eq!(q.len(), 1);
+        assert_eq!(q[0].id, 2);
+        assert_eq!(events, vec![NotificationEvent::Dismissed(1)]);
+    }
+
+    #[test]
+    fn reap_dismissed_keeps_mid_animation() {
+        // exit_t < 1.0 with Fade animation → still mid-fade, must not reap.
+        let mut q = vec![Notification::info("x")];
+        q[0].id = 9;
+        q[0].dismissing = true;
+        q[0].exit_t = 0.5;
+        let mut events = Vec::new();
+        reap_dismissed(&mut q, AnimationKind::Fade, &mut events);
+        assert_eq!(q.len(), 1, "0.5 < 1.0, should keep");
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn reap_dismissed_drops_immediately_when_no_animation() {
+        // AnimationKind::None: drop on first reap regardless of exit_t.
+        let mut q = vec![Notification::info("x")];
+        q[0].id = 11;
+        q[0].dismissing = true;
+        q[0].exit_t = 0.0;
+        let mut events = Vec::new();
+        reap_dismissed(&mut q, AnimationKind::None, &mut events);
+        assert!(q.is_empty());
+        assert_eq!(events, vec![NotificationEvent::Dismissed(11)]);
     }
 }

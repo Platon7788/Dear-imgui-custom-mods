@@ -253,6 +253,19 @@ See [`examples/demo_app_window.rs`](../examples/demo_app_window.rs) for the
 full integration: all 5 severities, every placement, live animation switch,
 burst / dismiss-all, sticky + custom-color toasts, and theme sync.
 
+## Event-driven hosts (`app_window_v2`)
+
+`NotificationCenter::render` calls
+[`crate::frame_demand::request(1)`](frame_demand.md) when there is at
+least one toast alive (animating, dismissing, or ticking down towards
+auto-dismiss). This keeps an event-driven host like `app_window_v2`
+rendering at full refresh-rate while toasts are live, and lets the loop
+sleep again the moment the last toast finishes its exit animation —
+zero idle CPU/GPU during quiet periods.
+
+The integration is automatic: callers do not need to call `keep_alive`
+manually. Continuous-render hosts ignore the demand entirely.
+
 ## Tests
 
 `notifications` ships with unit tests for:

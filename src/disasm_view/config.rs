@@ -323,7 +323,6 @@ pub fn compute_arrows(
     let end_idx = visible_start_idx + visible_count;
 
     for (vis_i, instr) in instructions.iter().enumerate() {
-        let _global_i = visible_start_idx + vis_i;
         if let Some(target) = instr.branch_target() {
             // Find target in visible range.
             for (vis_j, other) in instructions.iter().enumerate() {

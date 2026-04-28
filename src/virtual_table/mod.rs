@@ -675,12 +675,15 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.handle_keyboard_nav(ui, row_count);
         self.handle_scroll(ui, row_count);
 
-        // Ctrl+C — copy selected rows (layout-independent: physical key position)
+        // Ctrl+C — physical key detection (layout-independent, same as render()).
+        let c_now = c_key_down_physical();
+        let c_just = c_now && !self.c_key_prev;
+        self.c_key_prev = c_now;
         if self.config.copy_to_clipboard
             && !self.selected_rows.is_empty()
             && ui.is_window_hovered()
             && ui.io().key_ctrl()
-            && ui.is_key_pressed(Key::C)
+            && (c_just || (!c_now && ui.is_key_pressed(Key::C)))
         {
             let text = build_copy_text(&self.selected_rows, self.columns.len(), |ri, ci, buf| {
                 if let Some(row) = get_row(ri) {
@@ -859,10 +862,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             let show_clip_tooltip = self.columns[col_idx]
                 .clip_tooltip
                 .unwrap_or(self.config.default_clip_tooltip);
-            if show_clip_tooltip
-                && !self.cell_buf.is_empty()
-                && ui.is_item_hovered()
-            {
+            if show_clip_tooltip && !self.cell_buf.is_empty() && ui.is_item_hovered() {
                 let col_w = ui.current_column_width();
                 let text_w = calc_text_size(&self.cell_buf)[0];
                 if text_w > col_w {
@@ -1238,10 +1238,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                     let show_clip_tooltip = self.columns[col_idx]
                         .clip_tooltip
                         .unwrap_or(self.config.default_clip_tooltip);
-                    if show_clip_tooltip
-                        && !self.cell_buf.is_empty()
-                        && ui.is_item_hovered()
-                    {
+                    if show_clip_tooltip && !self.cell_buf.is_empty() && ui.is_item_hovered() {
                         let col_w = ui.current_column_width();
                         let text_w = calc_text_size(&self.cell_buf)[0];
                         if text_w > col_w {

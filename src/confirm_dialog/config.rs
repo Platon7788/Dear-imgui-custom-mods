@@ -58,7 +58,7 @@ pub struct DialogConfig {
     /// Color theme. Default: `Dark`.
     pub theme: Theme,
     /// Optional custom palette that bypasses [`theme`](Self::theme).
-    pub colors_override: Option<Box<DialogColors>>,
+    pub colors_override: Option<DialogColors>,
     /// Dialog width (px). Default: `340.0`.
     pub width: f32,
     /// Dialog height (px). Default: `160.0`.
@@ -88,6 +88,16 @@ pub struct DialogConfig {
     /// power glyph for destructive confirm, check for normal confirm).
     /// Default: `true`.
     pub show_button_icons: bool,
+    /// Header icon canvas radius / size (px). Default: `16.0`.
+    pub header_icon_size: f32,
+    /// Horizontal padding inside each cancel / confirm button (px each side).
+    /// Adds to the label + glyph width to compute the cell size.
+    /// Default: `22.0`.
+    pub button_padding_x: f32,
+    /// Distance from the bottom edge of the dialog to the bottom of the
+    /// button cells, expressed as a fraction of [`padding`](Self::padding).
+    /// Default: `0.35`.
+    pub button_bottom_factor: f32,
 }
 
 impl Default for DialogConfig {
@@ -113,6 +123,9 @@ impl Default for DialogConfig {
             accent_border: true,
             show_separator: false,
             show_button_icons: true,
+            header_icon_size: 16.0,
+            button_padding_x: 22.0,
+            button_bottom_factor: 0.35,
         }
     }
 }
@@ -133,15 +146,14 @@ impl DialogConfig {
     }
     /// Use a custom [`DialogColors`] palette instead of the built-in theme.
     pub fn with_colors(mut self, c: DialogColors) -> Self {
-        self.colors_override = Some(Box::new(c));
+        self.colors_override = Some(c);
         self
     }
     /// Resolved palette for rendering.
     pub(crate) fn resolved_colors(&self) -> DialogColors {
-        if let Some(c) = &self.colors_override {
-            (**c).clone()
-        } else {
-            self.theme.dialog()
+        match &self.colors_override {
+            Some(c) => c.clone(),
+            None => self.theme.dialog(),
         }
     }
     pub fn with_icon(mut self, icon: DialogIcon) -> Self {
@@ -174,6 +186,27 @@ impl DialogConfig {
     }
     pub fn with_button_height(mut self, h: f32) -> Self {
         self.button_height = h;
+        self
+    }
+    pub fn with_button_gap(mut self, g: f32) -> Self {
+        self.button_gap = g;
+        self
+    }
+    /// Horizontal padding inside each button cell (px each side).
+    pub fn with_button_padding_x(mut self, p: f32) -> Self {
+        self.button_padding_x = p;
+        self
+    }
+    /// Header icon size (px). `0.0` is allowed if `icon == DialogIcon::None`
+    /// is also true, but in practice changing only this is rarely useful.
+    pub fn with_header_icon_size(mut self, s: f32) -> Self {
+        self.header_icon_size = s;
+        self
+    }
+    /// Bottom-margin factor for the button row, expressed as a fraction
+    /// of `padding` (default `0.35`).
+    pub fn with_button_bottom_factor(mut self, f: f32) -> Self {
+        self.button_bottom_factor = f;
         self
     }
     pub fn with_rounding(mut self, r: f32) -> Self {

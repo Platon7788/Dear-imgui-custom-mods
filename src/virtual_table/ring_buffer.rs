@@ -141,6 +141,13 @@ impl<T> RingBuffer<T> {
                 std::ptr::write(&mut self.buf[i], next);
             }
         }
+        // ptr::read does not destroy the source: after the shift the slot at
+        // buf[len-1] holds a phantom copy of the last element.  Without this
+        // drop the next push() overwrites that slot via MaybeUninit::new()
+        // without calling the destructor — a leak for any T: Drop.
+        if phys < self.len - 1 {
+            unsafe { self.buf[self.len - 1].assume_init_drop() };
+        }
         self.len -= 1;
         self.head = self.len % self.capacity;
         Some(item)

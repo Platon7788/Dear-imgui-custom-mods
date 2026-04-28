@@ -47,10 +47,10 @@ impl Indicator {
     fn color(self, cfg: &StatusBarConfig) -> Option<[f32; 4]> {
         match self {
             Self::None => None,
-            Self::Success => Some(cfg.color_success),
-            Self::Warning => Some(cfg.color_warning),
-            Self::Error => Some(cfg.color_error),
-            Self::Info => Some(cfg.color_info),
+            Self::Success => Some(cfg.colors.success),
+            Self::Warning => Some(cfg.colors.warning),
+            Self::Error => Some(cfg.colors.error),
+            Self::Info => Some(cfg.colors.info),
         }
     }
 }
@@ -74,11 +74,7 @@ pub struct StatusItem {
     pub color: Option<[f32; 4]>,
     /// Progress value 0.0..=1.0 (draws a progress bar instead of text).
     pub progress: Option<f32>,
-    /// Internal id for click tracking.
-    id: u32,
 }
-
-static NEXT_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 impl StatusItem {
     /// Plain text item.
@@ -91,7 +87,6 @@ impl StatusItem {
             tooltip: None,
             color: None,
             progress: None,
-            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
 
@@ -140,13 +135,23 @@ impl StatusItem {
 
 // ── Events ──────────────────────────────────────────────────────────────────
 
+/// Which section produced a click.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusSection {
+    Left,
+    Center,
+    Right,
+}
+
 /// Event emitted when a clickable status item is activated.
 #[derive(Debug, Clone)]
 pub struct StatusBarEvent {
     /// The label of the clicked item.
     pub label: String,
-    /// Internal item id.
-    pub item_id: u32,
+    /// Section the clicked item belongs to.
+    pub section: StatusSection,
+    /// Position of the clicked item within its section (0-based).
+    pub index: usize,
 }
 
 // ── StatusBar widget ────────────────────────────────────────────────────────
@@ -248,7 +253,7 @@ impl StatusBar {
         draw.add_rect(
             cursor,
             [cursor[0] + avail_w, cursor[1] + bar_h],
-            col32(cfg.color_bg),
+            col32(cfg.colors.bg),
         )
         .filled(true)
         .build();
@@ -257,7 +262,7 @@ impl StatusBar {
         draw.add_line(
             cursor,
             [cursor[0] + avail_w, cursor[1]],
-            col32(cfg.color_separator),
+            col32(cfg.colors.separator),
         )
         .build();
 
@@ -266,11 +271,13 @@ impl StatusBar {
 
         // ── Left items ──────────────────────────────────────────────
         let mut x = cursor[0] + cfg.item_padding;
-        for item in &self.left_items {
+        for (idx, item) in self.left_items.iter().enumerate() {
             let w = self.render_item(
                 draw,
                 ui,
                 item,
+                StatusSection::Left,
+                idx,
                 x,
                 text_y,
                 cursor[1],
@@ -284,7 +291,7 @@ impl StatusBar {
                 draw.add_line(
                     [x, cursor[1] + 3.0],
                     [x, cursor[1] + bar_h - 3.0],
-                    col32(cfg.color_separator),
+                    col32(cfg.colors.separator),
                 )
                 .build();
                 x += cfg.separator_width + cfg.item_padding;
@@ -292,14 +299,22 @@ impl StatusBar {
         }
 
         // ── Right items (render right-to-left) ─────────────────────
+        // Cache widths once so `render_item` doesn't re-measure (was: 2× per item).
+        let right_widths: Vec<f32> = self
+            .right_items
+            .iter()
+            .map(|i| self.measure_item(i))
+            .collect();
         let mut rx = cursor[0] + avail_w - cfg.item_padding;
-        for item in self.right_items.iter().rev() {
-            let w = self.measure_item(item);
+        for (rev_idx, item) in self.right_items.iter().enumerate().rev() {
+            let w = right_widths[rev_idx];
             rx -= w;
             self.render_item(
                 draw,
                 ui,
                 item,
+                StatusSection::Right,
+                rev_idx,
                 rx,
                 text_y,
                 cursor[1],
@@ -313,7 +328,7 @@ impl StatusBar {
                 draw.add_line(
                     [rx, cursor[1] + 3.0],
                     [rx, cursor[1] + bar_h - 3.0],
-                    col32(cfg.color_separator),
+                    col32(cfg.colors.separator),
                 )
                 .build();
                 rx -= cfg.separator_width + cfg.item_padding;
@@ -329,11 +344,13 @@ impl StatusBar {
                 .sum::<f32>()
                 - cfg.item_padding;
             let mut cx = cursor[0] + (avail_w - total_w) * 0.5;
-            for item in &self.center_items {
+            for (idx, item) in self.center_items.iter().enumerate() {
                 let w = self.render_item(
                     draw,
                     ui,
                     item,
+                    StatusSection::Center,
+                    idx,
                     cx,
                     text_y,
                     cursor[1],
@@ -354,6 +371,8 @@ impl StatusBar {
         draw: &dear_imgui_rs::DrawListMut,
         ui: &Ui,
         item: &StatusItem,
+        section: StatusSection,
+        index: usize,
         x: f32,
         text_y: f32,
         bar_y: f32,
@@ -379,9 +398,9 @@ impl StatusBar {
             if cfg.highlight_hover {
                 let hover_bg = if item.clickable {
                     if ui.is_mouse_down(MouseButton::Left) {
-                        cfg.color_active
+                        cfg.colors.active
                     } else {
-                        cfg.color_hover
+                        cfg.colors.hover
                     }
                 } else {
                     [1.0, 1.0, 1.0, 0.04] // subtle highlight for non-clickable
@@ -398,7 +417,8 @@ impl StatusBar {
             if item.clickable && ui.is_mouse_clicked(MouseButton::Left) {
                 events.push(StatusBarEvent {
                     label: item.label.clone(),
-                    item_id: item.id,
+                    section,
+                    index,
                 });
             }
         }
@@ -418,7 +438,7 @@ impl StatusBar {
         if !item.icon.is_empty() {
             draw.add_text(
                 [cx, text_y],
-                col32(item.color.unwrap_or(cfg.color_text)),
+                col32(item.color.unwrap_or(cfg.colors.text)),
                 &item.icon,
             );
             cx += calc_text_size(&item.icon)[0] + 3.0;
@@ -426,8 +446,8 @@ impl StatusBar {
 
         // Progress bar or text
         if let Some(progress) = item.progress {
-            let prog_w = 60.0;
-            let prog_h = 8.0;
+            let prog_w = cfg.progress_width;
+            let prog_h = cfg.progress_height;
             let py = bar_y + (bar_h - prog_h) * 0.5;
 
             // Background
@@ -442,7 +462,7 @@ impl StatusBar {
             // Fill
             let fill_w = prog_w * progress;
             if fill_w > 0.0 {
-                draw.add_rect([cx, py], [cx + fill_w, py + prog_h], col32(cfg.color_info))
+                draw.add_rect([cx, py], [cx + fill_w, py + prog_h], col32(cfg.colors.info))
                     .filled(true)
                     .build();
             }
@@ -450,10 +470,10 @@ impl StatusBar {
             cx += prog_w + 4.0;
 
             // Label after progress bar
-            let text_color = item.color.unwrap_or(cfg.color_text_dim);
+            let text_color = item.color.unwrap_or(cfg.colors.text_dim);
             draw.add_text([cx, text_y], col32(text_color), &item.label);
         } else {
-            let text_color = item.color.unwrap_or(cfg.color_text);
+            let text_color = item.color.unwrap_or(cfg.colors.text);
             draw.add_text([cx, text_y], col32(text_color), &item.label);
         }
 
@@ -480,7 +500,7 @@ impl StatusBar {
 
         // Progress bar
         if item.progress.is_some() {
-            w += 60.0 + 4.0;
+            w += self.config.progress_width + 4.0;
         }
 
         // Text
@@ -600,9 +620,15 @@ mod tests {
     }
 
     #[test]
-    fn item_ids_unique() {
-        let a = StatusItem::text("a");
-        let b = StatusItem::text("b");
-        assert_ne!(a.id, b.id);
+    fn event_section_and_index() {
+        // Smoke: the event payload now carries section + index instead of an
+        // opaque `u32`. Logic-only — render path requires a live ImGui ctx.
+        let ev = StatusBarEvent {
+            label: "click".into(),
+            section: StatusSection::Right,
+            index: 2,
+        };
+        assert_eq!(ev.section, StatusSection::Right);
+        assert_eq!(ev.index, 2);
     }
 }

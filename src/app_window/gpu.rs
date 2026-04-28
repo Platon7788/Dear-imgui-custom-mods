@@ -154,20 +154,20 @@ fn adapter_score(info: &wgpu::AdapterInfo, power: PowerMode) -> i32 {
     let device = match (info.device_type, power) {
         // LowPower: iGPU wins over dGPU — otherwise identical scoring.
         (wgpu::DeviceType::IntegratedGpu, PowerMode::LowPower) => 40,
-        (wgpu::DeviceType::DiscreteGpu,   PowerMode::LowPower) => 30,
+        (wgpu::DeviceType::DiscreteGpu, PowerMode::LowPower) => 30,
         // Auto / HighPerformance: dGPU preferred.
-        (wgpu::DeviceType::DiscreteGpu,   _) => 40,
+        (wgpu::DeviceType::DiscreteGpu, _) => 40,
         (wgpu::DeviceType::IntegratedGpu, _) => 30,
-        (wgpu::DeviceType::Other,         _) => 20,
-        (wgpu::DeviceType::VirtualGpu,    _) => 10,
-        (wgpu::DeviceType::Cpu,           _) =>  0, // WARP / llvmpipe
+        (wgpu::DeviceType::Other, _) => 20,
+        (wgpu::DeviceType::VirtualGpu, _) => 10,
+        (wgpu::DeviceType::Cpu, _) => 0, // WARP / llvmpipe
     };
     let backend = match info.backend {
-        wgpu::Backend::Dx12   => 4,
+        wgpu::Backend::Dx12 => 4,
         wgpu::Backend::Vulkan => 3,
-        wgpu::Backend::Metal  => 3,
-        wgpu::Backend::Gl     => 1,
-        _                     => 0,
+        wgpu::Backend::Metal => 3,
+        wgpu::Backend::Gl => 1,
+        _ => 0,
     };
     device + backend
 }
@@ -193,8 +193,7 @@ fn pick_and_open_adapter(
         .filter(|a| a.is_surface_supported(surface))
         .filter(|a| {
             // HighPerformance refuses software fallback outright.
-            power != PowerMode::HighPerformance
-                || a.get_info().device_type != wgpu::DeviceType::Cpu
+            power != PowerMode::HighPerformance || a.get_info().device_type != wgpu::DeviceType::Cpu
         })
         .collect();
 
@@ -241,6 +240,13 @@ pub(super) fn init_imgui(
 ) -> (dear_imgui_rs::Context, WinitPlatform, WgpuRenderer) {
     let mut context = dear_imgui_rs::Context::create();
     let _ = context.set_ini_filename(None::<std::path::PathBuf>);
+
+    // Wire the system clipboard so InputText copy/paste reaches the OS
+    // buffer (Ctrl+C / Ctrl+V). Without this, the framework's UI feels
+    // half-broken for anyone who tries to copy text *out* of the app.
+    // Shared backend with `app_window_v2` — single canonical implementation
+    // in [`crate::clipboard_backend`].
+    context.set_clipboard_backend(crate::clipboard_backend::SystemClipboardBackend);
 
     let mut platform = WinitPlatform::new(&mut context);
     platform.attach_window(window, HiDpiMode::Default, &mut context);

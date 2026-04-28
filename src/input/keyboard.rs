@@ -15,8 +15,10 @@ use winit::keyboard::{KeyCode, KeyLocation, NamedKey, PhysicalKey};
 ///
 /// Covers:
 /// - Letters `KeyA`..`KeyZ`
-/// - Function keys `F1`..`F12`
-/// - Top-row digits `Digit0`..`Digit9` (mapped to the Dear ImGui `Key0`..`Key9` variants)
+/// - Function keys `F1`..`F12` (Dear ImGui has no F13-F24 variants)
+/// - Top-row digits `Digit0`..`Digit9` (mapped to `Key0`..`Key9`)
+/// - Numpad digits `Numpad0`..`Numpad9` (mapped to `Keypad0`..`Keypad9`)
+/// - Numpad operators: `+`, `-`, `*`, `/`, `=`, `.`, `Enter`
 /// - `Escape`, `Tab`, `Enter`, `Space`, `Backspace`
 /// - Arrow keys, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `Delete`
 ///
@@ -78,6 +80,25 @@ pub fn physical_key_to_imgui(physical: PhysicalKey) -> Option<Key> {
         KeyCode::Digit7 => Key::Key7,
         KeyCode::Digit8 => Key::Key8,
         KeyCode::Digit9 => Key::Key9,
+        // Numpad digits — distinct from Digit0..9 so apps can tell them apart.
+        KeyCode::Numpad0 => Key::Keypad0,
+        KeyCode::Numpad1 => Key::Keypad1,
+        KeyCode::Numpad2 => Key::Keypad2,
+        KeyCode::Numpad3 => Key::Keypad3,
+        KeyCode::Numpad4 => Key::Keypad4,
+        KeyCode::Numpad5 => Key::Keypad5,
+        KeyCode::Numpad6 => Key::Keypad6,
+        KeyCode::Numpad7 => Key::Keypad7,
+        KeyCode::Numpad8 => Key::Keypad8,
+        KeyCode::Numpad9 => Key::Keypad9,
+        // Numpad operators
+        KeyCode::NumpadAdd => Key::KeypadAdd,
+        KeyCode::NumpadSubtract => Key::KeypadSubtract,
+        KeyCode::NumpadMultiply => Key::KeypadMultiply,
+        KeyCode::NumpadDivide => Key::KeypadDivide,
+        KeyCode::NumpadDecimal => Key::KeypadDecimal,
+        KeyCode::NumpadEqual => Key::KeypadEqual,
+        KeyCode::NumpadEnter => Key::KeypadEnter,
         // Navigation / editing
         KeyCode::Escape => Key::Escape,
         KeyCode::Tab => Key::Tab,
@@ -257,6 +278,55 @@ mod tests {
         assert_eq!(
             physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit9)),
             Some(Key::Key9)
+        );
+    }
+
+    #[test]
+    fn numpad_digits_map_to_keypad_variants() {
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Numpad0)),
+            Some(Key::Keypad0)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Numpad9)),
+            Some(Key::Keypad9)
+        );
+        // Distinct from top-row Key0..9.
+        assert_ne!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Numpad5)),
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit5))
+        );
+    }
+
+    #[test]
+    fn numpad_operators_map() {
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadAdd)),
+            Some(Key::KeypadAdd)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadSubtract)),
+            Some(Key::KeypadSubtract)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadMultiply)),
+            Some(Key::KeypadMultiply)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadDivide)),
+            Some(Key::KeypadDivide)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadDecimal)),
+            Some(Key::KeypadDecimal)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadEnter)),
+            Some(Key::KeypadEnter)
+        );
+        assert_eq!(
+            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadEqual)),
+            Some(Key::KeypadEqual)
         );
     }
 

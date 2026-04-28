@@ -62,9 +62,9 @@ impl DemoState {
                     self.fm.open_file(
                         None,
                         vec![
-                            FileFilter::new("Rust (*.rs)", &["rs"]),
-                            FileFilter::new("TOML (*.toml)", &["toml"]),
-                            FileFilter::new("Text (*.txt, *.md)", &["txt", "md"]),
+                            FileFilter::new("Rust (*.rs)", ["rs"]),
+                            FileFilter::new("TOML (*.toml)", ["toml"]),
+                            FileFilter::new("Text (*.txt, *.md)", ["txt", "md"]),
                             FileFilter::all(),
                         ],
                     );
@@ -74,7 +74,7 @@ impl DemoState {
                     self.fm.save_file(
                         None,
                         "untitled.rs",
-                        vec![FileFilter::new("Rust (*.rs)", &["rs"]), FileFilter::all()],
+                        vec![FileFilter::new("Rust (*.rs)", ["rs"]), FileFilter::all()],
                     );
                 }
 

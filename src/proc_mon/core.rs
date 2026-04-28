@@ -21,6 +21,7 @@
 
 use crate::proc_mon::types::{ProcStatus, ProcessDelta, ProcessInfo};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // Import rsc-runtime (Windows-only)
 #[cfg(windows)]
@@ -162,6 +163,10 @@ struct MonitorCtx {
     sys_buf: Vec<u8>,
     /// Cache: PID → bitness (32/64).
     bits_cache: FxMap<u32, u8>,
+    /// Cache: PID → process name. Image names are immutable per-PID, so
+    /// every snapshot of the same PID hands out an `Arc::clone` — no
+    /// UTF-16 decode, no allocation past the first sighting.
+    name_cache: FxMap<u32, Arc<str>>,
     /// Previous snapshot for delta calculation (PID → status). `ProcStatus`
     /// is the only volatile field on the minimal `ProcessInfo`; anything
     /// else (name, bits, create_time) is immutable per-PID.
@@ -189,6 +194,7 @@ impl MonitorCtx {
         Self {
             sys_buf: Vec::with_capacity(512 * 1024),
             bits_cache: fx_map_with_cap(512),
+            name_cache: fx_map_with_cap(512),
             prev: fx_map_with_cap(512),
             first_tick: true,
             tick: 0,
@@ -282,11 +288,13 @@ impl ProcessEnumerator {
 
         // Find removed PIDs (in prev but not in current).
         self.ctx.removed_buf.clear();
-        self.ctx
-            .removed_buf
-            .extend(self.ctx.prev.keys().copied().filter(|pid| {
-                !self.ctx.current_pids_buf.contains_key(pid)
-            }));
+        self.ctx.removed_buf.extend(
+            self.ctx
+                .prev
+                .keys()
+                .copied()
+                .filter(|pid| !self.ctx.current_pids_buf.contains_key(pid)),
+        );
 
         // Update prev snapshot.
         self.commit_snapshot(&current);
@@ -308,6 +316,7 @@ impl ProcessEnumerator {
     /// Clear internal caches (e.g., after a long period of inactivity).
     pub fn clear_cache(&mut self) {
         self.ctx.bits_cache.clear();
+        self.ctx.name_cache.clear();
         self.ctx.prev.clear();
         self.ctx.first_tick = true;
     }
@@ -329,10 +338,14 @@ impl ProcessEnumerator {
     /// Query all processes via NtQuerySystemInformation.
     /// Returns sorted by CreateTime (newest first).
     fn query_all_processes(&mut self) -> Result<Vec<ProcessInfo>, Error> {
+        // Declared before `unsafe` to keep safe allocations out of the unsafe scope.
+        let mut result = Vec::with_capacity(512);
+        let mut live_pids = Vec::with_capacity(512);
+
         // SAFETY: The block performs direct syscalls (NtQuerySystemInformation)
         // followed by a walk over the returned linked list. The kernel writes
         // exactly `return_length` bytes into `sys_buf` which we resize to match.
-        // Every pointer dereference is bounds-checked against the buffer size.
+        // Every pointer dereference is bounds-checked against `return_length`.
         unsafe {
             // 1. Query required buffer size.
             let mut return_length: ULONG = 0;
@@ -369,11 +382,10 @@ impl ProcessEnumerator {
                 return Err(Error::SyscallFailed(status));
             }
 
-            // 4. Parse linked list.
-            let mut result = Vec::with_capacity(512);
-            let mut live_pids = Vec::with_capacity(512);
+            // 4. Parse linked list. Use `return_length` (not `sys_buf.len()`)
+            // as the upper bound — the buffer may be over-allocated.
+            let buf_len = return_length as usize;
             let mut offset: usize = 0;
-            let buf_len = self.ctx.sys_buf.len();
 
             loop {
                 // Bounds check.
@@ -381,34 +393,48 @@ impl ProcessEnumerator {
                     break;
                 }
 
-                let spi = &*(self.ctx.sys_buf.as_ptr().add(offset)
-                    as *const SYSTEM_PROCESS_INFORMATION);
+                let spi =
+                    &*(self.ctx.sys_buf.as_ptr().add(offset) as *const SYSTEM_PROCESS_INFORMATION);
                 let pid = spi.UniqueProcessId as u32;
                 live_pids.push(pid);
 
-                // Process name — always freshly decoded. Caching UTF-16→UTF-8
-                // provides no real savings (cache hit still clones the String
-                // into the result), and the name never changes per-PID anyway.
-                let name = if spi.ImageName.Buffer.is_null() || spi.ImageName.Length == 0 {
-                    if pid == 0 {
-                        String::from("System Idle Process")
-                    } else {
-                        String::from("System")
-                    }
-                } else {
-                    let len = (spi.ImageName.Length / 2) as usize;
-                    let slice = core::slice::from_raw_parts(spi.ImageName.Buffer, len);
-                    String::from_utf16_lossy(slice)
-                };
+                // Process name — UTF-16 decoded ONCE per PID, cached as
+                // `Arc<str>`. Subsequent ticks return `Arc::clone(...)` —
+                // a single atomic refcount bump, no decode, no allocation.
+                let name: Arc<str> = self
+                    .ctx
+                    .name_cache
+                    .entry(pid)
+                    .or_insert_with(|| {
+                        if spi.ImageName.Buffer.is_null() || spi.ImageName.Length == 0 {
+                            match pid {
+                                0 => Arc::from("System Idle Process"),
+                                _ => Arc::from("System"),
+                            }
+                        } else {
+                            let len = (spi.ImageName.Length / 2) as usize;
+                            let slice = core::slice::from_raw_parts(spi.ImageName.Buffer, len);
+                            // `from_utf16_lossy` allocates a `String`; we then
+                            // hand its buffer to `Arc::from(&str)`.
+                            Arc::from(String::from_utf16_lossy(slice).as_str())
+                        }
+                    })
+                    .clone();
 
-                // Bitness (cached: never changes per-PID).
+                // Bitness (cached: never changes per-PID). When
+                // `query_process_bits` returns `None` we fall back to 64 —
+                // the cache stores the resolved fallback so future ticks
+                // don't keep retrying a denied OpenProcess.
                 let bits = *self
                     .ctx
                     .bits_cache
                     .entry(pid)
-                    .or_insert_with(|| Self::query_process_bits(pid));
+                    .or_insert_with(|| Self::query_process_bits(pid).unwrap_or(64));
 
-                let suspended = Self::is_process_suspended(spi);
+                // Bytes remaining for the thread array (immediately after header).
+                let remaining = buf_len
+                    .saturating_sub(offset + core::mem::size_of::<SYSTEM_PROCESS_INFORMATION>());
+                let suspended = Self::is_process_suspended(spi, remaining);
 
                 result.push(ProcessInfo {
                     pid,
@@ -427,35 +453,44 @@ impl ProcessEnumerator {
                 }
                 offset += spi.NextEntryOffset as usize;
             }
-
-            // Prune dead PIDs from caches periodically.
-            if self.ctx.tick.is_multiple_of(CACHE_PRUNE_INTERVAL) {
-                live_pids.sort_unstable();
-                self.ctx
-                    .bits_cache
-                    .retain(|pid, _| live_pids.binary_search(pid).is_ok());
-            }
-
-            // Sort by CreateTime descending (newest first).
-            result.sort_by_key(|p| std::cmp::Reverse(p.create_time));
-
-            Ok(result)
         }
+
+        // Prune dead PIDs from caches periodically (safe — outside unsafe block).
+        // Both `bits_cache` and `name_cache` follow the same per-PID
+        // invariant — drop entries for PIDs that aren't live this tick.
+        if self.ctx.tick.is_multiple_of(CACHE_PRUNE_INTERVAL) {
+            live_pids.sort_unstable();
+            let live = &live_pids;
+            self.ctx
+                .bits_cache
+                .retain(|pid, _| live.binary_search(pid).is_ok());
+            self.ctx
+                .name_cache
+                .retain(|pid, _| live.binary_search(pid).is_ok());
+        }
+
+        // Sort by CreateTime descending (newest first).
+        result.sort_by_key(|p| std::cmp::Reverse(p.create_time));
+
+        Ok(result)
     }
 
     /// Query WoW64 status for a single PID (expensive — called once per PID, then cached).
-    fn query_process_bits(pid: u32) -> u8 {
+    ///
+    /// Returns:
+    /// - `Some(64)` for System processes (PID 0..=4) — always 64-bit.
+    /// - `Some(32)` if `ProcessWow64Information` reports a non-null peb.
+    /// - `Some(64)` if it reports null (= native process).
+    /// - `None` when `OpenProcess` failed (permission denied, dead PID).
+    ///   Callers typically substitute the architecture default.
+    fn query_process_bits(pid: u32) -> Option<u8> {
         if pid <= 4 {
-            return 64; // System processes are always 64-bit
+            return Some(64); // System processes are always 64-bit
         }
 
         // SAFETY: Standard NtOpenProcess + NtQueryInformationProcess pattern.
-        // Handle is closed on every path.
-        //
-        // The canonical RSC signatures use `HANDLE` / `*mut c_void` for
-        // parameters the auto-layer could not type (opaque_signature).
-        // ABI-wise both are 8-byte pointers — we cast from the semantically
-        // correct type at the call site.
+        // Handle is closed on every path. Casts are documented in the canonical
+        // RSC signature notes.
         unsafe {
             let mut handle: HANDLE = core::ptr::null_mut();
             let mut client_id = CLIENT_ID {
@@ -465,9 +500,6 @@ impl ProcessEnumerator {
             let mut oa: OBJECT_ATTRIBUTES = core::mem::zeroed();
             oa.Length = core::mem::size_of::<OBJECT_ATTRIBUTES>() as ULONG;
 
-            // NtOpenProcess: upstream rsc-runtime now emits
-            // `ProcessHandle: *mut HANDLE` (out-direction honoured),
-            // so pass `&mut handle` directly — no cast needed.
             let status = NtOpenProcess(
                 &mut handle,
                 PROCESS_QUERY_LIMITED_INFORMATION,
@@ -476,15 +508,11 @@ impl ProcessEnumerator {
             );
 
             if status < 0 || handle.is_null() {
-                return 64;
+                return None; // permission denied / dead PID
             }
 
-            // ProcessWow64Information returns ULONG_PTR (usize on x64).
             let mut is_wow64: usize = 0;
             let mut ret_len: ULONG = 0;
-            // NtQueryInformationProcess: canonical declares `ProcessInformationClass:
-            // *mut c_void`, semantically a u32 enum. Cast the class value through
-            // usize so it ends up in the same register slot.
             let status = NtQueryInformationProcess(
                 handle,
                 PROCESS_WOW64_INFORMATION as usize as PVOID,
@@ -495,23 +523,31 @@ impl ProcessEnumerator {
 
             NtClose(handle);
 
-            if status >= 0 && is_wow64 != 0 {
-                32
-            } else {
-                64
+            if status < 0 {
+                return None;
             }
+            Some(if is_wow64 != 0 { 32 } else { 64 })
         }
     }
 
     /// Check if all threads are in Suspended state.
-    fn is_process_suspended(spi: &SYSTEM_PROCESS_INFORMATION) -> bool {
+    ///
+    /// `remaining_bytes` is the number of bytes after the `SYSTEM_PROCESS_INFORMATION`
+    /// header that are valid in the buffer — used to bounds-check the thread array.
+    fn is_process_suspended(spi: &SYSTEM_PROCESS_INFORMATION, remaining_bytes: usize) -> bool {
         let thread_count = spi.NumberOfThreads as usize;
         if thread_count == 0 {
             return false;
         }
 
+        // Bounds check: ensure the thread array fits within the buffer.
+        if thread_count * core::mem::size_of::<SYSTEM_THREAD_INFORMATION>() > remaining_bytes {
+            return false;
+        }
+
         // SAFETY: SYSTEM_THREAD_INFORMATION records follow immediately after
-        // SYSTEM_PROCESS_INFORMATION. We iterate exactly thread_count times.
+        // SYSTEM_PROCESS_INFORMATION. We iterate exactly thread_count times,
+        // and the bounds check above guarantees all accesses are in-range.
         unsafe {
             let threads_ptr = (spi as *const SYSTEM_PROCESS_INFORMATION).add(1)
                 as *const SYSTEM_THREAD_INFORMATION;
@@ -545,7 +581,9 @@ mod tests {
     #[ignore = "requires live NT syscall binding (run with --ignored)"]
     fn test_enumerate_processes() {
         let mut enumerator = ProcessEnumerator::new();
-        let procs = enumerator.enumerate().expect("Failed to enumerate processes");
+        let procs = enumerator
+            .enumerate()
+            .expect("Failed to enumerate processes");
         assert!(!procs.is_empty(), "Should have at least one process");
 
         // Check that System process exists (PID 4 on Windows).
@@ -568,8 +606,14 @@ mod tests {
 
         // First delta = full list.
         let delta1 = enumerator.enumerate_delta().expect("Failed to get delta");
-        assert!(!delta1.upsert.is_empty(), "First delta should have processes");
-        assert!(delta1.removed.is_empty(), "First delta should have no removed");
+        assert!(
+            !delta1.upsert.is_empty(),
+            "First delta should have processes"
+        );
+        assert!(
+            delta1.removed.is_empty(),
+            "First delta should have no removed"
+        );
 
         // Second delta = incremental — vast majority of processes unchanged.
         let delta2 = enumerator.enumerate_delta().expect("Failed to get delta");

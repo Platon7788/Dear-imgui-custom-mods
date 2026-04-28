@@ -73,8 +73,7 @@ use fold::{FoldRegion, detect_fold_regions};
 use helpers::{
     calc_char_advance, closing_bracket, closing_quote, col_to_x, col32, digit_count, get_clipboard,
     hash_line, hex_auto_space_needed, is_closing_bracket, is_closing_quote, parse_hex_color,
-    read_input_chars,
-    set_clipboard, title_case, x_to_col,
+    read_input_chars, set_clipboard, title_case, x_to_col,
 };
 use wrap::compute_wrap_points;
 
@@ -1551,9 +1550,7 @@ impl CodeEditor {
                             .rev()
                             .take_while(|c| c.is_ascii_hexdigit())
                             .count();
-                        if nibbles_before == 2
-                            && hex_auto_space_needed(&line, col)
-                        {
+                        if nibbles_before == 2 && hex_auto_space_needed(&line, col) {
                             self.buffer.insert_char(' ');
                             self.invalidate_token_cache_at(line_idx);
                         }
@@ -3429,7 +3426,10 @@ mod tests {
         // so `end = buffer.line(0).chars().count() = 0`, while `start =
         // wraps.get(sub_row - 1) = 50`. Before the fix this returned (50, 0).
         let (start, end) = editor.sub_row_col_range(0, 5);
-        assert!(start <= end, "sub_row_col_range returned start={start} > end={end}");
+        assert!(
+            start <= end,
+            "sub_row_col_range returned start={start} > end={end}"
+        );
     }
 
     #[test]

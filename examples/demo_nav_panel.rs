@@ -137,13 +137,9 @@ impl DemoApp {
     }
 
     fn cycle_theme(&mut self, state: &mut AppState) {
-        let next = match &self.current_theme {
-            Theme::Dark => Theme::Light,
-            Theme::Light => Theme::Midnight,
-            Theme::Midnight => Theme::Solarized,
-            Theme::Solarized => Theme::Monokai,
-            _ => Theme::Dark,
-        };
+        // `Theme::next()` walks every built-in variant — Catppuccin / Nord
+        // join the rotation automatically.
+        let next = self.current_theme.next();
         self.current_theme = next;
         state.set_theme(next);
         self.push_log(format!("Theme -> {:?}", self.current_theme));
@@ -204,7 +200,16 @@ impl AppHandler for DemoApp {
                         let _pad = ui.push_style_var(StyleVar::WindowPadding([10.0, 6.0]));
                         let _sp = ui.push_style_var(StyleVar::ItemSpacing([6.0, 4.0]));
 
-                        let page = self.nav_state.active.unwrap_or("none");
+                        // Snapshot the active id as an owned String so the
+                        // borrow on `self.nav_state` is released before the
+                        // child_window closures (which need `&mut self`).
+                        let page: String = self
+                            .nav_state
+                            .active
+                            .as_deref()
+                            .unwrap_or("none")
+                            .to_owned();
+                        let page = page.as_str();
                         let panel_w = 260.0_f32;
                         let avail = ui.content_region_avail();
 
@@ -304,6 +309,9 @@ impl AppHandler for DemoApp {
                                 ui.text(format!("Page: {page}"));
                                 ui.separator();
                                 ui.spacing();
+                                // `page` is `&str` (from `as_deref()` on the
+                                // `Cow<'static, str>` active id) — match works
+                                // unchanged on string literals.
                                 match page {
                                     "home" => {
                                         ui.text_wrapped(
@@ -345,14 +353,14 @@ impl AppHandler for DemoApp {
             match event {
                 NavEvent::ButtonClicked(id) => {
                     self.push_log(format!("Click: {id}"));
-                    if *id == "home" && self.notification > 0 {
+                    if id.as_ref() == "home" && self.notification > 0 {
                         self.notification = 0;
                         self.push_log("Notifications cleared".to_string());
                     }
                 }
                 NavEvent::SubMenuClicked(_btn, item) => {
                     self.push_log(format!("Submenu: {item}"));
-                    match *item {
+                    match item.as_ref() {
                         "theme" => self.cycle_theme(state),
                         "about" => self.push_log("NavPanel Demo v0.6.1".to_string()),
                         _ => {}

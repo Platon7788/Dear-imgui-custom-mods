@@ -7,6 +7,7 @@
 //! Also contains sorting logic ([`sort_entries()`]) and formatting helpers
 //! ([`format_size()`]) used by the file manager.
 
+use std::cell::Cell;
 use std::cmp::Ordering;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -39,8 +40,11 @@ pub(super) enum SortOrder {
 
 // ─── FsEntry ────────────────────────────────────────────────────────────────
 
+/// Sentinel meaning "name pixel width has not been measured yet".
+/// Stored in [`FsEntry::name_pixel_width`] until the first hover (P1-1).
+pub(super) const PIXEL_WIDTH_UNMEASURED: f32 = -1.0;
+
 /// A single file or directory entry with pre-computed display strings.
-#[derive(Clone)]
 pub(super) struct FsEntry {
     /// Original filename as returned by the OS.
     pub name: String,
@@ -64,6 +68,13 @@ pub(super) struct FsEntry {
     pub type_display: String,
     /// Whether this entry is hidden (dotfile on Unix, hidden attribute on Windows).
     pub is_hidden: bool,
+    /// Lazily-filled cache of the name's rendered pixel width (P1-1).
+    ///
+    /// Initialised to [`PIXEL_WIDTH_UNMEASURED`]. Computed once via
+    /// `calc_text_size` on the first hover that needs to decide whether to show
+    /// a tooltip; subsequent hovers read the cached value. Wrapped in [`Cell`]
+    /// so the renderer can populate it through a `&FsEntry` shared borrow.
+    pub name_pixel_width: Cell<f32>,
 }
 
 impl FsEntry {
@@ -117,6 +128,7 @@ impl FsEntry {
             extension,
             type_display,
             is_hidden,
+            name_pixel_width: Cell::new(PIXEL_WIDTH_UNMEASURED),
         })
     }
 }

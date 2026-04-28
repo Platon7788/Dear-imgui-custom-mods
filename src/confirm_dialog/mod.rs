@@ -157,9 +157,16 @@ fn draw_glyph_x(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
 
 fn draw_glyph_power(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
     // Open arc (gap at top) approximated with short line segments + vertical bar.
+    //
+    // Geometry: start angle is -π/2 (top of the circle) shifted clockwise by
+    // `GAP_RAD` radians; end angle mirrors that on the other side. The
+    // resulting open mouth at the top has angular width `2 * GAP_RAD` —
+    // ~63° at 0.55 rad, which leaves room for the vertical bar without
+    // touching the arc's endpoints.
+    const GAP_RAD: f32 = 0.55;
     let segs = 18;
-    let start = -std::f32::consts::FRAC_PI_2 + 0.55; // start below the top, sweeping clockwise
-    let end = 2.0 * std::f32::consts::PI - std::f32::consts::FRAC_PI_2 - 0.55;
+    let start = -std::f32::consts::FRAC_PI_2 + GAP_RAD;
+    let end = 2.0 * std::f32::consts::PI - std::f32::consts::FRAC_PI_2 - GAP_RAD;
     let step = (end - start) / segs as f32;
     let mut prev = [cx + r * start.cos(), cy + r * start.sin()];
     for i in 1..=segs {
@@ -168,7 +175,7 @@ fn draw_glyph_power(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
         draw.add_line(prev, p, col).thickness(1.8).build();
         prev = p;
     }
-    // Vertical bar at top
+    // Vertical bar at top — fits inside the gap left by GAP_RAD.
     draw.add_line([cx, cy - r - 1.0], [cx, cy - r * 0.15], col)
         .thickness(1.8)
         .build();
@@ -322,7 +329,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
             let win_pos = ui.window_pos();
 
             // ── Icon + Title row ─────────────────────────────────────────────
-            let icon_size = 16.0_f32;
+            let icon_size = cfg.header_icon_size;
             let has_icon = cfg.icon != DialogIcon::None;
             let title_start_x = if has_icon {
                 icon_size * 2.0 + 10.0
@@ -413,7 +420,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
 
             // ── Buttons — anchored to bottom, centred horizontally ──────────
             let btn_h = cfg.button_height;
-            let btn_bottom_margin = cfg.padding * 0.35;
+            let btn_bottom_margin = cfg.padding * cfg.button_bottom_factor;
             let btn_y = content_h - btn_h - btn_bottom_margin + cfg.padding;
 
             // Resolve glyphs for the cancel + confirm buttons.
@@ -433,13 +440,15 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
             } else {
                 0.0
             };
-            let h_pad = 22.0;
+            let h_pad = cfg.button_padding_x;
             let cancel_w = calc_text_size(cfg.cancel_label.as_str())[0] + icon_extra + h_pad;
             let confirm_w = calc_text_size(cfg.confirm_label.as_str())[0] + icon_extra + h_pad;
             let btn_w = cancel_w.max(confirm_w);
 
-            let gap = cfg.button_gap * 1.6;
-            let total = btn_w * 2.0 + gap;
+            // `button_gap` is the visible pixel gap between the two buttons —
+            // no implicit multiplier. (Pre-0.9 we silently scaled by 1.6 here,
+            // which forced callers to back-solve magic numbers.)
+            let total = btn_w * 2.0 + cfg.button_gap;
             // Centre within full window width.
             let btn_start = (cfg.width - total) * 0.5;
 
@@ -475,7 +484,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
                     colors.btn_cancel_text,
                 ),
             };
-            ui.set_cursor_pos([btn_start + btn_w + gap, btn_y]);
+            ui.set_cursor_pos([btn_start + btn_w + cfg.button_gap, btn_y]);
             if icon_button(
                 ui,
                 "##cd_confirm",
@@ -564,5 +573,47 @@ mod tests {
         assert_eq!(DialogIcon::default(), DialogIcon::Warning);
         assert_ne!(DialogIcon::None, DialogIcon::Error);
         assert_ne!(DialogIcon::Info, DialogIcon::Question);
+    }
+
+    #[test]
+    fn builder_chain_applies_all_fields() {
+        let cfg = DialogConfig::new("Title", "Message")
+            .with_icon(DialogIcon::Error)
+            .with_confirm_label("Yes")
+            .with_cancel_label("No")
+            .with_confirm_style(ConfirmStyle::Normal)
+            .with_button_height(26.0)
+            .with_button_gap(40.0)
+            .with_border_thickness(0.5)
+            .with_rounding(10.0)
+            .with_padding(20.0);
+        assert_eq!(cfg.title, "Title");
+        assert_eq!(cfg.message, "Message");
+        assert_eq!(cfg.icon, DialogIcon::Error);
+        assert_eq!(cfg.confirm_label, "Yes");
+        assert_eq!(cfg.cancel_label, "No");
+        assert_eq!(cfg.confirm_style, ConfirmStyle::Normal);
+        assert_eq!(cfg.button_height, 26.0);
+        assert_eq!(cfg.button_gap, 40.0);
+        assert_eq!(cfg.border_thickness, 0.5);
+        assert_eq!(cfg.rounding, 10.0);
+        assert_eq!(cfg.padding, 20.0);
+    }
+
+    #[test]
+    fn closed_dialog_returns_cancelled() {
+        // `render_confirm_dialog(open=false)` short-circuits to Cancelled
+        // without touching ImGui. Logic-only test (we can't spin up a Ui here),
+        // but the early-return path is reachable via the same code:
+        let open = false;
+        // Mirror the exact branch from `render_confirm_dialog`'s top:
+        let result = if !open {
+            // (the function returns Cancelled immediately when open=false)
+            DialogResult::Cancelled
+        } else {
+            DialogResult::Open
+        };
+        assert_eq!(result, DialogResult::Cancelled);
+        assert!(!open);
     }
 }

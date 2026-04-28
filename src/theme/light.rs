@@ -5,12 +5,7 @@
 //! buttons and separators keep visible contrast (the previous Light palette
 //! made borders and frame backgrounds almost invisible on a white surface).
 
-#[cfg(feature = "borderless_window")]
-use crate::borderless_window::TitlebarColors;
-#[cfg(feature = "confirm_dialog")]
-use crate::confirm_dialog::DialogColors;
-#[cfg(feature = "nav_panel")]
-use crate::nav_panel::NavColors;
+use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
 use dear_imgui_rs::{Style, StyleColor};
@@ -70,7 +65,6 @@ const NAV_BADGE_BG: u32 = 0xb43232;
 
 // ─── Titlebar ────────────────────────────────────────────────────────────────
 
-#[cfg(feature = "borderless_window")]
 pub fn titlebar_colors() -> TitlebarColors {
     let bg = hex(TITLE_BG, 1.0);
     let icon = hex(FG_MUTED, 1.0);
@@ -79,9 +73,11 @@ pub fn titlebar_colors() -> TitlebarColors {
         bg,
         separator: hex(BORDER, 1.0),
         title: icon_dark,
-        btn_minimize: icon_dark,
-        btn_maximize: icon_dark,
-        btn_close: icon_dark,
+        // Vex0r-style accent palette: amber/cyan/red — slightly darker
+        // shades so they're readable against the light titlebar.
+        btn_minimize: hex(0xc99500, 1.0), // amber (darker)
+        btn_maximize: hex(0x1976d2, 1.0), // blue  (darker cyan)
+        btn_close: hex(0xc62828, 1.0),    // red   (darker)
         btn_hover_bg: hex(SECONDARY_HOVER, 0.85),
         btn_close_hover_bg: hex(DANGER, 0.85),
         icon,
@@ -94,7 +90,6 @@ pub fn titlebar_colors() -> TitlebarColors {
 
 // ─── Nav panel ───────────────────────────────────────────────────────────────
 
-#[cfg(feature = "nav_panel")]
 pub fn nav_colors() -> NavColors {
     let bg = hex(STATUSBAR_BG, 1.0);
     let btn_hover = hex(SECONDARY_HOVER, 1.0);
@@ -122,7 +117,6 @@ pub fn nav_colors() -> NavColors {
 
 // ─── Confirm dialog ─────────────────────────────────────────────────────────
 
-#[cfg(feature = "confirm_dialog")]
 pub fn dialog_colors() -> DialogColors {
     // Dialog background a notch darker than the window bg so the modal
     // reads as "above" rather than fused with the page.
@@ -167,16 +161,25 @@ pub fn statusbar_config() -> StatusBarConfig {
         separator_width: 1.0,
         show_separators: false,
         highlight_hover: false,
-        color_bg: hex(STATUSBAR_BG, 1.0),
-        color_text: hex(FG, 1.0),
-        color_text_dim: hex(FG_MUTED, 1.0),
-        color_separator: hex(BORDER, 1.0),
-        color_hover: hex(SECONDARY_HOVER, 0.60),
-        color_active: hex(SECONDARY_HOVER, 0.90),
-        color_success: hex(SUCCESS, 1.0),
-        color_warning: hex(WARNING, 1.0),
-        color_error: hex(DANGER, 1.0),
-        color_info: hex(ACCENT, 1.0),
+        progress_width: 60.0,
+        progress_height: 8.0,
+        colors: statusbar_colors(),
+    }
+}
+
+/// Status-bar colour subset for this theme.
+pub fn statusbar_colors() -> StatusBarColors {
+    StatusBarColors {
+        bg: hex(STATUSBAR_BG, 1.0),
+        text: hex(FG, 1.0),
+        text_dim: hex(FG_MUTED, 1.0),
+        separator: hex(BORDER, 1.0),
+        hover: hex(SECONDARY_HOVER, 0.60),
+        active: hex(SECONDARY_HOVER, 0.90),
+        success: hex(SUCCESS, 1.0),
+        warning: hex(WARNING, 1.0),
+        error: hex(DANGER, 1.0),
+        info: hex(ACCENT, 1.0),
     }
 }
 

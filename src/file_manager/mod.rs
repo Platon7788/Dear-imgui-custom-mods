@@ -82,11 +82,13 @@
 //! ```
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
+mod actions;
 pub mod config;
 mod entry;
 mod favorites;
 mod history;
 mod render;
+mod util;
 
 pub use config::{DialogMode, FileFilter, FileManagerConfig, FmStrings, STRINGS_EN};
 
@@ -94,10 +96,12 @@ use std::path::PathBuf;
 
 use dear_imgui_rs::{Key, Ui, WindowFlags};
 
+use actions::Action;
 use config::FmStrings as Strings;
 use entry::{FsEntry, SortColumn, SortOrder, sort_entries};
 use favorites::FavoritesPanel;
 use history::NavigationHistory;
+use util::{BreadcrumbSegment, enumerate_drives, rebuild_breadcrumb_segments};
 
 // ─── Error ──────────────────────────────────────────────────────────────────
 
@@ -131,46 +135,6 @@ impl FmError {
             Self::DeleteFailed(d) => format!("{}: {d}", s.delete_failed),
         }
     }
-}
-
-// ─── Deferred actions ───────────────────────────────────────────────────────
-
-/// Deferred UI action collected during rendering, applied after the frame.
-///
-/// Render functions return `Option<Action>` instead of mutating `FileManager`
-/// directly — this avoids borrow conflicts between `&self` reads (for display)
-/// and `&mut self` writes (for state changes).
-enum Action {
-    /// Navigate into a specific directory.
-    NavigateTo(PathBuf),
-    /// Navigate to the parent directory.
-    GoParent,
-    /// Navigate back in history.
-    GoBack,
-    /// Navigate forward in history.
-    GoForward,
-    /// Create a new folder with the given name in the current directory.
-    CreateFolder(String),
-    /// Create a new empty file with the given name in the current directory.
-    CreateFile(String),
-    /// Switch to a different file type filter (by index).
-    SelectFilter(usize),
-    /// Navigate to a path entered in the breadcrumb text input.
-    NavigateToInput(String),
-    /// Re-read the current directory.
-    Refresh,
-    /// Re-sort entries (column/order already updated by table header click).
-    SetSort(SortColumn),
-    /// Confirm the current selection (confirm button, double-click, or Enter).
-    ConfirmSelection,
-    /// Rename entry at `index` to `new_name`.
-    RenameEntry { index: usize, new_name: String },
-    /// Delete entry at `index` (after confirmation).
-    DeleteEntry(usize),
-    /// Copy full path of entry at `index` to clipboard.
-    CopyPath(usize),
-    /// Toggle visibility of hidden files.
-    ToggleHidden,
 }
 
 // ─── FileManager ────────────────────────────────────────────────────────────
@@ -251,6 +215,10 @@ pub struct FileManager {
 
     favorites: FavoritesPanel,
 
+    /// Cached breadcrumb segments — rebuilt only when `current_path` changes
+    /// (P1-3: was being re-collected per frame as `Vec<&str>`).
+    breadcrumb_segments: Vec<BreadcrumbSegment>,
+
     // ── Public output ──
     /// `true` while the dialog is visible.
     pub is_open: bool,
@@ -274,47 +242,6 @@ impl Default for FileManager {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Check if a filename contains characters that are invalid on Windows or Unix.
-fn is_valid_filename(name: &str) -> bool {
-    if name.is_empty() || name.len() > 255 {
-        return false;
-    }
-    // Windows reserved names
-    let upper = name.to_uppercase();
-    let stem = upper.split('.').next().unwrap_or("");
-    if matches!(
-        stem,
-        "CON"
-            | "PRN"
-            | "AUX"
-            | "NUL"
-            | "COM1"
-            | "COM2"
-            | "COM3"
-            | "COM4"
-            | "COM5"
-            | "COM6"
-            | "COM7"
-            | "COM8"
-            | "COM9"
-            | "LPT1"
-            | "LPT2"
-            | "LPT3"
-            | "LPT4"
-            | "LPT5"
-            | "LPT6"
-            | "LPT7"
-            | "LPT8"
-            | "LPT9"
-    ) {
-        return false;
-    }
-    // Invalid characters across platforms
-    !name.contains(['<', '>', ':', '"', '/', '\\', '|', '?', '*', '\0'])
-        && !name.ends_with('.')
-        && !name.ends_with(' ')
 }
 
 impl FileManager {
@@ -359,6 +286,7 @@ impl FileManager {
             delete_target: None,
             show_hidden: show_hidden_default,
             favorites: FavoritesPanel::with_defaults(),
+            breadcrumb_segments: Vec::with_capacity(8),
             is_open: false,
             popup_needs_open: false,
             selected_path: None,
@@ -420,11 +348,6 @@ impl FileManager {
         };
         self.active_filter = 0;
         self.open_common(initial_path);
-    }
-
-    /// Alias for [`open_folder()`](Self::open_folder) (backward compatibility).
-    pub fn open(&mut self, initial_path: Option<PathBuf>) {
-        self.open_folder(initial_path);
     }
 
     /// Selected paths for multi-select results.
@@ -497,6 +420,8 @@ impl FileManager {
         self.path_input_buf.clear();
         self.path_input_buf
             .push_str(&self.current_path.to_string_lossy());
+        // P1-3 + P0-2: rebuild breadcrumb segment cache from canonical components.
+        rebuild_breadcrumb_segments(&self.current_path, &mut self.breadcrumb_segments);
 
         let show_files = self.mode != DialogMode::SelectFolder;
         let filter = &self.filters[self.active_filter.min(self.filters.len().saturating_sub(1))];
@@ -527,187 +452,7 @@ impl FileManager {
         }
     }
 
-    /// Navigate to a path: set current_path, push history, refresh.
-    /// If read_dir fails, shows error and stays in current directory.
-    fn try_navigate(&mut self, path: PathBuf) {
-        self.error = None;
-        self.current_path = path;
-        self.refresh_directory();
-        // If refresh produced an error, revert to previous path from history
-        if self.error.is_some()
-            && let Some(prev) = self.history.go_back(&self.current_path)
-        {
-            self.current_path = prev;
-            // Don't refresh again — keep the error visible, entries stay from before
-        }
-    }
-
-    /// Execute a deferred [`Action`] collected during rendering.
-    fn apply_action(&mut self, action: Action, ui: &Ui) {
-        // Clear stale errors on any user action
-        self.error = None;
-
-        match action {
-            Action::NavigateTo(path) => {
-                if self.config.enable_history {
-                    self.history.push(&self.current_path);
-                }
-                self.try_navigate(path);
-            }
-            Action::GoParent => {
-                if let Some(parent) = self.current_path.parent() {
-                    let mut p = parent.to_path_buf();
-                    if p.as_os_str().len() == 2 && p.to_string_lossy().ends_with(':') {
-                        p.push("\\");
-                    }
-                    if p != self.current_path {
-                        if self.config.enable_history {
-                            self.history.push(&self.current_path);
-                        }
-                        self.try_navigate(p);
-                    }
-                }
-            }
-            Action::GoBack => {
-                if let Some(prev) = self.history.go_back(&self.current_path) {
-                    self.current_path = prev;
-                    self.refresh_directory();
-                }
-            }
-            Action::GoForward => {
-                if let Some(next) = self.history.go_forward(&self.current_path) {
-                    self.current_path = next;
-                    self.refresh_directory();
-                }
-            }
-            Action::CreateFolder(name) => {
-                if !is_valid_filename(&name) {
-                    self.error = Some(FmError::CreateFolderFailed(format!(
-                        "Invalid name: \"{name}\""
-                    )));
-                    self.show_new_folder = false;
-                } else {
-                    let new_path = self.current_path.join(&name);
-                    match std::fs::create_dir(&new_path) {
-                        Ok(()) => {
-                            self.show_new_folder = false;
-                            self.new_folder_buf.clear();
-                            self.refresh_directory();
-                        }
-                        Err(e) => {
-                            self.error = Some(FmError::CreateFolderFailed(e.to_string()));
-                        }
-                    }
-                }
-            }
-            Action::CreateFile(name) => {
-                if !is_valid_filename(&name) {
-                    self.error = Some(FmError::CreateFileFailed(format!(
-                        "Invalid name: \"{name}\""
-                    )));
-                    self.show_new_file = false;
-                } else {
-                    let new_path = self.current_path.join(&name);
-                    match std::fs::File::create(&new_path) {
-                        Ok(_) => {
-                            self.show_new_file = false;
-                            self.new_file_buf.clear();
-                            self.refresh_directory();
-                        }
-                        Err(e) => {
-                            self.error = Some(FmError::CreateFileFailed(e.to_string()));
-                        }
-                    }
-                }
-            }
-            Action::SelectFilter(idx) => {
-                if idx < self.filters.len() {
-                    self.active_filter = idx;
-                    self.refresh_directory();
-                }
-            }
-            Action::NavigateToInput(input) => {
-                let path = PathBuf::from(input.trim());
-                if path.is_dir() {
-                    if self.config.enable_history {
-                        self.history.push(&self.current_path);
-                    }
-                    self.try_navigate(path);
-                } else {
-                    self.error = Some(FmError::PathNotFound(path.display().to_string()));
-                    self.path_input_buf.clear();
-                    self.path_input_buf
-                        .push_str(&self.current_path.to_string_lossy());
-                }
-            }
-            Action::Refresh => {
-                self.refresh_directory();
-            }
-            Action::SetSort(_col) => {
-                // sort_column/sort_order already updated by render_file_table
-                sort_entries(
-                    &mut self.entries,
-                    self.sort_column,
-                    self.sort_order,
-                    self.config.dirs_first,
-                );
-            }
-            Action::ConfirmSelection => {}
-            Action::RenameEntry { index, new_name } => {
-                if !is_valid_filename(&new_name) {
-                    self.error = Some(FmError::RenameFailed(format!(
-                        "Invalid name: \"{new_name}\""
-                    )));
-                    self.rename_index = None;
-                } else if let Some(entry) = self.entries.get(index) {
-                    let old_path = entry.path.clone();
-                    let new_path = old_path
-                        .parent()
-                        .unwrap_or(&self.current_path)
-                        .join(&new_name);
-                    match std::fs::rename(&old_path, &new_path) {
-                        Ok(()) => {
-                            self.rename_index = None;
-                            self.rename_buf.clear();
-                            self.refresh_directory();
-                        }
-                        Err(e) => {
-                            self.error = Some(FmError::RenameFailed(e.to_string()));
-                        }
-                    }
-                }
-            }
-            Action::DeleteEntry(index) => {
-                if let Some(entry) = self.entries.get(index) {
-                    let path = entry.path.clone();
-                    let result = if entry.is_dir {
-                        std::fs::remove_dir_all(&path)
-                    } else {
-                        std::fs::remove_file(&path)
-                    };
-                    match result {
-                        Ok(()) => {
-                            self.delete_target = None;
-                            self.show_delete_confirm = false;
-                            self.refresh_directory();
-                        }
-                        Err(e) => {
-                            self.error = Some(FmError::DeleteFailed(e.to_string()));
-                        }
-                    }
-                }
-            }
-            Action::CopyPath(index) => {
-                if let Some(entry) = self.entries.get(index) {
-                    ui_set_clipboard(ui, &entry.path.to_string_lossy());
-                }
-            }
-            Action::ToggleHidden => {
-                self.show_hidden = !self.show_hidden;
-                self.refresh_directory();
-            }
-        }
-    }
+    // `try_navigate` and `apply_action` are implemented in [`actions.rs`](super::actions).
 
     /// Extract the drive letter from the current path (Windows), or `None`.
     fn current_drive_letter(&self) -> Option<char> {
@@ -729,8 +474,20 @@ impl FileManager {
 
     /// Handle incremental filename search: accumulate typed characters,
     /// find the first matching entry, and select it. Resets after 0.5s of no input.
+    ///
+    /// P1-5: skips entirely when an ImGui input is active (so typing in the
+    /// rename / new-folder / breadcrumb / filename fields doesn't double-fire
+    /// type-to-search) and when the dialog isn't focused. The previous
+    /// implementation ran 26 `is_key_pressed` checks every frame regardless.
+    ///
+    /// P1-6: matches with `starts_with` rather than `contains` — the user
+    /// expectation is "jump to the file whose name *begins* with what I typed".
     fn handle_type_to_search(&mut self, ui: &Ui) {
         if !self.config.enable_type_to_search {
+            return;
+        }
+        // Skip when any ImGui input is active (rename / new-folder / filename / path).
+        if ui.is_any_item_active() {
             return;
         }
 
@@ -738,40 +495,55 @@ impl FileManager {
         let timeout = self.config.search_timeout;
         self.search_timer = (self.search_timer + dt).min(timeout + 1.0);
 
-        // Check for alphanumeric key presses
+        // P3-5: also accept digits 0-9 — searching for "2024" in a folder of
+        // yearly archives should work. Cyrillic / accented filenames are still
+        // not matched; full Unicode support requires reading
+        // `ui.io().input_queue_characters` which is not yet wired through the
+        // current `dear_imgui_rs` binding.
         let mut typed_char = None;
-        for c in b'A'..=b'Z' {
-            let key = match c {
-                b'A' => Key::A,
-                b'B' => Key::B,
-                b'C' => Key::C,
-                b'D' => Key::D,
-                b'E' => Key::E,
-                b'F' => Key::F,
-                b'G' => Key::G,
-                b'H' => Key::H,
-                b'I' => Key::I,
-                b'J' => Key::J,
-                b'K' => Key::K,
-                b'L' => Key::L,
-                b'M' => Key::M,
-                b'N' => Key::N,
-                b'O' => Key::O,
-                b'P' => Key::P,
-                b'Q' => Key::Q,
-                b'R' => Key::R,
-                b'S' => Key::S,
-                b'T' => Key::T,
-                b'U' => Key::U,
-                b'V' => Key::V,
-                b'W' => Key::W,
-                b'X' => Key::X,
-                b'Y' => Key::Y,
-                b'Z' => Key::Z,
-                _ => continue,
-            };
-            if ui.is_key_pressed(key) {
-                typed_char = Some(c as char);
+        const ALPHA_KEYS: [(Key, char); 26] = [
+            (Key::A, 'a'),
+            (Key::B, 'b'),
+            (Key::C, 'c'),
+            (Key::D, 'd'),
+            (Key::E, 'e'),
+            (Key::F, 'f'),
+            (Key::G, 'g'),
+            (Key::H, 'h'),
+            (Key::I, 'i'),
+            (Key::J, 'j'),
+            (Key::K, 'k'),
+            (Key::L, 'l'),
+            (Key::M, 'm'),
+            (Key::N, 'n'),
+            (Key::O, 'o'),
+            (Key::P, 'p'),
+            (Key::Q, 'q'),
+            (Key::R, 'r'),
+            (Key::S, 's'),
+            (Key::T, 't'),
+            (Key::U, 'u'),
+            (Key::V, 'v'),
+            (Key::W, 'w'),
+            (Key::X, 'x'),
+            (Key::Y, 'y'),
+            (Key::Z, 'z'),
+        ];
+        const DIGIT_KEYS: [(Key, char); 10] = [
+            (Key::Key0, '0'),
+            (Key::Key1, '1'),
+            (Key::Key2, '2'),
+            (Key::Key3, '3'),
+            (Key::Key4, '4'),
+            (Key::Key5, '5'),
+            (Key::Key6, '6'),
+            (Key::Key7, '7'),
+            (Key::Key8, '8'),
+            (Key::Key9, '9'),
+        ];
+        for (k, ch) in ALPHA_KEYS.iter().chain(DIGIT_KEYS.iter()) {
+            if ui.is_key_pressed(*k) {
+                typed_char = Some(*ch);
                 break;
             }
         }
@@ -781,12 +553,12 @@ impl FileManager {
                 self.search_buf.clear();
             }
             self.search_timer = 0.0;
-            self.search_buf.push(ch.to_ascii_lowercase());
+            self.search_buf.push(ch);
 
-            // Find first matching entry
-            let search = &self.search_buf;
+            // Find first matching entry (P1-6: prefix match, not substring).
+            let search = self.search_buf.as_str();
             for (i, e) in self.entries.iter().enumerate() {
-                if e.name_lower.contains(search.as_str()) {
+                if e.name_lower.starts_with(search) {
                     self.selected_indices.clear();
                     self.selected_indices.push(i);
                     self.scroll_to_index = Some(i);
@@ -850,6 +622,14 @@ impl FileManager {
             ui.open_popup(title);
         }
 
+        // WindowPadding pushed before `begin()` so the popup itself adopts it.
+        // Some themes set WindowPadding to ~[2, 2] which makes the drive bar /
+        // breadcrumb / favorites label visibly hug the left edge — give the
+        // popup a small inner gutter so its content doesn't merge with the
+        // window border.
+        let _padding =
+            ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([6.0, 6.0]));
+
         if let Some(_tok) = ui
             .begin_modal_popup_config(title)
             .flags(WindowFlags::NO_COLLAPSE)
@@ -894,9 +674,9 @@ impl FileManager {
                     if let Some(a) = render::render_breadcrumb_bar(
                         ui,
                         &self.current_path,
+                        &self.breadcrumb_segments,
                         &mut self.breadcrumb_editing,
                         &mut self.path_input_buf,
-                        &mut self.fmt_buf,
                     ) {
                         deferred = Some(a);
                     }
@@ -935,8 +715,14 @@ impl FileManager {
             }
 
             // ── Content area (favorites + file table) ──
-            // Reserve space: status bar + spacing + footer row (filename + buttons) + padding
-            let reserved = 64.0_f32;
+            // Reserve space for the status row (one text line) + footer row
+            // (button_height) + 3 vertical spacings (~item_spacing.y) + padding.
+            // P3-2: derive from configured button height and font line height
+            // instead of a hard-coded 64.0 — works correctly when the user
+            // changes `button_height` or font size.
+            let line_h = ui.text_line_height_with_spacing();
+            let spacing_y = ui.clone_style().item_spacing()[1];
+            let reserved = self.config.button_height + line_h + spacing_y * 3.0 + 4.0;
             let content_h = (ui.content_region_avail()[1] - reserved).max(100.0);
 
             let show_favorites = self.config.show_favorites && !self.favorites.entries.is_empty();
@@ -966,24 +752,27 @@ impl FileManager {
                 ui.child_window("##fm_table_area")
                     .size([0.0, content_h])
                     .build(ui, || {
+                        // P2-3: bundle 17 args into a single TableCtx borrow.
                         let table_result = render::render_file_table(
                             ui,
-                            &self.entries,
-                            &mut self.selected_indices,
-                            self.mode,
-                            self.config.enable_multi_select,
-                            &mut self.filename_buf,
-                            strings,
-                            self.error.is_some(),
-                            &mut self.sort_column,
-                            &mut self.sort_order,
-                            &mut self.rename_index,
-                            &mut self.rename_buf,
-                            &mut self.context_menu_target,
-                            &mut self.last_click_index,
-                            &mut self.scroll_to_index,
-                            &self.config,
-                            &mut self.fmt_buf,
+                            render::TableCtx {
+                                entries: &self.entries,
+                                selected_indices: &mut self.selected_indices,
+                                mode: self.mode,
+                                multi_select: self.config.enable_multi_select,
+                                filename_buf: &mut self.filename_buf,
+                                strings,
+                                has_error: self.error.is_some(),
+                                sort_column: &mut self.sort_column,
+                                sort_order: &mut self.sort_order,
+                                rename_index: &mut self.rename_index,
+                                rename_buf: &mut self.rename_buf,
+                                context_menu_target: &mut self.context_menu_target,
+                                last_click_index: &mut self.last_click_index,
+                                scroll_to_index: &mut self.scroll_to_index,
+                                config: &self.config,
+                                buf: &mut self.fmt_buf,
+                            },
                         );
 
                         if let Some(a) = table_result.action {
@@ -1054,11 +843,18 @@ impl FileManager {
                 deferred = Some(a);
             }
 
-            // ── Escape to cancel ──
+            // ── Escape: close in priority order ──
+            // 1. Inline rename — clear rename buffer
+            // 2. Open right-click context menu — dismiss it (P3-7)
+            // 3. Open inline new-folder/new-file — they handle their own Esc via inputs
+            // 4. Breadcrumb edit — handled inside its input
+            // 5. Otherwise — close the dialog
             if ui.is_key_pressed(Key::Escape) {
                 if self.rename_index.is_some() {
                     self.rename_index = None;
                     self.rename_buf.clear();
+                } else if self.context_menu_target.is_some() {
+                    self.context_menu_target = None;
                 } else if !self.show_new_folder && !self.show_new_file && !self.breadcrumb_editing {
                     self.is_open = false;
                     ui.close_current_popup();
@@ -1072,12 +868,14 @@ impl FileManager {
                 && self.config.enable_multi_select
                 && self.mode == DialogMode::OpenFile
             {
-                self.selected_indices.clear();
-                for i in 0..self.entries.len() {
-                    if !self.entries[i].is_dir {
-                        self.selected_indices.push(i);
-                    }
-                }
+                // P1-9: iterator-based collect instead of indexed range loop.
+                self.selected_indices = self
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| !e.is_dir)
+                    .map(|(i, _)| i)
+                    .collect();
             }
 
             // ── Ctrl+L to edit path ──
@@ -1195,7 +993,9 @@ impl FileManager {
                 if paths.is_empty() {
                     return false;
                 }
-                self.selected_path = Some(paths[0].clone());
+                // P1-8: avoid the double-clone — `paths.first().cloned()`
+                // shares the heap allocation between the lookup and the move.
+                self.selected_path = paths.first().cloned();
                 self.selected_paths = paths;
                 self.is_open = false;
                 ui.close_current_popup();
@@ -1231,37 +1031,4 @@ impl FileManager {
     }
 }
 
-// ─── Clipboard helper ────────────────────────────────────────────────────────
-
-/// Set the ImGui clipboard text via raw sys API.
-fn ui_set_clipboard(_ui: &Ui, text: &str) {
-    let c_str = std::ffi::CString::new(text).unwrap_or_default();
-    unsafe {
-        dear_imgui_rs::sys::igSetClipboardText(c_str.as_ptr());
-    }
-}
-
-// ─── Drive enumeration ──────────────────────────────────────────────────────
-
-/// Enumerate available drive letters on Windows (e.g. `["C:\\", "D:\\"]`).
-#[cfg(target_os = "windows")]
-fn enumerate_drives() -> Vec<String> {
-    use windows_sys::Win32::Storage::FileSystem::GetLogicalDrives;
-    let mut drives = Vec::new();
-    unsafe {
-        let mask = GetLogicalDrives();
-        for i in 0..26u32 {
-            if mask & (1 << i) != 0 {
-                let letter = (b'A' + i as u8) as char;
-                drives.push(format!("{letter}:\\"));
-            }
-        }
-    }
-    drives
-}
-
-/// On non-Windows platforms, returns `["/"]` as the sole root.
-#[cfg(not(target_os = "windows"))]
-fn enumerate_drives() -> Vec<String> {
-    vec!["/".to_string()]
-}
+// `ui_set_clipboard` and `enumerate_drives` live in [`util.rs`](util).

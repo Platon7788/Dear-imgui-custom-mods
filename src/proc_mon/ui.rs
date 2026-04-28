@@ -194,9 +194,13 @@ impl ProcessMonitor {
         vec![
             // 0 — Name: stretch so it absorbs the remaining width; PID/Bits/
             //     Status stay pinned to the right edge at fixed widths.
-            ColumnDef::new("Process Name").stretch(1.0).clip_tooltip(true),
+            ColumnDef::new("Process Name")
+                .stretch(1.0)
+                .clip_tooltip(true),
             // 1 — PID: center-aligned numeric.
-            ColumnDef::new("PID").fixed(70.0).align(CellAlignment::Center),
+            ColumnDef::new("PID")
+                .fixed(70.0)
+                .align(CellAlignment::Center),
             // 2 — Bits: center-aligned `x32` / `x64`.
             ColumnDef::new("Bits")
                 .fixed(45.0)
@@ -403,10 +407,7 @@ impl ProcessMonitor {
             ui.same_line();
             {
                 let _c = [
-                    ui.push_style_color(
-                        dear_imgui_rs::StyleColor::Button,
-                        [0.24, 0.48, 0.28, 1.0],
-                    ),
+                    ui.push_style_color(dear_imgui_rs::StyleColor::Button, [0.24, 0.48, 0.28, 1.0]),
                     ui.push_style_color(
                         dear_imgui_rs::StyleColor::ButtonHovered,
                         [0.30, 0.58, 0.34, 1.0],
@@ -496,8 +497,8 @@ fn default_table_config() -> TableConfig {
     TableConfig {
         auto_scroll: false,
         selection_mode: SelectionMode::Single,
-        sortable: false,       // Fixed sort by create_time
-        flat_headers: true,    // Non-interactive captions — no hover tint
+        sortable: false,    // Fixed sort by create_time
+        flat_headers: true, // Non-interactive captions — no hover tint
         resizable: true,
         row_density: RowDensity::Dense,
         highlight_hovered: false,
