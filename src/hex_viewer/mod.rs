@@ -88,18 +88,6 @@ pub struct HexViewer {
     pub(super) line_height: f32,
     pub(super) focused: bool,
     pub(super) frame_count: u32,
-
-    // ── VK-fallback front-edge detection ─────────────────────
-    // `GetAsyncKeyState` reports "key currently down", not "just
-    // transitioned" — without prev-frame snapshots, every Ctrl+Z while
-    // the key is held would fire a fresh undo. We track the previous
-    // state per shortcut key here and compute edges in `handle_keyboard`.
-    pub(super) vk_prev_a: bool,
-    pub(super) vk_prev_c: bool,
-    pub(super) vk_prev_f: bool,
-    pub(super) vk_prev_g: bool,
-    pub(super) vk_prev_y: bool,
-    pub(super) vk_prev_z: bool,
 }
 
 impl HexViewer {
@@ -134,12 +122,6 @@ impl HexViewer {
             line_height: 0.0,
             focused: false,
             frame_count: 0,
-            vk_prev_a: false,
-            vk_prev_c: false,
-            vk_prev_f: false,
-            vk_prev_g: false,
-            vk_prev_y: false,
-            vk_prev_z: false,
         }
     }
 

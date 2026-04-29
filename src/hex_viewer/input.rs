@@ -7,7 +7,7 @@
 use super::HexViewer;
 use super::config::UndoEntry;
 use super::search::{Selection, format_bytes};
-use crate::utils::clipboard::{self, VK_A, VK_C, VK_F, VK_G, VK_Y, VK_Z, set_clipboard, vk_down};
+use crate::utils::clipboard::{self, set_clipboard};
 
 // ── EditColumn ───────────────────────────────────────────────────────────────
 
@@ -171,52 +171,36 @@ impl HexViewer {
         let ctrl = ui.io().key_ctrl();
         let alt = ui.io().key_alt();
 
-        // VK-fallback front-edge detection. `GetAsyncKeyState` reports
-        // whether the key is currently held — without prev-state, every
-        // frame the key is down would re-fire the shortcut (multiple
-        // undos, looped clipboard writes, etc.). We compare the current
-        // physical state against the snapshot from last frame and only
-        // act on the rising edge.
-        let now_a = vk_down(VK_A);
-        let now_c = vk_down(VK_C);
-        let now_f = vk_down(VK_F);
-        let now_g = vk_down(VK_G);
-        let now_y = vk_down(VK_Y);
-        let now_z = vk_down(VK_Z);
-        let edge_a = now_a && !self.vk_prev_a;
-        let edge_c = now_c && !self.vk_prev_c;
-        let edge_f = now_f && !self.vk_prev_f;
-        let edge_g = now_g && !self.vk_prev_g;
-        let edge_y = now_y && !self.vk_prev_y;
-        let edge_z = now_z && !self.vk_prev_z;
-        self.vk_prev_a = now_a;
-        self.vk_prev_c = now_c;
-        self.vk_prev_f = now_f;
-        self.vk_prev_g = now_g;
-        self.vk_prev_y = now_y;
-        self.vk_prev_z = now_z;
+        // Shortcuts rely on ImGui's `is_key_pressed` (front-edge with
+        // repeat detection). For non-Latin layouts the host application
+        // is expected to wire in `crate::input::keyboard::*` helpers
+        // (`try_inject_ctrl_alt_shortcut` + `reinforce_physical_key_state`)
+        // around `platform.handle_event` — the same pattern used by
+        // `app_window` / `app_window_v2`. With those installed, ImGui
+        // sees the physical-key-derived `Key::C` regardless of the
+        // active layout, so no per-widget VK fallback is needed here.
 
         // === Hotkeys ===
-        if ctrl && (ui.is_key_pressed(Key::C) || edge_c) {
+        if ctrl && ui.is_key_pressed(Key::C) {
             self.copy_selection();
         }
-        if ctrl && (ui.is_key_pressed(Key::G) || edge_g) && !self.show_goto {
+        if ctrl && ui.is_key_pressed(Key::G) && !self.show_goto {
             self.show_goto = true;
             self.goto_buf.clear();
         }
-        if ctrl && (ui.is_key_pressed(Key::F) || edge_f) && !self.show_search {
+        if ctrl && ui.is_key_pressed(Key::F) && !self.show_search {
             self.show_search = true;
         }
-        if ctrl && (ui.is_key_pressed(Key::A) || edge_a) {
+        if ctrl && ui.is_key_pressed(Key::A) {
             self.selection = Selection { start: 0, end: len };
         }
-        if ctrl && !shift && (ui.is_key_pressed(Key::Z) || edge_z) {
+        if ctrl && !shift && ui.is_key_pressed(Key::Z) {
             self.undo();
         }
-        if ctrl && (ui.is_key_pressed(Key::Y) || edge_y) {
+        if ctrl && ui.is_key_pressed(Key::Y) {
             self.redo();
         }
-        if ctrl && shift && (ui.is_key_pressed(Key::Z) || edge_z) {
+        if ctrl && shift && ui.is_key_pressed(Key::Z) {
             self.redo();
         }
 

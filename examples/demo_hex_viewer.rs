@@ -564,14 +564,53 @@ impl ApplicationHandler for App {
     ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
 
-        gpu.platform.handle_event::<()>(
-            &mut gpu.context,
-            &gpu.window,
-            &Event::WindowEvent {
-                window_id,
-                event: event.clone(),
-            },
-        );
+        // ── Layout-independent keyboard injection ───────────────────────────
+        //
+        // Mirrors the pattern used by `app_window_v2`: when running on a
+        // non-Latin keyboard layout (Russian, Greek, etc.), the platform
+        // crate sees the layout-mapped character ("с" for the physical C
+        // key on RU) instead of `Key::C`. Without this pre-pass, ImGui
+        // would type that character into the focused field while Ctrl+C
+        // silently fails. We try the layout-independent helpers first;
+        // if any handle the event, we skip the platform forward to avoid
+        // a duplicate character injection.
+        use dear_imgui_custom_mod::input::keyboard;
+        let mut kbd_handled = false;
+        let mut kbd_event: Option<winit::event::KeyEvent> = None;
+        match &event {
+            WindowEvent::KeyboardInput { event: ke, .. } => {
+                let io = gpu.context.io_mut();
+                if keyboard::try_inject_numpad_text(io, ke)
+                    || keyboard::try_inject_ctrl_alt_shortcut(io, ke)
+                {
+                    kbd_handled = true;
+                } else {
+                    kbd_event = Some(ke.clone());
+                }
+            }
+            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
+                keyboard::inject_ime_commit(gpu.context.io_mut(), text);
+                kbd_handled = true;
+            }
+            _ => {}
+        }
+
+        if !kbd_handled {
+            gpu.platform.handle_event::<()>(
+                &mut gpu.context,
+                &gpu.window,
+                &Event::WindowEvent {
+                    window_id,
+                    event: event.clone(),
+                },
+            );
+            // After-forward reinforce: ensures the eventual key release
+            // matches the press we recorded. Without it, releasing Ctrl
+            // before the letter on RU layout leaves `Key::C` "stuck" down.
+            if let Some(ref ke) = kbd_event {
+                keyboard::reinforce_physical_key_state(gpu.context.io_mut(), ke);
+            }
+        }
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
