@@ -162,6 +162,13 @@ impl DisasmView {
                 EditColumn::Mnemonic => {
                     provider.assemble(addr, &edit.buf);
                 }
+                EditColumn::Comment => {
+                    // `set_comment` is a no-op on providers that
+                    // don't override the trait default; the typed
+                    // text is still consumed (no leak / panic).
+                    // `VecDisasmProvider` writes through.
+                    provider.set_comment(addr, &edit.buf);
+                }
             }
         }
     }
@@ -236,22 +243,35 @@ impl DisasmView {
             self.drag_origin = None;
         }
 
-        // Double-click to edit (if editable).
+        // Double-click to edit (if editable). Cell hit-test picks
+        // the right column → buffer initialiser:
+        //   Bytes    — pre-fill with current "AA BB CC" hex string
+        //   Mnemonic — reserved for a future re-assemble flow (not
+        //              wired to UI yet; commit path exists)
+        //   Comment  — pre-fill with current comment text (empty
+        //              string when the row has no comment yet —
+        //              user types from scratch)
         if ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
             && self.config.editable
-            && let Some(idx) = self.mouse_to_instruction(ui, provider)
+            && let Some((idx, column)) = self.mouse_to_cell(ui, provider)
             && let Some(instr) = provider.instruction(idx)
         {
-            let bytes_str: String = instr
-                .bytes()
-                .iter()
-                .map(|b| format!("{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(" ");
+            let buf = match column {
+                EditColumn::Bytes => instr
+                    .bytes()
+                    .iter()
+                    .map(|b| format!("{:02X}", b))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                EditColumn::Mnemonic => {
+                    format!("{} {}", instr.mnemonic(), instr.operands())
+                }
+                EditColumn::Comment => instr.comment().unwrap_or("").to_string(),
+            };
             self.edit = Some(EditState {
                 idx,
-                column: EditColumn::Bytes,
-                buf: bytes_str,
+                column,
+                buf,
                 frames: 0,
             });
         }
@@ -263,6 +283,11 @@ impl DisasmView {
             self.cursor_idx = Some(idx);
             self.context_idx = Some(idx);
             self.show_context_menu = true;
+            // Capture click position so the menu spawns under the
+            // cursor (default ImGui auto-position is `(0, 0)` when
+            // BeginPopup runs outside any window context — see
+            // hex_viewer::popup for the same pattern).
+            self.popup_open_pos = ui.io().mouse_pos();
         }
     }
 
@@ -294,6 +319,61 @@ impl DisasmView {
         } else {
             None
         }
+    }
+
+    /// Hit-test the mouse against the cell grid: returns the row
+    /// index AND which editable column the cursor is over (Bytes /
+    /// Mnemonic / Comment), or `None` when outside any editable
+    /// region. Used by the double-click handler so each column has
+    /// its own edit affordance — bytes ↦ hex patch, mnemonic ↦
+    /// re-assemble, comment ↦ free-form text.
+    ///
+    /// Address column / breakpoint margin / arrow gutter return
+    /// `None` even when hovered — those areas have their own
+    /// non-edit affordances (click-to-select, breakpoint toggle).
+    pub(super) fn mouse_to_cell(
+        &self,
+        ui: &dear_imgui_rs::Ui,
+        provider: &dyn DisasmDataProvider,
+    ) -> Option<(usize, EditColumn)> {
+        let row = self.mouse_to_instruction(ui, provider)?;
+
+        let [mx, _my] = ui.io().mouse_pos();
+        let [win_x, _win_y] = ui.cursor_screen_pos();
+        // Mirrors the X-layout in `draw::draw_instruction_row` —
+        // accumulate column boundaries left-to-right.
+        let cols = &self.config.columns;
+        let mut x = win_x + ui.scroll_x();
+        if self.config.show_breakpoints {
+            x += cols.margin;
+        }
+        if self.config.show_arrows {
+            x += cols.arrows;
+        }
+        x += cols.address;
+        let bytes_x = x;
+        let mnemonic_x = if self.config.show_bytes {
+            bytes_x + cols.bytes
+        } else {
+            bytes_x
+        };
+        let operands_end = mnemonic_x + cols.mnemonic + cols.operands;
+        let comment_x = operands_end;
+
+        // Bytes cell — only when bytes column is visible.
+        if self.config.show_bytes && mx >= bytes_x && mx < mnemonic_x {
+            return Some((row, EditColumn::Bytes));
+        }
+        // Mnemonic + operands together (UI shows them as one
+        // editable region for the future "edit instruction" path).
+        if mx >= mnemonic_x && mx < operands_end {
+            return Some((row, EditColumn::Mnemonic));
+        }
+        // Comment cell — only when the comment column is visible.
+        if self.config.show_comments && mx >= comment_x {
+            return Some((row, EditColumn::Comment));
+        }
+        None
     }
 
     fn ensure_visible(&mut self, idx: usize, ui: &dear_imgui_rs::Ui) {

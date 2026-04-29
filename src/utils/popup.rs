@@ -180,6 +180,73 @@ pub fn selected_button(ui: &Ui, label: &str, size: [f32; 2], selected: bool) -> 
     }
 }
 
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+/// Compact-body StyleVar guards shared by every "modal-style" popup
+/// in the crate (goto / search / settings / context-style menus).
+/// Pushes a tighter ruleset over an already-`themed_popup_style`'d
+/// popup body so option rows / checklists don't read as towering.
+///
+/// - `ItemSpacing`      `[6, 4]`  (row gap)
+/// - `FramePadding`     `[6, 3]`  (button / input padding)
+/// - `ItemInnerSpacing` `[4, 4]`  (between checkbox square and label)
+///
+/// Pop order is reverse-LIFO when `body` returns — no leakage to
+/// sibling popups.
+///
+/// ```rust,ignore
+/// crate::utils::popup::themed_popup_style(ui, || {
+///     if let Some(_p) = ui.begin_popup(&id) {
+///         crate::utils::popup::compact_popup_body(ui, || {
+///             ui.checkbox("Show ASCII", &mut cfg.show_ascii);
+///             ui.checkbox("Uppercase",  &mut cfg.uppercase);
+///         });
+///     }
+/// });
+/// ```
+pub fn compact_popup_body<F: FnOnce()>(ui: &Ui, body: F) {
+    let _spc = ui.push_style_var(StyleVar::ItemSpacing([6.0, 4.0]));
+    let _fp = ui.push_style_var(StyleVar::FramePadding([6.0, 3.0]));
+    let _ip = ui.push_style_var(StyleVar::ItemInnerSpacing([4.0, 4.0]));
+    body();
+}
+
+/// Action-row layout shared by goto / search popups: `Cancel` pinned
+/// `2 px` from the popup's left content edge, the green primary
+/// button pinned the same distance from the right edge. Returns
+/// `(primary_clicked, cancel_clicked)` so each popup body can
+/// dispatch its own logic without re-implementing the geometry.
+///
+/// `body_w` is the reference width for the right anchor (pass the
+/// width of the input field above so the row stays horizontally
+/// aligned with it). `primary_label` is the green button body
+/// (e.g. `"Go"`, `"Find"`).
+///
+/// `Enter` triggers `primary`, `Escape` triggers `cancel` — the
+/// keyboard fallthrough happens here so each call site doesn't
+/// have to thread `is_key_pressed` checks through its own button
+/// expressions.
+pub fn action_row(ui: &Ui, body_w: f32, primary_label: &str) -> (bool, bool) {
+    const ACTION_BTN_WIDTH: f32 = 58.0;
+    const ACTION_BTN_HEIGHT: f32 = 0.0; // ImGui auto-height
+    const EDGE_GAP: f32 = 2.0;
+
+    let row_origin_x = ui.cursor_pos()[0];
+    let cancel_x = row_origin_x + EDGE_GAP;
+    let primary_x = row_origin_x + body_w - ACTION_BTN_WIDTH - EDGE_GAP;
+
+    ui.set_cursor_pos_x(cancel_x);
+    let cancel_clicked = ui.button_with_size("Cancel", [ACTION_BTN_WIDTH, ACTION_BTN_HEIGHT])
+        || ui.is_key_pressed(dear_imgui_rs::Key::Escape);
+
+    ui.same_line();
+    ui.set_cursor_pos_x(primary_x);
+    let primary_clicked = success_button(ui, primary_label, [ACTION_BTN_WIDTH, ACTION_BTN_HEIGHT])
+        || ui.is_key_pressed(dear_imgui_rs::Key::Enter);
+
+    (primary_clicked, cancel_clicked)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

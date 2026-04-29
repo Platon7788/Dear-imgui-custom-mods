@@ -8,7 +8,9 @@
 use super::HexViewer;
 use super::config::{BytesPerRow, HexSearchMode, StringEncoding};
 use super::search::parse_address;
-use crate::utils::popup::{selected_button, success_button, themed_popup_style};
+use crate::utils::popup::{
+    action_row, compact_popup_body, selected_button, themed_popup_style,
+};
 
 // Approximate body width used for centring / right-anchoring the
 // goto / search popup buttons. Real popup width is auto-sized by
@@ -22,31 +24,6 @@ use crate::utils::popup::{selected_button, success_button, themed_popup_style};
 // asymmetrically. Wider also gives UTF-16LE / Cyrillic search
 // queries more horizontal breathing room.
 const POPUP_INPUT_WIDTH: f32 = 360.0;
-/// Compact action-button width (px). Trimmed from `76` → `58` on
-/// the project owner's request — the popup felt button-heavy with
-/// the wider variant, especially on a narrow-input layout.
-const ACTION_BTN_WIDTH: f32 = 58.0;
-const ACTION_BTN_HEIGHT: f32 = 0.0; // 0 → ImGui auto-height (= text + frame_padding)
-/// Pixel gap from the popup's content edge to the closest button.
-/// Same constant on both sides so the action row reads as visually
-/// balanced even though the buttons themselves are pinned to
-/// opposite ends.
-const ACTION_EDGE_GAP: f32 = 2.0;
-
-/// Push a tighter set of StyleVar guards over the body of an
-/// already-`themed_popup_style`'d popup. Used by goto / search /
-/// settings to render a denser layout (checklists, multi-line
-/// option rows) while still inheriting the popup's base padding /
-/// rounding.
-///
-/// The guards drop when `body` returns — pop order is reverse of
-/// push, no leakage to sibling popups.
-fn compact_popup_body<F: FnOnce()>(ui: &dear_imgui_rs::Ui, body: F) {
-    let _spc = ui.push_style_var(dear_imgui_rs::StyleVar::ItemSpacing([6.0, 4.0]));
-    let _fp = ui.push_style_var(dear_imgui_rs::StyleVar::FramePadding([6.0, 3.0]));
-    let _ip = ui.push_style_var(dear_imgui_rs::StyleVar::ItemInnerSpacing([4.0, 4.0]));
-    body();
-}
 
 /// Anchor the next ImGui window (a popup) at `pos` in screen space
 /// using the given `pivot` (where `(0, 0)` = top-left of the popup
@@ -108,37 +85,10 @@ fn mode_pill(ui: &dear_imgui_rs::Ui, label: &str, selected: bool) -> bool {
     selected_button(ui, label, [0.0, 0.0], selected)
 }
 
-/// Action-row layout shared by goto / search popups: Cancel pinned
-/// `ACTION_EDGE_GAP` from the left, the green primary button pinned
-/// the same distance from the right. Returns `(primary_clicked,
-/// cancel_clicked)` so each popup body can dispatch its own logic
-/// without re-implementing the geometry.
-///
-/// `primary_label` is the body of the green button (e.g. `"Go"`,
-/// `"Find"`). `body_w` is the reference width used for the right
-/// anchor; passing `POPUP_INPUT_WIDTH` keeps the action row
-/// horizontally aligned with the input field above it.
-///
-/// Enter triggers `primary`, Escape triggers `cancel` — the
-/// keyboard fallthrough happens here so each call site doesn't
-/// have to thread `is_key_pressed` checks through its own button
-/// expressions.
-fn render_action_row(ui: &dear_imgui_rs::Ui, body_w: f32, primary_label: &str) -> (bool, bool) {
-    let row_origin_x = ui.cursor_pos()[0];
-    let cancel_x = row_origin_x + ACTION_EDGE_GAP;
-    let primary_x = row_origin_x + body_w - ACTION_BTN_WIDTH - ACTION_EDGE_GAP;
-
-    ui.set_cursor_pos_x(cancel_x);
-    let cancel_clicked = ui.button_with_size("Cancel", [ACTION_BTN_WIDTH, ACTION_BTN_HEIGHT])
-        || ui.is_key_pressed(dear_imgui_rs::Key::Escape);
-
-    ui.same_line();
-    ui.set_cursor_pos_x(primary_x);
-    let primary_clicked = success_button(ui, primary_label, [ACTION_BTN_WIDTH, ACTION_BTN_HEIGHT])
-        || ui.is_key_pressed(dear_imgui_rs::Key::Enter);
-
-    (primary_clicked, cancel_clicked)
-}
+// `render_action_row` and `compact_popup_body` graduated to
+// `crate::utils::popup` on 2026-04-29 so disasm_view (and any
+// future popup-host widget) can reuse the same geometry without
+// drift. See the import block above.
 
 impl HexViewer {
     pub(super) fn render_goto_popup(&mut self, ui: &dear_imgui_rs::Ui) {
@@ -172,7 +122,7 @@ impl HexViewer {
                     ui.input_text("##goto_input", &mut self.goto_buf).build();
 
                     let (go_clicked, cancel_clicked) =
-                        render_action_row(ui, POPUP_INPUT_WIDTH, "Go");
+                        action_row(ui, POPUP_INPUT_WIDTH, "Go");
                     if cancel_clicked {
                         ui.close_current_popup();
                     }
@@ -269,7 +219,7 @@ impl HexViewer {
                     }
 
                     let (find_clicked, cancel_clicked) =
-                        render_action_row(ui, POPUP_INPUT_WIDTH, "Find");
+                        action_row(ui, POPUP_INPUT_WIDTH, "Find");
                     if cancel_clicked {
                         ui.close_current_popup();
                     }
@@ -457,7 +407,7 @@ impl HexViewer {
                     let close_w = 64.0_f32;
                     let close_x = ui.cursor_pos()[0] + (total_w - close_w - 2.0).max(0.0);
                     ui.set_cursor_pos_x(close_x);
-                    if ui.button_with_size("Close", [close_w, ACTION_BTN_HEIGHT])
+                    if ui.button_with_size("Close", [close_w, 0.0])
                         || ui.is_key_pressed(dear_imgui_rs::Key::Escape)
                     {
                         ui.close_current_popup();

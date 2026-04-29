@@ -61,16 +61,26 @@ fn col32(c: [f32; 4]) -> u32 {
 
 // ── Edit State ──────────────────────────────────────────────────────────────
 
-/// Which column is being edited inline. Currently only `Bytes` is
-/// constructed by the UI — the `Mnemonic` variant is reserved for a future
-/// "edit mnemonic / operands" feature whose commit path
-/// ([`DisasmView::commit_edit`]) is already wired up. The
-/// `#[allow(dead_code)]` documents the deliberate placeholder.
+/// Which column is being edited inline. The view supports
+/// double-click-to-edit on three semantic regions:
+///
+/// - [`Self::Bytes`] — patch raw instruction bytes; commit path goes
+///   through [`super::config::DisasmDataProvider::write_bytes`].
+/// - [`Self::Mnemonic`] — re-assemble the instruction from text;
+///   commit path goes through
+///   [`super::config::DisasmDataProvider::assemble`]. Reserved for
+///   a future editor that exposes the mnemonic+operands as a single
+///   editable string. **Not** triggered by the UI yet.
+/// - [`Self::Comment`] — set / clear the per-instruction comment;
+///   commit path goes through
+///   [`super::config::DisasmDataProvider::set_comment`]. Wired in
+///   2026-04-29.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EditColumn {
+pub(super) enum EditColumn {
     Bytes,
     #[allow(dead_code)]
     Mnemonic,
+    Comment,
 }
 
 /// Inline editing state.
@@ -117,9 +127,13 @@ pub struct DisasmView {
     /// Inline edit state.
     edit: Option<EditState>,
     /// Goto address buffer.
-    goto_buf: String,
+    pub(super) goto_buf: String,
     /// Show goto popup.
-    show_goto: bool,
+    pub(super) show_goto: bool,
+    /// One-shot focus flag for the goto popup input. Raised when
+    /// the popup opens; consumed inside the popup body the first
+    /// frame the input renders. Mirrors `hex_viewer`'s pattern.
+    pub(super) goto_focus_pending: bool,
     /// Whether the widget is focused.
     focused: bool,
     /// Cached char advance.
@@ -138,6 +152,14 @@ pub struct DisasmView {
     edit_render_pos: std::cell::Cell<Option<[f32; 2]>>,
     /// Width for the InputText widget.
     edit_render_width: std::cell::Cell<f32>,
+    /// Screen-space centre of the disasm child window — captured per
+    /// frame so modal popups (Goto / future Settings) can anchor at
+    /// the visual middle. Mirrors the pattern used by `hex_viewer`.
+    pub(super) component_center: [f32; 2],
+    /// Screen-space anchor for the right-click context menu — set by
+    /// the right-click handler to the cursor position so the menu
+    /// spawns where the user clicked.
+    pub(super) popup_open_pos: [f32; 2],
 }
 
 impl DisasmView {
@@ -162,6 +184,7 @@ impl DisasmView {
             edit: None,
             goto_buf: String::new(),
             show_goto: false,
+            goto_focus_pending: false,
             focused: false,
             char_advance: 0.0,
             line_height: 0.0,
@@ -171,6 +194,8 @@ impl DisasmView {
             frame_counter: 0,
             edit_render_pos: std::cell::Cell::new(None),
             edit_render_width: std::cell::Cell::new(0.0),
+            component_center: [0.0, 0.0],
+            popup_open_pos: [0.0, 0.0],
         }
     }
 
@@ -322,6 +347,13 @@ impl DisasmView {
                     self.edit = None;
                 }
 
+                // Cache child window centre — used by modal popups
+                // (Goto / Settings) to anchor at the visual middle.
+                // Mirrors `hex_viewer::draw::render`.
+                let wp = ui.window_pos();
+                let ws = ui.window_size();
+                self.component_center = [wp[0] + ws[0] * 0.5, wp[1] + ws[1] * 0.5];
+
                 // Handle scroll-to target.
                 if let Some(idx) = self.scroll_to.take() {
                     let y = idx as f32 * self.line_height;
@@ -404,6 +436,17 @@ impl DisasmView {
                     self.draw_arrows(&draw_list, origin_x, origin_y + header_h, first_row);
                 }
 
+                // ── Vertical column dividers ──────────────────
+                if self.config.show_column_dividers {
+                    let visible_h = ui.window_size()[1];
+                    self.draw_column_dividers(
+                        &draw_list,
+                        origin_x,
+                        origin_y,
+                        origin_y + visible_h,
+                    );
+                }
+
                 // ── Render inline InputText for editing ──────────
                 if let Some(pos) = self.edit_render_pos.take() {
                     let input_w = self.edit_render_width.get();
@@ -417,10 +460,22 @@ impl DisasmView {
                         }
                         edit.frames += 1;
 
-                        let flags = dear_imgui_rs::InputTextFlags::CHARS_HEXADECIMAL
-                            | dear_imgui_rs::InputTextFlags::CHARS_UPPERCASE
-                            | dear_imgui_rs::InputTextFlags::AUTO_SELECT_ALL
+                        // Per-column input flags:
+                        // - Bytes: hex-only + uppercase (raw `AA BB`
+                        //   hex patch).
+                        // - Mnemonic: free text (assembly source —
+                        //   `mov rax, rbx`); no character restriction.
+                        // - Comment: free text — same as mnemonic.
+                        // AUTO_SELECT_ALL + ENTER_RETURNS_TRUE apply
+                        // to all three so the open-then-overwrite
+                        // gesture and Enter-to-commit shortcut behave
+                        // uniformly.
+                        let mut flags = dear_imgui_rs::InputTextFlags::AUTO_SELECT_ALL
                             | dear_imgui_rs::InputTextFlags::ENTER_RETURNS_TRUE;
+                        if edit.column == EditColumn::Bytes {
+                            flags |= dear_imgui_rs::InputTextFlags::CHARS_HEXADECIMAL
+                                | dear_imgui_rs::InputTextFlags::CHARS_UPPERCASE;
+                        }
 
                         let entered = ui
                             .input_text(&self.edit_label, &mut edit.buf)
@@ -1013,5 +1068,79 @@ mod tests {
         assert_eq!(default_cfg.colors.address, dark_palette.address);
         assert_eq!(default_cfg.colors.selection_bg, dark_palette.selection_bg);
         assert_eq!(default_cfg.colors.breakpoint, dark_palette.breakpoint);
+    }
+
+    // ── set_comment / Comment edit round-trip ────────────────────────────
+
+    #[test]
+    fn set_comment_round_trip_via_vec_provider() {
+        // Mutate-then-read: writing a comment via the trait method
+        // must be visible through `Instruction::comment()` on the
+        // very next frame (no buffering / async).
+        let mut p = sample_provider();
+        let addr = p.instruction(2).unwrap().address(); // 0x401004
+        assert_eq!(p.instruction(2).unwrap().comment(), None);
+
+        assert!(p.set_comment(addr, "stack alloca"));
+        assert_eq!(p.instruction(2).unwrap().comment(), Some("stack alloca"));
+    }
+
+    #[test]
+    fn set_comment_clears_on_empty_string() {
+        // Empty / whitespace-only input clears the comment so the
+        // user can wipe a note by opening the editor and pressing
+        // Enter on a blank buffer.
+        let mut p = sample_provider();
+        let addr = p.instruction(3).unwrap().address(); // 0x401008 (call)
+        // Sample provider already attached "some_function" here.
+        assert_eq!(p.instruction(3).unwrap().comment(), Some("some_function"));
+
+        assert!(p.set_comment(addr, ""));
+        assert_eq!(p.instruction(3).unwrap().comment(), None);
+
+        // Whitespace-only must also clear (trim semantics).
+        assert!(p.set_comment(addr, "first"));
+        assert!(p.set_comment(addr, "   \t  "));
+        assert_eq!(p.instruction(3).unwrap().comment(), None);
+    }
+
+    #[test]
+    fn set_comment_trims_surrounding_whitespace() {
+        // Trim guards against accidental trailing whitespace from
+        // clipboard pastes — stored value is canonicalised.
+        let mut p = sample_provider();
+        let addr = p.instruction(0).unwrap().address();
+        assert!(p.set_comment(addr, "   prologue  "));
+        assert_eq!(p.instruction(0).unwrap().comment(), Some("prologue"));
+    }
+
+    #[test]
+    fn set_comment_returns_false_for_unknown_address() {
+        // Unknown address → no-op + false. Caller can then surface
+        // the "address not decoded" diagnostic to the user.
+        let mut p = sample_provider();
+        assert!(!p.set_comment(0xDEAD_BEEF, "ghost"));
+    }
+
+    #[test]
+    fn set_comment_default_trait_impl_is_noop() {
+        // Read-only providers inherit the default `false` impl so
+        // existing implementors remain non-breaking after the trait
+        // gained `set_comment`. Verify the default really is a no-op.
+        struct ReadOnly;
+        impl DisasmDataProvider for ReadOnly {
+            fn instruction_count(&self) -> usize {
+                0
+            }
+            fn instruction(&self, _i: usize) -> Option<&dyn Instruction> {
+                None
+            }
+            fn decode_range(&mut self, _start_addr: u64, _max_count: usize) {}
+            fn index_of_address(&self, _addr: u64) -> Option<usize> {
+                None
+            }
+        }
+        let mut ro = ReadOnly;
+        assert!(!ro.set_comment(0x1000, "anything"));
     }
 }

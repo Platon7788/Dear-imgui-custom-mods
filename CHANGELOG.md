@@ -2,6 +2,92 @@
 
 ## [Unreleased]
 
+### `disasm_view` polish — popup, column dividers, comment editing (2026-04-29, session 028)
+
+Fourth widget in the popup-cohesion arc (`hex_viewer` → `nav_panel`
+→ `disasm_view`). Brings the disassembly view's right-click menu
+and Goto popup up to the same theming bar, adds the missing
+column-divider chrome, and lights up an editable Comment column
+via double-click — without disturbing the existing Bytes-edit
+gesture.
+
+**`utils::popup` (graduation)**
+
+- `compact_popup_body(ui, body)` and `action_row(ui, body_w, primary_label)`
+  graduated from `hex_viewer/popup.rs` and re-exported from
+  `crate::utils::popup`. `hex_viewer` now consumes them; `disasm_view`
+  picks them up immediately. Both helpers preserve the previous
+  spacing constants (`ItemSpacing 6×4`, `FramePadding 6×3`,
+  `ItemInnerSpacing 4×4`, action-button width 58, edge gap 2 px) so
+  no visual regression in the existing dialogs.
+- `crate::utils::popup` re-exports updated:
+  `action_row`, `button_with_color`, `compact_popup_body`,
+  `danger_button`, `selected_button`, `success_button`,
+  `themed_popup_style`.
+
+**`disasm_view` popup**
+
+- Right-click context menu rebuilt as a themed popup (was raw
+  `ui.selectable()` rows). Items now carry atlas-safe glyph icons:
+  `»` Copy Address, `»` Copy N Instructions / Instruction · `Ctrl+C`,
+  `→` Follow Branch · `Enter`, `●` Toggle Breakpoint · `F9`,
+  `»` Goto Address... · `G`. The Copy item adapts its label to the
+  selection size (`Copy 4 Instructions` vs `Copy Instruction`).
+  Follow Branch greys out (`Alpha 0.40`) when the row has no branch
+  target so the "nothing to follow" state is visible.
+- Goto popup (`G`) now uses `themed_popup_style` + `compact_popup_body`
+  + `action_row(.., "Go")` — visually identical to `hex_viewer`'s
+  Goto dialog. Centred via `igSetNextWindowPos(.., Cond_Always, [0.5, 0.5])`
+  on `component_center` so the popup always lands at the viewer's
+  visual middle, no matter where the user pressed `G`.
+- Right-click menu spawns at the click position via the same FFI
+  with pivot `(0, 0)`. Both modal and context popups gate
+  `OpenPopup` on a one-shot flag while keeping `BeginPopup` outside
+  the conditional (the `hex_viewer` lesson — flashing-popup bug).
+
+**`disasm_view` chrome**
+
+- Vertical column dividers between Address / Bytes / Instruction /
+  Comment, drawn in `colors.separator` at alpha `0.40` (matches the
+  `hex_viewer` divider language). New `draw_column_dividers()`
+  method runs in the foreground draw list after the arrows pass.
+  Toggleable via the new `DisasmViewConfig::show_column_dividers`
+  field (default `true`).
+- Comment column shifted right by `+5 px` (`COMMENT_LEFT_PAD = 5.0`)
+  for breathing room between the operands' last token and the
+  comment text. Applied to both the header caption and per-row text.
+
+**Comment editing (double-click)**
+
+- `EditColumn` enum extended with a `Comment` variant alongside
+  `Bytes` and the existing `Mnemonic`. Per-column hit-testing via
+  the new `mouse_to_cell(ui, provider) -> Option<(usize, EditColumn)>`
+  helper that walks the same X-layout as `draw_instruction_row`,
+  so the address gutter / arrow lane / breakpoint margin all return
+  `None` (those have non-edit affordances).
+- `DisasmDataProvider::set_comment(addr, text) -> bool` — new trait
+  method with a `false` default impl so existing implementors stay
+  non-breaking. `VecDisasmProvider` implements it with trim-on-write
+  and clear-on-empty semantics (whitespace-only `text` clears the
+  comment). Returns `false` when the address isn't decoded.
+- Double-click on a row routes through `mouse_to_cell` and pre-fills
+  the edit buffer per column: bytes → space-separated hex pairs,
+  mnemonic → `mnemonic operands`, comment → existing comment text
+  (or empty). `commit_edit` dispatches to `write_bytes` / `assemble`
+  / `set_comment` based on `EditColumn`.
+- `InputTextFlags` now per-column: `Bytes` gets
+  `CHARS_HEXADECIMAL | CHARS_UPPERCASE`; `Mnemonic` and `Comment`
+  get free text. `AUTO_SELECT_ALL | ENTER_RETURNS_TRUE` apply
+  to all three.
+- 5 new unit tests:
+  `set_comment_round_trip_via_vec_provider`,
+  `set_comment_clears_on_empty_string`,
+  `set_comment_trims_surrounding_whitespace`,
+  `set_comment_returns_false_for_unknown_address`,
+  `set_comment_default_trait_impl_is_noop`.
+  (Hit-test math in `mouse_to_cell` requires an active ImGui frame
+  — exercised via `examples/demo_disasm_view`, not unit-testable.)
+
 ### Polish session — chrome / nav / hex_viewer overhaul (2026-04-29, session 027)
 
 A long late-evening polish pass touching the four widgets the user

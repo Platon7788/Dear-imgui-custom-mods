@@ -7,6 +7,12 @@ use super::tokens::{OperandTokenizer, TokenKind};
 use super::{DisasmView, EditColumn, col32};
 use crate::utils::hex::byte_hex;
 
+/// Pixel offset added to the X position of the comment column so
+/// it doesn't sit flush against the operands column. User
+/// requested ~5 px on 2026-04-29 — gives the comment text breathing
+/// room without widening the comment column itself.
+const COMMENT_LEFT_PAD: f32 = 5.0;
+
 impl DisasmView {
     pub(super) fn draw_header(
         &self,
@@ -37,7 +43,7 @@ impl DisasmView {
         x += cols.mnemonic + cols.operands;
 
         if self.config.show_comments {
-            draw_list.add_text([x, y], hdr_col, "Comment");
+            draw_list.add_text([x + COMMENT_LEFT_PAD, y], hdr_col, "Comment");
         }
     }
 
@@ -237,11 +243,48 @@ impl DisasmView {
         x += cols.operands;
 
         // ── Comment ───────────────────────────────────────────
-        if cfg.show_comments
-            && let Some(comment) = instr.comment()
-        {
-            let comment_str = format!("; {}", comment);
-            draw_list.add_text([x, y], col32(colors.comment), &comment_str);
+        if cfg.show_comments {
+            let is_editing_comment = self
+                .edit
+                .as_ref()
+                .map(|e| e.idx == idx && e.column == EditColumn::Comment)
+                .unwrap_or(false);
+
+            if is_editing_comment {
+                // Hand the inline-input slot off to render() —
+                // same pattern as the Bytes edit path. Use the
+                // comment column width so the input field has
+                // generous room for free-form text.
+                let edit_x = x + COMMENT_LEFT_PAD;
+                self.edit_render_pos.set(Some([edit_x, y]));
+                self.edit_render_width.set(cols.comment.max(120.0));
+
+                // Highlight the comment cell in the same warm
+                // accent the bytes-edit path uses, so the user
+                // sees instantly which cell is being edited.
+                draw_list
+                    .add_rect(
+                        [edit_x - 2.0, y],
+                        [edit_x + cols.comment, y + lh],
+                        col32([0.20, 0.15, 0.08, 0.95]),
+                    )
+                    .filled(true)
+                    .build();
+                draw_list
+                    .add_rect(
+                        [edit_x - 2.0, y],
+                        [edit_x + cols.comment, y + lh],
+                        col32([1.0, 0.7, 0.3, 0.80]),
+                    )
+                    .build();
+            } else if let Some(comment) = instr.comment() {
+                let comment_str = format!("; {}", comment);
+                draw_list.add_text(
+                    [x + COMMENT_LEFT_PAD, y],
+                    col32(colors.comment),
+                    &comment_str,
+                );
+            }
         }
 
         // ── Tooltip on hover (comprehensive) ─────────────────
@@ -393,6 +436,61 @@ impl DisasmView {
                 )
                 .filled(true)
                 .build();
+        }
+    }
+
+    /// Draw thin vertical dividers between the address / bytes /
+    /// instruction / comment columns. Same `colors.separator` with
+    /// alpha 0.40 treatment as `hex_viewer`'s column dividers — the
+    /// lines read as a gentle visual cue, not heavy borders.
+    ///
+    /// Skipped for the leftmost (margin / arrows) gutters because
+    /// those areas already have their own visual identity (numbered
+    /// breakpoint cells, branch arrows). The first divider sits
+    /// between the address column and the bytes column.
+    pub(super) fn draw_column_dividers(
+        &self,
+        draw_list: &dear_imgui_rs::DrawListMut<'_>,
+        origin_x: f32,
+        div_top: f32,
+        div_bot: f32,
+    ) {
+        let cols = &self.config.columns;
+        let c = self.config.colors.separator;
+        let div_col = col32([c[0], c[1], c[2], c[3] * 0.40]);
+
+        let mut x = origin_x;
+        if self.config.show_breakpoints {
+            x += cols.margin;
+        }
+        if self.config.show_arrows {
+            x += cols.arrows;
+        }
+        x += cols.address;
+
+        let emit = |dx: f32| {
+            draw_list
+                .add_line([dx, div_top], [dx, div_bot], div_col)
+                .thickness(1.0)
+                .build();
+        };
+
+        // Divider 1 — between address and bytes (only when bytes
+        // column is visible; otherwise the next visible column starts
+        // right after address).
+        if self.config.show_bytes {
+            emit(x);
+            x += cols.bytes;
+        }
+
+        // Divider 2 — between bytes and instruction (mnemonic).
+        emit(x);
+        x += cols.mnemonic + cols.operands;
+
+        // Divider 3 — between instruction and comment, only when
+        // comment column is visible.
+        if self.config.show_comments {
+            emit(x);
         }
     }
 }

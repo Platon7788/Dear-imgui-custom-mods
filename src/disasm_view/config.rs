@@ -99,6 +99,18 @@ pub trait DisasmDataProvider {
         None
     }
 
+    /// Set the per-instruction comment at `addr`. Empty `text`
+    /// should clear the comment. Returns `true` on success, `false`
+    /// on failure (address not decoded yet, read-only provider,
+    /// etc.). Default impl is a no-op returning `false` so existing
+    /// providers stay non-breaking — implement when you want
+    /// double-click-to-edit on the Comment column to round-trip
+    /// through your data layer (see [`VecDisasmProvider::set_comment`]
+    /// for the canonical impl).
+    fn set_comment(&mut self, _addr: u64, _text: &str) -> bool {
+        false
+    }
+
     /// Called every frame when auto-refresh is enabled.
     fn refresh(&mut self) {}
 }
@@ -278,6 +290,26 @@ impl DisasmDataProvider for VecDisasmProvider {
         }
         false
     }
+
+    fn set_comment(&mut self, addr: u64, text: &str) -> bool {
+        // Find by address — `Vec` scan is fine for typical-size
+        // disassemblies (a few thousand instructions). For
+        // GB-scale buffers the user should provide their own
+        // address-indexed provider.
+        if let Some(instr) = self.instructions.iter_mut().find(|i| i.address == addr) {
+            // Empty input clears the comment; non-empty stores
+            // a trimmed copy. Trimming guards against accidental
+            // trailing whitespace from clipboard pastes.
+            let trimmed = text.trim();
+            instr.comment = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+            return true;
+        }
+        false
+    }
 }
 
 // ── Branch Arrow ────────────────────────────────────────────────────────────
@@ -430,6 +462,12 @@ pub struct DisasmViewConfig {
     pub show_block_tints: bool,
     /// Show column header.
     pub show_header: bool,
+    /// Show thin vertical dividers between the address / bytes /
+    /// instruction / comment columns. Default: `true`. Mirrors
+    /// `HexViewerConfig::show_column_dividers` — uses
+    /// `colors.separator` with alpha 0.40 so the lines read as a
+    /// gentle visual cue, not heavy borders.
+    pub show_column_dividers: bool,
     /// Address format: true for uppercase hex.
     pub uppercase: bool,
     /// Address width: 32-bit (8 chars) or 64-bit (16 chars).
@@ -460,6 +498,7 @@ impl Default for DisasmViewConfig {
             show_breakpoints: true,
             show_block_tints: true,
             show_header: true,
+            show_column_dividers: true,
             uppercase: true,
             address_width_64: true,
 
