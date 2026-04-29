@@ -351,8 +351,12 @@ impl HexViewer {
     /// Always records the previous position in the back/forward history
     /// (so `goto` followed by Alt+Left returns to the prior spot) and
     /// clears any active selection — that matches user expectations for
-    /// a "go here" command.
+    /// a "go here" command. Also commits any half-typed hex nibble on
+    /// the previous byte and exits edit mode — `goto` is a deliberate
+    /// "leave this byte" gesture, just like a single click on another
+    /// byte.
     pub fn set_cursor(&mut self, offset: usize) {
+        self.commit_pending_edit();
         let old = self.cursor;
         let new = offset.min(self.data.len().saturating_sub(1));
         if new != old {
@@ -360,6 +364,7 @@ impl HexViewer {
         }
         self.cursor = new;
         self.selection = Selection::default();
+        self.stop_editing();
         let bpr = self.config.bytes_per_row.value();
         self.scroll_to_row = Some(self.cursor / bpr);
     }
@@ -484,6 +489,41 @@ impl HexViewer {
             clipboard::restore_keyboard_layout();
             self.layout_switched = false;
         }
+    }
+
+    /// Apply a half-typed hex nibble before the user navigates away.
+    ///
+    /// In hex-edit mode each byte takes two keystrokes (high nibble +
+    /// low nibble). If only the high nibble was typed, navigating to
+    /// another byte historically silently dropped it. This commit-on-
+    /// leave variant replaces the **upper** nibble of the current byte
+    /// and keeps the lower nibble intact — matches HxD/010-style hex
+    /// editors and gives the user a way to write a single nibble.
+    ///
+    /// Pushes a single-byte undo entry only when the new value really
+    /// differs from the old (avoids polluting undo history with no-op
+    /// "type X then leave with same X" sequences).
+    ///
+    /// To **discard** instead of committing, call `stop_editing` —
+    /// it zeroes `edit_nibble` first.
+    fn commit_pending_edit(&mut self) {
+        let Some(hi) = self.edit_nibble.take() else {
+            return;
+        };
+        if self.cursor >= self.data.len() {
+            return;
+        }
+        let old_byte = self.data[self.cursor];
+        let new_byte = (hi << 4) | (old_byte & 0x0F);
+        if new_byte == old_byte {
+            return;
+        }
+        self.undo.push(UndoEntry {
+            offset: self.cursor as u64,
+            old_bytes: vec![old_byte],
+            new_bytes: vec![new_byte],
+        });
+        self.data[self.cursor] = new_byte;
     }
 
     // ── Rendering ────────────────────────────────────────────────────
@@ -906,7 +946,14 @@ impl HexViewer {
     /// empty, anchors `selection.start` at the *previous* cursor
     /// position so the byte under the old cursor is included in the
     /// growing range. When `shift` is false, the selection is cleared.
+    ///
+    /// Commits any half-typed hex nibble on the *old* byte before
+    /// moving — keyboard navigation should never silently drop user
+    /// input. The edit-mode itself is preserved (caller is moving
+    /// inside the same edit session); to leave edit mode, callers
+    /// also invoke `stop_editing`.
     fn move_cursor_with_selection(&mut self, new_cursor: usize, shift: bool) {
+        self.commit_pending_edit();
         let old = self.cursor;
         self.cursor = new_cursor.min(self.data.len().saturating_sub(1));
         if shift {
@@ -1148,9 +1195,13 @@ impl HexViewer {
         let ctrl = ui.io().key_ctrl();
         let shift = ui.io().key_shift();
 
-        // Click to set cursor — detect which column was clicked.
+        // Single click — moves the cursor / extends selection. **Does
+        // not** enter edit mode (would be too easy to nudge a byte by
+        // accident); double-click below is the explicit edit gesture.
+        // Any half-typed nibble on the previous byte is committed first,
+        // then edit mode is exited if we land on a different byte.
         if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left)
-            && let Some((offset, column)) = self.mouse_to_offset(ui)
+            && let Some((offset, _)) = self.mouse_to_offset(ui)
         {
             if shift {
                 // Shift+Click: extend selection.
@@ -1158,16 +1209,13 @@ impl HexViewer {
             } else if ctrl {
                 // Ctrl+Click: toggle byte in selection (simple multi-select).
                 if self.selection.contains(offset) {
-                    // Deselect (simplistic — just clear).
                     self.selection = Selection::default();
                 } else if self.selection.is_empty() {
-                    // If no selection, start one.
                     self.selection = Selection {
                         start: offset,
                         end: offset + 1,
                     };
                 } else {
-                    // Extend to include this byte.
                     let (lo, hi) = self.selection.ordered();
                     let new_lo = lo.min(offset);
                     let new_hi = hi.max(offset + 1);
@@ -1178,23 +1226,41 @@ impl HexViewer {
                 }
                 self.cursor = offset;
             } else {
+                let was_editing = self.edit_column.is_some();
+                let target_changed = self.cursor != offset;
+                // Always flush the pending nibble so a deliberate "type
+                // F then click somewhere else" persists the F as the
+                // upper nibble. If the user wanted to discard, Esc is
+                // the documented gesture.
+                self.commit_pending_edit();
                 self.cursor = offset;
                 self.selection = Selection {
                     start: offset,
                     end: offset,
                 };
-
-                // Start editing if editable.
-                if self.config.editable {
-                    self.start_editing(column);
-                } else {
+                // Single click on a different byte exits edit mode (the
+                // user "moved away"). Single click on the same byte
+                // does nothing extra — re-enter is via double-click.
+                if was_editing && target_changed {
                     self.stop_editing();
                 }
             }
         }
 
-        // Drag to select.
-        if ui.is_mouse_dragging(dear_imgui_rs::MouseButton::Left)
+        // Double-click — explicit "edit this byte" gesture. Only
+        // meaningful when `editable` is set; otherwise it's a no-op.
+        if self.config.editable
+            && ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
+            && let Some((_, column)) = self.mouse_to_offset(ui)
+        {
+            self.start_editing(column);
+        }
+
+        // Drag to select. Suppressed while editing — drag inside an
+        // active edit cell would otherwise hijack the gesture and
+        // start a selection the user did not ask for.
+        if self.edit_column.is_none()
+            && ui.is_mouse_dragging(dear_imgui_rs::MouseButton::Left)
             && let Some((offset, _)) = self.mouse_to_offset(ui)
         {
             self.selection.end = offset + 1;
@@ -1826,6 +1892,50 @@ mod tests {
         // Releasing shift collapses selection.
         v.move_cursor_with_selection(14, false);
         assert!(v.selection.is_empty());
+    }
+
+    #[test]
+    fn test_commit_pending_edit_replaces_upper_nibble() {
+        // Half-typed nibble must commit as upper-nibble replacement
+        // (lower nibble of the original byte preserved). Mirrors HxD
+        // behavior — gives the user a way to write a single nibble.
+        let mut v = HexViewer::new("test");
+        v.set_data(&[0xAB, 0xCD]);
+        v.cursor = 0;
+        v.edit_column = Some(EditColumn::Hex);
+        v.edit_nibble = Some(0xF);
+        v.commit_pending_edit();
+        assert_eq!(v.data[0], 0xFB, "upper nibble replaced, lower kept");
+        assert_eq!(v.edit_nibble, None, "nibble consumed");
+        assert!(v.undo_stack().can_undo(), "undo entry pushed");
+    }
+
+    #[test]
+    fn test_commit_pending_edit_no_op_when_unchanged() {
+        // Typing the same nibble that's already there must not
+        // pollute undo history with a no-op entry.
+        let mut v = HexViewer::new("test");
+        v.set_data(&[0xAB]);
+        v.cursor = 0;
+        v.edit_nibble = Some(0xA); // upper already 0xA
+        v.commit_pending_edit();
+        assert_eq!(v.data[0], 0xAB);
+        assert!(!v.undo_stack().can_undo(), "no undo for no-op");
+    }
+
+    #[test]
+    fn test_move_commits_pending_nibble() {
+        // Arrow keys / page nav route through move_cursor_with_selection,
+        // which must flush any half-typed nibble before moving.
+        let mut v = HexViewer::new("test");
+        v.set_data(&[0xAB, 0xCD]);
+        v.cursor = 0;
+        v.edit_column = Some(EditColumn::Hex);
+        v.edit_nibble = Some(0x9);
+        v.move_cursor_with_selection(1, false);
+        assert_eq!(v.cursor, 1);
+        assert_eq!(v.data[0], 0x9B, "nibble flushed before move");
+        assert_eq!(v.edit_nibble, None);
     }
 
     #[test]

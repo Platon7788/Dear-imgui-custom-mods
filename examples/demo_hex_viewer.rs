@@ -441,6 +441,7 @@ impl DemoState {
         ui.text_disabled("Ctrl+Z: Undo   Ctrl+Y: Redo");
         ui.text_disabled("Alt+</>: Nav back/forward");
         ui.text_disabled("Arrows: Navigate  Shift: Select");
+        ui.text_disabled("Double-click: Edit byte  Esc: Cancel");
         ui.text_disabled("Search supports ?? wildcards");
     }
 }
