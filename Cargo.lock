@@ -536,8 +536,8 @@ dependencies = [
  "dear-imgui-winit",
  "foldhash 0.2.0",
  "pollster",
+ "proc_enum",
  "proptest",
- "rsc-runtime",
  "serde",
  "slotmap",
  "wgpu",
@@ -1724,6 +1724,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "proc_enum"
+version = "0.1.0"
+dependencies = [
+ "foldhash 0.2.0",
+ "rsc-runtime",
+ "serde",
 ]
 
 [[package]]

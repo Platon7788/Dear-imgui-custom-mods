@@ -13,9 +13,8 @@
 //! so indices remain stable).
 
 use crate::proc_mon::config::MonitorConfig;
-use crate::proc_mon::types::{
-    ColumnConfig, MonitorColors, MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo,
-};
+use crate::proc_mon::types::{ColumnConfig, MonitorColors, MonitorEvent};
+use proc_enum::{ProcStatus, ProcessDelta, ProcessInfo};
 use crate::virtual_table::{
     CellAlignment, CellValue, ColumnDef, RowDensity, RowStyle, SelectionMode, TableConfig,
     VirtualTable, VirtualTableRow,

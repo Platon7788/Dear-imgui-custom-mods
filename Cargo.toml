@@ -90,9 +90,11 @@ timeline = []
 # color groups, BFS depth filter, and SVG/DOT/Mermaid export (Phase D).
 # Re-uses nav_panel palette for the sidebar. Requires slotmap for stable NodeId/EdgeId.
 force_graph = ["nav_panel", "dep:slotmap"]
-# Process monitor with NT syscall enumeration (Windows-only).
-# Uses virtual_table for display. Requires rsc-runtime (SysCalls) crate.
-proc_mon = ["virtual_table", "dep:rsc-runtime", "dep:serde"]
+# Process monitor widget — UI layer over `proc_enum` (`useful-lib`).
+# The headless enumeration core (NT syscalls, ProcessInfo, ProcessDelta)
+# lives in `useful-lib/proc_enum`; this feature only wires the
+# VirtualTable widget on top.
+proc_mon = ["virtual_table", "dep:proc_enum", "dep:serde"]
 
 [dependencies]
 slotmap = { version = "1.0", optional = true }
@@ -105,13 +107,16 @@ pollster = "0.4.0"
 wgpu = "29.0.1"
 winit = "0.30.13"
 
-# ─── Optional: rsc-runtime (Windows-only) ───────────────────────────────────
-# Direct NT syscall library for process monitoring.
-# SysCalls (RSC): modern #![no_std] stubs, PDB-grounded canonical DB,
-# JUMPER random-slide dispatch. Path dep to sibling workspace for now;
-# switch to git dep (github.com/Platon7788/SysCalls) when publishing.
+# ─── Optional: proc_enum (Windows-only headless enumeration) ────────────────
+# Pulled in by the `proc_mon` feature. Holds `ProcessEnumerator`,
+# `ProcessInfo`, `ProcessDelta`, `ProcStatus`, and `Error` — the widget
+# in `proc_mon/ui.rs` re-exports them so existing call-sites
+# (`dear_imgui_custom_mod::proc_mon::ProcessInfo` etc.) keep working.
+# Path dep to sibling workspace for now; flip to a git/registry dep when
+# `useful-lib` publishes.
+proc_enum = { path = "../useful-lib/proc_enum", optional = true }
+
 [target.'cfg(windows)'.dependencies]
-rsc-runtime = { path = "../SysCalls/crates/rsc-runtime", optional = true }
 windows-sys = { version = "0.61.2", features = [
     "Win32_Storage_FileSystem",
     "Win32_Graphics_Dwm",

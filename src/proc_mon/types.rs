@@ -1,115 +1,14 @@
-//! Process monitoring types — shared between core and UI.
+//! Widget-side configuration types for the process monitor.
 //!
-//! Minimal 5-field [`ProcessInfo`] matching the `IMGUI_NXT` reference
-//! engine: `pid`, `name`, `bits`, `status`, `create_time`. Serializable
-//! with `serde`; no external dependencies beyond that.
-//!
-//! `name` is an [`Arc<str>`] so the enumerator can hand the same heap
-//! allocation to every snapshot of a given PID — only the first sighting
-//! pays the UTF-16 → UTF-8 decode + alloc; every subsequent tick is just
-//! an `Arc::clone` (single atomic refcount bump).
+//! Pure-data structs that describe how the [`ProcessMonitor`](super::ui::ProcessMonitor)
+//! widget should display the rows. The data primitives the widget
+//! CONSUMES ([`ProcessInfo`](proc_enum::ProcessInfo),
+//! [`ProcessDelta`](proc_enum::ProcessDelta),
+//! [`ProcStatus`](proc_enum::ProcStatus)) live in the headless `proc_enum`
+//! crate and are re-exported by [`super`] for backward compatibility.
 
-use std::sync::Arc;
-
+use proc_enum::{ProcStatus, ProcessInfo};
 use serde::{Deserialize, Serialize};
-
-// ─── Process status ───────────────────────────────────────────────────────────
-
-/// Process running state.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum ProcStatus {
-    /// Process is running normally.
-    #[default]
-    Running,
-    /// All threads are suspended.
-    Suspended,
-}
-
-impl ProcStatus {
-    /// Returns a static label for the status.
-    pub const fn label(&self) -> &'static str {
-        match self {
-            Self::Running => "Running",
-            Self::Suspended => "Suspended",
-        }
-    }
-}
-
-// ─── Process information ───────────────────────────────────────────────────────
-
-/// Snapshot of a single OS process — minimal 5-field version matching the
-/// `IMGUI_NXT` reference engine. Anything beyond these five fields pays
-/// memory and syscall-result-parsing cost for nothing when all the UI
-/// wants is a classic "process list" dialog.
-///
-/// Times are in 100-nanosecond units (NT FILETIME).
-///
-/// `name` is `Arc<str>` so cloning a `ProcessInfo` is just a refcount
-/// bump (no UTF-16 decode, no heap copy). The enumerator caches one
-/// `Arc<str>` per PID and clones it for every emitted snapshot.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProcessInfo {
-    /// Process ID.
-    pub pid: u32,
-    /// Process name (image name without path). Backed by `Arc<str>` —
-    /// see the type-level docs for the per-PID caching contract.
-    #[serde(with = "arc_str_serde")]
-    pub name: Arc<str>,
-    /// Process bitness: 32 or 64.
-    pub bits: u8,
-    /// Running or suspended.
-    pub status: ProcStatus,
-    /// Process creation time (NT FILETIME: 100-ns ticks since 1601-01-01).
-    /// Used as a stable sort key — newest first — so rows keep their
-    /// position across PID reuse.
-    pub create_time: i64,
-}
-
-impl Default for ProcessInfo {
-    fn default() -> Self {
-        Self {
-            pid: 0,
-            name: Arc::from(""),
-            bits: 64,
-            status: ProcStatus::Running,
-            create_time: 0,
-        }
-    }
-}
-
-/// `Arc<str>` ↔ JSON string — `serde` cannot derive this automatically.
-/// Serialise as the plain string content; deserialise back through
-/// `String → Arc::from` so cross-process round-trips behave identically
-/// to the in-process variant.
-mod arc_str_serde {
-    use std::sync::Arc;
-
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub(super) fn serialize<S: Serializer>(s: &Arc<str>, ser: S) -> Result<S::Ok, S::Error> {
-        ser.serialize_str(s)
-    }
-
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Arc<str>, D::Error> {
-        let s = String::deserialize(de)?;
-        Ok(Arc::from(s))
-    }
-}
-
-// ─── Delta update ──────────────────────────────────────────────────────────────
-
-/// Incremental update for the process list.
-///
-/// Designed for efficient UI updates: only changed/new/removed processes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ProcessDelta {
-    /// New or changed processes (upsert).
-    pub upsert: Vec<ProcessInfo>,
-    /// PIDs that have exited (remove).
-    pub removed: Vec<u32>,
-    /// Total process count in the system.
-    pub total: usize,
-}
 
 // ─── Column configuration ─────────────────────────────────────────────────────
 
@@ -336,31 +235,6 @@ mod tests {
             status: false,
         };
         assert_eq!(bits_only.visible_count(), 3);
-    }
-
-    #[test]
-    fn name_clones_share_allocation() {
-        // Cloning a `ProcessInfo` is a refcount bump — the heap buffer
-        // backing `name` must be shared between the two clones.
-        let info = ProcessInfo {
-            pid: 42,
-            name: Arc::from("notepad.exe"),
-            ..ProcessInfo::default()
-        };
-        let cloned = info.clone();
-        assert!(
-            Arc::ptr_eq(&info.name, &cloned.name),
-            "ProcessInfo::clone must share the `Arc<str>` allocation",
-        );
-    }
-
-    #[test]
-    fn name_from_string_literal_works() {
-        // `Arc::from(&str)` and `.into()` should both produce equal values.
-        let a: Arc<str> = Arc::from("explorer.exe");
-        let b: Arc<str> = "explorer.exe".into();
-        assert_eq!(&*a, "explorer.exe");
-        assert_eq!(&*a, &*b);
     }
 
     #[test]

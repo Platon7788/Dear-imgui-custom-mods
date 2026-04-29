@@ -1,37 +1,46 @@
-//! # Process Monitor Module
+//! # Process Monitor Widget
 //!
-//! Production-ready process monitoring component with NT syscall enumeration
-//! and Dear ImGui virtualized table display.
-//!
-//! ## Features
-//!
-//! - **Zero-allocation enumeration**: Reusable syscall buffer, cached bitness
-//! - **Delta updates**: Only new/changed/removed processes
-//! - **Full metrics**: Memory, threads, handles, I/O
-//! - **Suspended detection**: Thread state analysis
-//! - **Virtualized rendering**: Handles 10,000+ processes at 60 FPS
-//! - **Search filter**: Zero-allocation case-insensitive search
-//! - **Fixed sort**: By create_time (newest first)
+//! Dear-ImGui virtualized table with NT-syscall-driven enumeration.
 //!
 //! ## Architecture
 //!
+//! Split into two layers since v0.10:
+//!
 //! ```text
-//! proc_mon/
-//! ├── mod.rs        # Public API re-exports
-//! ├── types.rs      # ProcessInfo, ProcStatus, ProcessDelta, ColumnConfig
-//! ├── core.rs       # Syscall enumerator
-//! ├── config.rs     # MonitorConfig
-//! └── ui.rs         # VirtualTable monitor window
+//! useful-lib/proc_enum         (this crate's `proc_enum` dep)
+//! ├── ProcessEnumerator        — NT syscall driver
+//! ├── ProcessInfo              — minimal 5-field per-process snapshot
+//! ├── ProcessDelta             — incremental upsert/remove update
+//! ├── ProcStatus               — Running / Suspended
+//! └── Error                    — SyscallFailed / BufferTooLarge / NotSupported
+//!
+//! dear_imgui_custom_mod::proc_mon  (this module)
+//! ├── ProcessMonitor           — VirtualTable widget
+//! ├── ProcessRow               — VirtualTable row adapter
+//! ├── MonitorEvent             — RowSelected / DoubleClicked / ContextMenuRequested
+//! ├── ColumnConfig             — which columns to show
+//! ├── MonitorColors            — row-highlight palette
+//! └── MonitorConfig            — bundle of the above + interval / window title
 //! ```
+//!
+//! Headless consumers (CLI tools, daemons, alternative-UI back-ends) depend
+//! directly on `proc_enum`. The widget consumes the same data primitives,
+//! so swapping render layers stays a one-crate change.
+//!
+//! ## Re-exports
+//!
+//! For backward compatibility every public path that worked in v0.9 still
+//! works in v0.10+: the headless types are re-exported from
+//! `proc_enum`, so call-sites such as
+//! `dear_imgui_custom_mod::proc_mon::ProcessInfo` continue to resolve.
 //!
 //! ## Usage
 //!
 //! ```rust,ignore
 //! use dear_imgui_custom_mod::proc_mon::{
-//!     ProcessEnumerator, ProcessMonitor, MonitorConfig,
+//!     MonitorConfig, ProcessEnumerator, ProcessMonitor,
 //! };
 //!
-//! // Create enumerator and UI monitor
 //! let mut enumerator = ProcessEnumerator::new();
 //! let mut monitor = ProcessMonitor::new(MonitorConfig::default());
 //!
@@ -43,7 +52,6 @@
 //! if let Some(event) = monitor.render(&ui, &mut show_monitor) {
 //!     match event {
 //!         MonitorEvent::ContextMenuRequested(pid) => {
-//!             // Render your own context menu
 //!             ui.popup("##ctx", || {
 //!                 if ui.button("Kill") { /* ... */ }
 //!             });
@@ -52,32 +60,25 @@
 //!     }
 //! }
 //! ```
-//!
-//! ## Column Configuration
-//!
-//! ```rust,ignore
-//! let config = MonitorConfig {
-//!     columns: ColumnConfig {
-//!         memory: true,
-//!         threads: true,
-//!         handles: true,
-//!         ..ColumnConfig::default()
-//!     },
-//!     ..Default::default()
-//! };
-//! ```
 
 #![allow(missing_docs)]
 #![cfg(windows)] // Process monitoring is Windows-only
 
 pub mod config;
-pub mod core;
 pub mod types;
 pub mod ui;
 
-// ─── Re-exports ──────────────────────────────────────────────────────────────
+// ─── Re-exports — headless data layer ────────────────────────────────────────
+//
+// These come from `useful-lib/proc_enum`. Re-exporting them from this
+// module is a backward-compat layer: pre-extraction consumers wrote
+// `dear_imgui_custom_mod::proc_mon::ProcessInfo` and we don't want to break
+// their imports just because the type's home crate moved.
+
+pub use proc_enum::{Error, ProcStatus, ProcessDelta, ProcessEnumerator, ProcessInfo};
+
+// ─── Re-exports — widget layer ───────────────────────────────────────────────
 
 pub use config::MonitorConfig;
-pub use core::{Error, ProcessEnumerator};
-pub use types::{ColumnConfig, MonitorColors, MonitorEvent, ProcStatus, ProcessDelta, ProcessInfo};
+pub use types::{ColumnConfig, MonitorColors, MonitorEvent};
 pub use ui::{ProcessMonitor, ProcessRow};
