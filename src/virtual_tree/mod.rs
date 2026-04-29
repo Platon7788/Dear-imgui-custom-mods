@@ -52,7 +52,7 @@ pub use crate::virtual_table::column::{CellAlignment, CellEditor, ColumnDef, Col
 pub use crate::virtual_table::config::{EditTrigger, RowDensity, SelectionMode};
 pub use crate::virtual_table::row::{CellStyle, CellValue, RowStyle};
 
-use crate::utils::clipboard::{c_key_down_physical, set_clipboard};
+use crate::utils::clipboard::set_clipboard;
 use crate::utils::text::calc_text_size;
 use crate::virtual_table::column::{EditorKind, alignment_pad, editor_kind};
 use dear_imgui_rs::{
@@ -189,9 +189,6 @@ pub struct VirtualTree<T: VirtualTreeNode> {
     /// Set to `Some(text)` when **Ctrl+C** copies selected nodes this frame.
     /// Requires [`TreeConfig::table::copy_to_clipboard`] = `true`. Reset each frame.
     pub copied_text: Option<String>,
-
-    /// Tracks physical C key state for layout-independent Ctrl+C edge detection.
-    c_key_prev: bool,
 }
 
 impl<T: VirtualTreeNode> VirtualTree<T> {
@@ -224,7 +221,6 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             scroll_to_node: None,
             last_reparent: None,
             copied_text: None,
-            c_key_prev: false,
         }
     }
 
@@ -764,23 +760,20 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // Keyboard navigation
         self.handle_keyboard(ui);
 
-        // Ctrl+C — copy selected nodes to clipboard
+        // Ctrl+C — copy selected nodes. Layout-independence is provided
+        // by `crate::input::keyboard::try_inject_ctrl_alt_shortcut` at
+        // the host level, so plain ImGui `is_key_pressed(Key::C)` is
+        // enough — no per-widget physical-key probe needed.
         self.copied_text = None;
-        if self.config.table.copy_to_clipboard && !self.selected_nodes.is_empty() {
-            let c_now = c_key_down_physical();
-            let c_just = c_now && !self.c_key_prev;
-            self.c_key_prev = c_now;
-
-            if ui.is_window_hovered()
-                && ui.io().key_ctrl()
-                && (c_just || (!c_now && ui.is_key_pressed(Key::C)))
-            {
-                let text = self.build_copy_text();
-                set_clipboard(&text);
-                self.copied_text = Some(text);
-            }
-        } else {
-            self.c_key_prev = c_key_down_physical();
+        if self.config.table.copy_to_clipboard
+            && !self.selected_nodes.is_empty()
+            && ui.is_window_hovered()
+            && ui.io().key_ctrl()
+            && ui.is_key_pressed(Key::C)
+        {
+            let text = self.build_copy_text();
+            set_clipboard(&text);
+            self.copied_text = Some(text);
         }
     }
 

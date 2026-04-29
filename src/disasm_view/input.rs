@@ -6,7 +6,7 @@
 
 use super::config::DisasmDataProvider;
 use super::{DisasmView, EditColumn, EditState};
-use crate::utils::clipboard::{VK_C, set_clipboard, vk_down};
+use crate::utils::clipboard::set_clipboard;
 
 impl DisasmView {
     pub(super) fn handle_keyboard(
@@ -86,8 +86,10 @@ impl DisasmView {
             self.scroll_to = Some(count - 1);
         }
 
-        // Ctrl+A — select all.
-        if ctrl && (ui.is_key_pressed(Key::A) || vk_down(crate::utils::clipboard::VK_A)) {
+        // Ctrl+A — select all. Layout-independence is provided by
+        // `crate::input::keyboard::try_inject_ctrl_alt_shortcut` at the
+        // host level (see app_window_v2 and demo_disasm_view).
+        if ctrl && ui.is_key_pressed(Key::A) {
             for i in 0..count {
                 self.selection.insert(i);
             }
@@ -108,8 +110,8 @@ impl DisasmView {
             self.goto_buf.clear();
         }
 
-        // Ctrl+C → copy selected instruction (physical key for non-latin layouts).
-        if ctrl && (ui.is_key_pressed(Key::C) || vk_down(VK_C)) {
+        // Ctrl+C → copy selected instruction.
+        if ctrl && ui.is_key_pressed(Key::C) {
             self.copy_selected(provider);
         }
 

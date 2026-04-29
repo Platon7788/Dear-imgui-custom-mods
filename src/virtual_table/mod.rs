@@ -138,7 +138,7 @@ pub use config::{BorderStyle, EditTrigger, RowDensity, SelectionMode, SizingPoli
 pub use ring_buffer::{MAX_TABLE_ROWS, RingBuffer};
 pub use row::{CellStyle, CellValue, RowStyle, VirtualTableRow};
 
-use crate::utils::clipboard::{c_key_down_physical, set_clipboard};
+use crate::utils::clipboard::set_clipboard;
 use crate::utils::text::calc_text_size;
 use column::{EditorKind, alignment_pad, editor_kind};
 use dear_imgui_rs::{
@@ -194,10 +194,6 @@ pub struct VirtualTable<T: VirtualTableRow> {
     /// (requires [`TableConfig::copy_to_clipboard`] = `true`). Reset each frame.
     pub copied_text: Option<String>,
 
-    /// Tracks whether the physical C key was held last frame (for edge detection).
-    /// Needed for layout-independent Ctrl+C: we read the Windows scancode directly.
-    c_key_prev: bool,
-
     /// Row index to scroll to on the next frame. Set via `scroll_to_row()`.
     pending_scroll_to: Option<usize>,
 
@@ -232,7 +228,6 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             open_context_menu: false,
             button_clicked: None,
             copied_text: None,
-            c_key_prev: false,
             pending_scroll_to: None,
             edit_state: EditState::default(),
             sort_state: SortState::default(),
@@ -530,17 +525,16 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.handle_keyboard_nav(ui, row_count);
         self.handle_scroll(ui, row_count);
 
-        // Ctrl+C — copy selected rows.
-        // Uses physical key detection (layout-independent): on Windows we read
-        // VK_C (0x43) directly via GetAsyncKeyState so Russian/any layout works.
-        let c_now = c_key_down_physical();
-        let c_just = c_now && !self.c_key_prev;
-        self.c_key_prev = c_now;
+        // Ctrl+C — copy selected rows. Layout-independence is provided
+        // by `crate::input::keyboard::try_inject_ctrl_alt_shortcut` at
+        // the host level (see app_window / app_window_v2), so plain
+        // ImGui `is_key_pressed(Key::C)` is enough — no per-widget VK
+        // probe needed.
         if self.config.copy_to_clipboard
             && !self.selected_rows.is_empty()
             && ui.is_window_hovered()
             && ui.io().key_ctrl()
-            && (c_just || (!c_now && ui.is_key_pressed(Key::C)))
+            && ui.is_key_pressed(Key::C)
         {
             let text = build_copy_text(&self.selected_rows, self.columns.len(), |ri, ci, buf| {
                 if let Some(row) = self.data.get(ri) {
@@ -675,15 +669,13 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.handle_keyboard_nav(ui, row_count);
         self.handle_scroll(ui, row_count);
 
-        // Ctrl+C — physical key detection (layout-independent, same as render()).
-        let c_now = c_key_down_physical();
-        let c_just = c_now && !self.c_key_prev;
-        self.c_key_prev = c_now;
+        // Ctrl+C — same shortcut as `render`. See the note there for why
+        // a plain `is_key_pressed` is sufficient on non-Latin layouts.
         if self.config.copy_to_clipboard
             && !self.selected_rows.is_empty()
             && ui.is_window_hovered()
             && ui.io().key_ctrl()
-            && (c_just || (!c_now && ui.is_key_pressed(Key::C)))
+            && ui.is_key_pressed(Key::C)
         {
             let text = build_copy_text(&self.selected_rows, self.columns.len(), |ri, ci, buf| {
                 if let Some(row) = get_row(ri) {

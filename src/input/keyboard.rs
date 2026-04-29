@@ -227,6 +227,69 @@ pub fn reinforce_physical_key_state(io: &mut Io, event: &KeyEvent) {
     }
 }
 
+// ── High-level dispatcher ─────────────────────────────────────────────────────
+
+/// One-call layout-independent dispatcher for `WinitPlatform`-based hosts.
+///
+/// Replaces the boilerplate of:
+///
+/// 1. Calling [`try_inject_numpad_text`] / [`try_inject_ctrl_alt_shortcut`]
+///    on every `WindowEvent::KeyboardInput` and skipping the platform
+///    forward when one of them consumes the event.
+/// 2. Calling [`inject_ime_commit`] on `WindowEvent::Ime(Ime::Commit(_))`.
+/// 3. Calling [`reinforce_physical_key_state`] **after** the platform
+///    forward when the helpers did not consume the event.
+///
+/// Use this from `ApplicationHandler::window_event`:
+///
+/// ```rust,ignore
+/// fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+///     dear_imgui_custom_mod::input::keyboard::dispatch_window_event(
+///         &mut gpu.context,
+///         &mut gpu.platform,
+///         &gpu.window,
+///         &event,
+///     );
+///     match event {
+///         WindowEvent::CloseRequested => event_loop.exit(),
+///         WindowEvent::RedrawRequested => { /* draw */ }
+///         _ => {}
+///     }
+/// }
+/// ```
+///
+/// `app_window` and `app_window_v2` already wire the same logic
+/// internally, so applications that build on those frameworks do not
+/// need this helper.
+pub fn dispatch_window_event(
+    context: &mut dear_imgui_rs::Context,
+    platform: &mut dear_imgui_winit::WinitPlatform,
+    window: &winit::window::Window,
+    event: &winit::event::WindowEvent,
+) {
+    use winit::event::{Ime, WindowEvent};
+
+    match event {
+        WindowEvent::KeyboardInput { event: ke, .. } => {
+            let io = context.io_mut();
+            if try_inject_numpad_text(io, ke) || try_inject_ctrl_alt_shortcut(io, ke) {
+                return;
+            }
+            platform.handle_window_event(context, window, event);
+            // Reinforce only on physical-key release tracking. `add_key_event`
+            // is idempotent, so this is a no-op when the platform layer
+            // already injected the matching state.
+            reinforce_physical_key_state(context.io_mut(), ke);
+        }
+        WindowEvent::Ime(Ime::Commit(text)) => {
+            inject_ime_commit(context.io_mut(), text);
+        }
+        _ => {
+            platform.handle_window_event(context, window, event);
+        }
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

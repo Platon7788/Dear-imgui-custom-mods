@@ -21,7 +21,7 @@ use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
-    event::{Event, WindowEvent},
+    event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::Window,
 };
@@ -559,58 +559,20 @@ impl ApplicationHandler for App {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
 
-        // ── Layout-independent keyboard injection ───────────────────────────
-        //
-        // Mirrors the pattern used by `app_window_v2`: when running on a
-        // non-Latin keyboard layout (Russian, Greek, etc.), the platform
-        // crate sees the layout-mapped character ("с" for the physical C
-        // key on RU) instead of `Key::C`. Without this pre-pass, ImGui
-        // would type that character into the focused field while Ctrl+C
-        // silently fails. We try the layout-independent helpers first;
-        // if any handle the event, we skip the platform forward to avoid
-        // a duplicate character injection.
-        use dear_imgui_custom_mod::input::keyboard;
-        let mut kbd_handled = false;
-        let mut kbd_event: Option<winit::event::KeyEvent> = None;
-        match &event {
-            WindowEvent::KeyboardInput { event: ke, .. } => {
-                let io = gpu.context.io_mut();
-                if keyboard::try_inject_numpad_text(io, ke)
-                    || keyboard::try_inject_ctrl_alt_shortcut(io, ke)
-                {
-                    kbd_handled = true;
-                } else {
-                    kbd_event = Some(ke.clone());
-                }
-            }
-            WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
-                keyboard::inject_ime_commit(gpu.context.io_mut(), text);
-                kbd_handled = true;
-            }
-            _ => {}
-        }
-
-        if !kbd_handled {
-            gpu.platform.handle_event::<()>(
-                &mut gpu.context,
-                &gpu.window,
-                &Event::WindowEvent {
-                    window_id,
-                    event: event.clone(),
-                },
-            );
-            // After-forward reinforce: ensures the eventual key release
-            // matches the press we recorded. Without it, releasing Ctrl
-            // before the letter on RU layout leaves `Key::C` "stuck" down.
-            if let Some(ref ke) = kbd_event {
-                keyboard::reinforce_physical_key_state(gpu.context.io_mut(), ke);
-            }
-        }
+        // Layout-independent keyboard dispatch (Ctrl+C on RU layout, IME
+        // commits, numpad digits) — replaces the raw `platform.handle_event`
+        // call. See `dear_imgui_custom_mod::input::keyboard` docs.
+        dear_imgui_custom_mod::input::keyboard::dispatch_window_event(
+            &mut gpu.context,
+            &mut gpu.platform,
+            &gpu.window,
+            &event,
+        );
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),

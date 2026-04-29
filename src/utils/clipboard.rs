@@ -1,46 +1,12 @@
-//! Clipboard, physical-key helpers, and keyboard layout management.
+//! Clipboard write helper + Windows keyboard-layout switching.
 //!
-//! Consumers are gated by feature: `hex_viewer` and `disasm_view` use the
-//! `VK_*` codes + `vk_down`; `code_editor` / `file_manager` / `force_graph`
-//! use `set_clipboard`. Building without any of those modules makes the
-//! corresponding helpers unreachable — the `#[allow(dead_code)]` below
-//! keeps `cargo build` quiet under every feature combination.
+//! Layout-independent shortcut handling lives in [`crate::input::keyboard`]
+//! and is wired in by `app_window` / `app_window_v2` (and any host that
+//! mirrors that pattern in their `WindowEvent::KeyboardInput` arm). The
+//! per-widget VK-fallback code that used to live here was removed — see
+//! commit history before 2026-04-29 for context.
 
 #![allow(dead_code)]
-
-/// Returns `true` if the physical key with the given VK code is currently held.
-///
-/// On Windows this bypasses the logical-key layer so that hotkeys work
-/// regardless of the active keyboard layout (Russian, Greek, etc.).
-/// On other platforms always returns `false`.
-pub(crate) fn vk_down(vk: i32) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        unsafe extern "system" {
-            fn GetAsyncKeyState(vkey: i32) -> i16;
-        }
-        // SAFETY: GetAsyncKeyState is a safe Win32 API. Bit 15 = key down.
-        unsafe { GetAsyncKeyState(vk) as u16 & 0x8000 != 0 }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = vk;
-        false
-    }
-}
-
-// Virtual key codes for common keys.
-pub(crate) const VK_C: i32 = 0x43;
-pub(crate) const VK_A: i32 = 0x41;
-pub(crate) const VK_F: i32 = 0x46;
-pub(crate) const VK_G: i32 = 0x47;
-pub(crate) const VK_Y: i32 = 0x59;
-pub(crate) const VK_Z: i32 = 0x5A;
-
-/// Returns `true` if the physical **C key** (VK_C / 0x43) is currently held.
-pub(crate) fn c_key_down_physical() -> bool {
-    vk_down(VK_C)
-}
 
 /// Copy text to the system clipboard via Dear ImGui's C API.
 ///

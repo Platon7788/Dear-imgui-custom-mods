@@ -20,7 +20,7 @@ use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
-    event::{Event, WindowEvent},
+    event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::Window,
 };
@@ -639,18 +639,19 @@ impl ApplicationHandler for App {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
 
-        gpu.platform.handle_event::<()>(
+        // Layout-independent keyboard dispatch — Ctrl+C / Ctrl+A on RU
+        // layout, IME commits, numpad digits. See
+        // `dear_imgui_custom_mod::input::keyboard` docs.
+        dear_imgui_custom_mod::input::keyboard::dispatch_window_event(
             &mut gpu.context,
+            &mut gpu.platform,
             &gpu.window,
-            &Event::WindowEvent {
-                window_id,
-                event: event.clone(),
-            },
+            &event,
         );
 
         match event {
