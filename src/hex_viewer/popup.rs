@@ -212,10 +212,14 @@ impl HexViewer {
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.search_popup_id) {
                 compact_popup_body(ui, || {
-                    // ── Mode row: Hex | String ────────────────────
+                    // ── Mode row: Hex | String [+ encoding pills] ──
                     // Two pseudo-radio buttons (highlighted-on-active).
-                    // Selecting `String` preserves the previously chosen
-                    // encoding (defaults to `Ascii` first time).
+                    // When `String` is the active mode, the encoding
+                    // pills (ASCII / UTF-8 / UTF-16LE) appear inline
+                    // on the SAME row, right after the `String` button.
+                    // No separate "Encoding:" label / row — the pills
+                    // are themselves self-explanatory by label, and the
+                    // inline layout keeps the popup ~1 row shorter.
                     let is_hex = matches!(self.config.search_mode, HexSearchMode::Hex);
                     let is_string = self.config.search_mode.is_string();
 
@@ -233,14 +237,12 @@ impl HexViewer {
                         self.config.search_mode = HexSearchMode::String(encoding);
                     }
 
-                    // ── Encoding row (visible only in String mode) ─
+                    // Encoding pills inline — visible only in String
+                    // mode. `same_line()` glues them to the row above
+                    // (which ended with `String`).
                     if let HexSearchMode::String(current) = self.config.search_mode {
-                        ui.text("Encoding:");
-                        ui.same_line();
-                        for (i, &enc) in StringEncoding::ALL.iter().enumerate() {
-                            if i > 0 {
-                                ui.same_line();
-                            }
+                        for &enc in StringEncoding::ALL.iter() {
+                            ui.same_line();
                             if mode_pill(ui, enc.display_name(), enc == current) {
                                 self.config.search_mode = HexSearchMode::String(enc);
                             }
