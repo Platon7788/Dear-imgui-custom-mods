@@ -238,9 +238,15 @@ impl HexViewer {
                     }
 
                     // Encoding pills inline — visible only in String
-                    // mode. `same_line()` glues them to the row above
-                    // (which ended with `String`).
+                    // mode. A small horizontal gap (`ui.dummy` +
+                    // `same_line`) sets the encoding group visually
+                    // apart from the mode group; otherwise the
+                    // ASCII pill grazes the String pill and the
+                    // two read as a single 5-element row instead of
+                    // "mode + sub-encoding".
                     if let HexSearchMode::String(current) = self.config.search_mode {
+                        ui.same_line();
+                        ui.dummy([12.0, 0.0]); // ~1 char-wide gap
                         for &enc in StringEncoding::ALL.iter() {
                             ui.same_line();
                             if mode_pill(ui, enc.display_name(), enc == current) {
