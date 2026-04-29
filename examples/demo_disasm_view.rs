@@ -1,7 +1,11 @@
 //! Demo: DisasmView — disassembly viewer showcase.
 //!
-//! Demonstrates branch arrows, breakpoint markers, block tinting,
-//! syntax coloring, keyboard navigation, context menu, and all config options.
+//! Demonstrates branch arrows, breakpoint markers (numbered + colored),
+//! block tinting, mnemonic / operand syntax coloring, keyboard navigation
+//! (Up/Down/PgUp/PgDn/Home/End/Enter), goto address (G), context menu
+//! (right-click), navigation history (Alt+←/→ or toolbar buttons),
+//! multi-selection (Shift / Ctrl + click — count shown in toolbar),
+//! current-instruction-pointer follow, and a live config panel.
 //!
 //! Run: cargo run --example demo_disasm_view
 
@@ -395,14 +399,21 @@ impl DemoState {
 
         if let Some(idx) = sel_idx {
             if let Some(instr) = self.provider.instruction(idx) {
+                let multi = self.view.selected_count();
+                let multi_suffix = if multi > 1 {
+                    format!("  |  {multi} selected")
+                } else {
+                    String::new()
+                };
                 ui.text(format!(
-                    "Addr: 0x{:X}  |  {} {}  |  {:?}  |  Instr {}/{}",
+                    "Addr: 0x{:X}  |  {} {}  |  {:?}  |  Instr {}/{}{}",
                     instr.address(),
                     instr.mnemonic(),
                     instr.operands(),
                     instr.flow_kind(),
                     idx + 1,
                     count,
+                    multi_suffix,
                 ));
             }
         } else {
@@ -441,6 +452,21 @@ impl DemoState {
                     break;
                 }
             }
+        }
+        ui.same_line();
+        ui.text_disabled("|");
+        ui.same_line();
+        // Address-history nav (Alt+←/→ does the same via keyboard).
+        if ui.button("<< Back") {
+            self.view.nav_back(&self.provider);
+        }
+        ui.same_line();
+        if ui.button("Fwd >>") {
+            self.view.nav_forward(&self.provider);
+        }
+        ui.same_line();
+        if ui.button("Clear sel") {
+            self.view.clear_selection();
         }
     }
 
