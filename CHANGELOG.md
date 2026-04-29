@@ -2,6 +2,130 @@
 
 ## [Unreleased]
 
+### BREAKING — Host framework consolidation (2026-04-29, sessions 026)
+
+Three host-related modules collapsed into one. `app_window` v1 and the
+standalone `borderless_window` module are gone; `app_window_v2` is
+renamed back to `app_window` and is now the only window-host
+framework. **Net −4464 LoC across two phases.**
+
+**Removed**
+- `dear_imgui_custom_mod::app_window` (the v1 API: `AppConfig::new`,
+  `StartPosition`, etc.). The path is now occupied by the renamed v2.
+- `dear_imgui_custom_mod::borderless_window` (whole module).
+  `BorderlessConfig`, `ButtonConfig`, `CloseMode`, `TitleAlign`,
+  `TitlebarState`, `WindowAction`, `ResizeEdge`, `render_titlebar`,
+  `render_titlebar_overlay` — all gone. Borderless chrome lives
+  inside `app_window` (private `chrome/` submodule).
+- Cargo features `app_window` (the v1 one) and `borderless_window`.
+- Examples `demo_app_window`, `demo_borderless`.
+- `tests/builder_chains.rs::borderless_config_*`.
+
+**Renamed (no behavioural change beyond the name)**
+- Module: `app_window_v2` → `app_window`. Cargo feature, demo bin,
+  docs file, examples bin all follow.
+- Identifiers (26 total) lose their `V2` suffix:
+  `AppWindowV2` → `AppWindow`, `AppConfigV2` → `AppConfig`,
+  `AppHandlerV2` → `AppHandler`, `AppStateV2` → `AppState`,
+  `AppProxyV2` → `AppProxy`, `RenderModeV2` → `RenderMode`,
+  `PowerModeV2` → `PowerMode`, `FontChoiceV2` → `FontChoice`,
+  `FontLayerV2` → `FontLayer`, `GlyphRangesV2` → `GlyphRanges`,
+  `ExtraButtonV2` → `ExtraButton`, `WindowIconV2` → `WindowIcon`,
+  `WindowKindV2` → `WindowKind`, `PositionV2` → `Position`,
+  `BorderStyleV2` → `BorderStyle`, `FormStyleV2` → `FormStyle`,
+  `CloseModeV2` → `CloseMode`, `TitleAlignV2` → `TitleAlign`,
+  `FpsModeV2` → `FpsMode`, `TitlebarConfigV2` → `TitlebarConfig`,
+  `TitlebarActionV2` → `TitlebarAction`, `TitlebarResultV2` →
+  `TitlebarResult`, `TitlebarStateV2` → `TitlebarState`,
+  `ButtonsV2` → `Buttons`, `ChromeV2` → `Chrome`,
+  `ResizeEdgeV2` → `ResizeEdge`.
+
+**Internal changes**
+- `app_window/win32.rs` is now self-contained: the five Win32 helpers
+  it used to delegate to `borderless_window::platform` (HWND extract,
+  DWM dark mode, rounded corners, region update, Win11 detection)
+  are inlined here. No `crate::borderless_window::*` references remain
+  anywhere outside historical comments.
+- `src/utils/clipboard.rs`: `vk_down`, `VK_A/C/F/G/Y/Z`,
+  `c_key_down_physical` removed (no remaining users). The file now
+  hosts only `set_clipboard` and the Windows layout-switching helpers
+  used by `hex_viewer`'s edit mode (98 → 27 LoC).
+- `src/input/keyboard.rs` gained a one-call helper
+  `dispatch_window_event(context, platform, window, &WindowEvent)`
+  that routes KeyboardInput / Ime through the layout-independent
+  injection helpers and forwards to `WinitPlatform::handle_window_event`
+  with the after-forward reinforce. Replaces ~30 lines of boilerplate
+  per host. Used by every demo.
+- Per-widget VK-edge-detection paths in `hex_viewer`, `disasm_view`,
+  `virtual_table`, `virtual_tree` removed; all four widgets now use
+  plain ImGui `is_key_pressed(...)` and rely on the host having
+  installed the layout-independent dispatcher (which `app_window`
+  does internally).
+
+**Migration**
+
+```rust
+// before — old app_window v1
+use dear_imgui_custom_mod::app_window::{
+    AppConfig, AppWindow, StartPosition,
+};
+let cfg = AppConfig::new("My App", 1100.0, 700.0)
+    .with_start_position(StartPosition::CenterScreen);
+
+// after — current app_window (= former v2)
+use dear_imgui_custom_mod::app_window::{AppConfig, AppWindow, Position};
+let cfg = AppConfig::main("My App", 1100.0, 700.0)
+    .with_position(Position::ScreenCenter);
+```
+
+```rust
+// before — palette via borderless_window
+use dear_imgui_custom_mod::borderless_window::TitlebarColors;
+
+// after
+use dear_imgui_custom_mod::theme::TitlebarColors;
+```
+
+For hosts that wire winit themselves (instead of using `AppWindow`):
+add `dear_imgui_custom_mod::input::keyboard::dispatch_window_event(...)`
+in the `WindowEvent::KeyboardInput` arm — this brings layout-
+independent Ctrl+C / numpad text / IME commit support that
+`app_window` enables for free.
+
+### Changed — `hex_viewer` modernisation (2026-04-29, sessions 025+026)
+
+- **BREAKING:** `HexViewer.config` field is now private. Use
+  `viewer.config()` / `viewer.config_mut()` accessors.
+- **BREAKING:** `set_cursor` now always clears any selection and pushes
+  the previous position into the back-history (was: only on jumps
+  larger than `bytes_per_row`). Matches the intuitive "go to address"
+  semantics; `goto()` is built on top.
+- **UX:** Edit mode is entered by **double-click** only. Single click
+  on another byte commits any half-typed nibble (HxD-style upper-
+  nibble replacement) and exits edit mode. Esc still discards. Drag-
+  select is suppressed inside an active edit cell.
+- **Fixed:** `Shift+Arrow` / `Shift+PageUp/Down` / `Shift+Home/End` now
+  anchor `selection.start` at the previous cursor (selections used to
+  always grow from offset 0).
+- **Fixed:** `handle_ascii_input` rejects non-ASCII / control chars
+  (used to write the first UTF-8 byte of multi-byte chars and silently
+  corrupt the buffer).
+- **Fixed:** `is_search_match` now binary-searches the sorted
+  `search_results` (O(log N) per byte, was O(N)). Big win for
+  permissive wildcard patterns.
+- Module split — `mod.rs` 2045 LoC → six focused files
+  (`mod.rs` 303, `config.rs` 611, `search.rs` 235, `input.rs` 533,
+  `draw.rs` 585, `popup.rs` 87, `tests.rs` 409). Public API unchanged.
+- 30 → 36 unit tests; 0 clippy warnings.
+
+### Added — `disasm_view` demo polish
+
+- Toolbar Back / Fwd / Clear-selection buttons mirror the existing
+  `View::nav_back` / `nav_forward` / `clear_selection` API.
+- "N selected" counter in the address line when multi-select is
+  active. (No library changes — the `View` API gained these in
+  commit 5499b5a; the demo finally exposes them.)
+
 ### Added — `tab_control` module (modern tab controller)
 DevExpress XtraTabControl-inspired pure tab strip with contemporary touches:
 
