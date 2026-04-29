@@ -160,6 +160,15 @@ pub struct DisasmView {
     /// the right-click handler to the cursor position so the menu
     /// spawns where the user clicked.
     pub(super) popup_open_pos: [f32; 2],
+    /// Per-frame comment-column X (screen space). Computed in
+    /// `render()` from a one-pass scan over visible rows: when the
+    /// widest instruction text would collide with the default
+    /// comment column, the comment + its left divider slide right
+    /// just enough to clear it (plus a small `COMMENT_GAP` cushion).
+    /// `Cell` so `mouse_to_cell` (called via `&self`) can read the
+    /// value computed on the previous frame for hit-testing — the
+    /// 1-frame lag is invisible for the double-click gesture.
+    pub(super) frame_comment_x: std::cell::Cell<f32>,
 }
 
 impl DisasmView {
@@ -196,6 +205,7 @@ impl DisasmView {
             edit_render_width: std::cell::Cell::new(0.0),
             component_center: [0.0, 0.0],
             popup_open_pos: [0.0, 0.0],
+            frame_comment_x: std::cell::Cell::new(0.0),
         }
     }
 
@@ -395,9 +405,57 @@ impl DisasmView {
                     }
                 }
 
+                // ── Dynamic comment X ─────────────────────────
+                // Pre-pass: walk the visible rows once to find the
+                // rightmost glyph any instruction text would draw to.
+                // If it overflows the default `operand_end`, push the
+                // comment column (header + text + edit + divider 3)
+                // right by exactly that overflow + COMMENT_GAP. Cell
+                // is read by `mouse_to_cell` for the next frame's
+                // double-click hit-test.
+                let cols = &self.config.columns;
+                let bytes_col_x = origin_x
+                    + if self.config.show_breakpoints {
+                        cols.margin
+                    } else {
+                        0.0
+                    }
+                    + if self.config.show_arrows {
+                        cols.arrows
+                    } else {
+                        0.0
+                    }
+                    + cols.address;
+                let mnemonic_col_x = if self.config.show_bytes {
+                    bytes_col_x + cols.bytes
+                } else {
+                    bytes_col_x
+                };
+                let default_comment_x = mnemonic_col_x + cols.mnemonic + cols.operands;
+                let instr_data_x = mnemonic_col_x + draw::COL_INNER_PAD;
+                let mut max_instr_right = default_comment_x;
+                if self.config.show_comments {
+                    for row in first_row..last_row {
+                        if let Some(instr) = provider.instruction(row) {
+                            // Monospace assumption: width = char count
+                            // × char_advance (mnemonic + space + operands).
+                            let mn = instr.mnemonic().chars().count();
+                            let op = instr.operands().chars().count();
+                            let chars = mn + 1 + op;
+                            let row_right =
+                                instr_data_x + chars as f32 * self.char_advance + draw::COMMENT_GAP;
+                            if row_right > max_instr_right {
+                                max_instr_right = row_right;
+                            }
+                        }
+                    }
+                }
+                let comment_x = max_instr_right;
+                self.frame_comment_x.set(comment_x);
+
                 // ── Column header ─────────────────────────────
                 if self.config.show_header {
-                    self.draw_header(&draw_list, origin_x, origin_y);
+                    self.draw_header(&draw_list, origin_x, origin_y, comment_x);
                 }
 
                 let header_h = if self.config.show_header {
@@ -426,7 +484,16 @@ impl DisasmView {
                     if let Some(instr) = provider.instruction(row) {
                         let y = origin_y + header_h + (row - first_row) as f32 * self.line_height;
                         self.draw_instruction_row(
-                            ui, &draw_list, origin_x, y, row, instr, mouse_pos, avail[0], first_row,
+                            ui,
+                            &draw_list,
+                            origin_x,
+                            y,
+                            row,
+                            instr,
+                            mouse_pos,
+                            avail[0],
+                            first_row,
+                            comment_x,
                         );
                     }
                 }
@@ -444,6 +511,7 @@ impl DisasmView {
                         origin_x,
                         origin_y,
                         origin_y + visible_h,
+                        comment_x,
                     );
                 }
 
@@ -719,7 +787,7 @@ mod tests {
         let cfg = DisasmViewConfig::default();
         assert!(cfg.show_arrows);
         assert!(cfg.show_breakpoints);
-        assert!(cfg.show_block_tints);
+        assert!(!cfg.show_block_tints);
         assert!(cfg.show_header);
         assert!(!cfg.editable);
         assert!(cfg.address_width_64);

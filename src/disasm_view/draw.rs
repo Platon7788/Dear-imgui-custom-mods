@@ -13,15 +13,30 @@ use crate::utils::hex::byte_hex;
 /// room without widening the comment column itself.
 const COMMENT_LEFT_PAD: f32 = 5.0;
 
+/// Inner left padding for the Bytes and Instruction columns —
+/// keeps their data text from sitting flush against the column
+/// divider on the left. ~1 char advance worth of breathing room.
+/// Right edge has its own slack via the column-width slack
+/// (typical bytes string < 180 px column, mnemonic < 70 px column).
+pub(super) const COL_INNER_PAD: f32 = 6.0;
+
+/// Cushion the dynamic comment X keeps from the longest visible
+/// instruction text — when an overflowing operand string pushes the
+/// comment column right, the divider lands `COMMENT_GAP` pixels past
+/// the rightmost glyph so the divider never hugs the text.
+pub(super) const COMMENT_GAP: f32 = 10.0;
+
 impl DisasmView {
     pub(super) fn draw_header(
         &self,
         draw_list: &dear_imgui_rs::DrawListMut<'_>,
         origin_x: f32,
         y: f32,
+        comment_x: f32,
     ) {
         let cols = &self.config.columns;
         let hdr_col = col32(self.config.colors.header);
+        let cw = self.char_advance;
         let mut x = origin_x;
 
         if self.config.show_breakpoints {
@@ -31,19 +46,33 @@ impl DisasmView {
             x += cols.arrows;
         }
 
+        // Address — left-aligned (matches the addresses below it).
         draw_list.add_text([x, y], hdr_col, "Address");
         x += cols.address;
 
+        // Bytes — centred within the column for visual balance with
+        // the now-spaced data. `centred_x` clamps to the inner-pad
+        // boundary so the header never overlaps the left divider.
         if self.config.show_bytes {
-            draw_list.add_text([x, y], hdr_col, "Bytes");
+            let label = "Bytes";
+            let text_w = label.len() as f32 * cw;
+            let cx = x + ((cols.bytes - text_w) * 0.5).max(COL_INNER_PAD);
+            draw_list.add_text([cx, y], hdr_col, label);
             x += cols.bytes;
         }
 
-        draw_list.add_text([x, y], hdr_col, "Instruction");
-        x += cols.mnemonic + cols.operands;
+        // Instruction — centred across the combined mnemonic + operands
+        // span. Stops at `comment_x` (which may have slid right beyond
+        // the default span) so the centring still tracks the visible
+        // column width.
+        let instr_span = (comment_x - x).max(cols.mnemonic + cols.operands);
+        let label = "Instruction";
+        let text_w = label.len() as f32 * cw;
+        let cx = x + ((instr_span - text_w) * 0.5).max(COL_INNER_PAD);
+        draw_list.add_text([cx, y], hdr_col, label);
 
         if self.config.show_comments {
-            draw_list.add_text([x + COMMENT_LEFT_PAD, y], hdr_col, "Comment");
+            draw_list.add_text([comment_x + COMMENT_LEFT_PAD, y], hdr_col, "Comment");
         }
     }
 
@@ -59,6 +88,7 @@ impl DisasmView {
         mouse_pos: [f32; 2],
         win_w: f32,
         _first_visible_row: usize,
+        comment_x: f32,
     ) {
         let cfg = &self.config;
         let colors = &cfg.colors;
@@ -195,14 +225,20 @@ impl DisasmView {
                 .map(|e| e.idx == idx && e.column == EditColumn::Bytes)
                 .unwrap_or(false);
 
+            // `data_x` shifts the bytes content right by COL_INNER_PAD
+            // so it doesn't sit flush against the left divider — see
+            // module-level constant for rationale.
+            let data_x = x + COL_INNER_PAD;
+
             if is_editing_bytes {
-                self.edit_render_pos.set(Some([x, y]));
-                self.edit_render_width.set(cols.bytes);
+                self.edit_render_pos.set(Some([data_x, y]));
+                self.edit_render_width
+                    .set((cols.bytes - COL_INNER_PAD).max(40.0));
 
                 // Draw placeholder background so it's visible.
                 draw_list
                     .add_rect(
-                        [x - 2.0, y],
+                        [data_x - 2.0, y],
                         [x + cols.bytes, y + lh],
                         col32([0.20, 0.15, 0.08, 0.95]),
                     )
@@ -210,7 +246,7 @@ impl DisasmView {
                     .build();
                 draw_list
                     .add_rect(
-                        [x - 2.0, y],
+                        [data_x - 2.0, y],
                         [x + cols.bytes, y + lh],
                         col32([1.0, 0.7, 0.3, 0.80]),
                     )
@@ -226,23 +262,32 @@ impl DisasmView {
                     }
                     bytes_str.push_str(byte_hex(*b, cfg.uppercase));
                 }
-                draw_list.add_text([x, y], col32(colors.bytes), &bytes_str);
+                draw_list.add_text([data_x, y], col32(colors.bytes), &bytes_str);
             }
             x += cols.bytes;
         }
 
         // ── Mnemonic ──────────────────────────────────────────
+        // Same COL_INNER_PAD treatment as Bytes: keep mnemonic/operand
+        // text off the left divider.
+        let instr_data_x = x + COL_INNER_PAD;
         let mnemonic = instr.mnemonic();
         let mnemonic_color = colors.mnemonic_color(instr.flow_kind());
-        draw_list.add_text([x, y], col32(mnemonic_color), mnemonic);
-        x += cols.mnemonic;
+        draw_list.add_text([instr_data_x, y], col32(mnemonic_color), mnemonic);
 
         // ── Operands (with syntax coloring) ───────────────────
+        // Operand text starts right after the mnemonic — they share
+        // the conceptual "Instruction" span; only the leading edge
+        // (mnemonic) gets the inner pad.
+        let operands_x = instr_data_x + cols.mnemonic;
         let operands = instr.operands();
-        self.draw_colored_operands(draw_list, x, y, operands, colors);
-        x += cols.operands;
+        self.draw_colored_operands(draw_list, operands_x, y, operands, colors);
 
         // ── Comment ───────────────────────────────────────────
+        // `comment_x` is the per-frame dynamic value computed in
+        // `render()` — typically the default operand-end X, but slid
+        // right when any visible instruction text would otherwise
+        // collide with the comment column.
         if cfg.show_comments {
             let is_editing_comment = self
                 .edit
@@ -255,7 +300,7 @@ impl DisasmView {
                 // same pattern as the Bytes edit path. Use the
                 // comment column width so the input field has
                 // generous room for free-form text.
-                let edit_x = x + COMMENT_LEFT_PAD;
+                let edit_x = comment_x + COMMENT_LEFT_PAD;
                 self.edit_render_pos.set(Some([edit_x, y]));
                 self.edit_render_width.set(cols.comment.max(120.0));
 
@@ -280,7 +325,7 @@ impl DisasmView {
             } else if let Some(comment) = instr.comment() {
                 let comment_str = format!("; {}", comment);
                 draw_list.add_text(
-                    [x + COMMENT_LEFT_PAD, y],
+                    [comment_x + COMMENT_LEFT_PAD, y],
                     col32(colors.comment),
                     &comment_str,
                 );
@@ -454,6 +499,7 @@ impl DisasmView {
         origin_x: f32,
         div_top: f32,
         div_bot: f32,
+        comment_x: f32,
     ) {
         let cols = &self.config.columns;
         let c = self.config.colors.separator;
@@ -485,12 +531,14 @@ impl DisasmView {
 
         // Divider 2 — between bytes and instruction (mnemonic).
         emit(x);
-        x += cols.mnemonic + cols.operands;
 
         // Divider 3 — between instruction and comment, only when
-        // comment column is visible.
+        // comment column is visible. Sits at the per-frame dynamic
+        // `comment_x` so the divider follows whenever the
+        // instruction text would have collided with the default
+        // column boundary.
         if self.config.show_comments {
-            emit(x);
+            emit(comment_x);
         }
     }
 }

@@ -458,7 +458,11 @@ pub struct DisasmViewConfig {
     pub show_arrows: bool,
     /// Show breakpoint markers in margin.
     pub show_breakpoints: bool,
-    /// Show block tinting.
+    /// Show alternating per-block background tinting (semantic hues
+    /// at low alpha, rotated by `block_index`). Default **`false`**
+    /// — the tint reads as visual noise during normal browsing /
+    /// editing; turn it on only when a block-boundary cue is
+    /// explicitly desired (e.g. CFG-aware reverse-engineering view).
     pub show_block_tints: bool,
     /// Show column header.
     pub show_header: bool,
@@ -496,7 +500,7 @@ impl Default for DisasmViewConfig {
             show_comments: true,
             show_arrows: true,
             show_breakpoints: true,
-            show_block_tints: true,
+            show_block_tints: false,
             show_header: true,
             show_column_dividers: true,
             uppercase: true,

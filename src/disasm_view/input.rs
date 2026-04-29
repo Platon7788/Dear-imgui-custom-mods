@@ -357,8 +357,22 @@ impl DisasmView {
         } else {
             bytes_x
         };
-        let operands_end = mnemonic_x + cols.mnemonic + cols.operands;
-        let comment_x = operands_end;
+        // Read the per-frame dynamic comment X computed by
+        // `render()` last frame — when the instruction text grew
+        // long enough to push the comment column right, the hit-
+        // test boundary follows so the user double-clicks the
+        // glyph they actually see. 1-frame stale on the very first
+        // frame after such a shift; invisible for double-click.
+        let comment_x = {
+            let v = self.frame_comment_x.get();
+            // Fallback to the static layout boundary on frame 0
+            // (before render() has had a chance to populate the cell).
+            if v <= 0.0 {
+                mnemonic_x + cols.mnemonic + cols.operands
+            } else {
+                v
+            }
+        };
 
         // Bytes cell — only when bytes column is visible.
         if self.config.show_bytes && mx >= bytes_x && mx < mnemonic_x {
@@ -366,7 +380,7 @@ impl DisasmView {
         }
         // Mnemonic + operands together (UI shows them as one
         // editable region for the future "edit instruction" path).
-        if mx >= mnemonic_x && mx < operands_end {
+        if mx >= mnemonic_x && mx < comment_x {
             return Some((row, EditColumn::Mnemonic));
         }
         // Comment cell — only when the comment column is visible.
