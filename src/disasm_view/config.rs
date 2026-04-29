@@ -3,26 +3,13 @@
 // ── Flow Kind ───────────────────────────────────────────────────────────────
 
 /// Instruction control-flow classification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum FlowKind {
-    /// Normal sequential instruction (mov, add, lea, etc.).
-    #[default]
-    Normal,
-    /// Unconditional/conditional jump (jmp, je, jne, etc.).
-    Jump,
-    /// Call instruction.
-    Call,
-    /// Return instruction (ret, iret).
-    Return,
-    /// NOP / INT3 / padding instruction.
-    Nop,
-    /// Stack manipulation (push, pop, sub rsp).
-    Stack,
-    /// System instruction (syscall, sysenter, int).
-    System,
-    /// Invalid / undecodable instruction.
-    Invalid,
-}
+///
+/// Re-exported from [`crate::theme::DisasmFlowKind`] so the palette
+/// factory in `theme::palettes` can build per-flow mnemonic / arrow
+/// colours without depending back on `disasm_view`. All variants are
+/// identical to the historic local enum — `FlowKind::Jump` etc keeps
+/// resolving to the same value.
+pub use crate::theme::DisasmFlowKind as FlowKind;
 
 // ── Instruction Trait ────────────────────────────────────────────────────────
 
@@ -410,180 +397,18 @@ impl Default for ColumnWidths {
 // ── Syntax Colors ───────────────────────────────────────────────────────────
 
 /// Color theme for disassembly syntax highlighting.
-#[derive(Debug, Clone)]
-pub struct DisasmColors {
-    // ── Mnemonic colors by flow kind ────────────────────────
-    /// Normal instruction mnemonic (mov, add, lea, etc.).
-    pub mnemonic_normal: [f32; 4],
-    /// Jump/branch mnemonic.
-    pub mnemonic_jump: [f32; 4],
-    /// Call mnemonic.
-    pub mnemonic_call: [f32; 4],
-    /// Return mnemonic.
-    pub mnemonic_return: [f32; 4],
-    /// NOP/INT3/padding.
-    pub mnemonic_nop: [f32; 4],
-    /// Stack operations (push, pop).
-    pub mnemonic_stack: [f32; 4],
-    /// System instructions (syscall, int).
-    pub mnemonic_system: [f32; 4],
-    /// Invalid instruction.
-    pub mnemonic_invalid: [f32; 4],
-
-    // ── Operand colors ──────────────────────────────────────
-    /// Register names.
-    pub operand_register: [f32; 4],
-    /// Numeric constants / immediates.
-    pub operand_number: [f32; 4],
-    /// Memory dereference brackets and operators.
-    pub operand_memory: [f32; 4],
-    /// String operands.
-    pub operand_string: [f32; 4],
-    /// Default operand text.
-    pub operand_default: [f32; 4],
-
-    // ── Address / bytes ─────────────────────────────────────
-    /// Address column color.
-    pub address: [f32; 4],
-    /// Hex bytes column color.
-    pub bytes: [f32; 4],
-    /// Comment color.
-    pub comment: [f32; 4],
-
-    // ── Branch arrows ───────────────────────────────────────
-    /// Arrow colors by flow kind (jump, call, return, default).
-    pub arrow_jump: [f32; 4],
-    pub arrow_call: [f32; 4],
-    pub arrow_return: [f32; 4],
-    pub arrow_default: [f32; 4],
-
-    // ── Block tinting ───────────────────────────────────────
-    /// Background tint colors for alternating code blocks.
-    pub block_tints: Vec<[f32; 4]>,
-
-    // ── UI elements ─────────────────────────────────────────
-    /// Breakpoint marker color (fallback).
-    pub breakpoint: [f32; 4],
-    /// Breakpoint gutter background.
-    pub breakpoint_bg: [f32; 4],
-    /// Numbered breakpoint colors (cycle through these).
-    pub breakpoint_colors: Vec<[f32; 4]>,
-    /// Current execution point (stopped-at) background.
-    pub current_line_bg: [f32; 4],
-    /// Selected row background.
-    pub selection_bg: [f32; 4],
-    /// Row hover highlight.
-    pub hover_bg: [f32; 4],
-    /// Column header / separator color.
-    pub header: [f32; 4],
-    /// Separator line between columns.
-    pub separator: [f32; 4],
-}
-
-impl Default for DisasmColors {
-    fn default() -> Self {
-        Self {
-            // Mnemonic colors (dark theme, high contrast)
-            mnemonic_normal: [0.88, 0.92, 0.97, 1.0], // near white
-            mnemonic_jump: [0.95, 0.85, 0.35, 1.0],   // yellow
-            mnemonic_call: [0.45, 0.85, 0.45, 1.0],   // green
-            mnemonic_return: [0.90, 0.35, 0.35, 1.0], // red
-            mnemonic_nop: [0.50, 0.50, 0.50, 0.60],   // dim gray
-            mnemonic_stack: [0.70, 0.55, 0.90, 1.0],  // purple
-            mnemonic_system: [1.00, 0.55, 0.30, 1.0], // orange
-            mnemonic_invalid: [1.00, 0.20, 0.20, 1.0], // bright red
-
-            // Operand colors
-            operand_register: [0.45, 0.80, 0.90, 1.0], // cyan
-            operand_number: [0.55, 0.85, 0.55, 1.0],   // light green
-            operand_memory: [0.90, 0.65, 0.30, 1.0],   // orange
-            operand_string: [0.85, 0.70, 0.50, 1.0],   // warm yellow
-            operand_default: [0.80, 0.82, 0.85, 1.0],  // light gray
-
-            // Address / bytes
-            address: [0.45, 0.55, 0.70, 1.0],
-            bytes: [0.60, 0.62, 0.65, 0.80],
-            comment: [0.50, 0.65, 0.50, 0.85],
-
-            // Branch arrows
-            arrow_jump: [0.95, 0.85, 0.35, 0.90],    // yellow
-            arrow_call: [0.45, 0.85, 0.45, 0.90],    // green
-            arrow_return: [0.90, 0.35, 0.35, 0.90],  // red
-            arrow_default: [0.60, 0.60, 0.70, 0.70], // gray
-
-            // Block tints (subtle backgrounds)
-            block_tints: vec![
-                [0.15, 0.18, 0.25, 0.12], // blue tint
-                [0.25, 0.15, 0.15, 0.10], // red tint
-                [0.15, 0.22, 0.15, 0.10], // green tint
-                [0.25, 0.22, 0.12, 0.10], // amber tint
-                [0.20, 0.15, 0.25, 0.10], // purple tint
-                [0.15, 0.22, 0.25, 0.10], // teal tint
-            ],
-
-            // UI
-            breakpoint: [0.95, 0.25, 0.25, 1.0], // bright red
-            breakpoint_bg: [0.25, 0.10, 0.10, 0.30],
-            breakpoint_colors: vec![
-                [0.95, 0.30, 0.30, 1.0], // 1: red
-                [0.30, 0.80, 0.95, 1.0], // 2: cyan
-                [0.95, 0.80, 0.25, 1.0], // 3: yellow
-                [0.50, 0.90, 0.40, 1.0], // 4: green
-                [0.85, 0.50, 0.95, 1.0], // 5: purple
-                [0.95, 0.60, 0.25, 1.0], // 6: orange
-                [0.40, 0.70, 0.95, 1.0], // 7: blue
-                [0.95, 0.50, 0.70, 1.0], // 8: pink
-            ],
-            current_line_bg: [0.40, 0.35, 0.15, 0.35], // warm yellow tint
-            selection_bg: [0.20, 0.35, 0.55, 0.45],
-            hover_bg: [1.00, 1.00, 1.00, 0.04],
-            header: [0.50, 0.55, 0.60, 0.80],
-            separator: [0.30, 0.32, 0.35, 0.40],
-        }
-    }
-}
-
-impl DisasmColors {
-    /// Get mnemonic color for a given flow kind.
-    pub fn mnemonic_color(&self, kind: FlowKind) -> [f32; 4] {
-        match kind {
-            FlowKind::Normal => self.mnemonic_normal,
-            FlowKind::Jump => self.mnemonic_jump,
-            FlowKind::Call => self.mnemonic_call,
-            FlowKind::Return => self.mnemonic_return,
-            FlowKind::Nop => self.mnemonic_nop,
-            FlowKind::Stack => self.mnemonic_stack,
-            FlowKind::System => self.mnemonic_system,
-            FlowKind::Invalid => self.mnemonic_invalid,
-        }
-    }
-
-    /// Get arrow color for a given flow kind.
-    pub fn arrow_color(&self, kind: FlowKind) -> [f32; 4] {
-        match kind {
-            FlowKind::Jump => self.arrow_jump,
-            FlowKind::Call => self.arrow_call,
-            FlowKind::Return => self.arrow_return,
-            _ => self.arrow_default,
-        }
-    }
-
-    /// Get breakpoint color by number (1-based). Falls back to default breakpoint color.
-    pub fn bp_color(&self, number: u32) -> [f32; 4] {
-        if number == 0 || self.breakpoint_colors.is_empty() {
-            return self.breakpoint;
-        }
-        self.breakpoint_colors[((number - 1) as usize) % self.breakpoint_colors.len()]
-    }
-
-    /// Get block tint color for a given block index.
-    pub fn block_tint(&self, block_index: usize) -> [f32; 4] {
-        if self.block_tints.is_empty() {
-            return [0.0, 0.0, 0.0, 0.0];
-        }
-        self.block_tints[block_index % self.block_tints.len()]
-    }
-}
+///
+/// **Backwards-compatibility alias** — the canonical type
+/// [`crate::theme::DisasmViewColors`] now lives in `theme::palettes`,
+/// so every built-in [`crate::theme::Theme`] can hand out a matching
+/// disassembly palette via
+/// [`crate::theme::Theme::disasm_view_colors`]. The 26 colour fields
+/// (mnemonic per-FlowKind, operand syntax, address/bytes/comment,
+/// branch arrows, block tints, breakpoint markers, current-line /
+/// selection / hover / header / separator) are unchanged — code that
+/// referenced `DisasmColors` directly stays working through this
+/// alias.
+pub type DisasmColors = crate::theme::DisasmViewColors;
 
 // ── Disasm View Config ──────────────────────────────────────────────────────
 
@@ -645,5 +470,33 @@ impl Default for DisasmViewConfig {
 
             colors: DisasmColors::default(),
         }
+    }
+}
+
+impl DisasmViewConfig {
+    /// Replace the embedded [`DisasmColors`] palette with the given
+    /// theme-driven [`crate::theme::DisasmViewColors`]. Use this on
+    /// theme switch so the disassembly stays in the same visual
+    /// family as `nav_panel` / `status_bar` / `hex_viewer`.
+    ///
+    /// ```rust,ignore
+    /// view.config_mut().apply_theme_colors(&Theme::Solarized.disasm_view_colors());
+    /// ```
+    pub fn apply_theme_colors(&mut self, p: &crate::theme::DisasmViewColors) {
+        self.colors = p.clone();
+    }
+
+    /// Convenience builder: start from `Default`, then apply the named
+    /// theme's disasm-view palette in one call.
+    ///
+    /// ```rust,ignore
+    /// use dear_imgui_custom_mod::disasm_view::DisasmViewConfig;
+    /// use dear_imgui_custom_mod::theme::Theme;
+    ///
+    /// let cfg = DisasmViewConfig::default().with_theme(Theme::Nord);
+    /// ```
+    pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
+        self.apply_theme_colors(&theme.disasm_view_colors());
+        self
     }
 }

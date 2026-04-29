@@ -2,6 +2,150 @@
 
 ## [Unreleased]
 
+### Polish session — chrome / nav / hex_viewer overhaul (2026-04-29, session 027)
+
+A long late-evening polish pass touching the four widgets the user
+spends the most cursor time on. Net result: cleaner hover language
+across the chrome stack, friendlier popup geometry in `hex_viewer`,
+and a `nav_panel` that finally settles on a single hover style.
+
+**`nav_panel`**
+
+- **BREAKING** — removed the `HoverStyle` enum and its `Flat` /
+  `Zoom` variants. Hover behaviour is now hardcoded: icon glyph
+  re-renders at `hover_zoom_scale` (default `1.20×`) on hover,
+  no background fill. The cell-emboss / glyph-emboss earlier
+  experiments are gone too. Set `with_hover_zoom_scale(1.0)` to
+  effectively disable the magnification.
+- New `ActiveStyle` enum: `Ring` (default — transparent orange
+  ring around the icon, no fill, no indicator strip) and `Bar`
+  (the historic filled-cell + indicator-strip look).
+- New tunables: `active_ring_color: Option<[f32; 4]>` (default
+  warm amber `[0.95, 0.62, 0.20, 1.0]`), `active_ring_thickness`,
+  `active_ring_padding`. Builders: `with_active_style`,
+  `with_active_ring_color`, `with_active_ring_thickness`,
+  `with_active_ring_padding`, `without_active_ring_color`.
+- New `with_hover_zoom_scale(f32)` builder, clamps `1.0..=3.0`.
+- Module-level doc in `render.rs` explains the chrome-vs-content
+  hover policy (chrome buttons get `btn_hover` rectangle, content
+  buttons get zoom-only — deliberate, not an oversight).
+
+**`hex_viewer`**
+
+- Address gutter renamed: header reads `"Address"`, per-byte
+  hover-tooltip says `Address: 0x…`, goto popup label says
+  `Goto address`. Internal `show_offsets` field name kept (no
+  breaking config change).
+- **Click-to-copy on the address column.** Hover the gutter →
+  cursor switches to `Hand`, themed tooltip reads
+  `Click to copy: 0x…`. Left-click copies the row's address
+  (formatted per `address_width` + `uppercase` config) to the
+  clipboard, fades a translucent accent-coloured pill behind
+  the address text for `~30` frames.
+- ASCII column **right-anchored** to the child window's content
+  edge (with a `1 ca` scrollbar gap) instead of floating right
+  after the hex column. Falls back to the natural position on
+  narrow windows. New `ascii_col_x(win_x)` helper centralises
+  the math; both draw + hit-test go through it.
+- Offset gutter padding **halved** — the address text was floating
+  in too much whitespace before the column divider. The divider
+  itself is now centred in the new 1-char gap.
+- Header captions (`Address`, `00 01 02 …`, `ASCII`) **centred**
+  inside their columns instead of left-aligned.
+- Header text colour pinned to `fg` (was `fg_muted`) so captions
+  read as bright white on dark themes (the project owner reported
+  the muted shade as washed-out).
+- gamma fix in `app_window` / `utils::color`: `srgb_to_linear` +
+  `wgpu_clear_color(rgba, surface_format)` correctly handle the
+  sRGB-encode round-trip when clearing an sRGB swap-chain
+  surface (`*UnormSrgb`). Resolves the "fog" / washed-out look
+  introduced when the root window picked up `NO_BACKGROUND`.
+- 4 popups (`Ctrl+G` goto, `Ctrl+F` search, right-click context
+  menu, Settings) now use the crate-wide `themed_popup_style`:
+  generous padding, frame rounding, `add_text_with_font`-aware
+  layout. Critical fix: `BeginPopup` now runs **every frame**
+  instead of only the open-trigger frame (popups previously
+  flashed for one frame and disappeared).
+- Modal popups (Goto / Search / Settings) anchor at
+  `component_center` with a `(0.5, 0.5)` pivot — they always
+  spawn at the visual middle of the viewer regardless of where
+  the trigger came from. Context menu still anchors at the click
+  location.
+- New public API: `request_goto()` / `request_search()` for
+  host-side global hotkeys / menus / toolbars that want to fire
+  a popup without depending on the viewer being focused.
+- Right-click context menu: 4 entries with arrow / ellipsis icons
+  (`»` Go to Address, `←` Step back, `→` Step forward,
+  `…` Settings). Step-back / step-forward grey out at `0.40 α`
+  when their nav stack is empty.
+- Settings popup hosts BPR buttons (8/12/…/32, square 32-px
+  cells), Display toggles (ASCII / inspector / offsets / column
+  headers / column dividers / splitter), Format toggles
+  (uppercase / category colours / dim zeros), and a right-anchored
+  Close button. Locally tighter style overrides keep the popup
+  compact despite the long checklist.
+- Theme integration: `HexViewerColors` palette type with 18
+  per-purpose tokens; `Theme::hex_viewer_colors()` accessor;
+  per-theme `hex_viewer_colors()` factories for all 7 built-in
+  themes; `HexViewerConfig::with_theme(theme)` /
+  `apply_theme_colors(&palette)` builders.
+
+**`app_window` chrome**
+
+- Titlebar buttons gained a hover-zoom (`Buttons::hover_zoom_scale`,
+  default `1.20`) — same macOS-Dock-style micro-magnification the
+  nav panel uses. Min / max / restore / close all scale; extras
+  (text-glyph buttons) scale via `add_text_with_font` so their
+  rasterised glyph grows proportionally too.
+- New `Buttons::show_hover_bg: bool` (default `false`) — disables
+  the historic coloured rectangle behind a hovered button.
+  Flip back to `true` to recover the old Vex0r-style red close
+  hover.
+- New builders: `Buttons::with_hover_zoom_scale(f32)` (clamps
+  `1.0..=2.0`), `Buttons::with_hover_bg(bool)`.
+- Close button glyph rewritten — historic circle-with-X →
+  short-lived spoked-progress wheel → `"close"` text label →
+  current bold standalone `×` (thickness `1.8`, arms `0.65×r`).
+  The user iterated through every variant before settling.
+- `glyph::draw_close` consolidated to that single bold-X
+  implementation; orphan circle / progress / text helpers
+  removed.
+- `disasm_view::render` tooltip-passthrough fixed — mouse_pos
+  is now gated on `is_window_hovered()` (same pattern as
+  `hex_viewer`) so hover tooltips don't ghost through popups
+  rendered on top of the disasm widget.
+
+**`utils`**
+
+- New `utils::popup` module (split off from `tooltip`) hosts the
+  popup-styling + button-stack helpers:
+  - `themed_popup_style(ui, body)` — pushes WindowPadding
+    `[14, 12]`, ItemSpacing `[10, 8]`, FramePadding `[10, 6]`,
+    WindowRounding / FrameRounding `5.0` for the duration of
+    `body`. Wrap any `BeginPopup` body for consistent geometry.
+  - `success_button(ui, label, size)` — green confirm button.
+  - `danger_button(ui, label, size)` — red destructive button.
+  - `button_with_color(ui, label, color, size)` — arbitrary
+    base colour; auto-derives hover / active via `±0.06` per
+    channel via internal `lift()` helper. **Bug fix:**
+    `success_button` / `danger_button` now go through the same
+    `lift()` derivation — earlier they used hand-rolled hover /
+    active constants that drifted from the documented `±0.06`
+    formula. Single source of truth via `with_button_stack`.
+  - 6 unit tests covering `lift()` clamp behaviour, semantic
+    colour invariants, hue distinctness.
+- `utils::tooltip` keeps `themed_tooltip` only (the popup stuff
+  moved out). Doc updated.
+
+**Tests**
+
+- `+14 lib tests`, total `651 passed / 0 failed`.
+- New tests cover: utils popup `lift()` math + colour invariants
+  (5 tests), `Buttons` builders + clamp (4 tests), hex_viewer
+  `request_goto` / `request_search` / `address_flash` initial
+  state / `component_center` initial state (4 tests), nav_panel
+  `active_style` defaults + `hover_zoom_scale` clamp (1 carryover).
+
 ### BREAKING — Host framework consolidation (2026-04-29, sessions 026)
 
 Three host-related modules collapsed into one. `app_window` v1 and the

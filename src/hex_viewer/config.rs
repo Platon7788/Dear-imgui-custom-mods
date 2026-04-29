@@ -267,6 +267,40 @@ impl Endianness {
     }
 }
 
+/// Address-column width policy.
+///
+/// Controls how many hex digits the address gutter renders per row. The
+/// default ([`AddressWidth::Auto`]) picks 64-bit if the buffer's
+/// highest address overflows `u32::MAX`, otherwise 32-bit — so a
+/// regular file dump stays compact while a memory snapshot of a 64-bit
+/// process automatically gets the wider column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AddressWidth {
+    /// 32-bit when `base_address + data.len()` fits in `u32::MAX`,
+    /// otherwise 64-bit. Default.
+    #[default]
+    Auto,
+    /// Always render addresses as `{:08X}` / `{:08x}` (8 hex digits).
+    Bits32,
+    /// Always render addresses as `{:016X}` / `{:016x}` (16 hex digits).
+    Bits64,
+}
+
+impl AddressWidth {
+    /// Number of hex digits the address column occupies for the given
+    /// (base, length) pair.
+    pub fn hex_digits(self, base: u64, len: usize) -> usize {
+        match self {
+            Self::Bits32 => 8,
+            Self::Bits64 => 16,
+            Self::Auto => {
+                let max = base.saturating_add(len as u64);
+                if max > u32::MAX as u64 { 16 } else { 8 }
+            }
+        }
+    }
+}
+
 /// Search mode for the hex viewer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HexSearchMode {
@@ -472,6 +506,18 @@ pub struct HexViewerConfig {
     pub show_offsets: bool,
     /// Show column headers (00 01 02 ...).
     pub show_column_headers: bool,
+    /// Show thin vertical dividers between offset / hex / ASCII columns.
+    /// Default: `true` — improves visual scan-ability of the three
+    /// regions without competing with the byte text.
+    pub show_column_dividers: bool,
+    /// Show a draggable horizontal splitter between the hex area and
+    /// the data inspector. Default: `false` — the inspector uses its
+    /// natural fixed height. Enable for memory-explorer style UIs
+    /// where the user needs more inspector space on demand.
+    pub show_splitter: bool,
+    /// Address-column width policy (32 / 64 / auto). Default: `Auto`
+    /// — picks 64-bit when the buffer extends beyond `u32::MAX`.
+    pub address_width: AddressWidth,
     /// Use uppercase hex digits (A-F vs a-f).
     pub uppercase: bool,
     /// Endianness for multi-byte inspector values.
@@ -546,6 +592,12 @@ pub struct HexViewerConfig {
 
 impl Default for HexViewerConfig {
     fn default() -> Self {
+        // Single source of truth: every colour comes from the
+        // theme-driven `HexViewerColors` palette (which itself
+        // defaults to `Theme::Dark.hex_viewer_colors()`). To re-skin
+        // a viewer for a different theme, call `with_theme(...)` or
+        // `apply_theme_colors(...)`.
+        let p = crate::theme::HexViewerColors::default();
         Self {
             bytes_per_row: BytesPerRow::SIXTEEN,
             grouping: ByteGrouping::DWord,
@@ -553,6 +605,9 @@ impl Default for HexViewerConfig {
             show_inspector: true,
             show_offsets: true,
             show_column_headers: true,
+            show_column_dividers: true,
+            show_splitter: false,
+            address_width: AddressWidth::Auto,
             uppercase: true,
             endianness: Endianness::Little,
 
@@ -566,32 +621,76 @@ impl Default for HexViewerConfig {
             copy_format: CopyFormat::HexSpaced,
             max_undo: 256,
 
-            // Semantic byte category palette (dark theme optimized)
-            color_cat_zero: [0.45, 0.35, 0.35, 0.55], // dim salmon
-            color_cat_control: [0.50, 0.50, 0.55, 0.70], // dim gray-blue
-            color_cat_printable: [0.55, 0.85, 0.55, 1.0], // green
-            color_cat_high: [0.65, 0.55, 0.80, 0.85], // muted purple
-            color_cat_full: [0.95, 0.75, 0.30, 1.0],  // amber
+            color_cat_zero: p.cat_zero,
+            color_cat_control: p.cat_control,
+            color_cat_printable: p.cat_printable,
+            color_cat_high: p.cat_high,
+            color_cat_full: p.cat_full,
 
-            // UI colors
-            color_offset: [0.45, 0.55, 0.70, 1.0],
-            color_hex: [0.85, 0.85, 0.85, 1.0],
-            color_ascii: [0.70, 0.80, 0.65, 1.0],
-            color_ascii_dot: [0.35, 0.35, 0.40, 0.6],
-            color_zero: [0.30, 0.30, 0.35, 0.5],
-            color_selection_bg: [0.20, 0.35, 0.55, 0.5],
-            color_changed: [1.00, 0.50, 0.20, 1.0],
-            color_cursor_bg: [0.30, 0.45, 0.65, 0.7],
-            color_header: [0.50, 0.55, 0.60, 0.8],
-            color_inspector_label: [0.55, 0.58, 0.65, 1.0],
-            color_inspector_value: [0.90, 0.90, 0.90, 1.0],
-            color_search_match: [0.80, 0.70, 0.20, 0.35],
-            color_unreadable: [0.40, 0.15, 0.15, 0.25],
+            color_offset: p.offset,
+            color_hex: p.hex,
+            color_ascii: p.ascii,
+            color_ascii_dot: p.ascii_dot,
+            color_zero: p.zero_legacy,
+            color_selection_bg: p.selection_bg,
+            color_changed: p.changed,
+            color_cursor_bg: p.cursor_bg,
+            color_header: p.header,
+            color_inspector_label: p.inspector_label,
+            color_inspector_value: p.inspector_value,
+            color_search_match: p.search_match,
+            color_unreadable: p.unreadable,
         }
     }
 }
 
 impl HexViewerConfig {
+    /// Copy a theme-driven [`crate::theme::HexViewerColors`] palette
+    /// into the 18 individual `color_*` fields of this config. Use
+    /// this whenever the host theme changes so the viewer stays in
+    /// the same visual family as `nav_panel` / `status_bar` etc.
+    ///
+    /// ```rust,ignore
+    /// // Theme switch:
+    /// viewer.config_mut().apply_theme_colors(&Theme::Solarized.hex_viewer_colors());
+    /// ```
+    pub fn apply_theme_colors(&mut self, p: &crate::theme::HexViewerColors) {
+        self.color_cat_zero = p.cat_zero;
+        self.color_cat_control = p.cat_control;
+        self.color_cat_printable = p.cat_printable;
+        self.color_cat_high = p.cat_high;
+        self.color_cat_full = p.cat_full;
+
+        self.color_offset = p.offset;
+        self.color_hex = p.hex;
+        self.color_ascii = p.ascii;
+        self.color_ascii_dot = p.ascii_dot;
+        self.color_header = p.header;
+        self.color_inspector_label = p.inspector_label;
+        self.color_inspector_value = p.inspector_value;
+        self.color_zero = p.zero_legacy;
+
+        self.color_selection_bg = p.selection_bg;
+        self.color_cursor_bg = p.cursor_bg;
+        self.color_changed = p.changed;
+        self.color_search_match = p.search_match;
+        self.color_unreadable = p.unreadable;
+    }
+
+    /// Convenience builder: start from `Default`, then apply the named
+    /// theme's hex-viewer palette in one call.
+    ///
+    /// ```rust,ignore
+    /// use dear_imgui_custom_mod::hex_viewer::HexViewerConfig;
+    /// use dear_imgui_custom_mod::theme::Theme;
+    ///
+    /// let cfg = HexViewerConfig::default().with_theme(Theme::Nord);
+    /// ```
+    pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
+        self.apply_theme_colors(&theme.hex_viewer_colors());
+        self
+    }
+
     /// Get the foreground color for a byte based on its category.
     pub fn byte_fg_color(&self, byte: u8) -> [f32; 4] {
         if !self.category_colors {

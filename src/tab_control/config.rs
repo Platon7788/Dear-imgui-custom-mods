@@ -218,6 +218,44 @@ impl TabColors {
             TabStatus::Dirty => self.status_dirty,
         }
     }
+
+    /// Build a `TabColors` from the nav-panel and status-bar palettes
+    /// of an active theme. This is what `Theme::tab_colors()` calls
+    /// internally, so the tab strip stays visually coherent with the
+    /// rest of the chrome stack — same `bg` / `separator` / `text`
+    /// surfaces, same status-indicator hues.
+    ///
+    /// `tab_bg` deliberately mirrors `strip_bg` (= `nav.bg`); inactive
+    /// tabs blend with the strip the way VS Code / Sublime Merge does,
+    /// while hover/active surfaces lift through `nav.btn_hover` /
+    /// `nav.btn_active`.
+    pub fn from_palettes(
+        nav: &crate::theme::NavColors,
+        sb: &crate::theme::StatusBarColors,
+    ) -> Self {
+        let to_u8 = |c: [f32; 4]| {
+            let r = (c[0] * 255.0).round().clamp(0.0, 255.0) as u8;
+            let g = (c[1] * 255.0).round().clamp(0.0, 255.0) as u8;
+            let b = (c[2] * 255.0).round().clamp(0.0, 255.0) as u8;
+            [r, g, b]
+        };
+        Self {
+            tab_bg: to_u8(nav.bg),
+            tab_hover: to_u8(nav.btn_hover),
+            tab_active: to_u8(nav.btn_active),
+            accent: to_u8(nav.indicator),
+            text: to_u8(nav.icon_active),
+            text_muted: to_u8(nav.icon_default),
+            close_hover: to_u8(sb.error),
+            strip_bg: to_u8(nav.bg),
+            separator: to_u8(nav.separator),
+            status_active: to_u8(sb.success),
+            status_inactive: to_u8(sb.text_dim),
+            status_warning: to_u8(sb.warning),
+            status_error: to_u8(sb.error),
+            status_dirty: to_u8(sb.info),
+        }
+    }
 }
 
 // ─── Configuration ──────────────────────────────────────────────────────────

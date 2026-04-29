@@ -10,12 +10,13 @@ impl DisasmView {
         ui: &dear_imgui_rs::Ui,
         provider: &mut dyn DisasmDataProvider,
     ) {
-        if !self.show_goto {
-            return;
+        // Same fix as `hex_viewer::render_goto_popup` — `BeginPopup`
+        // has to run every frame (not just the open-trigger frame),
+        // otherwise the popup flashes for one frame and disappears.
+        if self.show_goto {
+            ui.open_popup(&self.goto_popup_id);
+            self.show_goto = false;
         }
-
-        ui.open_popup(&self.goto_popup_id);
-        self.show_goto = false;
 
         if let Some(_popup) = ui.begin_popup(&self.goto_popup_id) {
             ui.text("Goto address (hex):");
@@ -39,12 +40,10 @@ impl DisasmView {
         ui: &dear_imgui_rs::Ui,
         provider: &mut dyn DisasmDataProvider,
     ) {
-        if !self.show_context_menu {
-            return;
+        if self.show_context_menu {
+            ui.open_popup(&self.ctx_popup_id);
+            self.show_context_menu = false;
         }
-
-        ui.open_popup(&self.ctx_popup_id);
-        self.show_context_menu = false;
 
         if let Some(_popup) = ui.begin_popup(&self.ctx_popup_id) {
             let idx = self.context_idx.unwrap_or(0);

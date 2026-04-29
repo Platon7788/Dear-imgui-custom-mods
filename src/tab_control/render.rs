@@ -69,10 +69,7 @@ struct TabDraw<'a, T: TabItem> {
 
 // ─── Main entry point ───────────────────────────────────────────────────────
 
-pub(crate) fn render_tab_control<T: TabItem>(
-    pc: &mut TabControl<T>,
-    ui: &Ui,
-) -> Option<TabAction> {
+pub(crate) fn render_tab_control<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction> {
     pc.open_context_menu = false;
 
     tick_animations(pc, ui);
@@ -224,7 +221,11 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         strip_x = win_pos[0] + win_content_min[0];
         strip_y = win_pos[1] + ui.cursor_pos()[1];
 
-        add_btn_w = if cfg.show_add_button { cfg.scroll_btn_width } else { 0.0 };
+        add_btn_w = if cfg.show_add_button {
+            cfg.scroll_btn_width
+        } else {
+            0.0
+        };
 
         // Sum widths separately for pinned vs regular tabs.
         let mut pw: f32 = 0.0;
@@ -250,7 +251,11 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         regular_total_w = rw.max(0.0);
         pinned_count = pc_count;
 
-        separator_w = if pinned_count > 0 { PINNED_SEPARATOR_W } else { 0.0 };
+        separator_w = if pinned_count > 0 {
+            PINNED_SEPARATOR_W
+        } else {
+            0.0
+        };
         regular_origin_base = strip_x + pinned_total_w + separator_w;
 
         let space_for_regular = avail_w - add_btn_w - pinned_total_w - separator_w;
@@ -789,7 +794,8 @@ fn handle_tab_events<T: TabItem>(
         && hovered_id == Some(tracked)
         && (now - started) * 1000.0 >= ms as f64
         && let Some(idx) = pc.tabs.iter().position(|t| t.id == tracked)
-        && pc.tabs[idx].item.show_preview()           // per-tab opt-out
+        && pc.tabs[idx].item.show_preview()
+    // per-tab opt-out
     {
         let preview_w = pc.config.preview_size[0];
         let preview_h_max = pc.config.preview_size[1].max(64.0) * 8.0; // generous upper bound
@@ -805,14 +811,20 @@ fn handle_tab_events<T: TabItem>(
         // No ImGui state is mutated across-thread (single-threaded UI).
         unsafe {
             dear_imgui_rs::sys::igSetNextWindowSizeConstraints(
-                dear_imgui_rs::sys::ImVec2_c { x: preview_w, y: 0.0 },
-                dear_imgui_rs::sys::ImVec2_c { x: preview_w, y: preview_h_max },
+                dear_imgui_rs::sys::ImVec2_c {
+                    x: preview_w,
+                    y: 0.0,
+                },
+                dear_imgui_rs::sys::ImVec2_c {
+                    x: preview_w,
+                    y: preview_h_max,
+                },
                 None,
                 std::ptr::null_mut(),
             );
         }
 
-        ui.tooltip(|| {
+        crate::utils::themed_tooltip(ui, || {
             // ID stack push isolates widget IDs in the preview from any other
             // place rendering the same content tree (e.g. an inner TabControl
             // re-rendered as a thumbnail).
@@ -868,7 +880,7 @@ fn handle_tab_events<T: TabItem>(
     if let Some(idx) = tooltip_idx
         && let Some(tip) = pc.tabs[idx].item.tooltip()
     {
-        ui.tooltip_text(tip);
+        crate::utils::themed_tooltip(ui, || ui.text(tip));
     }
 }
 
@@ -1072,8 +1084,15 @@ fn handle_keyboard<T: TabItem>(
     // Ctrl+1..9 — jump to nth tab (1-based; Ctrl+9 jumps to last)
     if ctrl {
         let digit_keys = [
-            Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5,
-            Key::Key6, Key::Key7, Key::Key8, Key::Key9,
+            Key::Key1,
+            Key::Key2,
+            Key::Key3,
+            Key::Key4,
+            Key::Key5,
+            Key::Key6,
+            Key::Key7,
+            Key::Key8,
+            Key::Key9,
         ];
         for (i, key) in digit_keys.iter().enumerate() {
             if ui.is_key_pressed(*key) && !pc.tabs.is_empty() {
@@ -1111,9 +1130,7 @@ fn handle_keyboard<T: TabItem>(
     }
 
     // Ctrl+W — close active
-    if ctrl_w
-        && let Some(active_id) = pc.active
-    {
+    if ctrl_w && let Some(active_id) = pc.active {
         let can_close = pc
             .tabs
             .iter()
@@ -1175,14 +1192,25 @@ fn render_scroll_buttons(
         && mouse[1] >= strip_y
         && mouse[1] < strip_y + strip_h;
 
-    let lbg = if lhover { colors.tab_hover } else { colors.strip_bg };
-    draw.add_rect([lx, strip_y], [lx + btn_w, strip_y + strip_h], c32(lbg, 255))
-        .filled(true)
-        .build();
+    let lbg = if lhover {
+        colors.tab_hover
+    } else {
+        colors.strip_bg
+    };
+    draw.add_rect(
+        [lx, strip_y],
+        [lx + btn_w, strip_y + strip_h],
+        c32(lbg, 255),
+    )
+    .filled(true)
+    .build();
     let arrow = icons::CHEVRON_LEFT;
     let asz = calc_text_size(arrow);
     draw.add_text(
-        [lx + (btn_w - asz[0]) * 0.5, strip_y + (strip_h - asz[1]) * 0.5],
+        [
+            lx + (btn_w - asz[0]) * 0.5,
+            strip_y + (strip_h - asz[1]) * 0.5,
+        ],
         c32(colors.text, if lhover { 255 } else { 160 }),
         arrow,
     );
@@ -1197,14 +1225,25 @@ fn render_scroll_buttons(
         && mouse[1] >= strip_y
         && mouse[1] < strip_y + strip_h;
 
-    let rbg = if rhover { colors.tab_hover } else { colors.strip_bg };
-    draw.add_rect([rx, strip_y], [rx + btn_w, strip_y + strip_h], c32(rbg, 255))
-        .filled(true)
-        .build();
+    let rbg = if rhover {
+        colors.tab_hover
+    } else {
+        colors.strip_bg
+    };
+    draw.add_rect(
+        [rx, strip_y],
+        [rx + btn_w, strip_y + strip_h],
+        c32(rbg, 255),
+    )
+    .filled(true)
+    .build();
     let arrow_r = icons::CHEVRON_RIGHT;
     let arsz = calc_text_size(arrow_r);
     draw.add_text(
-        [rx + (btn_w - arsz[0]) * 0.5, strip_y + (strip_h - arsz[1]) * 0.5],
+        [
+            rx + (btn_w - arsz[0]) * 0.5,
+            strip_y + (strip_h - arsz[1]) * 0.5,
+        ],
         c32(colors.text, if rhover { 255 } else { 160 }),
         arrow_r,
     );
@@ -1229,13 +1268,14 @@ fn render_overflow_button(
     let colors = &cfg.colors;
     let y0 = strip_y + cfg.strip_padding_v;
     let y1 = y0 + cfg.tab_height;
-    let hovered = accept_clicks
-        && mouse[0] >= x
-        && mouse[0] < x + w
-        && mouse[1] >= y0
-        && mouse[1] < y1;
+    let hovered =
+        accept_clicks && mouse[0] >= x && mouse[0] < x + w && mouse[1] >= y0 && mouse[1] < y1;
 
-    let bg = if hovered { colors.tab_hover } else { colors.strip_bg };
+    let bg = if hovered {
+        colors.tab_hover
+    } else {
+        colors.strip_bg
+    };
     draw.add_rect([x, y0], [x + w, y1], c32(bg, 255))
         .rounding(cfg.tab_rounding * 0.5)
         .filled(true)
@@ -1248,8 +1288,11 @@ fn render_overflow_button(
         dots,
     );
 
-    if hovered && !ui.is_mouse_clicked(MouseButton::Left) && !ui.is_mouse_clicked(MouseButton::Right) {
-        ui.tooltip_text(cfg.strings.overflow_tooltip);
+    if hovered
+        && !ui.is_mouse_clicked(MouseButton::Left)
+        && !ui.is_mouse_clicked(MouseButton::Right)
+    {
+        crate::utils::themed_tooltip(ui, || ui.text(cfg.strings.overflow_tooltip));
     }
 
     hovered && ui.is_mouse_clicked(MouseButton::Left)
@@ -1299,13 +1342,14 @@ fn render_add_button(
     let colors = &cfg.colors;
     let y0 = strip_y + cfg.strip_padding_v;
     let y1 = y0 + cfg.tab_height;
-    let hovered = accept_clicks
-        && mouse[0] >= x
-        && mouse[0] < x + w
-        && mouse[1] >= y0
-        && mouse[1] < y1;
+    let hovered =
+        accept_clicks && mouse[0] >= x && mouse[0] < x + w && mouse[1] >= y0 && mouse[1] < y1;
 
-    let bg = if hovered { colors.tab_hover } else { colors.strip_bg };
+    let bg = if hovered {
+        colors.tab_hover
+    } else {
+        colors.strip_bg
+    };
     draw.add_rect([x, y0], [x + w, y1], c32(bg, 255))
         .rounding(cfg.tab_rounding * 0.5)
         .filled(true)
@@ -1318,7 +1362,7 @@ fn render_add_button(
         plus,
     );
     if hovered && !ui.is_mouse_clicked(MouseButton::Left) {
-        ui.tooltip_text(cfg.strings.add_tab);
+        crate::utils::themed_tooltip(ui, || ui.text(cfg.strings.add_tab));
     }
     hovered && ui.is_mouse_clicked(MouseButton::Left)
 }
@@ -1337,7 +1381,18 @@ fn draw_tab<T: TabItem>(ctx: &TabDraw<'_, T>) {
 // ─── Pill style ────────────────────────────────────────────────────────────
 
 fn draw_tab_pill<T: TabItem>(ctx: &TabDraw<'_, T>) {
-    let TabDraw { draw, cfg, is_active, hovered, accent, x0, y0, x1, y1, .. } = *ctx;
+    let TabDraw {
+        draw,
+        cfg,
+        is_active,
+        hovered,
+        accent,
+        x0,
+        y0,
+        x1,
+        y1,
+        ..
+    } = *ctx;
     let colors = &cfg.colors;
     let r = (y1 - y0) * 0.5; // fully rounded
 
@@ -1365,7 +1420,18 @@ fn draw_tab_pill<T: TabItem>(ctx: &TabDraw<'_, T>) {
 // ─── Underline style ───────────────────────────────────────────────────────
 
 fn draw_tab_underline<T: TabItem>(ctx: &TabDraw<'_, T>) {
-    let TabDraw { draw, cfg, is_active, hovered, accent, x0, y0, x1, y1, .. } = *ctx;
+    let TabDraw {
+        draw,
+        cfg,
+        is_active,
+        hovered,
+        accent,
+        x0,
+        y0,
+        x1,
+        y1,
+        ..
+    } = *ctx;
     let colors = &cfg.colors;
 
     if hovered && !is_active {
@@ -1385,7 +1451,18 @@ fn draw_tab_underline<T: TabItem>(ctx: &TabDraw<'_, T>) {
 // ─── Square style ──────────────────────────────────────────────────────────
 
 fn draw_tab_square<T: TabItem>(ctx: &TabDraw<'_, T>) {
-    let TabDraw { draw, cfg, is_active, hovered, accent, x0, y0, x1, y1, .. } = *ctx;
+    let TabDraw {
+        draw,
+        cfg,
+        is_active,
+        hovered,
+        accent,
+        x0,
+        y0,
+        x1,
+        y1,
+        ..
+    } = *ctx;
     let colors = &cfg.colors;
     let bg = if is_active {
         colors.tab_active
@@ -1407,7 +1484,8 @@ fn draw_tab_square<T: TabItem>(ctx: &TabDraw<'_, T>) {
             .build();
     }
     if !is_active {
-        draw.add_line([x0, y1], [x1, y1], c32(colors.separator, 120)).build();
+        draw.add_line([x0, y1], [x1, y1], c32(colors.separator, 120))
+            .build();
     }
 }
 
@@ -1415,7 +1493,18 @@ fn draw_tab_square<T: TabItem>(ctx: &TabDraw<'_, T>) {
 
 fn draw_tab_content<T: TabItem>(ctx: &TabDraw<'_, T>) {
     let TabDraw {
-        draw, item, cfg, is_active, hovered, close_hovered, anim_alpha, x0, y0, x1, time, ..
+        draw,
+        item,
+        cfg,
+        is_active,
+        hovered,
+        close_hovered,
+        anim_alpha,
+        x0,
+        y0,
+        x1,
+        time,
+        ..
     } = *ctx;
     let colors = &cfg.colors;
     let tab_h = cfg.tab_height;
@@ -1425,7 +1514,11 @@ fn draw_tab_content<T: TabItem>(ctx: &TabDraw<'_, T>) {
 
     // ── Pinned variant: compact, centered glyph or single letter ────────
     if item.is_pinned() {
-        let label_color = if is_active { colors.text } else { colors.text_muted };
+        let label_color = if is_active {
+            colors.text
+        } else {
+            colors.text_muted
+        };
         let alpha = if is_active { 255 } else { 220 };
         let cx_center = (x0 + x1) * 0.5;
         let cy_center = y0 + tab_h * 0.5;
@@ -1458,9 +1551,8 @@ fn draw_tab_content<T: TabItem>(ctx: &TabDraw<'_, T>) {
         // Tiny status dot in the bottom-right corner — preserves at-a-glance
         // signal. Honors the global toggle and per-tab opt-out (None / Active).
         let status = item.status();
-        let pinned_dot_disabled = !cfg.show_status_dot
-            || status == TabStatus::None
-            || status == TabStatus::Active;
+        let pinned_dot_disabled =
+            !cfg.show_status_dot || status == TabStatus::None || status == TabStatus::Active;
         if !pinned_dot_disabled {
             let dot_r = 2.5;
             let dx = x1 - dot_r * 2.0 - 2.0;
@@ -1528,7 +1620,11 @@ fn draw_tab_content<T: TabItem>(ctx: &TabDraw<'_, T>) {
     }
 
     // Title
-    let text_color = if is_active { colors.text } else { colors.text_muted };
+    let text_color = if is_active {
+        colors.text
+    } else {
+        colors.text_muted
+    };
     let text_sz = calc_text_size(item.title());
     let text_y = y0 + (tab_h - text_sz[1]) * 0.5;
     draw.add_text([text_x, text_y], c32(text_color, a(255)), item.title());
@@ -1622,14 +1718,10 @@ fn draw_close_glyph(
         match cfg.close_glyph {
             CloseGlyph::CircleX => {
                 let r = (s * 0.5 + pad).max(2.0);
-                draw.add_rect(
-                    [cx - r, cy - r],
-                    [cx + r, cy + r],
-                    bg_col,
-                )
-                .rounding(r)
-                .filled(true)
-                .build();
+                draw.add_rect([cx - r, cy - r], [cx + r, cy + r], bg_col)
+                    .rounding(r)
+                    .filled(true)
+                    .build();
             }
             _ => {
                 draw.add_rect(rect_min, rect_max, bg_col)

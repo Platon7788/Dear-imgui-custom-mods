@@ -5,6 +5,7 @@
 //! buttons and separators keep visible contrast (the previous Light palette
 //! made borders and frame backgrounds almost invisible on a white surface).
 
+use super::palettes::{DisasmViewColors, DisasmViewTokens, HexViewerColors, HexViewerTokens};
 use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
@@ -160,7 +161,12 @@ pub fn statusbar_config() -> StatusBarConfig {
         item_padding: 10.0,
         separator_width: 1.0,
         show_separators: false,
-        highlight_hover: false,
+
+        show_top_border: true,
+
+        top_border_offset_left: 0.0,
+
+        top_border_offset_right: 0.0,
         progress_width: 60.0,
         progress_height: 8.0,
         colors: statusbar_colors(),
@@ -174,13 +180,50 @@ pub fn statusbar_colors() -> StatusBarColors {
         text: hex(FG, 1.0),
         text_dim: hex(FG_MUTED, 1.0),
         separator: hex(BORDER, 1.0),
-        hover: hex(SECONDARY_HOVER, 0.60),
-        active: hex(SECONDARY_HOVER, 0.90),
+        hover: hex(SECONDARY_HOVER, 1.0),
+        active: hex(SECONDARY_HOVER, 1.0),
         success: hex(SUCCESS, 1.0),
         warning: hex(WARNING, 1.0),
         error: hex(DANGER, 1.0),
         info: hex(ACCENT, 1.0),
     }
+}
+
+// ─── HexViewer ───────────────────────────────────────────────────────────────
+
+/// Hex-viewer palette tuned for the Light theme. Darker tokens than the
+/// Dark variant so byte text reads against a near-white surface.
+pub fn hex_viewer_colors() -> HexViewerColors {
+    HexViewerColors::from_tokens(&HexViewerTokens {
+        fg: hex(FG, 1.0),
+        fg_muted: hex(FG_MUTED, 1.0),
+        accent: hex(ACCENT, 1.0),
+        success: hex(SUCCESS, 1.0),
+        warning: hex(WARNING, 1.0),
+        danger: hex(DANGER, 1.0),
+        purple: hex(0x6f4ea3, 1.0),
+    })
+}
+
+// ─── DisasmView ──────────────────────────────────────────────────────────────
+
+/// Disassembly-view palette tuned for the Light theme — darker hues
+/// across the board so mnemonic and operand text reads against the
+/// near-white surface. SUCCESS / WARNING / DANGER are pulled from the
+/// theme's semantic constants (already light-theme darkened).
+pub fn disasm_view_colors() -> DisasmViewColors {
+    DisasmViewColors::from_tokens(&DisasmViewTokens {
+        fg: hex(FG, 1.0),
+        fg_muted: hex(FG_MUTED, 1.0),
+        accent: hex(ACCENT, 1.0),
+        success: hex(SUCCESS, 1.0),
+        warning: hex(WARNING, 1.0),
+        danger: hex(DANGER, 1.0),
+        purple: hex(0x6f4ea3, 1.0),
+        // Darker orange/cyan so they read on the pale background.
+        orange: hex(0xc66828, 1.0),
+        cyan: hex(0x0d7593, 1.0),
+    })
 }
 
 // ─── ImGui style ─────────────────────────────────────────────────────────────

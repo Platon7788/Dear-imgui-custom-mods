@@ -17,8 +17,8 @@ use dear_imgui_winit::WinitPlatform;
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
 use super::chrome::{
-    ResizeEdge, TitlebarAction, TitlebarResult, cursor_for_edge, render_titlebar,
-    resize_direction, whole_window_resize,
+    ResizeEdge, TitlebarAction, TitlebarResult, cursor_for_edge, render_titlebar, resize_direction,
+    whole_window_resize,
 };
 use super::config::{AppConfig, Chrome};
 use super::handler::AppHandler;
@@ -73,13 +73,24 @@ pub(super) struct GpuState {
 
 impl GpuState {
     pub(super) fn refresh_clear_color(&mut self, cfg: &AppConfig) {
-        let bg = cfg.theme.titlebar().bg;
-        self.clear_color = wgpu::Color {
-            r: bg[0] as f64,
-            g: bg[1] as f64,
-            b: bg[2] as f64,
-            a: 1.0,
-        };
+        // Page surface = `Theme::window_bg()` (== StyleColor::WindowBg).
+        // The titlebar paints its own opaque rect via the chrome draw
+        // calls, so the clear colour only matters under the actual
+        // content area — and there it must match what ImGui's
+        // `WindowBg` would paint, otherwise the `raw_content`
+        // (NO_BACKGROUND) path leaks the GPU clear colour through the
+        // transparent root and looks wrong.
+        //
+        // `wgpu_clear_color` accounts for the surface format: on a
+        // `*UnormSrgb` swap chain it converts the sRGB-encoded theme
+        // values to linear-space, otherwise it passes them through
+        // unchanged. Without that conversion the clear pass would
+        // paint sRGB-encoded values into a sRGB framebuffer twice,
+        // producing the well-known "fog" / washed-out grey we ran
+        // into right after enabling `NO_BACKGROUND` on the root
+        // window.
+        self.clear_color =
+            crate::utils::color::wgpu_clear_color(cfg.theme.window_bg(), self.surface_cfg.format);
     }
 }
 
@@ -135,18 +146,35 @@ pub(super) fn render_frame<H: AppHandler>(
         let _np = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
         let _ns = ui.push_style_var(StyleVar::ItemSpacing([0.0, 0.0]));
 
+        // The root window flags. In `raw_content` mode we add
+        // `NO_BACKGROUND` so the root surface is transparent and the
+        // foundation `background draw list` (which the status bar's
+        // `render_overlay` paints into) shines through. Without
+        // NO_BACKGROUND, the root's `WindowBg` style fill clobbers
+        // anything drawn in the background list — popups (tooltips,
+        // menus) would still appear above us, but
+        // `status_bar::render_overlay` would silently disappear.
+        //
+        // In padded mode (`raw_content == false`) we keep the
+        // background fill: the user's UI lives inside `##app_content`
+        // and expects the page surface to be opaque so its child
+        // backgrounds blend correctly. Hosts that want background-list
+        // rendering in padded mode have to opt in explicitly via
+        // `raw_content()`.
+        let mut root_flags = WindowFlags::NO_TITLE_BAR
+            | WindowFlags::NO_RESIZE
+            | WindowFlags::NO_MOVE
+            | WindowFlags::NO_SCROLLBAR
+            | WindowFlags::NO_SCROLL_WITH_MOUSE
+            | WindowFlags::NO_BRING_TO_FRONT_ON_FOCUS
+            | WindowFlags::NO_NAV_FOCUS;
+        if cfg.raw_content {
+            root_flags |= WindowFlags::NO_BACKGROUND;
+        }
         ui.window("##app_root")
             .size(display, Condition::Always)
             .position([0.0, 0.0], Condition::Always)
-            .flags(
-                WindowFlags::NO_TITLE_BAR
-                    | WindowFlags::NO_RESIZE
-                    | WindowFlags::NO_MOVE
-                    | WindowFlags::NO_SCROLLBAR
-                    | WindowFlags::NO_SCROLL_WITH_MOUSE
-                    | WindowFlags::NO_BRING_TO_FRONT_ON_FOCUS
-                    | WindowFlags::NO_NAV_FOCUS,
-            )
+            .flags(root_flags)
             .build(|| {
                 let mut content_top = 0.0;
                 match &cfg.chrome {

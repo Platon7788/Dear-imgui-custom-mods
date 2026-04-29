@@ -17,8 +17,8 @@ mod icon;
 mod titlebar;
 
 pub use enums::{
-    BorderStyle, CloseMode, FormStyle, FpsMode, Position, PowerMode, RenderMode,
-    TitleAlign, WindowKind,
+    BorderStyle, CloseMode, FormStyle, FpsMode, Position, PowerMode, RenderMode, TitleAlign,
+    WindowKind,
 };
 pub use icon::WindowIcon;
 pub use titlebar::{Buttons, Chrome, ExtraButton, TitlebarConfig};
@@ -584,6 +584,16 @@ impl AppConfig {
     /// code editors, or anything that needs pixel-perfect control over
     /// the client area. The titlebar (when configured) still renders
     /// above the content; only the content wrapper is skipped.
+    ///
+    /// **Z-order side-effect:** in `raw_content` mode the framework
+    /// also adds `WindowFlags::NO_BACKGROUND` to the root window so
+    /// the background draw list is visible through it. That is what
+    /// lets [`crate::status_bar::StatusBar::render_overlay`] and
+    /// [`crate::nav_panel::render_nav_panel_overlay`] (both of
+    /// which paint into the background draw list) actually appear
+    /// on screen. The visible page surface stays opaque thanks to
+    /// the GPU clear pass which fills the swap chain with
+    /// `Theme::window_bg()` before any ImGui rendering.
     pub fn raw_content(mut self) -> Self {
         self.raw_content = true;
         self
@@ -622,8 +632,7 @@ mod tests {
 
     #[test]
     fn font_layer_with_glyph_ranges_overrides_default() {
-        let layer =
-            FontLayer::base(vec![0u8; 200], 15.0).with_glyph_ranges(GlyphRanges::Cyrillic);
+        let layer = FontLayer::base(vec![0u8; 200], 15.0).with_glyph_ranges(GlyphRanges::Cyrillic);
         assert!(matches!(layer.glyph_ranges, GlyphRanges::Cyrillic));
     }
 

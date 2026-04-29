@@ -1,15 +1,60 @@
 //! Per-frame nav-panel render — animation tick, hidden-tab restore,
 //! button layout, dispatch into the submenu flyout.
+//!
+//! ## Hover-feedback philosophy (chrome vs content)
+//!
+//! As of 2026-04-29 the panel renders **two distinct hover signals**
+//! depending on which kind of button the cursor is over:
+//!
+//! - **Content buttons** (every `NavButton` the host supplies):
+//!   icon glyph re-renders at `cfg.hover_zoom_scale` (~`1.20×`)
+//!   via `add_text_with_font`. **No background tint.** This is the
+//!   macOS-Dock-style "lift" — the icon visually pops forward
+//!   without a tinted rectangle anchoring the eye to the cell
+//!   shape. Drives the `HoverStyle::Zoom` behaviour that used to
+//!   be opt-in (the `Flat` alternative was removed when the project
+//!   owner settled on the zoom look).
+//!
+//! - **Chrome buttons** (the hidden-tab restore strip when the
+//!   panel is collapsed, and the toggle / collapse arrow at the
+//!   panel head): historic `colors.btn_hover` rounded fill, no
+//!   zoom. These buttons are infrequent, semi-permanent affordances
+//!   that benefit from a clear "you can click here" rectangle —
+//!   without the fill they're easy to miss against the panel bg.
+//!
+//! Mixing the two policies on purpose: the user spends 99% of their
+//! cursor time over content buttons, where a zoom is the cleanest
+//! signal; the chrome buttons fire `is_window_hovered` rare paths
+//! where a one-off rectangle is the right level of contrast.
+//!
+//! Don't paint `btn_hover` on content buttons — the doubled signal
+//! ("zoom + tint") makes the icon look smudged.
 
 use dear_imgui_rs::{MouseButton, Ui};
 
 use crate::utils::color::pack_color_f32 as c32;
 use crate::utils::text::calc_text_size;
 
-use super::config::{ButtonStyle, DockPosition, NavItem, NavPanelConfig};
+use super::config::{ActiveStyle, ButtonStyle, DockPosition, NavItem, NavPanelConfig};
 use super::state::NavPanelState;
 use super::submenu::{ButtonRect, render_submenu};
 use super::{NavEvent, NavPanelResult};
+
+/// Which surface the overlay variants of `render_nav_panel` paint
+/// onto. `Background` is the default — keeps tooltips and other
+/// popup-layer windows visually above the panel, which is what a
+/// chrome-style nav strip needs. `Foreground` is for the rare cases
+/// where the panel must obscure popups (kiosk-mode HUDs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum OverlayLayer {
+    /// Paint into `ui.get_background_draw_list()` — below ImGui popups.
+    Background,
+    /// Paint into `ui.get_foreground_draw_list()` — above ImGui popups.
+    Foreground,
+    /// Paint into the active window's draw list — for the in-window
+    /// `render_nav_panel` entry point.
+    Window,
+}
 
 pub(super) fn render_nav_panel_impl(
     ui: &Ui,
@@ -17,7 +62,7 @@ pub(super) fn render_nav_panel_impl(
     state: &mut NavPanelState,
     origin: [f32; 2],
     size: [f32; 2],
-    use_foreground: bool,
+    layer: OverlayLayer,
 ) -> NavPanelResult {
     let colors = cfg.resolved_colors();
     let dt = ui.io().delta_time();
@@ -41,16 +86,7 @@ pub(super) fn render_nav_panel_impl(
 
     let prog = state.animation_progress;
     if prog <= 0.0 {
-        return render_hidden_tab(
-            ui,
-            cfg,
-            state,
-            &colors,
-            origin,
-            size,
-            use_foreground,
-            &mut events,
-        );
+        return render_hidden_tab(ui, cfg, state, &colors, origin, size, layer, &mut events);
     }
 
     // ── Geometry ─────────────────────────────────────────────────────────────
@@ -86,10 +122,10 @@ pub(super) fn render_nav_panel_impl(
     // ── Draw the panel (scoped so DrawListMut drops before submenu spawns) ──
     let panel_hovered;
     {
-        let draw = if use_foreground {
-            ui.get_foreground_draw_list()
-        } else {
-            ui.get_window_draw_list()
+        let draw = match layer {
+            OverlayLayer::Background => ui.get_background_draw_list(),
+            OverlayLayer::Foreground => ui.get_foreground_draw_list(),
+            OverlayLayer::Window => ui.get_window_draw_list(),
         };
 
         // Background
@@ -165,24 +201,22 @@ pub(super) fn render_nav_panel_impl(
                     let bcy = by + bh * 0.5;
                     let hov = mx >= bx && mx < bx + bw && my >= by && my < by + bh;
 
-                    // Background
-                    if is_active || is_submenu_open {
+                    // Background — Bar active style fills the whole
+                    // cell; Ring leaves it flat (the focus ring around
+                    // the icon is the only active-state cue). Hover
+                    // never paints a background — the icon zoom
+                    // (`HoverStyle::Zoom`-style behaviour, baked in
+                    // since 2026-04-29) carries the entire signal.
+                    if (is_active || is_submenu_open) && cfg.active_style == ActiveStyle::Bar {
                         draw.add_rect([bx, by], [bx + bw, by + bh], c32(colors.btn_active))
                             .filled(true)
                             .build();
-                    } else if hov {
-                        draw.add_rect(
-                            [bx + 3.0, by + 3.0],
-                            [bx + bw - 3.0, by + bh - 3.0],
-                            c32(colors.btn_hover),
-                        )
-                        .filled(true)
-                        .rounding(cfg.button_rounding)
-                        .build();
                     }
 
-                    // Active indicator
-                    if is_active {
+                    // Active indicator — Bar style only. Drawn on the
+                    // docked edge (left/right strip for vertical, bottom
+                    // strip for top docking).
+                    if is_active && cfg.active_style == ActiveStyle::Bar {
                         let t = cfg.indicator_thickness;
                         match cfg.position {
                             DockPosition::Left => draw
@@ -215,32 +249,67 @@ pub(super) fn render_nav_panel_impl(
                         }
                     }
 
-                    // Icon text
-                    let icon_col = if is_active {
+                    // Icon text. With the Ring style we keep the icon
+                    // colour the same in both active and inactive
+                    // states — the ring carries the "active" signal
+                    // visually, so re-tinting the glyph would
+                    // double-up. Bar style still swaps to
+                    // `icon_active` because the filled background
+                    // changes the surface contrast.
+                    let icon_col = if is_active && cfg.active_style == ActiveStyle::Bar {
                         colors.icon_active
                     } else {
                         btn.color.unwrap_or(colors.icon_default)
                     };
                     let icon_str: &str = &btn.icon;
                     let [iw, ih] = calc_text_size(icon_str);
-                    draw.add_text([bcx - iw * 0.5, bcy - ih * 0.5], c32(icon_col), icon_str);
+                    // Zoom the icon glyph when the cursor is over the
+                    // cell. Active / submenu-open buttons stay
+                    // un-scaled — the active-state visual (Ring or
+                    // Bar) already carries the "this one is selected"
+                    // signal; doubling up with a scale would look
+                    // jittery as the cursor moves.
+                    draw_icon(ui, &draw, cfg, [bcx, bcy], icon_str, icon_col, hov);
 
-                    // Label for horizontal mode
-                    if !is_vertical && cfg.button_style != ButtonStyle::IconOnly {
+                    // Ring style — stroked circle around the icon.
+                    // Drawn AFTER the icon glyph so the ring sits in
+                    // front (matters when the icon would otherwise clip
+                    // the inside edge of the stroke). Radius is sized
+                    // off the larger glyph dimension + padding, then
+                    // clamped to fit inside the button cell so it can't
+                    // overflow when the user picks an oversized font or
+                    // a tiny `button_size`.
+                    if (is_active || is_submenu_open) && cfg.active_style == ActiveStyle::Ring {
+                        let glyph_radius = iw.max(ih) * 0.5;
+                        let max_radius = (bw.min(bh) * 0.5) - cfg.active_ring_thickness * 0.5 - 1.0;
+                        let radius =
+                            (glyph_radius + cfg.active_ring_padding).min(max_radius.max(1.0));
+                        let ring_col = cfg.active_ring_color.unwrap_or(colors.indicator);
+                        draw.add_circle([bcx, bcy], radius, c32(ring_col))
+                            .thickness(cfg.active_ring_thickness)
+                            .build();
+                    }
+
+                    // Label for horizontal mode. Same Zoom treatment
+                    // as the icon — keeps IconWithLabel visually
+                    // coherent (a scaled icon next to a flat label
+                    // would look broken). `IconOnly` skips the label
+                    // entirely; using `Option` instead of `continue`
+                    // so the rest of the per-button render (badge,
+                    // tooltip, click) still runs.
+                    if !is_vertical {
                         let label = btn.tooltip.as_str();
-                        let [lw, lh] = calc_text_size(label);
-                        match cfg.button_style {
-                            ButtonStyle::LabelOnly => draw.add_text(
-                                [bcx - lw * 0.5, bcy - lh * 0.5],
-                                c32(icon_col),
-                                label,
-                            ),
-                            ButtonStyle::IconWithLabel => draw.add_text(
-                                [bcx + iw * 0.5 + 4.0, bcy - lh * 0.5],
-                                c32(icon_col),
-                                label,
-                            ),
-                            ButtonStyle::IconOnly => {}
+                        let [lw, _lh] = calc_text_size(label);
+                        let label_center: Option<[f32; 2]> = match cfg.button_style {
+                            ButtonStyle::LabelOnly => Some([bcx, bcy]),
+                            ButtonStyle::IconWithLabel => {
+                                // Centre point = right of icon + half the label width.
+                                Some([bcx + iw * 0.5 + 4.0 + lw * 0.5, bcy])
+                            }
+                            ButtonStyle::IconOnly => None,
+                        };
+                        if let Some(c) = label_center {
+                            draw_icon(ui, &draw, cfg, c, label, icon_col, hov);
                         }
                     }
 
@@ -262,9 +331,11 @@ pub(super) fn render_nav_panel_impl(
                         }
                     }
 
-                    // Tooltip
+                    // Tooltip — routed through the crate-wide
+                    // `themed_tooltip` helper so the look matches every
+                    // other widget that opens a hover popup.
                     if hov && !is_submenu_open && cfg.show_tooltips && btn.show_tooltip {
-                        ui.tooltip_text(btn.tooltip.as_str());
+                        crate::utils::themed_tooltip(ui, || ui.text(btn.tooltip.as_str()));
                     }
 
                     // Click
@@ -382,13 +453,13 @@ fn render_hidden_tab(
     colors: &super::theme::NavColors,
     origin: [f32; 2],
     size: [f32; 2],
-    use_foreground: bool,
+    layer: OverlayLayer,
     events: &mut Vec<NavEvent>,
 ) -> NavPanelResult {
-    let draw = if use_foreground {
-        ui.get_foreground_draw_list()
-    } else {
-        ui.get_window_draw_list()
+    let draw = match layer {
+        OverlayLayer::Background => ui.get_background_draw_list(),
+        OverlayLayer::Foreground => ui.get_foreground_draw_list(),
+        OverlayLayer::Window => ui.get_window_draw_list(),
     };
     let [mx, my] = ui.io().mouse_pos();
     let clicked = ui.is_mouse_clicked(MouseButton::Left);
@@ -444,7 +515,7 @@ fn render_hidden_tab(
     }
 
     if tab_hov {
-        ui.tooltip_text("Show panel");
+        crate::utils::themed_tooltip(ui, || ui.text("Show panel"));
         if clicked {
             state.visible = true;
             events.push(NavEvent::ToggleClicked(true));
@@ -501,7 +572,7 @@ fn draw_toggle_button(
         .filled(true)
         .rounding(cfg.button_rounding)
         .build();
-        ui.tooltip_text("Toggle panel");
+        crate::utils::themed_tooltip(ui, || ui.text("Toggle panel"));
         if clicked {
             state.toggle();
             events.push(NavEvent::ToggleClicked(state.visible));
@@ -557,4 +628,49 @@ fn draw_toggle_button(
     }
 
     toggle_size
+}
+
+/// Draw the icon glyph centred at `center`. When `zoomed` is true
+/// AND the configured zoom factor is greater than `1.0`, re-renders
+/// the glyph at `font_size * cfg.hover_zoom_scale` via
+/// `add_text_with_font`, recentred so the larger glyph stays at
+/// `center`. Otherwise falls back to the standard `add_text` path.
+///
+/// `add_text_with_font` reuses the same atlas as the default text
+/// renderer; the scaled output goes through GPU bilinear filtering,
+/// which adds a touch of softness — acceptable for ≤1.5× scales,
+/// the sweet spot for "macOS Dock"-style micro-magnification.
+fn draw_icon(
+    ui: &Ui,
+    draw: &dear_imgui_rs::DrawListMut<'_>,
+    cfg: &NavPanelConfig,
+    center: [f32; 2],
+    icon: &str,
+    main_color: [f32; 4],
+    zoomed: bool,
+) {
+    let [iw, ih] = calc_text_size(icon);
+    if zoomed && cfg.hover_zoom_scale > 1.0 {
+        let font = ui.current_font();
+        let base_size = ui.current_font_size();
+        let scale = cfg.hover_zoom_scale;
+        let scaled_size = base_size * scale;
+        let scaled_w = iw * scale;
+        let scaled_h = ih * scale;
+        draw.add_text_with_font(
+            font,
+            scaled_size,
+            [center[0] - scaled_w * 0.5, center[1] - scaled_h * 0.5],
+            c32(main_color),
+            icon,
+            0.0,
+            None,
+        );
+    } else {
+        draw.add_text(
+            [center[0] - iw * 0.5, center[1] - ih * 0.5],
+            c32(main_color),
+            icon,
+        );
+    }
 }

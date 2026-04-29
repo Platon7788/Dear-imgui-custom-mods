@@ -59,14 +59,30 @@ impl Spy {
 }
 
 impl TabItem for Spy {
-    fn title(&self) -> &str { &self.name }
-    fn is_pinned(&self) -> bool { self.pinned }
-    fn is_closable(&self) -> bool { self.closable }
-    fn show_preview(&self) -> bool { self.preview }
-    fn status(&self) -> TabStatus { self.status }
-    fn dot_color(&self) -> Option<[u8; 3]> { self.dot_color }
-    fn on_activated(&mut self) { self.activated += 1; }
-    fn on_deactivated(&mut self) { self.deactivated += 1; }
+    fn title(&self) -> &str {
+        &self.name
+    }
+    fn is_pinned(&self) -> bool {
+        self.pinned
+    }
+    fn is_closable(&self) -> bool {
+        self.closable
+    }
+    fn show_preview(&self) -> bool {
+        self.preview
+    }
+    fn status(&self) -> TabStatus {
+        self.status
+    }
+    fn dot_color(&self) -> Option<[u8; 3]> {
+        self.dot_color
+    }
+    fn on_activated(&mut self) {
+        self.activated += 1;
+    }
+    fn on_deactivated(&mut self) {
+        self.deactivated += 1;
+    }
     // never invoked in these tests, but the trait requires it
     fn render_content(&mut self, _ui: &Ui) {}
 }
@@ -385,8 +401,12 @@ fn enforce_pinned_partition_preserves_relative_order() {
     let mut pc: TabControl<Spy> = TabControl::new("##t");
     // Push directly to bypass add()'s smart insertion.
     let pushes = [
-        ("r1", false), ("p1", true), ("r2", false),
-        ("p2", true), ("r3", false), ("p3", true),
+        ("r1", false),
+        ("p1", true),
+        ("r2", false),
+        ("p2", true),
+        ("r3", false),
+        ("p3", true),
     ];
     for (i, (name, pinned)) in pushes.iter().enumerate() {
         let mut s = Spy::new(name);

@@ -549,7 +549,7 @@ pub(crate) fn render(
         if *ctx.hovered == Some(node_id) {
             let tip = node.style.tooltip.as_deref().unwrap_or(&node.style.label);
             if !tip.is_empty() {
-                ui.tooltip_text(tip);
+                crate::utils::themed_tooltip(ui, || ui.text(tip));
             }
         }
     }

@@ -934,7 +934,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             self.cell_buf.clear();
             data.row_tooltip(&mut self.cell_buf);
             if !self.cell_buf.is_empty() {
-                ui.tooltip_text(&self.cell_buf);
+                crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));
             }
         }
 
@@ -1329,7 +1329,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 let arrow_width = unsafe { dear_imgui_rs::sys::igGetTreeNodeToLabelSpacing() };
                 let used_w = indent + arrow_width + 20.0; // approximate icon + spacing
                 if text_w + used_w > col_w {
-                    ui.tooltip_text(&self.cell_buf);
+                    crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));
                 }
             }
 
@@ -1483,7 +1483,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                         let col_w = ui.current_column_width();
                         let text_w = calc_text_size(&self.cell_buf)[0];
                         if text_w > col_w {
-                            ui.tooltip_text(&self.cell_buf);
+                            crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));
                         }
                     }
                 }

@@ -38,8 +38,9 @@ mod search;
 mod tests;
 
 pub use config::{
-    ByteCategory, ByteGrouping, BytesPerRow, ColorRegion, CopyFormat, Endianness, HexDataProvider,
-    HexSearchMode, HexViewerConfig, NavHistory, UndoEntry, UndoStack, VecDataProvider,
+    AddressWidth, ByteCategory, ByteGrouping, BytesPerRow, ColorRegion, CopyFormat, Endianness,
+    HexDataProvider, HexSearchMode, HexViewerConfig, NavHistory, UndoEntry, UndoStack,
+    VecDataProvider,
 };
 pub use input::EditColumn;
 pub use search::{PatternByte, Selection};
@@ -83,11 +84,73 @@ pub struct HexViewer {
     pub(super) search_idx: usize,
     pub(super) show_goto: bool,
     pub(super) show_search: bool,
+    /// One-shot trigger: opens the right-click context menu on the
+    /// next render. Set by the right-mouse-button handler in
+    /// [`Self::handle_mouse`]; consumed (and reset) by
+    /// `render_context_menu`.
+    pub(super) show_context_menu: bool,
+    /// Sticky flag: while `true`, the Settings popup body renders
+    /// each frame. Toggled by the Settings entry in the context
+    /// menu and by the popup's own Close button.
+    pub(super) show_settings: bool,
+    /// Cached ImGui IDs for the new popups — built once at
+    /// construction so the runtime never re-allocates the strings.
+    pub(super) context_popup_id: String,
+    pub(super) settings_popup_id: String,
+    /// Screen-space anchor used by the next popup that opens.
+    /// Captured by the keyboard / mouse handlers when the user
+    /// triggers a popup so the floating window appears at the
+    /// click / keypress location instead of `(0, 0)` (the
+    /// default when ImGui's `BeginPopup` runs outside any
+    /// window context — which is what happens here, since
+    /// popups are dispatched **before** the child window's body).
+    pub(super) popup_open_pos: [f32; 2],
+    /// Screen-space centre of the hex-viewer child window —
+    /// captured every frame inside `render()` from
+    /// `ui.window_pos() + ui.window_size() * 0.5`. The modal-style
+    /// popups (Goto, Search, Settings) anchor at this point with
+    /// a `(0.5, 0.5)` pivot so they always sit at the visual
+    /// centre of the viewer regardless of where the user
+    /// triggered them. The right-click context menu deliberately
+    /// keeps anchoring at `popup_open_pos` (the click location)
+    /// because that's the standard context-menu UX.
+    pub(super) component_center: [f32; 2],
+    /// One-shot flag: when set, the goto-popup body grabs keyboard
+    /// focus on its next render so the user can start typing
+    /// without clicking into the input field. Set when the popup
+    /// opens (Ctrl+G or [`Self::request_goto`]); cleared inside
+    /// the popup body after `set_keyboard_focus_here`.
+    pub(super) goto_focus_pending: bool,
+    /// Same as [`Self::goto_focus_pending`] but for the search popup.
+    pub(super) search_focus_pending: bool,
     pub(super) scroll_to_row: Option<usize>,
     pub(super) char_advance: f32,
     pub(super) line_height: f32,
     pub(super) focused: bool,
     pub(super) frame_count: u32,
+
+    /// User-controlled inspector subview height in pixels. `0.0` means
+    /// "auto" (`inspector_height()`). Set when the user drags the
+    /// horizontal splitter between the hex area and the inspector.
+    pub(super) inspector_h: f32,
+
+    /// Visual flash for the address that was just copied via a left
+    /// click in the address gutter. `(row_index, frames_remaining)` —
+    /// the address text gets a background tint while
+    /// `frames_remaining` is non-zero, decremented once per `render`
+    /// frame. `None` when no flash is active.
+    pub(super) address_flash: Option<(usize, u32)>,
+
+    /// Width of the inner content area of the hex child-window, in
+    /// pixels — captured at the start of every `render` frame via
+    /// `ui.content_region_avail()[0]`. Used by [`Self::ascii_col_x`]
+    /// to right-anchor the ASCII column to the child's right edge
+    /// (rather than letting it float right after the hex column,
+    /// which left a large dead zone on the right when the window was
+    /// wider than the byte content). Both draw + hit-test paths read
+    /// this so the ASCII column lines up with where mouse clicks
+    /// expect it.
+    pub(super) inner_content_w: f32,
 }
 
 impl HexViewer {
@@ -95,6 +158,8 @@ impl HexViewer {
         let id: String = id.into();
         let goto_popup_id = format!("##goto_{id}");
         let search_popup_id = format!("##search_{id}");
+        let context_popup_id = format!("##ctx_{id}");
+        let settings_popup_id = format!("##settings_{id}");
         Self {
             id,
             data: Vec::new(),
@@ -103,6 +168,12 @@ impl HexViewer {
             config: HexViewerConfig::default(),
             goto_popup_id,
             search_popup_id,
+            context_popup_id,
+            settings_popup_id,
+            // Hard-coded `64` per-direction back/forward stack depth.
+            // 30 was attempted briefly on 2026-04-29 but the project
+            // owner reverted — 64 is plenty for follow-the-pointer
+            // debugging sessions and the `VecDeque` cost is negligible.
             nav: NavHistory::new(64),
             undo: UndoStack::default(),
             cursor: 0,
@@ -117,11 +188,20 @@ impl HexViewer {
             search_idx: 0,
             show_goto: false,
             show_search: false,
+            show_context_menu: false,
+            show_settings: false,
+            goto_focus_pending: false,
+            search_focus_pending: false,
             scroll_to_row: None,
             char_advance: 0.0,
             line_height: 0.0,
             focused: false,
             frame_count: 0,
+            inspector_h: 0.0,
+            address_flash: None,
+            inner_content_w: 0.0,
+            popup_open_pos: [0.0, 0.0],
+            component_center: [0.0, 0.0],
         }
     }
 
@@ -235,6 +315,42 @@ impl HexViewer {
         }
     }
 
+    /// Open the **goto-address** popup on the next frame, mirroring
+    /// the `Ctrl+G` shortcut handled internally.
+    ///
+    /// Useful when the host app wires its own global hotkey (e.g.
+    /// from a menu / toolbar / outer keybinding system) and wants
+    /// to trigger goto without depending on the hex viewer being
+    /// the focused widget. Clears the input buffer first so stale
+    /// content from a previous open doesn't appear pre-filled.
+    ///
+    /// ```rust,ignore
+    /// // Inside your app's hotkey handler:
+    /// if global_hotkey == "Ctrl+G" {
+    ///     viewer.request_goto();
+    /// }
+    /// // Then on the next frame, render() opens the popup.
+    /// ```
+    pub fn request_goto(&mut self) {
+        self.show_goto = true;
+        self.goto_buf.clear();
+        // No mouse position to anchor at (caller is host-side, not
+        // ImGui-handled). Leave `popup_open_pos` at whatever the
+        // last in-viewer event captured — guarantees the popup
+        // appears in a sane place relative to the viewer's last
+        // interaction. If never set (fresh viewer, never clicked),
+        // it stays at `(0, 0)` — the popup-render path will fall
+        // back to "centre on screen" in that case.
+    }
+
+    /// Open the **search** popup on the next frame, mirroring the
+    /// `Ctrl+F` shortcut handled internally. Same use case as
+    /// [`Self::request_goto`] — bridge from a host-side global
+    /// hotkey when the viewer isn't the focused widget.
+    pub fn request_search(&mut self) {
+        self.show_search = true;
+    }
+
     pub fn is_focused(&self) -> bool {
         self.focused
     }
@@ -249,6 +365,31 @@ impl HexViewer {
     }
     pub fn nav_history(&self) -> &NavHistory {
         &self.nav
+    }
+
+    /// Inspector subview height in pixels, or `None` when the user
+    /// hasn't manually resized it (the panel uses its natural auto
+    /// height calculated from the line metrics).
+    pub fn inspector_height_px(&self) -> Option<f32> {
+        if self.inspector_h > 0.0 {
+            Some(self.inspector_h)
+        } else {
+            None
+        }
+    }
+
+    /// Programmatically set the inspector subview height (in pixels).
+    /// The next `render` call will clamp the value against the runtime
+    /// min/max envelope (at least `2 × line_height`, leaves at least
+    /// 5 rows of hex visible). Pass `0.0` to revert to auto-sizing.
+    pub fn set_inspector_height_px(&mut self, h: f32) {
+        self.inspector_h = h.max(0.0);
+    }
+
+    /// Reset the user-controlled inspector height back to auto.
+    /// Equivalent to `set_inspector_height_px(0.0)`.
+    pub fn reset_inspector_height(&mut self) {
+        self.inspector_h = 0.0;
     }
 
     /// Returns `true` exactly once each time the auto-refresh counter

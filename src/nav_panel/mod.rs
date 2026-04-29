@@ -61,7 +61,9 @@ pub mod theme;
 mod render;
 mod submenu;
 
-pub use config::{ButtonStyle, DockPosition, NavButton, NavItem, NavPanelConfig, SubMenuItem};
+pub use config::{
+    ActiveStyle, ButtonStyle, DockPosition, NavButton, NavItem, NavPanelConfig, SubMenuItem,
+};
 pub use state::NavPanelState;
 pub use theme::NavColors;
 
@@ -115,18 +117,34 @@ pub fn render_nav_panel(
 ) -> NavPanelResult {
     let origin = ui.cursor_screen_pos();
     let size = ui.content_region_avail();
-    render::render_nav_panel_impl(ui, cfg, state, origin, size, false)
+    render::render_nav_panel_impl(ui, cfg, state, origin, size, render::OverlayLayer::Window)
 }
 
-/// Overlay variant: renders the nav panel through `ui.get_foreground_draw_list()`
-/// at an explicit screen-space position, without requiring a host ImGui window.
+/// Overlay variant: renders the nav panel through
+/// `ui.get_background_draw_list()` at an explicit screen-space
+/// position, without requiring a host ImGui window.
 ///
 /// - `origin` — top-left of the panel region in **screen** coordinates.
 /// - `size` — `[width, height]` of the region reserved for the panel.
 ///
-/// The submenu flyout still spawns its own ImGui window (it needs input focus),
-/// but the panel itself draws on the foreground draw list so content windows
-/// behind it remain clickable.
+/// **Z-order note (2026-04-29):** the panel paints into the
+/// **background** draw list rather than the foreground one. Same
+/// rationale as [`crate::status_bar::StatusBar::render_overlay`] —
+/// chrome surfaces should sit below ImGui popups (tooltips,
+/// context menus, modals) so a popup raised by another widget can
+/// never get clipped by the panel. The submenu flyout still spawns
+/// its own ImGui window (it needs input focus and lives in the
+/// popup layer naturally).
+///
+/// **Host requirement:** if the host is an `app_window` instance,
+/// it must be configured with `AppConfig::raw_content()` so the
+/// root window receives `WindowFlags::NO_BACKGROUND` — otherwise
+/// the root's `WindowBg` fill clobbers the background draw list
+/// and the panel becomes invisible.
+///
+/// For the legacy foreground behaviour (kiosk-style HUDs that
+/// genuinely need to obscure popups) use
+/// [`render_nav_panel_overlay_foreground`].
 pub fn render_nav_panel_overlay(
     ui: &Ui,
     cfg: &NavPanelConfig,
@@ -134,7 +152,37 @@ pub fn render_nav_panel_overlay(
     origin: [f32; 2],
     size: [f32; 2],
 ) -> NavPanelResult {
-    render::render_nav_panel_impl(ui, cfg, state, origin, size, true)
+    render::render_nav_panel_impl(
+        ui,
+        cfg,
+        state,
+        origin,
+        size,
+        render::OverlayLayer::Background,
+    )
+}
+
+/// Foreground-overlay variant — paints into
+/// `ui.get_foreground_draw_list()`, which lives **above** every
+/// ImGui popup. Use only for kiosk-style HUDs that must obscure
+/// tooltips and menus; for standard chrome bars prefer
+/// [`render_nav_panel_overlay`] so the host's tooltips don't get
+/// clipped.
+pub fn render_nav_panel_overlay_foreground(
+    ui: &Ui,
+    cfg: &NavPanelConfig,
+    state: &mut NavPanelState,
+    origin: [f32; 2],
+    size: [f32; 2],
+) -> NavPanelResult {
+    render::render_nav_panel_impl(
+        ui,
+        cfg,
+        state,
+        origin,
+        size,
+        render::OverlayLayer::Foreground,
+    )
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -218,6 +266,94 @@ mod tests {
             assert!(c.bg.iter().all(|&v| (0.0..=1.0).contains(&v)));
             assert!(c.indicator[3] > 0.0);
         }
+    }
+
+    #[test]
+    fn hover_zoom_default_is_macos_dock_band() {
+        // The default zoom factor sits in the visible-but-not-jarring
+        // band (~`1.15`–`1.30`) — same magnification feel as the
+        // macOS Dock. Set to exactly `1.0` to disable the effect.
+        let cfg = NavPanelConfig::default();
+        assert!(cfg.hover_zoom_scale > 1.0 && cfg.hover_zoom_scale <= 1.5);
+    }
+
+    #[test]
+    fn hover_zoom_scale_is_clamped() {
+        // 1.0 floor — anything below collapses to "no zoom" / makes
+        // no sense (would shrink the glyph). 3.0 ceiling — beyond
+        // that the glyph overflows the button cell and clips visibly.
+        let too_small = NavPanelConfig::default().with_hover_zoom_scale(0.5);
+        assert!(too_small.hover_zoom_scale >= 1.0);
+        let too_big = NavPanelConfig::default().with_hover_zoom_scale(10.0);
+        assert!(too_big.hover_zoom_scale <= 3.0);
+        // In-range values pass through unchanged.
+        let mid = NavPanelConfig::default().with_hover_zoom_scale(1.35);
+        assert_eq!(mid.hover_zoom_scale, 1.35);
+    }
+
+    #[test]
+    fn active_style_default_is_ring_with_orange() {
+        // As of 2026-04-29 the default active-state visual is a
+        // transparent ring around the icon (no background fill, no
+        // indicator strip), tinted warm amber so it reads as
+        // "orange focus" on every built-in theme. Flip back to the
+        // historic filled-bar look via
+        // `with_active_style(ActiveStyle::Bar)`.
+        let cfg = NavPanelConfig::default();
+        assert_eq!(cfg.active_style, ActiveStyle::Ring);
+        let ring = cfg
+            .active_ring_color
+            .expect("ring colour must be Some by default");
+        // Warm amber: red ≫ green > blue, fully opaque.
+        assert!(
+            ring[0] > 0.8,
+            "default ring should be predominantly red/orange"
+        );
+        assert!(
+            ring[0] > ring[1] && ring[1] > ring[2],
+            "warm hue ordering R > G > B"
+        );
+        assert!(
+            (ring[3] - 1.0).abs() < f32::EPSILON,
+            "ring colour must be opaque"
+        );
+        assert!(cfg.active_ring_thickness > 0.0);
+        assert!(cfg.active_ring_padding >= 0.0);
+    }
+
+    #[test]
+    fn active_style_can_opt_back_into_bar() {
+        // Backwards-compatibility escape hatch — callers that want the
+        // pre-2026-04-29 filled-bar look just call this builder.
+        let cfg = NavPanelConfig::default().with_active_style(ActiveStyle::Bar);
+        assert_eq!(cfg.active_style, ActiveStyle::Bar);
+    }
+
+    #[test]
+    fn active_style_ring_builders() {
+        let cfg = NavPanelConfig::new(DockPosition::Left)
+            .with_active_style(ActiveStyle::Ring)
+            .with_active_ring_color([1.0, 0.65, 0.20, 1.0])
+            .with_active_ring_thickness(2.0)
+            .with_active_ring_padding(6.0);
+        assert_eq!(cfg.active_style, ActiveStyle::Ring);
+        assert_eq!(cfg.active_ring_color, Some([1.0, 0.65, 0.20, 1.0]));
+        assert_eq!(cfg.active_ring_thickness, 2.0);
+        assert_eq!(cfg.active_ring_padding, 6.0);
+        // `without_active_ring_color` clears back to None (palette
+        // indicator falls back through).
+        let cleared = cfg.without_active_ring_color();
+        assert!(cleared.active_ring_color.is_none());
+    }
+
+    #[test]
+    fn active_ring_thickness_clamped_above_min() {
+        // 0.0 / negative values would render an invisible (or
+        // backwards) stroke — clamp keeps the ring visible.
+        let cfg = NavPanelConfig::default().with_active_ring_thickness(0.0);
+        assert!(cfg.active_ring_thickness >= 0.5);
+        let cfg = NavPanelConfig::default().with_active_ring_thickness(-3.0);
+        assert!(cfg.active_ring_thickness >= 0.5);
     }
 
     #[test]

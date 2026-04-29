@@ -4,6 +4,7 @@
 //! that picks `Theme::Dark` (the default) gets a consistent,
 //! fully-tuned dark look across every component.
 
+use super::palettes::{DisasmViewColors, DisasmViewTokens, HexViewerColors, HexViewerTokens};
 use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
@@ -152,7 +153,12 @@ pub fn statusbar_config() -> StatusBarConfig {
         item_padding: 10.0,
         separator_width: 1.0,
         show_separators: false,
-        highlight_hover: false,
+
+        show_top_border: true,
+
+        top_border_offset_left: 0.0,
+
+        top_border_offset_right: 0.0,
         progress_width: 60.0,
         progress_height: 8.0,
         colors: statusbar_colors(),
@@ -167,13 +173,55 @@ pub fn statusbar_colors() -> StatusBarColors {
         text: hex(FG, 1.0),
         text_dim: hex(FG_MUTED, 1.0),
         separator: hex(BORDER, 1.0),
-        hover: hex(SECONDARY_HOVER, 0.60),
-        active: hex(SECONDARY_HOVER, 0.90),
+        hover: hex(SECONDARY_HOVER, 1.0),
+        active: hex(SECONDARY_HOVER, 1.0),
         success: hex(SUCCESS, 1.0),
         warning: hex(WARNING, 1.0),
         error: hex(DANGER, 1.0),
         info: hex(ACCENT, 1.0),
     }
+}
+
+// ─── HexViewer ───────────────────────────────────────────────────────────────
+
+/// Hex-viewer palette for this theme. Wires the 18 hex_viewer colour
+/// tokens to the same surface / accent / semantic constants used by
+/// the rest of the chrome stack — `offset` reads as the theme accent,
+/// `printable` matches `success`, etc.
+pub fn hex_viewer_colors() -> HexViewerColors {
+    HexViewerColors::from_tokens(&HexViewerTokens {
+        fg: hex(FG, 1.0),
+        fg_muted: hex(FG_MUTED, 1.0),
+        accent: hex(ACCENT, 1.0),
+        success: hex(SUCCESS, 1.0),
+        warning: hex(WARNING, 1.0),
+        danger: hex(DANGER, 1.0),
+        // Muted purple — distinct from accent (blue) and success (green)
+        // so the "high byte" category really stands out in a dump.
+        purple: hex(0xa386c0, 1.0),
+    })
+}
+
+// ─── DisasmView ──────────────────────────────────────────────────────────────
+
+/// Disassembly-view palette for this theme. Picks colours that read
+/// well on the warm-grey NxT surface — accent blue for the address
+/// gutter, semantic SUCCESS / WARNING / DANGER for call / jump / ret,
+/// purple for stack ops, orange for syscall + memory brackets, cyan
+/// for registers (distinct from the blue accent).
+pub fn disasm_view_colors() -> DisasmViewColors {
+    DisasmViewColors::from_tokens(&DisasmViewTokens {
+        fg: hex(FG, 1.0),
+        fg_muted: hex(FG_MUTED, 1.0),
+        accent: hex(ACCENT, 1.0),
+        success: hex(SUCCESS, 1.0),
+        warning: hex(WARNING, 1.0),
+        danger: hex(DANGER, 1.0),
+        purple: hex(0xa386c0, 1.0),
+        orange: hex(0xe89868, 1.0),
+        // Cyan distinct from ACCENT (#5b9bd5) — pull green for separation.
+        cyan: hex(0x5ec7d6, 1.0),
+    })
 }
 
 // ─── ImGui style ─────────────────────────────────────────────────────────────

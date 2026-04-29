@@ -1023,7 +1023,7 @@ impl CodeEditor {
                     let (hover_line, _) = self.visual_row_to_line(hover_vrow);
                     for marker in &self.error_markers {
                         if marker.line == hover_line {
-                            ui.tooltip_text(&marker.message);
+                            crate::utils::themed_tooltip(ui, || ui.text(&marker.message));
                             break;
                         }
                     }
@@ -2571,7 +2571,7 @@ impl CodeEditor {
                 self.config.font_size_scale = (self.config.font_size_scale - 0.1).clamp(0.4, 4.0);
             }
             if ui.is_item_hovered() {
-                ui.tooltip_text("Decrease font size");
+                crate::utils::themed_tooltip(ui, || ui.text("Decrease font size"));
             }
             ui.same_line();
             ui.text(format!("{:.0}%", self.config.font_size_scale * 100.0));
@@ -2581,7 +2581,7 @@ impl CodeEditor {
                 self.config.font_size_scale = (self.config.font_size_scale + 0.1).clamp(0.4, 4.0);
             }
             if ui.is_item_hovered() {
-                ui.tooltip_text("Increase font size");
+                crate::utils::themed_tooltip(ui, || ui.text("Increase font size"));
             }
             ui.separator();
         }
@@ -2680,7 +2680,7 @@ impl CodeEditor {
                     self.find_prev();
                 }
                 if ui.is_item_hovered() {
-                    ui.tooltip_text("Previous match  Shift+F3");
+                    crate::utils::themed_tooltip(ui, || ui.text("Previous match  Shift+F3"));
                 }
                 ui.same_line();
                 let next_lbl = format!("{}##fn", icons::ARROW_DOWN_BOLD);
@@ -2688,7 +2688,7 @@ impl CodeEditor {
                     self.find_next();
                 }
                 if ui.is_item_hovered() {
-                    ui.tooltip_text("Next match  F3");
+                    crate::utils::themed_tooltip(ui, || ui.text("Next match  F3"));
                 }
 
                 ui.same_line();
@@ -2711,7 +2711,7 @@ impl CodeEditor {
                 }
                 drop(_c);
                 if ui.is_item_hovered() {
-                    ui.tooltip_text("Case sensitive");
+                    crate::utils::themed_tooltip(ui, || ui.text("Case sensitive"));
                 }
 
                 ui.same_line();
@@ -2730,7 +2730,7 @@ impl CodeEditor {
                 }
                 drop(_w);
                 if ui.is_item_hovered() {
-                    ui.tooltip_text("Whole word");
+                    crate::utils::themed_tooltip(ui, || ui.text("Whole word"));
                 }
 
                 if !self.config.read_only {
@@ -2741,7 +2741,7 @@ impl CodeEditor {
                         self.find_replace.show_replace = !self.find_replace.show_replace;
                     }
                     if ui.is_item_hovered() {
-                        ui.tooltip_text("Toggle replace  Ctrl+H");
+                        crate::utils::themed_tooltip(ui, || ui.text("Toggle replace  Ctrl+H"));
                     }
                 }
 
@@ -2753,7 +2753,7 @@ impl CodeEditor {
                     self.find_replace.open = false;
                 }
                 if ui.is_item_hovered() {
-                    ui.tooltip_text("Close  Esc");
+                    crate::utils::themed_tooltip(ui, || ui.text("Close  Esc"));
                 }
 
                 // ── Row 2: Replace (only in writable editors) ────────────

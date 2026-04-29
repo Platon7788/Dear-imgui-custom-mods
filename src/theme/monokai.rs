@@ -4,6 +4,7 @@
 //! bright neon accents (pink, green, cyan, orange, yellow). Built for
 //! contrast-rich syntax highlighting; equally readable for UI chrome.
 
+use super::palettes::{DisasmViewColors, DisasmViewTokens, HexViewerColors, HexViewerTokens};
 use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
@@ -42,7 +43,6 @@ const TITLE_INACTIVE_BG: u32 = 0x1a171a;
 
 // Monokai neon accents.
 const RED: u32 = 0xff6188; // hot pink
-#[allow(dead_code)]
 const ORANGE: u32 = 0xfc9867;
 const YELLOW: u32 = 0xffd866;
 const GREEN: u32 = 0xa9dc76;
@@ -151,7 +151,12 @@ pub fn statusbar_config() -> StatusBarConfig {
         item_padding: 10.0,
         separator_width: 1.0,
         show_separators: false,
-        highlight_hover: false,
+
+        show_top_border: true,
+
+        top_border_offset_left: 0.0,
+
+        top_border_offset_right: 0.0,
         progress_width: 60.0,
         progress_height: 8.0,
         colors: statusbar_colors(),
@@ -165,13 +170,50 @@ pub fn statusbar_colors() -> StatusBarColors {
         text: hex(FG, 1.0),
         text_dim: hex(FG_MUTED, 1.0),
         separator: hex(BORDER, 1.0),
-        hover: hex(BG_FRAME_HOVER, 0.60),
-        active: hex(BG_FRAME_HOVER, 0.90),
+        hover: hex(BG_FRAME_HOVER, 1.0),
+        active: hex(BG_FRAME_HOVER, 1.0),
         success: hex(GREEN, 1.0),
         warning: hex(YELLOW, 1.0),
         error: hex(RED, 1.0),
         info: hex(CYAN, 1.0),
     }
+}
+
+// ─── HexViewer ───────────────────────────────────────────────────────────────
+
+/// Hex-viewer palette for the Monokai theme — neon Pro hues
+/// (cyan / green / yellow / red / purple).
+pub fn hex_viewer_colors() -> HexViewerColors {
+    HexViewerColors::from_tokens(&HexViewerTokens {
+        fg: hex(FG, 1.0),
+        fg_muted: hex(FG_MUTED, 1.0),
+        accent: hex(CYAN, 1.0),
+        success: hex(GREEN, 1.0),
+        warning: hex(YELLOW, 1.0),
+        danger: hex(RED, 1.0),
+        purple: hex(PURPLE, 1.0),
+    })
+}
+
+// ─── DisasmView ──────────────────────────────────────────────────────────────
+
+/// Disassembly-view palette for the Monokai theme — neon Pro hues.
+/// Address column glows cyan, calls in green, jumps in yellow,
+/// returns in hot pink, stack ops in purple, syscall/memory in orange.
+pub fn disasm_view_colors() -> DisasmViewColors {
+    DisasmViewColors::from_tokens(&DisasmViewTokens {
+        fg: hex(FG, 1.0),
+        fg_muted: hex(FG_MUTED, 1.0),
+        accent: hex(CYAN, 1.0),
+        success: hex(GREEN, 1.0),
+        warning: hex(YELLOW, 1.0),
+        danger: hex(RED, 1.0),
+        purple: hex(PURPLE, 1.0),
+        orange: hex(ORANGE, 1.0),
+        // Use a slightly different cyan so register text doesn't merge
+        // visually with the cyan address gutter.
+        cyan: hex(0x9be1ee, 1.0),
+    })
 }
 
 // ─── ImGui style ─────────────────────────────────────────────────────────────

@@ -40,7 +40,10 @@ pub mod solarized;
 // `app_window`, `confirm_dialog`, `nav_panel`, `notifications`)
 // re-export these too for backwards-compatible user paths like
 // `crate::theme::TitlebarColors`.
-pub use palettes::{DialogColors, NavColors, NotificationColors, StatusBarColors, TitlebarColors};
+pub use palettes::{
+    DialogColors, DisasmFlowKind, DisasmViewColors, HexViewerColors, NavColors, NotificationColors,
+    StatusBarColors, TitlebarColors,
+};
 
 // ─── Dark theme palette (NxT-inspired) — LEGACY ─────────────────────────────
 //
@@ -318,6 +321,95 @@ impl Theme {
         }
     }
 
+    /// Hex-viewer palette for this theme — 18 colour tokens used by
+    /// [`crate::hex_viewer::HexViewer`], synthesised from the same
+    /// `accent` / `success` / `warning` / `danger` / surface tokens
+    /// the rest of the chrome stack uses, so the byte gutter, ASCII
+    /// column, inspector and category tints all stay in the same
+    /// visual family as `Theme::nav()` / `Theme::statusbar_colors()`.
+    ///
+    /// Apply via [`crate::hex_viewer::HexViewerConfig::with_theme`] or
+    /// [`crate::hex_viewer::HexViewerConfig::apply_theme_colors`].
+    pub fn hex_viewer_colors(self) -> HexViewerColors {
+        match self {
+            Self::Dark => dark::hex_viewer_colors(),
+            Self::Light => light::hex_viewer_colors(),
+            Self::Midnight => midnight::hex_viewer_colors(),
+            Self::Solarized => solarized::hex_viewer_colors(),
+            Self::Monokai => monokai::hex_viewer_colors(),
+            Self::Catppuccin => catppuccin::hex_viewer_colors(),
+            Self::Nord => nord::hex_viewer_colors(),
+        }
+    }
+
+    /// Disassembly-view palette for this theme — 26 colour tokens
+    /// used by [`crate::disasm_view::DisasmView`], synthesised from
+    /// the same `accent` / `success` / `warning` / `danger` /
+    /// `purple` / `orange` / `cyan` semantic tokens the rest of the
+    /// chrome stack uses, so the address gutter, mnemonic colouring,
+    /// operand syntax tinting, branch arrows and breakpoint markers
+    /// all stay in the same visual family as `Theme::nav()` /
+    /// `Theme::statusbar_colors()`.
+    ///
+    /// Apply via [`crate::disasm_view::DisasmViewConfig::with_theme`]
+    /// or
+    /// [`crate::disasm_view::DisasmViewConfig::apply_theme_colors`].
+    pub fn disasm_view_colors(self) -> DisasmViewColors {
+        match self {
+            Self::Dark => dark::disasm_view_colors(),
+            Self::Light => light::disasm_view_colors(),
+            Self::Midnight => midnight::disasm_view_colors(),
+            Self::Solarized => solarized::disasm_view_colors(),
+            Self::Monokai => monokai::disasm_view_colors(),
+            Self::Catppuccin => catppuccin::disasm_view_colors(),
+            Self::Nord => nord::disasm_view_colors(),
+        }
+    }
+
+    /// Primary window-background colour for this theme — the same
+    /// value the theme installs as `StyleColor::WindowBg` in
+    /// [`Self::apply_imgui_style`]. Hosts that paint the framebuffer
+    /// directly (wgpu / vulkan clear pass) should use this so the
+    /// visible page surface stays in sync with whatever ImGui itself
+    /// paints into ordinary windows.
+    pub fn window_bg(self) -> [f32; 4] {
+        // Hex literals match the per-theme `BG` / `BASE` / `NORD0`
+        // constants. Inlined here so this accessor doesn't require a
+        // dispatch function in every theme module.
+        const fn rgb(rgb: u32) -> [f32; 4] {
+            [
+                ((rgb >> 16) & 0xFF) as f32 / 255.0,
+                ((rgb >> 8) & 0xFF) as f32 / 255.0,
+                (rgb & 0xFF) as f32 / 255.0,
+                1.0,
+            ]
+        }
+        match self {
+            Self::Dark => rgb(0x2f343e),
+            Self::Light => rgb(0xf1f2f5),
+            Self::Midnight => rgb(0x0e0f13),
+            Self::Solarized => rgb(0x002b36),
+            Self::Monokai => rgb(0x2d2a2e),
+            Self::Catppuccin => rgb(0x1e1e2e),
+            Self::Nord => rgb(0x2e3440),
+        }
+    }
+
+    /// Tab-strip colours synthesized from this theme's nav + status-bar
+    /// palettes. Use it to keep [`crate::tab_control::TabControl`] in
+    /// the same visual ecosystem as `nav_panel` / `status_bar` —
+    /// `tab_strip_bg = nav.bg`, hover/active surfaces from
+    /// `nav.btn_hover` / `nav.btn_active`, status indicators
+    /// (`status_active` / `_warning` / `_error`) from
+    /// `statusbar_colors().{success,warning,error}`.
+    ///
+    /// Available only with the `tab_control` feature; the
+    /// [`crate::tab_control::TabColors`] type lives in that widget.
+    #[cfg(feature = "tab_control")]
+    pub fn tab_colors(self) -> crate::tab_control::TabColors {
+        crate::tab_control::TabColors::from_palettes(&self.nav(), &self.statusbar_colors())
+    }
+
     /// Apply this theme's Dear ImGui style (rounding + sizing + colours)
     /// to the supplied style object. Call once at startup and any time
     /// after a theme change.
@@ -589,6 +681,189 @@ mod tests {
                     "{theme:?}: {label} glyph contrast {ratio:.2} < 1.8 — too subtle",
                 );
             }
+        }
+    }
+
+    #[cfg(feature = "tab_control")]
+    #[test]
+    fn tab_colors_track_nav_and_statusbar() {
+        // `Theme::tab_colors()` must compose tab strip surfaces from
+        // the nav + status-bar palettes for that theme — keeps the
+        // chrome ecosystem coherent. Pin the wiring so an accidental
+        // edit of either palette doesn't desync the tab strip.
+        for &theme in Theme::ALL {
+            let nav = theme.nav();
+            let sb = theme.statusbar_colors();
+            let tabs = theme.tab_colors();
+            let to_u8 = |c: [f32; 4]| {
+                [
+                    (c[0] * 255.0).round().clamp(0.0, 255.0) as u8,
+                    (c[1] * 255.0).round().clamp(0.0, 255.0) as u8,
+                    (c[2] * 255.0).round().clamp(0.0, 255.0) as u8,
+                ]
+            };
+            assert_eq!(tabs.strip_bg, to_u8(nav.bg), "{theme:?}: strip_bg");
+            assert_eq!(tabs.tab_hover, to_u8(nav.btn_hover), "{theme:?}: tab_hover");
+            assert_eq!(tabs.text, to_u8(nav.icon_active), "{theme:?}: text");
+            assert_eq!(
+                tabs.text_muted,
+                to_u8(nav.icon_default),
+                "{theme:?}: text_muted"
+            );
+            assert_eq!(tabs.separator, to_u8(nav.separator), "{theme:?}: separator");
+            assert_eq!(
+                tabs.status_active,
+                to_u8(sb.success),
+                "{theme:?}: status_active"
+            );
+            assert_eq!(
+                tabs.status_error,
+                to_u8(sb.error),
+                "{theme:?}: status_error"
+            );
+        }
+    }
+
+    #[test]
+    fn hex_viewer_colors_resolve_for_every_theme() {
+        // Every theme must produce a non-default-zeroed
+        // `HexViewerColors`. Pin a few invariants so a regression in
+        // `HexViewerColors::from_tokens` (or a token mistype in a
+        // theme module) surfaces as a fail with the offending theme
+        // name rather than a silently broken visual.
+        for &theme in Theme::ALL {
+            let p = theme.hex_viewer_colors();
+            assert!(p.offset[3] > 0.0, "{theme:?}: offset alpha = 0");
+            assert!(
+                p.cat_printable[3] > 0.0,
+                "{theme:?}: cat_printable alpha = 0"
+            );
+            // Offset and category-printable are different hues
+            // (accent vs success) — they must not collapse to the
+            // same RGB or the visual hierarchy of the gutter
+            // disappears.
+            assert_ne!(
+                [p.offset[0], p.offset[1], p.offset[2]],
+                [p.cat_printable[0], p.cat_printable[1], p.cat_printable[2]],
+                "{theme:?}: offset and cat_printable share a hue",
+            );
+        }
+    }
+
+    #[test]
+    fn disasm_view_colors_resolve_for_every_theme() {
+        // Every theme must produce a non-default-zeroed
+        // `DisasmViewColors`. Pin the per-flow uniqueness invariant —
+        // call (success), jump (warning), return (danger), stack
+        // (purple) and system (orange) MUST land on distinct hues so
+        // the syntax highlighting actually reads.
+        for &theme in Theme::ALL {
+            let p = theme.disasm_view_colors();
+            assert!(p.address[3] > 0.0, "{theme:?}: address alpha = 0");
+            assert!(
+                p.mnemonic_normal[3] > 0.0,
+                "{theme:?}: mnemonic_normal alpha = 0"
+            );
+            assert!(!p.block_tints.is_empty(), "{theme:?}: empty block_tints");
+            assert!(
+                !p.breakpoint_colors.is_empty(),
+                "{theme:?}: empty breakpoint_colors",
+            );
+            // Per-FlowKind mnemonic colours must be distinct so a jump
+            // (yellow) does not visually collide with a call (green) or
+            // return (red).
+            let rgb = |c: [f32; 4]| [c[0], c[1], c[2]];
+            assert_ne!(
+                rgb(p.mnemonic_call),
+                rgb(p.mnemonic_jump),
+                "{theme:?}: call and jump share a hue",
+            );
+            assert_ne!(
+                rgb(p.mnemonic_call),
+                rgb(p.mnemonic_return),
+                "{theme:?}: call and return share a hue",
+            );
+            assert_ne!(
+                rgb(p.mnemonic_stack),
+                rgb(p.mnemonic_system),
+                "{theme:?}: stack and system share a hue",
+            );
+        }
+    }
+
+    #[test]
+    fn disasm_view_colors_default_matches_dark_theme() {
+        // Bare `palettes::DisasmViewColors::default()` must mirror
+        // `Theme::Dark.disasm_view_colors()` — that's the value
+        // `DisasmViewConfig::default()` ends up with when the caller
+        // never goes through the `Theme` system.
+        let default = palettes::DisasmViewColors::default();
+        let dark = Theme::Dark.disasm_view_colors();
+        assert_eq!(default.mnemonic_normal, dark.mnemonic_normal);
+        assert_eq!(default.mnemonic_call, dark.mnemonic_call);
+        assert_eq!(default.address, dark.address);
+        assert_eq!(default.selection_bg, dark.selection_bg);
+        assert_eq!(default.breakpoint, dark.breakpoint);
+        assert_eq!(default.block_tints.len(), dark.block_tints.len());
+    }
+
+    #[test]
+    fn hex_viewer_colors_default_matches_dark_theme() {
+        // `HexViewerColors::default()` must be `Theme::Dark.hex_viewer_colors()`
+        // exactly, so a bare `HexViewerConfig::default()` that
+        // doesn't go through `Theme` still matches the rest of the
+        // Dark chrome stack.
+        let default = palettes::HexViewerColors::default();
+        let dark = Theme::Dark.hex_viewer_colors();
+        assert_eq!(default.offset, dark.offset);
+        assert_eq!(default.cat_printable, dark.cat_printable);
+        assert_eq!(default.hex, dark.hex);
+        assert_eq!(default.cursor_bg, dark.cursor_bg);
+        assert_eq!(default.changed, dark.changed);
+    }
+
+    #[test]
+    fn statusbar_colors_default_matches_dark_theme() {
+        // `StatusBarColors::default()` is the value `StatusBarConfig::default()`
+        // hands out when the caller hasn't gone through `Theme`. It must
+        // mirror `Theme::Dark.statusbar_colors()` exactly, otherwise a
+        // status bar built from defaults will read as a different shade
+        // than every neighbour palette (nav, titlebar, dialog) in the
+        // same Dark stack.
+        let default = palettes::StatusBarColors::default();
+        let dark = Theme::Dark.statusbar_colors();
+        assert_eq!(default.bg, dark.bg, "bg drift");
+        assert_eq!(default.text, dark.text, "text drift");
+        assert_eq!(default.text_dim, dark.text_dim, "text_dim drift");
+        assert_eq!(default.separator, dark.separator, "separator drift");
+        assert_eq!(default.hover, dark.hover, "hover drift");
+        assert_eq!(default.active, dark.active, "active drift");
+    }
+
+    #[cfg(feature = "status_bar")]
+    #[test]
+    fn nav_and_statusbar_palettes_are_in_sync() {
+        // The two strip-style chrome surfaces (vertical nav, horizontal
+        // status) should read as one cohesive ecosystem — they share
+        // the same surface tokens (background, separator, primary /
+        // muted text). This test pins that contract per theme so a
+        // future tweak to one palette can't silently desync the other.
+        for &theme in Theme::ALL {
+            let nav = theme.nav();
+            let sb = theme.statusbar_colors();
+            assert_eq!(nav.bg, sb.bg, "{theme:?}: nav.bg ≠ statusbar.bg");
+            assert_eq!(
+                nav.separator, sb.separator,
+                "{theme:?}: nav.separator ≠ statusbar.separator",
+            );
+            assert_eq!(
+                nav.icon_active, sb.text,
+                "{theme:?}: nav.icon_active ≠ statusbar.text",
+            );
+            assert_eq!(
+                nav.icon_default, sb.text_dim,
+                "{theme:?}: nav.icon_default ≠ statusbar.text_dim",
+            );
         }
     }
 }

@@ -8,6 +8,7 @@
 //!
 //! Reference palette: <https://github.com/catppuccin/catppuccin>
 
+use super::palettes::{DisasmViewColors, DisasmViewTokens, HexViewerColors, HexViewerTokens};
 use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
@@ -87,7 +88,9 @@ pub fn titlebar_colors() -> TitlebarColors {
 pub fn nav_colors() -> NavColors {
     let bg = hex(CRUST, 1.0);
     let btn_hover = hex(SURFACE1, 1.0);
-    let sep = hex(SURFACE0, 1.0);
+    // SURFACE1 separator (matches `statusbar_colors().separator`) —
+    // SURFACE0 was a hair too dim against the CRUST background.
+    let sep = hex(SURFACE1, 1.0);
     let accent = hex(ACCENT, 1.0);
     let icon_active = hex(TEXT, 1.0);
     NavColors {
@@ -151,7 +154,12 @@ pub fn statusbar_config() -> StatusBarConfig {
         item_padding: 10.0,
         separator_width: 1.0,
         show_separators: false,
-        highlight_hover: false,
+
+        show_top_border: true,
+
+        top_border_offset_left: 0.0,
+
+        top_border_offset_right: 0.0,
         progress_width: 60.0,
         progress_height: 8.0,
         colors: statusbar_colors(),
@@ -165,13 +173,52 @@ pub fn statusbar_colors() -> StatusBarColors {
         text: hex(TEXT, 1.0),
         text_dim: hex(SUBTEXT0, 1.0),
         separator: hex(SURFACE1, 1.0),
-        hover: hex(SURFACE1, 0.60),
-        active: hex(SURFACE1, 0.90),
+        hover: hex(SURFACE1, 1.0),
+        active: hex(SURFACE1, 1.0),
         success: hex(GREEN, 1.0),
         warning: hex(PEACH, 1.0),
         error: hex(RED, 1.0),
         info: hex(SKY, 1.0),
     }
+}
+
+// ─── HexViewer ───────────────────────────────────────────────────────────────
+
+/// Hex-viewer palette for the Catppuccin Mocha theme — soft pastel hues.
+pub fn hex_viewer_colors() -> HexViewerColors {
+    HexViewerColors::from_tokens(&HexViewerTokens {
+        fg: hex(TEXT, 1.0),
+        fg_muted: hex(SUBTEXT0, 1.0),
+        accent: hex(BLUE, 1.0),
+        success: hex(GREEN, 1.0),
+        warning: hex(PEACH, 1.0),
+        danger: hex(RED, 1.0),
+        // Catppuccin's mauve — softer than the standard purple, fits
+        // alongside the rest of the pastel palette.
+        purple: hex(MAUVE, 1.0),
+    })
+}
+
+// ─── DisasmView ──────────────────────────────────────────────────────────────
+
+/// Disassembly-view palette for the Catppuccin Mocha theme — soft
+/// pastel hues. BLUE for the address gutter, GREEN for calls, YELLOW
+/// for jumps, RED for returns, MAUVE for stack ops, PEACH for
+/// syscall + memory, SKY-toned cyan for registers.
+pub fn disasm_view_colors() -> DisasmViewColors {
+    DisasmViewColors::from_tokens(&DisasmViewTokens {
+        fg: hex(TEXT, 1.0),
+        fg_muted: hex(SUBTEXT0, 1.0),
+        accent: hex(BLUE, 1.0),
+        success: hex(GREEN, 1.0),
+        warning: hex(YELLOW, 1.0),
+        danger: hex(RED, 1.0),
+        purple: hex(MAUVE, 1.0),
+        orange: hex(PEACH, 1.0),
+        // Use TEAL — distinct from BLUE accent and SKY (which are close
+        // in hue). Reads as a bright pastel cyan for register text.
+        cyan: hex(TEAL, 1.0),
+    })
 }
 
 // ─── ImGui style ─────────────────────────────────────────────────────────────

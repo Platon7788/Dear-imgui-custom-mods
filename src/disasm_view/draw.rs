@@ -246,7 +246,7 @@ impl DisasmView {
 
         // ── Tooltip on hover (comprehensive) ─────────────────
         if row_hovered {
-            ui.tooltip(|| {
+            crate::utils::themed_tooltip(ui, || {
                 ui.text(format!("Address: 0x{:016X}", addr));
                 if addr <= 0xFFFF_FFFF {
                     ui.text(format!("     32: 0x{:08X}", addr as u32));

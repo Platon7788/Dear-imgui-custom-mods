@@ -137,13 +137,18 @@ pub fn render_titlebar(
 
     // Standard buttons drawn right-to-left.
     let mut bx = cursor[0] + ww;
+    // Glyph scale on hover — same micro-magnification trick as
+    // `nav_panel`'s `HoverStyle::Zoom`. Applied by multiplying the
+    // glyph radius before handing it to `glyph::draw_*` (the icons
+    // are drawn into a `[-r, +r]` unit space so this scales the
+    // whole figure proportionally, no font atlas needed).
+    let zoom = cfg.buttons.hover_zoom_scale;
 
     if cfg.buttons.close {
         bx -= btn_w;
         let cx_btn = bx + btn_w * 0.5;
-        if button_hit(
+        let hov = button_hit(
             &draw,
-            &mut action,
             bx,
             btn_w,
             ir,
@@ -152,22 +157,23 @@ pub fn render_titlebar(
             c32(colors.btn_close_hover_bg),
             in_row,
             mx,
-            clicked,
-        ) {
+            cfg.buttons.show_hover_bg,
+        );
+        if hov && clicked && action == TitlebarAction::None {
             action = match cfg.close_mode {
                 CloseMode::Immediate => TitlebarAction::Close,
                 CloseMode::Confirm => TitlebarAction::CloseRequested,
             };
         }
-        glyph::draw_close(&draw, cx_btn, cy_btn, ir, c32(colors.btn_close));
+        let r = if hov { ir * zoom } else { ir };
+        glyph::draw_close(&draw, cx_btn, cy_btn, r, c32(colors.btn_close));
     }
 
     if cfg.buttons.maximize {
         bx -= btn_w;
         let cx_btn = bx + btn_w * 0.5;
-        if button_hit(
+        let hov = button_hit(
             &draw,
-            &mut action,
             bx,
             btn_w,
             ir,
@@ -176,30 +182,31 @@ pub fn render_titlebar(
             c32(colors.btn_hover_bg),
             in_row,
             mx,
-            clicked,
-        ) {
+            cfg.buttons.show_hover_bg,
+        );
+        if hov && clicked && action == TitlebarAction::None {
             action = TitlebarAction::Maximize;
         }
+        let r = if hov { ir * zoom } else { ir };
         if state.maximized {
             glyph::draw_restore(
                 &draw,
                 cx_btn,
                 cy_btn,
-                ir,
+                r,
                 c32(colors.btn_maximize),
                 c32(colors.bg_erase),
             );
         } else {
-            glyph::draw_maximize(&draw, cx_btn, cy_btn, ir, c32(colors.btn_maximize));
+            glyph::draw_maximize(&draw, cx_btn, cy_btn, r, c32(colors.btn_maximize));
         }
     }
 
     if cfg.buttons.minimize {
         bx -= btn_w;
         let cx_btn = bx + btn_w * 0.5;
-        if button_hit(
+        let hov = button_hit(
             &draw,
-            &mut action,
             bx,
             btn_w,
             ir,
@@ -208,40 +215,64 @@ pub fn render_titlebar(
             c32(colors.btn_hover_bg),
             in_row,
             mx,
-            clicked,
-        ) {
+            cfg.buttons.show_hover_bg,
+        );
+        if hov && clicked && action == TitlebarAction::None {
             action = TitlebarAction::Minimize;
         }
-        glyph::draw_minimize(&draw, cx_btn, cy_btn, ir, c32(colors.btn_minimize));
+        let r = if hov { ir * zoom } else { ir };
+        glyph::draw_minimize(&draw, cx_btn, cy_btn, r, c32(colors.btn_minimize));
     }
 
-    // Extra buttons (right-to-left).
+    // Extra buttons (right-to-left). Same zoom + hover-bg-skip rules.
     for extra in cfg.extras.iter().rev() {
         bx -= btn_w;
         let cx_btn = bx + btn_w * 0.5;
         let hov = in_row && mx >= bx && mx < bx + btn_w;
         if hov {
-            draw.add_rect(
-                [cx_btn - ir - ipad, cy_btn - ir - ipad],
-                [cx_btn + ir + ipad, cy_btn + ir + ipad],
-                c32(colors.btn_hover_bg),
-            )
-            .filled(true)
-            .rounding(3.0)
-            .build();
+            if cfg.buttons.show_hover_bg {
+                draw.add_rect(
+                    [cx_btn - ir - ipad, cy_btn - ir - ipad],
+                    [cx_btn + ir + ipad, cy_btn + ir + ipad],
+                    c32(colors.btn_hover_bg),
+                )
+                .filled(true)
+                .rounding(3.0)
+                .build();
+            }
             if let Some(tip) = extra.tooltip {
-                ui.tooltip_text(tip);
+                crate::utils::themed_tooltip(ui, || ui.text(tip));
             }
             if clicked && action == TitlebarAction::None {
                 action = TitlebarAction::Extra(extra.id);
             }
         }
+        // Extras are text-glyphs not vector icons — scale them via
+        // a font-size override the same way `nav_panel::draw_icon`
+        // does for the Zoom hover style.
         let [tw, th] = calc_text_size(extra.label);
-        draw.add_text(
-            [cx_btn - tw * 0.5, cy_btn - th * 0.5],
-            c32(extra.color),
-            extra.label,
-        );
+        if hov && zoom > 1.0 {
+            let font = ui.current_font();
+            let base = ui.current_font_size();
+            let scaled = base * zoom;
+            let sw = tw * zoom;
+            let sh = th * zoom;
+            draw.add_text_with_font(
+                font,
+                scaled,
+                [cx_btn - sw * 0.5, cy_btn - sh * 0.5],
+                c32(extra.color),
+                extra.label,
+                0.0,
+                None,
+            );
+        } else {
+            draw.add_text(
+                [cx_btn - tw * 0.5, cy_btn - th * 0.5],
+                c32(extra.color),
+                extra.label,
+            );
+        }
     }
 
     // Resize hover (only when window is OS-resizable and not maximized).
@@ -314,10 +345,16 @@ pub fn whole_window_resize(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/// Hit-test a standard titlebar button. Returns whether the cursor
+/// is over it; optionally paints the rounded coloured hover
+/// background when `show_hover_bg == true` (the historic look —
+/// disabled by default, see [`super::config::Buttons::show_hover_bg`]).
+/// Click handling moved out of this helper so the caller can gate it
+/// on `action == None` itself, keeping the per-button blocks linear
+/// instead of threading `&mut action` through.
 #[allow(clippy::too_many_arguments)]
 fn button_hit(
     draw: &DrawListMut<'_>,
-    action: &mut TitlebarAction,
     bx: f32,
     btn_w: f32,
     ir: f32,
@@ -326,10 +363,10 @@ fn button_hit(
     hover_bg: u32,
     in_row: bool,
     mx: f32,
-    clicked: bool,
+    show_hover_bg: bool,
 ) -> bool {
     let hov = in_row && mx >= bx && mx < bx + btn_w;
-    if hov {
+    if hov && show_hover_bg {
         let cx = bx + btn_w * 0.5;
         draw.add_rect(
             [cx - ir - ipad, cy - ir - ipad],
@@ -340,7 +377,7 @@ fn button_hit(
         .rounding(3.0)
         .build();
     }
-    hov && clicked && *action == TitlebarAction::None
+    hov
 }
 
 #[inline]

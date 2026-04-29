@@ -23,10 +23,18 @@ use dear_imgui_rs::Ui;
 struct HomeTab;
 
 impl TabItem for HomeTab {
-    fn title(&self) -> &str { "Home" }
-    fn icon(&self) -> Option<&str> { Some(icons::HOME) }
-    fn is_closable(&self) -> bool { false }
-    fn is_pinned(&self) -> bool { true }
+    fn title(&self) -> &str {
+        "Home"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(icons::HOME)
+    }
+    fn is_closable(&self) -> bool {
+        false
+    }
+    fn is_pinned(&self) -> bool {
+        true
+    }
     fn render_content(&mut self, ui: &Ui) {
         ui.spacing();
         ui.text("Welcome!");
@@ -63,23 +71,42 @@ struct EditorTab {
 
 impl EditorTab {
     fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), text: String::from("Edit me\u{2026}"), dirty: false }
+        Self {
+            name: name.into(),
+            text: String::from("Edit me\u{2026}"),
+            dirty: false,
+        }
     }
 }
 
 impl TabItem for EditorTab {
-    fn title(&self) -> &str { &self.name }
-    fn icon(&self) -> Option<&str> { Some(icons::FILE_DOCUMENT_OUTLINE) }
+    fn title(&self) -> &str {
+        &self.name
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(icons::FILE_DOCUMENT_OUTLINE)
+    }
     fn status(&self) -> TabStatus {
-        if self.dirty { TabStatus::Dirty } else { TabStatus::Active }
+        if self.dirty {
+            TabStatus::Dirty
+        } else {
+            TabStatus::Active
+        }
     }
     fn render_content(&mut self, ui: &Ui) {
         ui.spacing();
-        if ui.input_text_multiline("##editor", &mut self.text, [-1.0, 200.0]).build() {
+        if ui
+            .input_text_multiline("##editor", &mut self.text, [-1.0, 200.0])
+            .build()
+        {
             self.dirty = true;
         }
         ui.spacing();
-        ui.text(if self.dirty { "Status: unsaved changes" } else { "Status: saved" });
+        ui.text(if self.dirty {
+            "Status: unsaved changes"
+        } else {
+            "Status: saved"
+        });
         ui.same_line();
         if ui.button("Save") {
             self.dirty = false;
@@ -93,13 +120,25 @@ struct InboxTab {
 }
 
 impl TabItem for InboxTab {
-    fn title(&self) -> &str { "Inbox" }
-    fn icon(&self) -> Option<&str> { Some(icons::EMAIL_OUTLINE) }
+    fn title(&self) -> &str {
+        "Inbox"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(icons::EMAIL_OUTLINE)
+    }
     fn badge(&self) -> Option<Badge> {
-        if self.unread == 0 { None } else { Some(Badge::count(self.unread, [0xd6, 0x4a, 0x4a])) }
+        if self.unread == 0 {
+            None
+        } else {
+            Some(Badge::count(self.unread, [0xd6, 0x4a, 0x4a]))
+        }
     }
     fn status(&self) -> TabStatus {
-        if self.unread > 5 { TabStatus::Warning } else { TabStatus::Active }
+        if self.unread > 5 {
+            TabStatus::Warning
+        } else {
+            TabStatus::Active
+        }
     }
     fn render_content(&mut self, ui: &Ui) {
         ui.spacing();
@@ -119,12 +158,22 @@ impl TabItem for InboxTab {
 struct DiagnosticsTab;
 
 impl TabItem for DiagnosticsTab {
-    fn title(&self) -> &str { "Diagnostics" }
-    fn icon(&self) -> Option<&str> { Some(icons::PULSE) }
-    fn status(&self) -> TabStatus { TabStatus::Error }
-    fn tooltip(&self) -> Option<&str> { Some("3 errors detected — click for details") }
+    fn title(&self) -> &str {
+        "Diagnostics"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(icons::PULSE)
+    }
+    fn status(&self) -> TabStatus {
+        TabStatus::Error
+    }
+    fn tooltip(&self) -> Option<&str> {
+        Some("3 errors detected — click for details")
+    }
     // Demo of per-tab preview opt-out — the tooltip carries the summary.
-    fn show_preview(&self) -> bool { false }
+    fn show_preview(&self) -> bool {
+        false
+    }
     fn render_content(&mut self, ui: &Ui) {
         ui.spacing();
         ui.text_colored([1.0, 0.45, 0.45, 1.0], "Three errors detected:");
@@ -140,10 +189,18 @@ struct SettingsTab {
 }
 
 impl TabItem for SettingsTab {
-    fn title(&self) -> &str { "Settings" }
-    fn icon(&self) -> Option<&str> { Some(icons::COG_OUTLINE) }
-    fn is_pinned(&self) -> bool { true }
-    fn is_closable(&self) -> bool { false }
+    fn title(&self) -> &str {
+        "Settings"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(icons::COG_OUTLINE)
+    }
+    fn is_pinned(&self) -> bool {
+        true
+    }
+    fn is_closable(&self) -> bool {
+        false
+    }
     fn render_content(&mut self, ui: &Ui) {
         ui.spacing();
         ui.text("Tab style (applies to outer & nested):");
@@ -188,15 +245,20 @@ impl NestedTab {
 }
 
 impl TabItem for NestedTab {
-    fn title(&self) -> &str { "Nested" }
-    fn icon(&self) -> Option<&str> { Some(icons::FOLDER_MULTIPLE_OUTLINE) }
+    fn title(&self) -> &str {
+        "Nested"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(icons::FOLDER_MULTIPLE_OUTLINE)
+    }
     fn render_content(&mut self, ui: &Ui) {
         ui.spacing();
         ui.text("This tab contains its own TabControl:");
         ui.spacing();
         if let Some(TabAction::AddRequested) = self.inner.render(ui) {
             let n = self.inner.tab_count();
-            self.inner.add(EditorTab::new(format!("note_{}.txt", n + 1)));
+            self.inner
+                .add(EditorTab::new(format!("note_{}.txt", n + 1)));
         }
     }
 }
@@ -372,6 +434,5 @@ fn propagate_style_to_nested(tc: &mut TabControl<OuterTab>, style: TabStyle) {
 // ─── Entry point ────────────────────────────────────────────────────────────
 
 fn main() -> Result<(), winit::error::EventLoopError> {
-    AppWindow::new(AppConfig::main("TabControl Demo", 1100.0, 720.0))
-        .run(DemoApp::default())
+    AppWindow::new(AppConfig::main("TabControl Demo", 1100.0, 720.0)).run(DemoApp::default())
 }

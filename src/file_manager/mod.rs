@@ -627,8 +627,7 @@ impl FileManager {
         // breadcrumb / favorites label visibly hug the left edge — give the
         // popup a small inner gutter so its content doesn't merge with the
         // window border.
-        let _padding =
-            ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([6.0, 6.0]));
+        let _padding = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([6.0, 6.0]));
 
         if let Some(_tok) = ui
             .begin_modal_popup_config(title)

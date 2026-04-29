@@ -546,7 +546,7 @@ impl Timeline {
 
                                 // Tooltip
                                 if cfg.show_tooltip {
-                                    ui.tooltip(|| {
+                                    crate::utils::themed_tooltip(ui, || {
                                         let dur = span.duration();
                                         let (val, suffix) = format_duration(dur);
                                         ui.text(format!(

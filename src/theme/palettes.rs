@@ -189,24 +189,489 @@ pub struct StatusBarColors {
 }
 
 impl Default for StatusBarColors {
-    /// NxT-Dark default — matches `Theme::Dark.statusbar_colors()`. Used
-    /// when a user constructs `StatusBarConfig::default()` without
-    /// going through `Theme`.
+    /// NxT-Dark default — pinned to `Theme::Dark.statusbar_colors()` so
+    /// callers that construct a `StatusBarConfig::default()` without
+    /// going through the theme system still get the **same** surface
+    /// shade as `Theme::Dark.nav().bg` and the rest of the chrome
+    /// stack. (Pre-2026-04-29 this default was stale-hardcoded and
+    /// rendered noticeably darker than the matching nav/titlebar
+    /// surfaces — see `theme::tests::default_matches_dark_theme`.)
     fn default() -> Self {
         Self {
-            bg: [0.12, 0.12, 0.15, 1.0],
-            text: [0.85, 0.87, 0.90, 1.0],
-            text_dim: [0.50, 0.52, 0.58, 1.0],
-            separator: [0.25, 0.27, 0.32, 0.6],
-            hover: [0.20, 0.22, 0.28, 1.0],
-            active: [0.25, 0.28, 0.35, 1.0],
+            // Dark theme tokens, expressed as `[u8 / 255]`:
+            //   bg        = STATUSBAR_BG (0x2B2F38)
+            //   text      = FG           (0xE0E4EA)
+            //   text_dim  = FG_MUTED     (0x8A92A1)
+            //   separator = BORDER       (0x3F4654)
+            //   hover     = SECONDARY_HOVER (0x48505E)
+            //   active    = SECONDARY_HOVER
+            //   success   = SUCCESS      (0x5FB870)
+            //   warning   = WARNING      (0xD9A643)
+            //   error     = DANGER       (0xE06060)
+            //   info      = ACCENT       (0x5B9BD5)
+            bg: [
+                0x2B as f32 / 255.0,
+                0x2F as f32 / 255.0,
+                0x38 as f32 / 255.0,
+                1.0,
+            ],
+            text: [
+                0xE0 as f32 / 255.0,
+                0xE4 as f32 / 255.0,
+                0xEA as f32 / 255.0,
+                1.0,
+            ],
+            text_dim: [
+                0x8A as f32 / 255.0,
+                0x92 as f32 / 255.0,
+                0xA1 as f32 / 255.0,
+                1.0,
+            ],
+            separator: [
+                0x3F as f32 / 255.0,
+                0x46 as f32 / 255.0,
+                0x54 as f32 / 255.0,
+                1.0,
+            ],
+            hover: [
+                0x48 as f32 / 255.0,
+                0x50 as f32 / 255.0,
+                0x5E as f32 / 255.0,
+                1.0,
+            ],
+            active: [
+                0x48 as f32 / 255.0,
+                0x50 as f32 / 255.0,
+                0x5E as f32 / 255.0,
+                1.0,
+            ],
 
-            success: [0.30, 0.80, 0.40, 1.0],
-            warning: [0.90, 0.75, 0.20, 1.0],
-            error: [0.90, 0.30, 0.30, 1.0],
-            info: [0.40, 0.65, 0.90, 1.0],
+            success: [
+                0x5F as f32 / 255.0,
+                0xB8 as f32 / 255.0,
+                0x70 as f32 / 255.0,
+                1.0,
+            ],
+            warning: [
+                0xD9 as f32 / 255.0,
+                0xA6 as f32 / 255.0,
+                0x43 as f32 / 255.0,
+                1.0,
+            ],
+            error: [
+                0xE0 as f32 / 255.0,
+                0x60 as f32 / 255.0,
+                0x60 as f32 / 255.0,
+                1.0,
+            ],
+            info: [
+                0x5B as f32 / 255.0,
+                0x9B as f32 / 255.0,
+                0xD5 as f32 / 255.0,
+                1.0,
+            ],
         }
     }
+}
+
+// ── HexViewerColors ─────────────────────────────────────────────────────────
+
+/// Complete palette for the [`crate::hex_viewer::HexViewer`] widget.
+///
+/// 18 colour tokens grouped by purpose:
+/// - **5 byte categories** (`cat_zero`, `cat_control`, `cat_printable`,
+///   `cat_high`, `cat_full`) — semantic byte-value tinting.
+/// - **8 UI text** (`offset`, `hex`, `ascii`, `ascii_dot`, `header`,
+///   `inspector_label`, `inspector_value`, `zero_legacy`) — gutter,
+///   content, header row, data inspector.
+/// - **5 highlight surfaces** (`selection_bg`, `cursor_bg`, `changed`,
+///   `search_match`, `unreadable`) — interactive overlays.
+///
+/// Built-in themes expose this via
+/// [`crate::theme::Theme::hex_viewer_colors`]; bare
+/// `HexViewerConfig::default()` uses [`HexViewerColors::default`]
+/// which mirrors `Theme::Dark.hex_viewer_colors()`.
+#[derive(Debug, Clone, Copy)]
+pub struct HexViewerColors {
+    // ── Byte categories ─────────────────────────────────────────
+    /// `0x00` byte.
+    pub cat_zero: [f32; 4],
+    /// `0x01..=0x1F` + `0x7F` (control chars).
+    pub cat_control: [f32; 4],
+    /// `0x20..=0x7E` (printable ASCII).
+    pub cat_printable: [f32; 4],
+    /// `0x80..=0xFE` (high / extended).
+    pub cat_high: [f32; 4],
+    /// `0xFF` byte.
+    pub cat_full: [f32; 4],
+
+    // ── UI text ─────────────────────────────────────────────────
+    /// Address gutter colour — primary "where am I" cue.
+    pub offset: [f32; 4],
+    /// Default hex byte text colour (used when category tinting is off).
+    pub hex: [f32; 4],
+    /// Printable char in the ASCII column.
+    pub ascii: [f32; 4],
+    /// `.` placeholder for non-printable bytes in the ASCII column.
+    pub ascii_dot: [f32; 4],
+    /// Column-header row ("Offset / 00 01 02 ... / ASCII").
+    pub header: [f32; 4],
+    /// Inspector label colour (e.g. `u16=`).
+    pub inspector_label: [f32; 4],
+    /// Inspector value colour (the decoded number itself).
+    pub inspector_value: [f32; 4],
+    /// Legacy zero-byte colour (used when `category_colors == false` and
+    /// `dim_zeros == true`).
+    pub zero_legacy: [f32; 4],
+
+    // ── Highlight surfaces ──────────────────────────────────────
+    /// Background fill behind selected bytes.
+    pub selection_bg: [f32; 4],
+    /// Background fill behind the cursor byte.
+    pub cursor_bg: [f32; 4],
+    /// Foreground colour for bytes that differ from the reference snapshot.
+    pub changed: [f32; 4],
+    /// Background fill behind the bytes that match the active search.
+    pub search_match: [f32; 4],
+    /// Background fill for bytes the data provider reports as
+    /// unreadable (gaps in a memory dump).
+    pub unreadable: [f32; 4],
+}
+
+impl Default for HexViewerColors {
+    /// Mirrors `Theme::Dark.hex_viewer_colors()` — see
+    /// `theme::tests::hex_viewer_colors_default_matches_dark_theme`.
+    fn default() -> Self {
+        crate::theme::dark::hex_viewer_colors()
+    }
+}
+
+/// Semantic token bundle each theme passes to [`HexViewerColors::from_tokens`].
+/// Lets every per-theme palette be expressed in 9 lines instead of
+/// reproducing all 18 hex_viewer fields by hand.
+#[doc(hidden)]
+pub struct HexViewerTokens {
+    /// Primary content text — the colour the theme uses for `FG`.
+    pub fg: [f32; 4],
+    /// Muted text — `FG_MUTED`.
+    pub fg_muted: [f32; 4],
+    /// Theme accent — drives `offset` + `cursor_bg` (alpha-modulated).
+    pub accent: [f32; 4],
+    /// Semantic green (printable bytes, success).
+    pub success: [f32; 4],
+    /// Semantic amber (`0xFF` byte, search highlight).
+    pub warning: [f32; 4],
+    /// Semantic red (`changed`, `unreadable`).
+    pub danger: [f32; 4],
+    /// Purple-family hue for `0x80..0xFE` "high" bytes — pick a colour
+    /// distinct from accent and success so the category really stands out.
+    pub purple: [f32; 4],
+}
+
+impl HexViewerColors {
+    /// Build a [`HexViewerColors`] from a small bundle of semantic
+    /// tokens. Used by every per-theme `hex_viewer_colors()` so the
+    /// 18-field palette stays consistent — only the seed colours
+    /// change between themes.
+    pub fn from_tokens(t: &HexViewerTokens) -> Self {
+        // Helper: same RGB as `c`, but with alpha overridden.
+        let with_a = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+        Self {
+            // Byte categories — distinct hues so users can scan dumps quickly.
+            cat_zero: with_a(t.fg_muted, 0.45),
+            cat_control: with_a(t.fg_muted, 0.70),
+            cat_printable: t.success,
+            cat_high: t.purple,
+            cat_full: t.warning,
+
+            // UI text.
+            offset: t.accent,
+            hex: t.fg,
+            ascii: t.success,
+            ascii_dot: with_a(t.fg_muted, 0.45),
+            // Column header captions ("Offset", "00 01 ... 1F", "ASCII")
+            // — pinned to `fg` (full-strength text colour) so they read
+            // as bright white in dark themes and bold dark in light
+            // themes. Earlier this token landed on `fg_muted`, which
+            // made the header row visually closer to a comment than to
+            // a label and the user reported it as washed-out.
+            header: t.fg,
+            inspector_label: t.fg_muted,
+            inspector_value: t.fg,
+            zero_legacy: with_a(t.fg_muted, 0.40),
+
+            // Highlight surfaces — alpha-modulated theme tokens so the
+            // overlays tint the underlying byte text instead of clobbering it.
+            selection_bg: with_a(t.accent, 0.40),
+            cursor_bg: with_a(t.accent, 0.45),
+            changed: t.warning,
+            search_match: with_a(t.warning, 0.35),
+            unreadable: with_a(t.danger, 0.25),
+        }
+    }
+}
+
+// ── DisasmViewColors ────────────────────────────────────────────────────────
+
+/// Instruction control-flow classification — re-exported here so the
+/// palette factory below can build per-flow mnemonic / arrow colours
+/// without pulling in the whole `disasm_view` module. Mirrors
+/// [`crate::disasm_view::FlowKind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum DisasmFlowKind {
+    /// Normal sequential instruction (mov, add, lea, etc.).
+    #[default]
+    Normal,
+    /// Unconditional/conditional jump (jmp, je, jne, etc.).
+    Jump,
+    /// Call instruction.
+    Call,
+    /// Return instruction (ret, iret).
+    Return,
+    /// NOP / INT3 / padding instruction.
+    Nop,
+    /// Stack manipulation (push, pop, sub rsp).
+    Stack,
+    /// System instruction (syscall, sysenter, int).
+    System,
+    /// Invalid / undecodable instruction.
+    Invalid,
+}
+
+/// Complete colour set for the [`crate::disasm_view::DisasmView`] widget
+/// — 26 individual fields covering mnemonic colouring (per
+/// [`DisasmFlowKind`]), operand syntax tinting, address / bytes /
+/// comment, branch arrows, alternating block tints, breakpoint markers,
+/// the current-execution highlight, selection / hover / header /
+/// separator surfaces.
+///
+/// Built-in themes expose this via
+/// [`crate::theme::Theme::disasm_view_colors`]; bare
+/// `DisasmViewConfig::default()` uses [`DisasmViewColors::default`]
+/// which mirrors `Theme::Dark.disasm_view_colors()`. Re-exported from
+/// `crate::disasm_view` as `DisasmColors` for backwards compatibility.
+#[derive(Debug, Clone)]
+pub struct DisasmViewColors {
+    // ── Mnemonic colors by flow kind ────────────────────────
+    /// Normal instruction mnemonic (mov, add, lea, etc.).
+    pub mnemonic_normal: [f32; 4],
+    /// Jump/branch mnemonic.
+    pub mnemonic_jump: [f32; 4],
+    /// Call mnemonic.
+    pub mnemonic_call: [f32; 4],
+    /// Return mnemonic.
+    pub mnemonic_return: [f32; 4],
+    /// NOP/INT3/padding.
+    pub mnemonic_nop: [f32; 4],
+    /// Stack operations (push, pop).
+    pub mnemonic_stack: [f32; 4],
+    /// System instructions (syscall, int).
+    pub mnemonic_system: [f32; 4],
+    /// Invalid instruction.
+    pub mnemonic_invalid: [f32; 4],
+
+    // ── Operand colors ──────────────────────────────────────
+    /// Register names.
+    pub operand_register: [f32; 4],
+    /// Numeric constants / immediates.
+    pub operand_number: [f32; 4],
+    /// Memory dereference brackets and operators.
+    pub operand_memory: [f32; 4],
+    /// String operands.
+    pub operand_string: [f32; 4],
+    /// Default operand text.
+    pub operand_default: [f32; 4],
+
+    // ── Address / bytes ─────────────────────────────────────
+    /// Address column color.
+    pub address: [f32; 4],
+    /// Hex bytes column color.
+    pub bytes: [f32; 4],
+    /// Comment color.
+    pub comment: [f32; 4],
+
+    // ── Branch arrows ───────────────────────────────────────
+    /// Jump arrow color.
+    pub arrow_jump: [f32; 4],
+    /// Call arrow color.
+    pub arrow_call: [f32; 4],
+    /// Return arrow color.
+    pub arrow_return: [f32; 4],
+    /// Default arrow color (other flow kinds).
+    pub arrow_default: [f32; 4],
+
+    // ── Block tinting ───────────────────────────────────────
+    /// Background tint colors for alternating code blocks.
+    pub block_tints: Vec<[f32; 4]>,
+
+    // ── UI elements ─────────────────────────────────────────
+    /// Breakpoint marker color (fallback when no number available).
+    pub breakpoint: [f32; 4],
+    /// Breakpoint gutter background.
+    pub breakpoint_bg: [f32; 4],
+    /// Numbered breakpoint colors (cycle through these).
+    pub breakpoint_colors: Vec<[f32; 4]>,
+    /// Current execution point (stopped-at) background.
+    pub current_line_bg: [f32; 4],
+    /// Selected row background.
+    pub selection_bg: [f32; 4],
+    /// Row hover highlight.
+    pub hover_bg: [f32; 4],
+    /// Column header / separator color.
+    pub header: [f32; 4],
+    /// Separator line between columns.
+    pub separator: [f32; 4],
+}
+
+impl Default for DisasmViewColors {
+    /// Mirrors `Theme::Dark.disasm_view_colors()` — see
+    /// `theme::tests::disasm_view_colors_default_matches_dark_theme`.
+    fn default() -> Self {
+        crate::theme::dark::disasm_view_colors()
+    }
+}
+
+impl DisasmViewColors {
+    /// Get mnemonic color for a given flow kind.
+    pub fn mnemonic_color(&self, kind: DisasmFlowKind) -> [f32; 4] {
+        match kind {
+            DisasmFlowKind::Normal => self.mnemonic_normal,
+            DisasmFlowKind::Jump => self.mnemonic_jump,
+            DisasmFlowKind::Call => self.mnemonic_call,
+            DisasmFlowKind::Return => self.mnemonic_return,
+            DisasmFlowKind::Nop => self.mnemonic_nop,
+            DisasmFlowKind::Stack => self.mnemonic_stack,
+            DisasmFlowKind::System => self.mnemonic_system,
+            DisasmFlowKind::Invalid => self.mnemonic_invalid,
+        }
+    }
+
+    /// Get arrow color for a given flow kind.
+    pub fn arrow_color(&self, kind: DisasmFlowKind) -> [f32; 4] {
+        match kind {
+            DisasmFlowKind::Jump => self.arrow_jump,
+            DisasmFlowKind::Call => self.arrow_call,
+            DisasmFlowKind::Return => self.arrow_return,
+            _ => self.arrow_default,
+        }
+    }
+
+    /// Get breakpoint color by number (1-based). Falls back to
+    /// [`Self::breakpoint`] when `number == 0` or no
+    /// numbered colours are configured.
+    pub fn bp_color(&self, number: u32) -> [f32; 4] {
+        if number == 0 || self.breakpoint_colors.is_empty() {
+            return self.breakpoint;
+        }
+        self.breakpoint_colors[((number - 1) as usize) % self.breakpoint_colors.len()]
+    }
+
+    /// Get block tint color for a given block index.
+    pub fn block_tint(&self, block_index: usize) -> [f32; 4] {
+        if self.block_tints.is_empty() {
+            return [0.0, 0.0, 0.0, 0.0];
+        }
+        self.block_tints[block_index % self.block_tints.len()]
+    }
+
+    /// Build a [`DisasmViewColors`] from a small bundle of semantic
+    /// tokens. Used by every per-theme `disasm_view_colors()` so the
+    /// 26-field palette stays consistent — only the seed colours
+    /// change between themes.
+    pub fn from_tokens(t: &DisasmViewTokens) -> Self {
+        let with_a = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+        Self {
+            // ── Mnemonics — semantic per FlowKind ────────────────
+            mnemonic_normal: t.fg,
+            mnemonic_jump: t.warning,
+            mnemonic_call: t.success,
+            mnemonic_return: t.danger,
+            mnemonic_nop: with_a(t.fg_muted, 0.60),
+            mnemonic_stack: t.purple,
+            mnemonic_system: t.orange,
+            mnemonic_invalid: t.danger,
+
+            // ── Operands ─────────────────────────────────────────
+            operand_register: t.cyan,
+            operand_number: t.success,
+            operand_memory: t.orange,
+            operand_string: with_a(t.warning, 0.85),
+            operand_default: with_a(t.fg, 0.95),
+
+            // ── Address / bytes / comment ────────────────────────
+            address: with_a(t.accent, 0.85),
+            bytes: with_a(t.fg_muted, 0.85),
+            comment: with_a(t.success, 0.75),
+
+            // ── Branch arrows — same family as mnemonics ─────────
+            arrow_jump: with_a(t.warning, 0.90),
+            arrow_call: with_a(t.success, 0.90),
+            arrow_return: with_a(t.danger, 0.90),
+            arrow_default: with_a(t.fg_muted, 0.70),
+
+            // ── Block tints — derived from semantic hues so the
+            //    rotation reads on both light and dark surfaces. Alpha
+            //    deliberately tiny (≤ 0.10) — the tint should hint
+            //    at block boundaries, not compete with the byte text.
+            block_tints: vec![
+                with_a(t.accent, 0.07),
+                with_a(t.danger, 0.06),
+                with_a(t.success, 0.06),
+                with_a(t.warning, 0.06),
+                with_a(t.purple, 0.06),
+                with_a(t.cyan, 0.06),
+            ],
+
+            // ── UI ───────────────────────────────────────────────
+            breakpoint: t.danger,
+            breakpoint_bg: with_a(t.danger, 0.30),
+            breakpoint_colors: vec![
+                t.danger,
+                t.cyan,
+                t.warning,
+                t.success,
+                t.purple,
+                t.orange,
+                t.accent,
+                with_a(t.danger, 0.85),
+            ],
+            current_line_bg: with_a(t.warning, 0.35),
+            selection_bg: with_a(t.accent, 0.45),
+            hover_bg: with_a(t.fg, 0.04),
+            header: with_a(t.fg_muted, 0.85),
+            separator: with_a(t.fg_muted, 0.40),
+        }
+    }
+}
+
+/// Semantic token bundle each theme passes to
+/// [`DisasmViewColors::from_tokens`]. Lets every per-theme palette be
+/// expressed in 9 lines instead of reproducing all 26 disasm_view
+/// fields by hand.
+#[doc(hidden)]
+pub struct DisasmViewTokens {
+    /// Primary content text — `FG` of the theme.
+    pub fg: [f32; 4],
+    /// Muted text — `FG_MUTED`.
+    pub fg_muted: [f32; 4],
+    /// Theme accent — drives `address` (alpha-modulated) + `selection_bg`.
+    pub accent: [f32; 4],
+    /// Semantic green — `Call` mnemonic, numeric operands, comments.
+    pub success: [f32; 4],
+    /// Semantic amber — `Jump` mnemonic, current-line bg, jump arrows.
+    pub warning: [f32; 4],
+    /// Semantic red — `Return` / `Invalid` mnemonics, breakpoint marker.
+    pub danger: [f32; 4],
+    /// Purple-family hue — `Stack` mnemonic (`push` / `pop`), distinct
+    /// from accent / warning so stack ops stand out.
+    pub purple: [f32; 4],
+    /// Orange-family hue — `System` mnemonic + memory operand brackets
+    /// (`[rsp+0x10]`); MUST contrast against `cyan` and `success`.
+    pub orange: [f32; 4],
+    /// Cyan-family hue — register operand colour (`rax`, `xmm0`, etc.).
+    /// Must contrast against the theme accent so registers don't merge
+    /// into the address gutter.
+    pub cyan: [f32; 4],
 }
 
 // ── NotificationColors ──────────────────────────────────────────────────────

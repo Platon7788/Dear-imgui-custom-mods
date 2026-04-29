@@ -6,6 +6,7 @@
 //! Accent is Solarized blue (#268bd2), semantic colors are the published
 //! red / green / yellow.
 
+use super::palettes::{DisasmViewColors, DisasmViewTokens, HexViewerColors, HexViewerTokens};
 use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
@@ -137,7 +138,12 @@ pub fn statusbar_config() -> StatusBarConfig {
         item_padding: 10.0,
         separator_width: 1.0,
         show_separators: false,
-        highlight_hover: false,
+
+        show_top_border: true,
+
+        top_border_offset_left: 0.0,
+
+        top_border_offset_right: 0.0,
         progress_width: 60.0,
         progress_height: 8.0,
         colors: statusbar_colors(),
@@ -151,13 +157,51 @@ pub fn statusbar_colors() -> StatusBarColors {
         text: hex(BASE1, 1.0),
         text_dim: hex(BASE00, 1.0),
         separator: hex(BASE01, 0.60),
-        hover: hex(BG_FRAME, 0.60),
-        active: hex(BG_FRAME, 0.90),
+        hover: hex(BG_FRAME, 1.0),
+        active: hex(BG_FRAME, 1.0),
         success: hex(GREEN, 1.0),
         warning: hex(YELLOW, 1.0),
         error: hex(RED, 1.0),
         info: hex(CYAN, 1.0),
     }
+}
+
+// ─── HexViewer ───────────────────────────────────────────────────────────────
+
+/// Hex-viewer palette for the Solarized (dark) theme — Ethan
+/// Schoonover's canonical accent + semantic colours.
+pub fn hex_viewer_colors() -> HexViewerColors {
+    HexViewerColors::from_tokens(&HexViewerTokens {
+        fg: hex(BASE0, 1.0),
+        fg_muted: hex(BASE01, 1.0),
+        accent: hex(BLUE, 1.0),
+        success: hex(GREEN, 1.0),
+        warning: hex(YELLOW, 1.0),
+        danger: hex(RED, 1.0),
+        // Solarized "violet" — sits between BLUE and MAGENTA.
+        purple: hex(0x6c71c4, 1.0),
+    })
+}
+
+// ─── DisasmView ──────────────────────────────────────────────────────────────
+
+/// Disassembly-view palette for the Solarized (dark) theme — uses
+/// Schoonover's canonical accent palette: BLUE for the address gutter,
+/// GREEN for calls, YELLOW for jumps, RED for returns, VIOLET for
+/// stack ops, ORANGE for syscall + memory, CYAN for registers.
+pub fn disasm_view_colors() -> DisasmViewColors {
+    DisasmViewColors::from_tokens(&DisasmViewTokens {
+        fg: hex(BASE0, 1.0),
+        fg_muted: hex(BASE01, 1.0),
+        accent: hex(BLUE, 1.0),
+        success: hex(GREEN, 1.0),
+        warning: hex(YELLOW, 1.0),
+        danger: hex(RED, 1.0),
+        // Solarized "violet".
+        purple: hex(0x6c71c4, 1.0),
+        orange: hex(ORANGE, 1.0),
+        cyan: hex(CYAN, 1.0),
+    })
 }
 
 // ─── ImGui style ─────────────────────────────────────────────────────────────

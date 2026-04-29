@@ -32,17 +32,23 @@ pub struct StatusBarConfig {
     pub separator_width: f32,
     /// Show separator lines between items.
     pub show_separators: bool,
-    /// Paint a background behind items under the mouse cursor.
+    /// Show the 1 px line drawn along the top edge of the bar.
+    /// Set to `false` if the host wants a flush, border-less look —
+    /// e.g. when the bar surface already merges with the page below.
+    /// Default: `true`.
+    pub show_top_border: bool,
+    /// Pixel offset from the *left* edge where the top-border line
+    /// starts. Use this to skip the area covered by a left-docked
+    /// nav panel so the border doesn't draw a phantom seam through
+    /// the panel's surface.
     ///
-    /// When `false` (default), neither plain text items nor clickable items
-    /// receive any hover paint — the bar stays fully static visually.
-    /// Clickable items continue to emit [`StatusBarEvent`](super::StatusBarEvent)s
-    /// and show their tooltip regardless of this flag; only the optional
-    /// hover/active rectangle is gated by it.
-    ///
-    /// Set to `true` when you want the pre-0.8.1 behavior with Windows-style
-    /// button feedback on hover and press.
-    pub highlight_hover: bool,
+    /// Typical wiring: after `nav_panel.render(...)`, take
+    /// `result.occupied_size[0]` and feed it here. Default: `0.0`.
+    pub top_border_offset_left: f32,
+    /// Pixel offset from the *right* edge where the top-border line
+    /// stops. Mirror of [`Self::top_border_offset_left`] for a right-
+    /// docked nav panel. Default: `0.0`.
+    pub top_border_offset_right: f32,
     /// Width of the inline progress-bar widget rendered by
     /// [`StatusItem::progress`](super::StatusItem::progress) (px).
     /// Default: `60.0`.
@@ -61,7 +67,9 @@ impl Default for StatusBarConfig {
             item_padding: 8.0,
             separator_width: 1.0,
             show_separators: true,
-            highlight_hover: false,
+            show_top_border: true,
+            top_border_offset_left: 0.0,
+            top_border_offset_right: 0.0,
             progress_width: 60.0,
             progress_height: 8.0,
             colors: StatusBarColors::default(),

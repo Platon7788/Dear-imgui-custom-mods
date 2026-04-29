@@ -40,6 +40,37 @@ pub enum ButtonStyle {
     LabelOnly,
 }
 
+// ── Active-button visual style ──────────────────────────────────────────────
+
+/// How the **active** button is highlighted.
+///
+/// As of 2026-04-29 the default is [`Self::Ring`] — a thin stroked
+/// circle around the icon, no background fill — because that's the
+/// look the project owner wants out of the box (matches the
+/// VS-Code-with-orange-focus-ring aesthetic). [`Self::Bar`] is still
+/// available for callers who prefer the older "filled background +
+/// indicator strip" treatment.
+///
+/// Pick the style that matches the surrounding chrome density —
+/// `Bar` reads better on busy workspaces (wins the visual contest
+/// against tooltips, hover states, etc.), `Ring` keeps the icon
+/// silhouette intact and works well on calmer layouts where the
+/// active button is the visual centre of attention.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ActiveStyle {
+    /// Thin stroked circle around the icon, no background fill, no
+    /// indicator strip. Colour = [`NavPanelConfig::active_ring_color`]
+    /// if set, otherwise falls back to the palette's
+    /// [`NavColors::indicator`](super::theme::NavColors::indicator).
+    /// Default.
+    #[default]
+    Ring,
+    /// Filled background tint + indicator strip on the docked edge
+    /// (Left/Right/Top side). The classic Vex0r/Code-style sidebar
+    /// active state.
+    Bar,
+}
+
 // ── Submenu item ─────────────────────────────────────────────────────────────
 
 /// An item in a button's flyout submenu.
@@ -237,6 +268,41 @@ pub struct NavPanelConfig {
     /// Button hover/active rounding (px). Default: `6.0`.
     pub button_rounding: f32,
 
+    // ── Hover style ──────────────────────────────────────────────────────
+    /// Glyph scale factor on hover. `1.0` = no scaling, `1.20` = 20 %
+    /// larger (default). Values above ~`1.5` start to look
+    /// exaggerated; values below `1.05` are indistinguishable from
+    /// the un-scaled glyph and probably not worth the bilinear-filter
+    /// blur cost. Set to exactly `1.0` to disable the zoom entirely
+    /// (icon stays the same size on hover, no other visual change).
+    /// Pre-2026-04-29 there was a `HoverStyle` enum offering a flat
+    /// tinted-rectangle alternative; the project owner removed it as
+    /// the zoom proved sufficient for every use case.
+    pub hover_zoom_scale: f32,
+
+    // ── Active-button style ──────────────────────────────────────────────
+    /// How the active button is highlighted ([`ActiveStyle::Ring`] or
+    /// [`ActiveStyle::Bar`]). Default: `Ring` — a thin stroked circle
+    /// around the icon, no background fill. Pre-2026-04-29 default was
+    /// `Bar`; flip back via `with_active_style(ActiveStyle::Bar)` if
+    /// you depended on that look.
+    pub active_style: ActiveStyle,
+    /// Stroke colour for [`ActiveStyle::Ring`]. `None` means
+    /// "use the palette's `indicator`" — set to a dedicated colour
+    /// when you want the ring to stand out against the brand accent
+    /// (e.g. amber/orange focus on a blue-accent theme).
+    ///
+    /// Default: `Some([0.95, 0.62, 0.20, 1.0])` — warm amber that
+    /// reads as orange on every built-in theme without being garish.
+    pub active_ring_color: Option<[f32; 4]>,
+    /// Stroke thickness for the active ring (px). Default: `1.5`.
+    /// Independent of [`Self::indicator_thickness`] so the bar and
+    /// ring styles can coexist with their own sensible defaults.
+    pub active_ring_thickness: f32,
+    /// Extra padding between the icon glyph and the active ring (px).
+    /// Default: `4.0`.
+    pub active_ring_padding: f32,
+
     // ── Separators ───────────────────────────────────────────────────────
     /// Padding around visual separators (px each side). Default: `4.0`.
     pub separator_padding: f32,
@@ -293,6 +359,14 @@ impl Default for NavPanelConfig {
             button_style: ButtonStyle::IconOnly,
             indicator_thickness: 3.0,
             button_rounding: 6.0,
+            hover_zoom_scale: 1.20,
+            active_style: ActiveStyle::Ring,
+            // Warm amber that reads orange on every built-in theme.
+            // Override with `with_active_ring_color()` or clear to
+            // palette-indicator via `without_active_ring_color()`.
+            active_ring_color: Some([0.95, 0.62, 0.20, 1.0]),
+            active_ring_thickness: 1.5,
+            active_ring_padding: 4.0,
             separator_padding: 4.0,
             show_button_separators: true,
             show_toggle: false,
@@ -381,6 +455,61 @@ impl NavPanelConfig {
     }
     pub fn with_button_rounding(mut self, r: f32) -> Self {
         self.button_rounding = r;
+        self
+    }
+
+    /// Set the glyph scale on hover. Clamped to `[1.0, 3.0]` —
+    /// `1.0` disables the zoom (icon stays the same size on hover),
+    /// going above `3.0` makes the glyph overflow the button cell.
+    /// Sweet spot: `1.15` – `1.30`.
+    ///
+    /// ```rust,no_run
+    /// # use dear_imgui_custom_mod::nav_panel::*;
+    /// let cfg = NavPanelConfig::new(DockPosition::Left)
+    ///     .with_hover_zoom_scale(1.30); // 30 % larger on hover
+    /// ```
+    pub fn with_hover_zoom_scale(mut self, s: f32) -> Self {
+        self.hover_zoom_scale = s.clamp(1.0, 3.0);
+        self
+    }
+
+    /// Pick the active-button visual style ([`ActiveStyle::Bar`] or
+    /// [`ActiveStyle::Ring`]).
+    ///
+    /// ```rust,no_run
+    /// # use dear_imgui_custom_mod::nav_panel::*;
+    /// let cfg = NavPanelConfig::new(DockPosition::Left)
+    ///     .with_active_style(ActiveStyle::Ring)
+    ///     .with_active_ring_color([1.0, 0.65, 0.20, 1.0]); // orange ring
+    /// ```
+    pub fn with_active_style(mut self, s: ActiveStyle) -> Self {
+        self.active_style = s;
+        self
+    }
+
+    /// Override the active-ring stroke colour. Only takes effect when
+    /// [`Self::active_style`] is [`ActiveStyle::Ring`].
+    pub fn with_active_ring_color(mut self, c: [f32; 4]) -> Self {
+        self.active_ring_color = Some(c);
+        self
+    }
+
+    /// Reset the active-ring colour to "use palette indicator".
+    pub fn without_active_ring_color(mut self) -> Self {
+        self.active_ring_color = None;
+        self
+    }
+
+    /// Set the active-ring stroke thickness (px). Clamped to `>= 0.5`
+    /// so the ring is always at least visible.
+    pub fn with_active_ring_thickness(mut self, t: f32) -> Self {
+        self.active_ring_thickness = t.max(0.5);
+        self
+    }
+
+    /// Set the padding between the icon glyph and the active ring (px).
+    pub fn with_active_ring_padding(mut self, p: f32) -> Self {
+        self.active_ring_padding = p.max(0.0);
         self
     }
     pub fn with_separator_padding(mut self, p: f32) -> Self {

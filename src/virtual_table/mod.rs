@@ -750,7 +750,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             self.cell_buf.clear();
             row.row_tooltip(&mut self.cell_buf);
             if !self.cell_buf.is_empty() {
-                ui.tooltip_text(&self.cell_buf);
+                crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));
             }
         }
 
@@ -858,7 +858,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 let col_w = ui.current_column_width();
                 let text_w = calc_text_size(&self.cell_buf)[0];
                 if text_w > col_w {
-                    ui.tooltip_text(&self.cell_buf);
+                    crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));
                 }
             }
         }
@@ -1044,7 +1044,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             self.cell_buf.clear();
             row.row_tooltip(&mut self.cell_buf);
             if !self.cell_buf.is_empty() {
-                ui.tooltip_text(&self.cell_buf);
+                crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));
             }
         }
 
@@ -1234,7 +1234,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                         let col_w = ui.current_column_width();
                         let text_w = calc_text_size(&self.cell_buf)[0];
                         if text_w > col_w {
-                            ui.tooltip_text(&self.cell_buf);
+                            crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));
                         }
                     }
                 }

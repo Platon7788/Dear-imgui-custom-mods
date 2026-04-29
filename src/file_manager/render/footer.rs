@@ -87,17 +87,21 @@ pub(crate) fn render_footer(
             confirmed = true;
         }
         ui.same_line_with_spacing(0.0, gap);
-        render_btn_pair(ui, buf, &mut Pair {
-            confirm_label,
-            confirm_icon,
-            can_confirm,
-            cancel_text: strings.cancel,
-            btn_w,
-            btn_h,
-            gap,
-            confirmed: &mut confirmed,
-            cancelled: &mut cancelled,
-        });
+        render_btn_pair(
+            ui,
+            buf,
+            &mut Pair {
+                confirm_label,
+                confirm_icon,
+                can_confirm,
+                cancel_text: strings.cancel,
+                btn_w,
+                btn_h,
+                gap,
+                confirmed: &mut confirmed,
+                cancelled: &mut cancelled,
+            },
+        );
     } else if has_filter {
         ui.set_next_item_width(filter_w);
         let preview = if filters[active_filter].extensions.is_empty() {
@@ -119,17 +123,21 @@ pub(crate) fn render_footer(
             }
         }
         ui.same_line_with_spacing(0.0, gap);
-        render_btn_pair(ui, buf, &mut Pair {
-            confirm_label,
-            confirm_icon,
-            can_confirm,
-            cancel_text: strings.cancel,
-            btn_w,
-            btn_h,
-            gap,
-            confirmed: &mut confirmed,
-            cancelled: &mut cancelled,
-        });
+        render_btn_pair(
+            ui,
+            buf,
+            &mut Pair {
+                confirm_label,
+                confirm_icon,
+                can_confirm,
+                cancel_text: strings.cancel,
+                btn_w,
+                btn_h,
+                gap,
+                confirmed: &mut confirmed,
+                cancelled: &mut cancelled,
+            },
+        );
     } else {
         // SelectFolder / OpenFile-without-filter: compact buttons centred in
         // their half of the footer row.

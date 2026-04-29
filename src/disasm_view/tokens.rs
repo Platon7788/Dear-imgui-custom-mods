@@ -99,44 +99,48 @@ pub(super) fn classify_operand_token(token: &str) -> TokenKind {
         return TokenKind::Plain;
     }
 
-    // x86 register names.
-    static REGS: &[&str] = &[
-        // 64-bit
-        "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", "r8", "r9", "r10", "r11", "r12",
-        "r13", "r14", "r15", // 32-bit
-        "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp", "r8d", "r9d", "r10d", "r11d",
-        "r12d", "r13d", "r14d", "r15d", // 16-bit
-        "ax", "bx", "cx", "dx", "si", "di", "bp", "sp", // 8-bit
-        "al", "bl", "cl", "dl", "ah", "bh", "ch", "dh", "sil", "dil", "bpl", "spl", "r8b", "r9b",
-        "r10b", "r11b", "r12b", "r13b", "r14b", "r15b", // Segment
-        "cs", "ds", "es", "fs", "gs", "ss", // Special
-        "rip", "eip", "rflags", "eflags", // SSE/AVX
-        "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", "xmm8", "xmm9", "xmm10",
-        "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", "ymm0", "ymm1", "ymm2", "ymm3", "ymm4",
-        "ymm5", "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11", "ymm12", "ymm13", "ymm14",
-        "ymm15", // x87
-        "st0", "st1", "st2", "st3", "st4", "st5", "st6", "st7",
-    ];
-
     let lower = token.to_ascii_lowercase();
 
     // Size keywords → memory context (check before registers).
+    // Covers MASM/Intel/iced-x86 default formatter outputs:
+    //   `byte`, `word`, `dword`, `fword`, `qword`, `tbyte`, `oword`,
+    //   `xmmword`, `ymmword`, `zmmword`, `ptr`.
     if matches!(
         lower.as_str(),
-        "byte" | "word" | "dword" | "qword" | "ptr" | "xmmword" | "ymmword"
+        "byte"
+            | "word"
+            | "dword"
+            | "fword"
+            | "qword"
+            | "tbyte"
+            | "oword"
+            | "xmmword"
+            | "ymmword"
+            | "zmmword"
+            | "ptr"
     ) {
         return TokenKind::Memory;
     }
 
-    if REGS.contains(&lower.as_str()) {
+    if is_x86_register(&lower) {
         return TokenKind::Register;
     }
 
-    // Number: 0x..., decimal, or hex with 'h' suffix.
-    if token.starts_with("0x") || token.starts_with("0X") {
+    // Number — accept `0x...` / `0X...` (must have ≥1 hex digit after
+    // the prefix), `...h` / `...H` (MASM/iced-x86 default formatter,
+    // must have ≥1 leading hex digit), and plain decimal. Empty hex
+    // bodies were previously accepted ("h" / "0x" alone) — pinned as a
+    // bug now: those tokens fall through to `Plain`.
+    if let Some(rest) = token
+        .strip_prefix("0x")
+        .or_else(|| token.strip_prefix("0X"))
+        && !rest.is_empty()
+        && rest.chars().all(|c| c.is_ascii_hexdigit())
+    {
         return TokenKind::Number;
     }
-    if (token.ends_with('h') || token.ends_with('H'))
+    if token.len() > 1
+        && (token.ends_with('h') || token.ends_with('H'))
         && token[..token.len() - 1]
             .chars()
             .all(|c| c.is_ascii_hexdigit())
@@ -148,4 +152,100 @@ pub(super) fn classify_operand_token(token: &str) -> TokenKind {
     }
 
     TokenKind::Plain
+}
+
+/// Whether `lower` (already lowercased) is a recognised x86/x86-64
+/// register name.
+///
+/// Recognises the legacy core sets (rax/rbx/.../r15 + 32/16/8-bit
+/// flavours, segment, FLAGS, RIP) and the parameterised families that
+/// would explode the static array — `r8..=r15` with `b`/`w`/`d`
+/// suffixes, `xmm0..=xmm31`, `ymm0..=ymm31`, `zmm0..=zmm31`,
+/// `k0..=k7` (AVX-512 mask), `st0..=st7` (x87), `mm0..=mm7` (MMX),
+/// `cr0..=cr15` (control), `dr0..=dr15` (debug), `tr0..=tr7` (test).
+///
+/// The expanded coverage maps directly onto iced-x86's
+/// `IntelFormatter` / `MasmFormatter` register output, so a
+/// disassembly view backed by iced-x86 highlights AVX-512 and
+/// kernel-mode operands without extra adapter code.
+fn is_x86_register(lower: &str) -> bool {
+    match lower {
+        // 64-bit GP.
+        "rax" | "rbx" | "rcx" | "rdx" | "rsi" | "rdi" | "rbp" | "rsp" => return true,
+        // 32-bit GP.
+        "eax" | "ebx" | "ecx" | "edx" | "esi" | "edi" | "ebp" | "esp" => return true,
+        // 16-bit GP.
+        "ax" | "bx" | "cx" | "dx" | "si" | "di" | "bp" | "sp" => return true,
+        // 8-bit GP (incl. REX-only `sil`/`dil`/`bpl`/`spl`).
+        "al" | "bl" | "cl" | "dl" | "ah" | "bh" | "ch" | "dh" | "sil" | "dil" | "bpl" | "spl" => {
+            return true;
+        }
+        // Segment.
+        "cs" | "ds" | "es" | "fs" | "gs" | "ss" => return true,
+        // Instruction pointer + FLAGS.
+        "rip" | "eip" | "ip" | "rflags" | "eflags" | "flags" => return true,
+        _ => {}
+    }
+
+    // r8..r15 with optional b/w/d suffix (e.g. `r10`, `r10w`, `r12d`).
+    if let Some(rest) = lower.strip_prefix('r') {
+        let body = rest
+            .strip_suffix(|c: char| matches!(c, 'b' | 'w' | 'd'))
+            .unwrap_or(rest);
+        if let Ok(n) = body.parse::<u32>()
+            && (8..=15).contains(&n)
+        {
+            return true;
+        }
+    }
+
+    // SIMD families: xmm0..31 (legacy 0..15 + AVX-512 16..31),
+    // ymm0..31, zmm0..31.
+    for prefix in ["xmm", "ymm", "zmm"] {
+        if let Some(idx) = lower.strip_prefix(prefix)
+            && let Ok(n) = idx.parse::<u32>()
+            && n <= 31
+        {
+            return true;
+        }
+    }
+
+    // AVX-512 mask k0..k7.
+    if let Some(idx) = lower.strip_prefix('k')
+        && let Ok(n) = idx.parse::<u32>()
+        && n <= 7
+    {
+        return true;
+    }
+
+    // x87 st0..st7.
+    if let Some(idx) = lower.strip_prefix("st")
+        && let Ok(n) = idx.parse::<u32>()
+        && n <= 7
+    {
+        return true;
+    }
+
+    // MMX mm0..mm7.
+    if let Some(idx) = lower.strip_prefix("mm")
+        && let Ok(n) = idx.parse::<u32>()
+        && n <= 7
+    {
+        return true;
+    }
+
+    // System / debug / test families. Range upper bounds chosen to
+    // match the architecturally-defined slots — anything past those
+    // is iced-x86 extension territory and would round-trip to Plain
+    // (acceptable: those operands stay coloured as default text).
+    for (prefix, max) in [("cr", 15u32), ("dr", 15u32), ("tr", 7u32)] {
+        if let Some(idx) = lower.strip_prefix(prefix)
+            && let Ok(n) = idx.parse::<u32>()
+            && n <= max
+        {
+            return true;
+        }
+    }
+
+    false
 }

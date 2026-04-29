@@ -35,6 +35,18 @@ struct DemoApp {
     btn_rounding: f32,
     btn_spacing: f32,
     btn_seps: bool,
+    // Hover style ─────────────────────────────────────────────────────
+    /// 0 = Flat, 1 = Emboss (2.5D raised look).
+    hover_zoom_scale: f32,
+    // Active style ─────────────────────────────────────────────────────
+    /// 0 = Ring (default — transparent ring around icon), 1 = Bar (filled background + indicator strip).
+    active_style_idx: i32,
+    /// RGB part of the ring colour. Alpha lives in `active_ring_alpha` so
+    /// the slider stays visible separate from the colour swatch.
+    active_ring_color: [f32; 3],
+    active_ring_alpha: f32,
+    active_ring_thickness: f32,
+    active_ring_padding: f32,
 }
 
 impl DemoApp {
@@ -72,6 +84,19 @@ impl DemoApp {
             btn_rounding: 6.0,
             btn_spacing: 4.0,
             btn_seps: true,
+            // Hover-zoom default — `1.20` matches the lib's
+            // out-of-the-box magnification factor. The historic
+            // `Flat` (no zoom + tinted bg) variant was removed on
+            // 2026-04-29; set the slider to `1.0` here for the
+            // closest no-zoom equivalent.
+            hover_zoom_scale: 1.20,
+            // Active defaults — Ring + warm amber, matches the lib's
+            // out-of-the-box look.
+            active_style_idx: 0,
+            active_ring_color: [0.95, 0.62, 0.20],
+            active_ring_alpha: 1.0,
+            active_ring_thickness: 1.5,
+            active_ring_padding: 4.0,
         }
     }
 
@@ -86,6 +111,18 @@ impl DemoApp {
         if self.notification > 0 {
             home = home.with_badge(self.notification.to_string());
         }
+
+        let active_style = if self.active_style_idx == 1 {
+            ActiveStyle::Bar
+        } else {
+            ActiveStyle::Ring
+        };
+        let ring_rgba = [
+            self.active_ring_color[0],
+            self.active_ring_color[1],
+            self.active_ring_color[2],
+            self.active_ring_alpha,
+        ];
 
         NavPanelConfig::new(position)
             .with_theme(Self::to_nav_theme(&self.current_theme))
@@ -102,6 +139,12 @@ impl DemoApp {
             .with_button_spacing(self.btn_spacing)
             .with_button_separators(self.btn_seps)
             .with_content_offset_y(28.0) // titlebar height
+            // ── New visual styles ─────────────────────────────────
+            .with_hover_zoom_scale(self.hover_zoom_scale)
+            .with_active_style(active_style)
+            .with_active_ring_color(ring_rgba)
+            .with_active_ring_thickness(self.active_ring_thickness)
+            .with_active_ring_padding(self.active_ring_padding)
             .add_button(home)
             .add_button(NavButton::action("search", "S", "Search")
                 .with_color([0.40, 0.82, 0.30, 1.0]))
@@ -265,6 +308,72 @@ impl AppHandler for DemoApp {
                                 ui.checkbox("Animate", &mut self.animate);
                                 ui.set_next_item_width(130.0);
                                 ui.slider("Speed", 2.0, 20.0, &mut self.anim_speed);
+
+                                ui.spacing();
+                                ui.separator();
+                                ui.text("Hover");
+                                // Single slider — `1.0` disables the
+                                // zoom (icon stays the same size on
+                                // hover). `1.15`–`1.30` is the macOS
+                                // Dock sweet spot.
+                                ui.set_next_item_width(130.0);
+                                ui.slider("Zoom scale", 1.0, 2.0, &mut self.hover_zoom_scale);
+
+                                ui.spacing();
+                                ui.separator();
+                                ui.text("Active Style");
+                                for (i, label) in ["Ring", "Bar"].iter().enumerate() {
+                                    if i > 0 {
+                                        ui.same_line();
+                                    }
+                                    let active = self.active_style_idx == i as i32;
+                                    if active {
+                                        let _c = ui.push_style_color(
+                                            StyleColor::Button,
+                                            [0.3, 0.5, 0.9, 1.0],
+                                        );
+                                        ui.button(label);
+                                    } else if ui.button(label) {
+                                        self.active_style_idx = i as i32;
+                                        self.push_log(format!("Active style: {label}"));
+                                    }
+                                }
+                                // Ring-only tunables. Render even when Bar
+                                // is selected (greyed) so toggling Ring
+                                // doesn't reflow the panel — the indicator
+                                // strip thickness ("Indicator" slider above)
+                                // is the parallel control for Bar mode.
+                                let ring = self.active_style_idx == 0;
+                                if ring {
+                                    ui.set_next_item_width(130.0);
+                                    ui.color_edit3("Ring color", &mut self.active_ring_color);
+                                    ui.set_next_item_width(130.0);
+                                    ui.slider("Ring alpha", 0.0, 1.0, &mut self.active_ring_alpha);
+                                    ui.set_next_item_width(130.0);
+                                    ui.slider(
+                                        "Ring thick",
+                                        0.5,
+                                        4.0,
+                                        &mut self.active_ring_thickness,
+                                    );
+                                    ui.set_next_item_width(130.0);
+                                    ui.slider("Ring pad", 0.0, 10.0, &mut self.active_ring_padding);
+                                } else {
+                                    let _d = ui.push_style_var(StyleVar::Alpha(0.40));
+                                    ui.set_next_item_width(130.0);
+                                    ui.color_edit3("Ring color", &mut self.active_ring_color);
+                                    ui.set_next_item_width(130.0);
+                                    ui.slider("Ring alpha", 0.0, 1.0, &mut self.active_ring_alpha);
+                                    ui.set_next_item_width(130.0);
+                                    ui.slider(
+                                        "Ring thick",
+                                        0.5,
+                                        4.0,
+                                        &mut self.active_ring_thickness,
+                                    );
+                                    ui.set_next_item_width(130.0);
+                                    ui.slider("Ring pad", 0.0, 10.0, &mut self.active_ring_padding);
+                                }
 
                                 ui.spacing();
                                 ui.separator();

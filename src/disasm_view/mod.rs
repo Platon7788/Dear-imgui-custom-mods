@@ -375,7 +375,21 @@ impl DisasmView {
                 };
 
                 // ── Draw rows ─────────────────────────────────
-                let mouse_pos = ui.io().mouse_pos();
+                // Gate the mouse position on `is_window_hovered`
+                // so hover-based row tooltips don't leak through
+                // popups that overlap this widget (e.g. another
+                // module's Settings dialog rendered on top of the
+                // disasm view). Without this gate the row hit-test
+                // is pure coordinate math that fires regardless of
+                // whether ImGui has handed mouse focus to a popup —
+                // user reported the tooltip ghosting through a
+                // hex-viewer Settings popup on 2026-04-29. Same
+                // pattern as `hex_viewer::draw::render`.
+                let mouse_pos = if ui.is_window_hovered() {
+                    ui.io().mouse_pos()
+                } else {
+                    [f32::NEG_INFINITY, f32::NEG_INFINITY]
+                };
                 for row in first_row..last_row {
                     if let Some(instr) = provider.instruction(row) {
                         let y = origin_y + header_h + (row - first_row) as f32 * self.line_height;
@@ -853,5 +867,151 @@ mod tests {
         let toks = tokens_of("gibberish");
         assert_eq!(toks.len(), 1);
         assert_eq!(toks[0].1, TokenKind::Plain);
+    }
+
+    // ── Iced-x86 / extended register coverage ────────────────────────────
+    //
+    // iced-x86's default `IntelFormatter` outputs operand text that we
+    // need to colour-code correctly. Pin the cases that previously fell
+    // through to `Plain` so a regression in `is_x86_register` /
+    // `classify_operand_token` is caught with a meaningful diagnostic.
+
+    #[test]
+    fn classify_extended_gp_registers() {
+        // r8..r15 with optional b/w/d suffix.
+        for r in [
+            "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r8b", "r9w", "r10d", "r15b",
+            "r12w",
+        ] {
+            assert_eq!(
+                classify_operand_token(r),
+                TokenKind::Register,
+                "{r} should classify as Register",
+            );
+        }
+    }
+
+    #[test]
+    fn classify_avx512_registers() {
+        // SIMD 16..31 (AVX-512) + zmm + mask registers.
+        for r in [
+            "xmm15", "xmm16", "xmm31", "ymm0", "ymm17", "ymm31", "zmm0", "zmm15", "zmm31", "k0",
+            "k1", "k7",
+        ] {
+            assert_eq!(
+                classify_operand_token(r),
+                TokenKind::Register,
+                "{r} should classify as Register",
+            );
+        }
+    }
+
+    #[test]
+    fn classify_system_registers() {
+        // Control / debug / test / MMX — used by kernel-mode + legacy disasm.
+        for r in [
+            "cr0", "cr2", "cr3", "cr4", "cr8", "cr15", "dr0", "dr6", "dr7", "tr0", "tr7", "mm0",
+            "mm7",
+        ] {
+            assert_eq!(
+                classify_operand_token(r),
+                TokenKind::Register,
+                "{r} should classify as Register",
+            );
+        }
+    }
+
+    #[test]
+    fn classify_size_keywords_extended() {
+        // `fword`, `tbyte`, `oword`, `zmmword` — not in pre-iced-x86 set.
+        for kw in ["fword", "tbyte", "oword", "zmmword"] {
+            assert_eq!(
+                classify_operand_token(kw),
+                TokenKind::Memory,
+                "{kw} should classify as Memory",
+            );
+        }
+    }
+
+    #[test]
+    fn classify_rejects_register_lookalikes() {
+        // Regression guards: invalid range reads as Plain (NOT Register).
+        // `r0` (no extended r0 exists), `xmm32` (out of range),
+        // `zmm99`, `cr16`, `mm8`, `k8`, `r10x` (bad suffix).
+        for tok in ["r0", "r7", "xmm32", "zmm99", "cr16", "mm8", "k8", "r10x"] {
+            assert_eq!(
+                classify_operand_token(tok),
+                TokenKind::Plain,
+                "{tok} must NOT be classified as Register",
+            );
+        }
+    }
+
+    #[test]
+    fn classify_number_edge_cases() {
+        // Empty hex bodies (`h`, `0x`) are NOT numbers.
+        assert_eq!(classify_operand_token("h"), TokenKind::Plain);
+        assert_eq!(classify_operand_token("H"), TokenKind::Plain);
+        assert_eq!(classify_operand_token("0x"), TokenKind::Plain);
+        assert_eq!(classify_operand_token("0X"), TokenKind::Plain);
+        // ...but minimal valid hex stays a Number.
+        assert_eq!(classify_operand_token("0x0"), TokenKind::Number);
+        assert_eq!(classify_operand_token("Fh"), TokenKind::Number);
+    }
+
+    #[test]
+    fn tokenizer_iced_x86_no_space_after_comma() {
+        // iced-x86's default IntelFormatter outputs without a space
+        // after the operand separator: `mov rax,qword ptr [rsp+10h]`.
+        // Pin that the tokenizer still produces correct kinds.
+        let toks = tokens_of("rax,qword ptr [rsp+10h]");
+        let kinds: Vec<TokenKind> = toks.iter().map(|t| t.1).collect();
+        // First token must be the register.
+        assert_eq!(toks[0].0, "rax");
+        assert_eq!(toks[0].1, TokenKind::Register);
+        // `qword`, `ptr`, `[`, `]` all classify as Memory.
+        assert!(kinds.contains(&TokenKind::Memory));
+        // `rsp` → Register, `10h` → Number.
+        assert!(kinds.contains(&TokenKind::Register));
+        assert!(kinds.contains(&TokenKind::Number));
+    }
+
+    // ── Theme integration ───────────────────────────────────────────────
+
+    use crate::theme::Theme;
+
+    #[test]
+    fn config_with_theme_replaces_palette() {
+        // `with_theme` is a builder shortcut — it must replace the
+        // embedded palette with the named theme's disasm-view colours.
+        let dark = DisasmViewConfig::default().with_theme(Theme::Dark);
+        let nord = DisasmViewConfig::default().with_theme(Theme::Nord);
+        let solar = DisasmViewConfig::default().with_theme(Theme::Solarized);
+
+        // Different themes => different mnemonic colours (at minimum).
+        assert_ne!(
+            dark.colors.mnemonic_jump, nord.colors.mnemonic_jump,
+            "Dark and Nord should expose distinct jump-mnemonic colours",
+        );
+        assert_ne!(
+            nord.colors.address, solar.colors.address,
+            "Nord and Solarized should expose distinct address colours",
+        );
+    }
+
+    #[test]
+    fn config_default_matches_dark_theme() {
+        // Bare `DisasmViewConfig::default()` must reuse
+        // `Theme::Dark.disasm_view_colors()` so a host that doesn't
+        // pick a theme still gets the canonical Dark look.
+        let default_cfg = DisasmViewConfig::default();
+        let dark_palette = Theme::Dark.disasm_view_colors();
+        assert_eq!(
+            default_cfg.colors.mnemonic_normal,
+            dark_palette.mnemonic_normal
+        );
+        assert_eq!(default_cfg.colors.address, dark_palette.address);
+        assert_eq!(default_cfg.colors.selection_bg, dark_palette.selection_bg);
+        assert_eq!(default_cfg.colors.breakpoint, dark_palette.breakpoint);
     }
 }

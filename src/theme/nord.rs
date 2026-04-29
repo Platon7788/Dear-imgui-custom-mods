@@ -8,6 +8,7 @@
 //!
 //! Reference palette: <https://www.nordtheme.com/>
 
+use super::palettes::{DisasmViewColors, DisasmViewTokens, HexViewerColors, HexViewerTokens};
 use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
@@ -37,7 +38,6 @@ const NORD5: u32 = 0xe5e9f0; // primary text
 const NORD6: u32 = 0xeceff4; // emphasis text
 
 // Frost — cool blue accents (UI primary).
-#[allow(dead_code)]
 const NORD7: u32 = 0x8fbcbb; // teal
 const NORD8: u32 = 0x88c0d0; // cyan-blue (typical accent)
 #[allow(dead_code)]
@@ -89,7 +89,9 @@ pub fn titlebar_colors() -> TitlebarColors {
 pub fn nav_colors() -> NavColors {
     let bg = hex(NORD1, 1.0);
     let btn_hover = hex(NORD3, 1.0);
-    let sep = hex(NORD2, 1.0);
+    // NORD3 separator (matches `statusbar_colors().separator`) — NORD2
+    // sat too close to the NORD1 background to read as a divider.
+    let sep = hex(NORD3, 1.0);
     let accent = hex(ACCENT, 1.0);
     let icon_active = hex(NORD5, 1.0);
     NavColors {
@@ -153,7 +155,12 @@ pub fn statusbar_config() -> StatusBarConfig {
         item_padding: 10.0,
         separator_width: 1.0,
         show_separators: false,
-        highlight_hover: false,
+
+        show_top_border: true,
+
+        top_border_offset_left: 0.0,
+
+        top_border_offset_right: 0.0,
         progress_width: 60.0,
         progress_height: 8.0,
         colors: statusbar_colors(),
@@ -167,13 +174,51 @@ pub fn statusbar_colors() -> StatusBarColors {
         text: hex(NORD5, 1.0),
         text_dim: hex(NORD4, 1.0),
         separator: hex(NORD3, 1.0),
-        hover: hex(NORD3, 0.60),
-        active: hex(NORD3, 0.90),
+        hover: hex(NORD3, 1.0),
+        active: hex(NORD3, 1.0),
         success: hex(NORD14, 1.0),
         warning: hex(NORD12, 1.0),
         error: hex(NORD11, 1.0),
         info: hex(NORD8, 1.0),
     }
+}
+
+// ─── HexViewer ───────────────────────────────────────────────────────────────
+
+/// Hex-viewer palette for the Nord theme — cool desaturated arctic colours.
+pub fn hex_viewer_colors() -> HexViewerColors {
+    HexViewerColors::from_tokens(&HexViewerTokens {
+        fg: hex(NORD5, 1.0),
+        fg_muted: hex(NORD4, 1.0),
+        accent: hex(NORD8, 1.0),
+        success: hex(NORD14, 1.0),
+        warning: hex(NORD13, 1.0),
+        danger: hex(NORD11, 1.0),
+        // NORD15 — Nord's "purple" aurora colour.
+        purple: hex(NORD15, 1.0),
+    })
+}
+
+// ─── DisasmView ──────────────────────────────────────────────────────────────
+
+/// Disassembly-view palette for the Nord theme — cool desaturated
+/// arctic colours. NORD8 (cyan-blue) for address gutter, NORD14
+/// (aurora green) for calls, NORD13 (yellow) for jumps, NORD11 (red)
+/// for returns, NORD15 (purple) for stack ops, NORD12 (orange) for
+/// syscall + memory, NORD7 (frost teal) for registers.
+pub fn disasm_view_colors() -> DisasmViewColors {
+    DisasmViewColors::from_tokens(&DisasmViewTokens {
+        fg: hex(NORD5, 1.0),
+        fg_muted: hex(NORD4, 1.0),
+        accent: hex(NORD8, 1.0),
+        success: hex(NORD14, 1.0),
+        warning: hex(NORD13, 1.0),
+        danger: hex(NORD11, 1.0),
+        purple: hex(NORD15, 1.0),
+        orange: hex(NORD12, 1.0),
+        // NORD7 — frost teal, distinct from NORD8 cyan-blue accent.
+        cyan: hex(NORD7, 1.0),
+    })
 }
 
 // ─── ImGui style ─────────────────────────────────────────────────────────────

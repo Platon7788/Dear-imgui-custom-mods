@@ -21,23 +21,24 @@ fn snap(p: f32) -> f32 {
     p.floor() + 0.5
 }
 
+/// Bold standalone × glyph. No surrounding circle — the project
+/// owner specifically asked for a clean cross on 2026-04-29 after
+/// trying the spoked-progress + text-label variants. Heavier
+/// stroke (`1.8`) than the historic close cross to balance the
+/// removal of the outer ring.
 pub(super) fn draw_close(d: &DrawListMut<'_>, cx: f32, cy: f32, r: f32, col: u32) {
-    // Circle-with-X — matches Vex0r's `mdi-close-circle-outline` glyph
-    // but drawn as draw-list primitives so it is font-independent.
     let cx = snap(cx);
     let cy = snap(cy);
-    d.add_circle([cx, cy], r * 0.85, col)
-        .thickness(1.2)
-        // 24 segments — visibly polygonal at the previous default of
-        // 20 on small radii (~6 px); smooth at 24 with negligible cost.
-        .num_segments(24)
-        .build();
-    let s = r * 0.40;
+    // Arm length sized off the unit-r canvas. `0.65×r` reaches well
+    // past where the old circle sat (`0.85×r` outline + `0.40×r`
+    // arms inside) so the standalone × reads at the same visual
+    // weight as the previous circle-with-X.
+    let s = r * 0.65;
     d.add_line([cx - s, cy - s], [cx + s, cy + s], col)
-        .thickness(1.5)
+        .thickness(1.8)
         .build();
     d.add_line([cx + s, cy - s], [cx - s, cy + s], col)
-        .thickness(1.5)
+        .thickness(1.8)
         .build();
 }
 

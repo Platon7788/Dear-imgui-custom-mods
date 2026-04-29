@@ -408,7 +408,7 @@ impl Toolbar {
                     }
 
                     if !item.tooltip.is_empty() {
-                        ui.tooltip_text(&item.tooltip);
+                        crate::utils::themed_tooltip(ui, || ui.text(&item.tooltip));
                     }
                 }
                 ToolbarItemKind::Button => {}
@@ -457,7 +457,7 @@ impl Toolbar {
                         }
 
                         if !item.tooltip.is_empty() {
-                            ui.tooltip_text(&item.tooltip);
+                            crate::utils::themed_tooltip(ui, || ui.text(&item.tooltip));
                         }
                     }
                 }
@@ -493,7 +493,7 @@ impl Toolbar {
                     }
 
                     if !item.tooltip.is_empty() {
-                        ui.tooltip_text(&item.tooltip);
+                        crate::utils::themed_tooltip(ui, || ui.text(&item.tooltip));
                     }
                 }
                 ToolbarItemKind::Dropdown { .. } => {}

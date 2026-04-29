@@ -220,16 +220,56 @@ impl StatusBar {
         events
     }
 
-    /// Overlay variant: renders through `ui.get_foreground_draw_list()` at an
-    /// explicit screen-space position, without requiring a host ImGui window.
+    /// Overlay variant: renders through `ui.get_background_draw_list()`
+    /// at an explicit screen-space position, without requiring a host
+    /// ImGui window.
     ///
     /// - `origin` — top-left of the bar in **screen** coordinates.
     /// - `size` — bar width / height in logical pixels (height overrides
     ///   `config.height` for this call).
     ///
-    /// Hover detection uses position-only (no `is_window_hovered`), so the bar
-    /// stays responsive even when no ImGui window covers the region.
+    /// **Z-order note (2026-04-29):** the bar paints into the
+    /// **background** draw list rather than the foreground one. This
+    /// keeps it visually above the page surface but **below** every
+    /// ImGui popup — tooltips, context menus, modal dialogs — so a
+    /// tooltip raised by another widget can never get clipped by the
+    /// status bar. If the host genuinely needs the bar to sit on top
+    /// of popups (rare — usually a sign the tooltip should move
+    /// instead), use [`Self::render_overlay_foreground`].
+    ///
+    /// **Host requirement:** the background draw list is drawn
+    /// **before** all ImGui windows. If the host renders a top-level
+    /// window over the same region, that window's `WindowBg` style
+    /// fill will clobber the bar. When using
+    /// [`crate::app_window::AppWindow`], call
+    /// [`crate::app_window::AppConfig::raw_content`] so the root
+    /// `##app_root` window receives `WindowFlags::NO_BACKGROUND` and
+    /// becomes transparent — exposing the background draw list (and
+    /// thus the status bar) to the user.
+    ///
+    /// Hover detection uses position-only (no `is_window_hovered`), so
+    /// the bar stays responsive even when no ImGui window covers the
+    /// region.
     pub fn render_overlay(&self, ui: &Ui, origin: [f32; 2], size: [f32; 2]) -> Vec<StatusBarEvent> {
+        let _id_tok = ui.push_id(&self.id);
+        let draw = ui.get_background_draw_list();
+        self.render_impl(ui, origin, size, &draw, false)
+    }
+
+    /// Foreground-overlay variant of [`Self::render_overlay`] — paints
+    /// into `ui.get_foreground_draw_list()`, which lives **above** every
+    /// ImGui popup (tooltips, menus, modal dialogs).
+    ///
+    /// Use only when the bar genuinely must sit on top of popups —
+    /// e.g. a kiosk-mode HUD that should always be readable. For
+    /// standard chrome bars prefer [`Self::render_overlay`] so the
+    /// host's tooltips don't get clipped.
+    pub fn render_overlay_foreground(
+        &self,
+        ui: &Ui,
+        origin: [f32; 2],
+        size: [f32; 2],
+    ) -> Vec<StatusBarEvent> {
         let _id_tok = ui.push_id(&self.id);
         let draw = ui.get_foreground_draw_list();
         self.render_impl(ui, origin, size, &draw, false)
@@ -258,13 +298,23 @@ impl StatusBar {
         .filled(true)
         .build();
 
-        // Top border line
-        draw.add_line(
-            cursor,
-            [cursor[0] + avail_w, cursor[1]],
-            col32(cfg.colors.separator),
-        )
-        .build();
+        // Top border line — optional, with per-side offsets so a
+        // left/right-docked nav panel can claim its slice of the edge
+        // and prevent a "phantom seam" running through the panel's
+        // surface. Top-docked nav doesn't intersect this edge so no
+        // offset is needed for that case.
+        if cfg.show_top_border {
+            let line_x0 = cursor[0] + cfg.top_border_offset_left.max(0.0);
+            let line_x1 = (cursor[0] + avail_w - cfg.top_border_offset_right.max(0.0)).max(line_x0);
+            if line_x1 > line_x0 {
+                draw.add_line(
+                    [line_x0, cursor[1]],
+                    [line_x1, cursor[1]],
+                    col32(cfg.colors.separator),
+                )
+                .build();
+            }
+        }
 
         // Use "Mg" for representative glyph height (covers ascenders + descenders).
         let text_y = cursor[1] + (bar_h - calc_text_size("Mg")[1]) * 0.5;
@@ -391,36 +441,17 @@ impl StatusBar {
             && mouse_pos[1] < bar_y + bar_h;
         let hovered = in_bounds && (!use_window_hovered || ui.is_window_hovered());
 
-        // Hover paint — opt-in via `config.highlight_hover` (default: off).
-        // Clicks are dispatched regardless of the flag so minimalist buttons
-        // stay functional without any visual feedback.
-        if hovered {
-            if cfg.highlight_hover {
-                let hover_bg = if item.clickable {
-                    if ui.is_mouse_down(MouseButton::Left) {
-                        cfg.colors.active
-                    } else {
-                        cfg.colors.hover
-                    }
-                } else {
-                    [1.0, 1.0, 1.0, 0.04] // subtle highlight for non-clickable
-                };
-                draw.add_rect(
-                    [x - 2.0, bar_y],
-                    [x + w + 2.0, bar_y + bar_h],
-                    col32(hover_bg),
-                )
-                .filled(true)
-                .build();
-            }
-
-            if item.clickable && ui.is_mouse_clicked(MouseButton::Left) {
-                events.push(StatusBarEvent {
-                    label: item.label.clone(),
-                    section,
-                    index,
-                });
-            }
+        // No built-in hover paint — the bar stays fully static
+        // visually. Clicks (on `clickable` items) and tooltips are
+        // still dispatched on hover; the host application is free to
+        // wrap individual items in its own visual hover treatment if
+        // needed.
+        if hovered && item.clickable && ui.is_mouse_clicked(MouseButton::Left) {
+            events.push(StatusBarEvent {
+                label: item.label.clone(),
+                section,
+                index,
+            });
         }
 
         // Indicator dot
@@ -477,9 +508,10 @@ impl StatusBar {
             draw.add_text([cx, text_y], col32(text_color), &item.label);
         }
 
-        // Tooltip
+        // Tooltip — routed through the crate-wide `themed_tooltip`
+        // helper so every widget shares one visual styling source.
         if hovered && let Some(ref tip) = item.tooltip {
-            ui.tooltip_text(tip);
+            crate::utils::themed_tooltip(ui, || ui.text(tip));
         }
 
         w
@@ -593,30 +625,6 @@ mod tests {
         let cfg = StatusBarConfig::default();
         assert_eq!(cfg.height, 22.0);
         assert!(cfg.show_separators);
-        // Minimal/static-looking bar by default — hover feedback is opt-in.
-        assert!(!cfg.highlight_hover);
-    }
-
-    #[test]
-    fn theme_presets_keep_hover_off_by_default() {
-        // Every theme that ships a bundled StatusBarConfig must follow the
-        // same default: no hover paint unless the caller explicitly enables it.
-        #[cfg(feature = "status_bar")]
-        {
-            use crate::theme::Theme;
-            for theme in [
-                Theme::Dark,
-                Theme::Light,
-                Theme::Midnight,
-                Theme::Solarized,
-                Theme::Monokai,
-            ] {
-                assert!(
-                    !theme.statusbar().highlight_hover,
-                    "theme {theme:?} must default to highlight_hover=false",
-                );
-            }
-        }
     }
 
     #[test]

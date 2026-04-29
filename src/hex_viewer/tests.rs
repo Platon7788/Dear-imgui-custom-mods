@@ -5,13 +5,14 @@
 //! for testing. Free helper functions (`parse_address`,
 //! `format_bytes`, …) are imported from their respective sub-modules.
 
-use super::*;
+use super::config::AddressWidth;
 use super::draw::col32;
 use super::input::EditColumn;
 use super::search::{
     PatternByte, base64_encode, find_pattern_masked, format_bytes, parse_address,
     parse_ascii_pattern, parse_hex_pattern_masked,
 };
+use super::*;
 
 #[test]
 fn test_new_viewer() {
@@ -317,6 +318,46 @@ fn test_set_cursor_clears_selection_and_pushes_nav() {
 }
 
 #[test]
+fn test_address_width_auto_picks_32bit_for_small_buffer() {
+    // 4 KiB at base 0 — fits comfortably in u32, must stay compact.
+    assert_eq!(AddressWidth::Auto.hex_digits(0, 4096), 8);
+}
+
+#[test]
+fn test_address_width_auto_picks_64bit_when_overflows_u32() {
+    // base above u32::MAX → 64-bit gutter, regardless of length.
+    assert_eq!(AddressWidth::Auto.hex_digits(0x1_0000_0000, 16), 16);
+    // length pushes past u32::MAX → still 64-bit.
+    assert_eq!(AddressWidth::Auto.hex_digits(u32::MAX as u64 - 4, 16), 16);
+}
+
+#[test]
+fn test_address_width_explicit_overrides_auto() {
+    // Explicit Bits32 keeps 8 even on a buffer that would auto-promote.
+    assert_eq!(AddressWidth::Bits32.hex_digits(0x1_0000_0000, 0), 8);
+    // Explicit Bits64 keeps 16 even on a tiny buffer.
+    assert_eq!(AddressWidth::Bits64.hex_digits(0, 16), 16);
+}
+
+#[test]
+fn test_inspector_height_accessors_round_trip() {
+    let mut v = HexViewer::new("test");
+    assert_eq!(v.inspector_height_px(), None, "fresh viewer = auto");
+    v.set_inspector_height_px(120.0);
+    assert_eq!(v.inspector_height_px(), Some(120.0));
+    v.reset_inspector_height();
+    assert_eq!(v.inspector_height_px(), None);
+}
+
+#[test]
+fn test_inspector_height_setter_clamps_negative() {
+    // Sentinel for "auto" is `0.0`; negative values must not poison it.
+    let mut v = HexViewer::new("test");
+    v.set_inspector_height_px(-50.0);
+    assert_eq!(v.inspector_h, 0.0);
+}
+
+#[test]
 fn test_byte_colors_changed() {
     let mut v = HexViewer::new("test");
     v.set_data(&[0xAA, 0xBB, 0xCC]);
@@ -324,6 +365,151 @@ fn test_byte_colors_changed() {
     v.config.highlight_changes = true;
     let fg1 = v.byte_fg_with_overrides(1, 0xBB);
     assert_eq!(fg1, col32(v.config.color_changed));
+}
+
+// ── Layout helpers (offset_col_width / ascii_col_x / address_flash) ─────────
+//
+// These pin the on-screen geometry contracts the draw + hit-test paths
+// depend on. A stray `+1` in `offset_col_width` would silently shift
+// every column right by one glyph and pre-2026-04-29-style "address text
+// drowning in whitespace" would creep back in.
+
+#[test]
+fn test_offset_col_width_compact_for_32bit_address() {
+    // 8 hex digits + `: ` (colon + trailing space from the format
+    // string) = 10 char advances. After the 2026-04-29 padding-halve,
+    // the cell no longer reserves an extra glyph of dead space.
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 16]); // forces auto → 8-digit gutter
+    v.config.address_width = AddressWidth::Bits32;
+    v.char_advance = 7.0;
+    assert_eq!(v.offset_col_width(), 70.0, "8 digits + 2 chars padding");
+}
+
+#[test]
+fn test_offset_col_width_wide_for_64bit_address() {
+    // 16 hex digits + `: ` = 18 char advances.
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 16]);
+    v.config.address_width = AddressWidth::Bits64;
+    v.char_advance = 7.0;
+    assert_eq!(v.offset_col_width(), 126.0, "16 digits + 2 chars padding");
+}
+
+#[test]
+fn test_offset_col_width_zero_when_offsets_hidden() {
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 16]);
+    v.config.show_offsets = false;
+    v.char_advance = 7.0;
+    assert_eq!(v.offset_col_width(), 0.0);
+}
+
+#[test]
+fn test_ascii_col_x_right_anchors_when_room_available() {
+    // Wide window: ASCII column floats to the right edge with one
+    // char of trailing breathing room (so the bytes never sit under
+    // the scrollbar).
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 16]);
+    v.char_advance = 10.0;
+    v.inner_content_w = 1000.0;
+    let win_x = 100.0;
+    let bpr = v.config.bytes_per_row.value() as f32; // 16
+    let expected_anchored = win_x + 1000.0 - bpr * 10.0 - 10.0;
+    assert_eq!(v.ascii_col_x(win_x), expected_anchored);
+}
+
+#[test]
+fn test_ascii_col_x_falls_back_to_natural_when_window_is_narrow() {
+    // Narrow window: anchored position would land left of the
+    // natural one (right after hex). The .max() clamp must keep the
+    // ASCII column from overlapping the hex column.
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 16]);
+    v.config.address_width = AddressWidth::Bits64;
+    v.char_advance = 10.0;
+    v.inner_content_w = 50.0; // way too small
+    let win_x = 0.0;
+    let origin_x = win_x + 10.0;
+    let natural = origin_x + v.offset_col_width() + v.hex_col_width() + 10.0;
+    assert_eq!(
+        v.ascii_col_x(win_x),
+        natural,
+        "narrow window must fall back"
+    );
+}
+
+#[test]
+fn test_format_address_literal_matches_displayed_format() {
+    // 16-digit uppercase: `0x` + 16 chars.
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 16]);
+    v.config.address_width = AddressWidth::Bits64;
+    v.config.uppercase = true;
+    assert_eq!(v.format_address_literal(0x1234_ABCD), "0x000000001234ABCD");
+    v.config.uppercase = false;
+    assert_eq!(v.format_address_literal(0x1234_ABCD), "0x000000001234abcd");
+
+    // 8-digit width.
+    v.config.address_width = AddressWidth::Bits32;
+    v.config.uppercase = true;
+    assert_eq!(v.format_address_literal(0xCAFE), "0x0000CAFE");
+}
+
+// ── Public popup-trigger API ────────────────────────────────────────────────
+//
+// `request_goto` / `request_search` are the host-side entry points
+// for the goto and search popups — they let callers wire global
+// hotkeys (or menu items / toolbar buttons) without depending on
+// the viewer being the focused widget. Pin the flag flips so a
+// future refactor can't silently disconnect the public API from
+// the popup state machine.
+
+#[test]
+fn request_goto_sets_show_flag() {
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 16]);
+    v.goto_buf = "stale".to_string();
+    assert!(!v.show_goto, "popup starts closed");
+    v.request_goto();
+    assert!(v.show_goto, "request_goto must raise the open trigger");
+    assert!(
+        v.goto_buf.is_empty(),
+        "request_goto must clear the input buffer"
+    );
+}
+
+#[test]
+fn request_search_sets_show_flag() {
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 16]);
+    assert!(!v.show_search);
+    v.request_search();
+    assert!(v.show_search);
+}
+
+#[test]
+fn address_flash_is_initially_none() {
+    // The address-gutter "just copied" highlight only fires after
+    // a click in the address column. A freshly-constructed viewer
+    // must not have a stale flash queued — would paint a mystery
+    // pill on the first frame for no reason.
+    let v = HexViewer::new("test");
+    assert!(v.address_flash.is_none());
+}
+
+#[test]
+fn component_center_initialised_to_origin() {
+    // Component centre is captured each frame in `render()`. Until
+    // the first render, it sits at `(0, 0)` — popups triggered via
+    // `request_goto` before the viewer has rendered would anchor
+    // at screen-origin, which is suboptimal but not a crash.
+    // Pin the initial state so a future refactor doesn't smuggle a
+    // garbage default in.
+    let v = HexViewer::new("test");
+    assert_eq!(v.component_center, [0.0, 0.0]);
+    assert_eq!(v.popup_open_pos, [0.0, 0.0]);
 }
 
 // ── Property-based tests ─────────────────────────────────────────────

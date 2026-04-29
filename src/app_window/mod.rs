@@ -114,9 +114,9 @@ mod win32;
 pub use crate::theme::Theme;
 pub use chrome::{ResizeEdge, TitlebarAction, TitlebarResult};
 pub use config::{
-    AppConfig, BorderStyle, Buttons, Chrome, CloseMode, ExtraButton, FontChoice,
-    FontLayer, FormStyle, FpsMode, GlyphRanges, Position, PowerMode, RenderMode,
-    TitleAlign, TitlebarConfig, WindowIcon, WindowKind,
+    AppConfig, BorderStyle, Buttons, Chrome, CloseMode, ExtraButton, FontChoice, FontLayer,
+    FormStyle, FpsMode, GlyphRanges, Position, PowerMode, RenderMode, TitleAlign, TitlebarConfig,
+    WindowIcon, WindowKind,
 };
 pub use handler::AppHandler;
 pub use proxy::AppProxy;
@@ -362,13 +362,15 @@ impl<H: AppHandler + 'static> ApplicationHandler<()> for WinitApp<H> {
                 }
             };
 
-        let bg = cfg.theme.titlebar().bg;
-        let clear_color = wgpu::Color {
-            r: bg[0] as f64,
-            g: bg[1] as f64,
-            b: bg[2] as f64,
-            a: 1.0,
-        };
+        // Match `refresh_clear_color`: clear to the theme's window
+        // background, not the titlebar surface. That keeps the
+        // visible page in sync with `StyleColor::WindowBg` for both
+        // raw_content (transparent root) and padded mode.
+        // `wgpu_clear_color` performs the sRGB → linear conversion
+        // when (and only when) the swap chain format requires it —
+        // see the helper's doc-comment for the full rationale.
+        let clear_color =
+            crate::utils::color::wgpu_clear_color(cfg.theme.window_bg(), surface_cfg.format);
 
         self.gpu = Some(gpu::GpuState {
             device,

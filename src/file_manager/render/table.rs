@@ -327,7 +327,7 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
                         e.name_pixel_width.set(text_w);
                     }
                     if text_w > item_w {
-                        ui.tooltip_text(&e.name);
+                        crate::utils::themed_tooltip(ui, || ui.text(&e.name));
                     }
                 }
             }

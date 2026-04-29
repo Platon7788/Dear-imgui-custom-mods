@@ -5,6 +5,7 @@
 //! black, child/frame surfaces step up in very small increments so deep
 //! hierarchies stay readable.
 
+use super::palettes::{DisasmViewColors, DisasmViewTokens, HexViewerColors, HexViewerTokens};
 use super::{DialogColors, NavColors, StatusBarColors, TitlebarColors};
 #[cfg(feature = "status_bar")]
 use crate::status_bar::StatusBarConfig;
@@ -154,7 +155,12 @@ pub fn statusbar_config() -> StatusBarConfig {
         item_padding: 10.0,
         separator_width: 1.0,
         show_separators: false,
-        highlight_hover: false,
+
+        show_top_border: true,
+
+        top_border_offset_left: 0.0,
+
+        top_border_offset_right: 0.0,
         progress_width: 60.0,
         progress_height: 8.0,
         colors: statusbar_colors(),
@@ -168,13 +174,47 @@ pub fn statusbar_colors() -> StatusBarColors {
         text: hex(FG, 1.0),
         text_dim: hex(FG_MUTED, 1.0),
         separator: hex(BORDER, 1.0),
-        hover: hex(SECONDARY_HOVER, 0.60),
-        active: hex(SECONDARY_HOVER, 0.90),
+        hover: hex(SECONDARY_HOVER, 1.0),
+        active: hex(SECONDARY_HOVER, 1.0),
         success: hex(SUCCESS, 1.0),
         warning: hex(WARNING, 1.0),
         error: hex(DANGER, 1.0),
         info: hex(ACCENT, 1.0),
     }
+}
+
+// ─── HexViewer ───────────────────────────────────────────────────────────────
+
+/// Hex-viewer palette for the Midnight (Tokyo Night-inspired) theme.
+pub fn hex_viewer_colors() -> HexViewerColors {
+    HexViewerColors::from_tokens(&HexViewerTokens {
+        fg: hex(FG, 1.0),
+        fg_muted: hex(FG_MUTED, 1.0),
+        accent: hex(ACCENT, 1.0),
+        success: hex(SUCCESS, 1.0),
+        warning: hex(WARNING, 1.0),
+        danger: hex(DANGER, 1.0),
+        purple: hex(0x9d7cd8, 1.0),
+    })
+}
+
+// ─── DisasmView ──────────────────────────────────────────────────────────────
+
+/// Disassembly-view palette for the Midnight (Tokyo Night-inspired) theme.
+/// Tokyo-Night-style hues — saturated jewel tones over near-black surfaces.
+pub fn disasm_view_colors() -> DisasmViewColors {
+    DisasmViewColors::from_tokens(&DisasmViewTokens {
+        fg: hex(FG, 1.0),
+        fg_muted: hex(FG_MUTED, 1.0),
+        accent: hex(ACCENT, 1.0),
+        success: hex(SUCCESS, 1.0),
+        warning: hex(WARNING, 1.0),
+        danger: hex(DANGER, 1.0),
+        purple: hex(0x9d7cd8, 1.0),
+        // Tokyo Night canonical orange + cyan.
+        orange: hex(0xff9e64, 1.0),
+        cyan: hex(0x7dcfff, 1.0),
+    })
 }
 
 // ─── ImGui style ─────────────────────────────────────────────────────────────

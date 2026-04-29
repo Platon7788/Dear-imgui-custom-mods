@@ -9,6 +9,11 @@ use super::config::UndoEntry;
 use super::search::{Selection, format_bytes};
 use crate::utils::clipboard::{self, set_clipboard};
 
+/// How many frames the address-gutter "just copied" highlight lingers
+/// after a click-to-copy. ~30 frames @ 60 fps ≈ 0.5 s — long enough to
+/// confirm the action visually without overstaying its welcome.
+pub(super) const ADDRESS_FLASH_FRAMES: u32 = 30;
+
 // ── EditColumn ───────────────────────────────────────────────────────────────
 
 /// Which column is being edited.
@@ -187,9 +192,13 @@ impl HexViewer {
         if ctrl && ui.is_key_pressed(Key::G) && !self.show_goto {
             self.show_goto = true;
             self.goto_buf.clear();
+            // Anchor the popup near the cursor — `mouse_pos` is the
+            // screen-space coordinate of the cursor at keypress.
+            self.popup_open_pos = ui.io().mouse_pos();
         }
         if ctrl && ui.is_key_pressed(Key::F) && !self.show_search {
             self.show_search = true;
+            self.popup_open_pos = ui.io().mouse_pos();
         }
         if ctrl && ui.is_key_pressed(Key::A) {
             self.selection = Selection { start: 0, end: len };
@@ -372,6 +381,44 @@ impl HexViewer {
         let ctrl = ui.io().key_ctrl();
         let shift = ui.io().key_shift();
 
+        // ── Address-gutter affordance ────────────────────────────────
+        // Hovering the address column shows a `Hand` cursor + tooltip
+        // ("Click to copy 0x...") so the click-to-copy behaviour is
+        // discoverable. A bare left click (no modifier) copies the
+        // row's address as a hex literal to the clipboard and triggers
+        // a brief background flash on the address text. Modifier-held
+        // clicks fall through to the normal hex/ASCII handler so
+        // shift-extend / ctrl-toggle still work in the data area.
+        if let Some(row) = self.mouse_to_address_row(ui) {
+            ui.set_mouse_cursor(Some(dear_imgui_rs::MouseCursor::Hand));
+            let bpr = self.config.bytes_per_row.value();
+            let addr = self.config.base_address + (row * bpr) as u64;
+            let formatted = self.format_address_literal(addr);
+            crate::utils::tooltip::themed_tooltip(ui, || {
+                ui.text(format!("Click to copy: {}", formatted));
+            });
+            if !shift && !ctrl && ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left) {
+                set_clipboard(&formatted);
+                self.address_flash = Some((row, ADDRESS_FLASH_FRAMES));
+                // Don't fall through into the hex/ASCII click handler:
+                // the click was intended for the address gutter.
+                return;
+            }
+        }
+
+        // Right click — opens the context menu (Go to Address /
+        // back / forward / Settings) at the cursor. The popup body
+        // lives in `popup::render_context_menu`; this branch just
+        // raises the one-shot flag so the popup-open call runs on
+        // the next frame, and captures the click position so the
+        // popup spawns under the cursor (not at `(0, 0)`, which is
+        // what ImGui defaults to when `BeginPopup` is called from
+        // outside any window context — see render flow in `draw.rs`).
+        if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Right) {
+            self.show_context_menu = true;
+            self.popup_open_pos = ui.io().mouse_pos();
+        }
+
         // Single click — moves the cursor / extends selection. **Does
         // not** enter edit mode (would be too easy to nudge a byte by
         // accident); double-click below is the explicit edit gesture.
@@ -444,6 +491,66 @@ impl HexViewer {
         }
     }
 
+    /// Format `addr` as a copy-friendly hex literal (`0x...`) honouring
+    /// the configured `address_width` and `uppercase` flags. Used by
+    /// the click-to-copy path for the address gutter.
+    pub(super) fn format_address_literal(&self, addr: u64) -> String {
+        let digits = self
+            .config
+            .address_width
+            .hex_digits(self.config.base_address, self.data.len());
+        match (self.config.uppercase, digits) {
+            (true, 16) => format!("0x{:016X}", addr),
+            (false, 16) => format!("0x{:016x}", addr),
+            (true, _) => format!("0x{:08X}", addr),
+            (false, _) => format!("0x{:08x}", addr),
+        }
+    }
+
+    /// Hit-test: returns the row index (0-based) when `mouse_pos` is
+    /// inside the address gutter, otherwise `None`.
+    ///
+    /// The horizontal range is `[origin_x, hex_x)`; the vertical math
+    /// mirrors [`Self::mouse_to_offset`] exactly so a row reported here
+    /// is guaranteed to line up with the row that
+    /// [`Self::mouse_to_offset`] would report for the same `my` in the
+    /// data area.
+    pub(super) fn mouse_to_address_row(&self, ui: &dear_imgui_rs::Ui) -> Option<usize> {
+        if !self.config.show_offsets {
+            return None;
+        }
+        let [mx, my] = ui.io().mouse_pos();
+        let [win_x, win_y] = ui.cursor_screen_pos();
+        let scroll_y = ui.scroll_y();
+        let header_offset = if self.config.show_column_headers {
+            1
+        } else {
+            0
+        };
+
+        // Mirror the one-glyph left padding applied in `draw::render`.
+        let origin_x = win_x + self.char_advance;
+        let hex_x = origin_x + self.offset_col_width();
+
+        if mx < origin_x || mx >= hex_x {
+            return None;
+        }
+
+        let rel_y = my - win_y + scroll_y;
+        let row = (rel_y / self.line_height) as isize - header_offset as isize;
+        if row < 0 {
+            return None;
+        }
+        let row = row as usize;
+
+        let bpr = self.config.bytes_per_row.value();
+        let total_rows = self.data.len().div_ceil(bpr);
+        if row >= total_rows {
+            return None;
+        }
+        Some(row)
+    }
+
     /// Returns (byte_offset, which_column) from mouse position.
     pub(super) fn mouse_to_offset(&self, ui: &dear_imgui_rs::Ui) -> Option<(usize, EditColumn)> {
         let [mx, my] = ui.io().mouse_pos();
@@ -465,8 +572,13 @@ impl HexViewer {
         let bpr = self.config.bytes_per_row.value();
         let group = self.config.grouping.value();
 
-        let hex_x = win_x + self.offset_col_width();
-        let ascii_x = hex_x + self.hex_col_width() + self.char_advance;
+        // Mirror the one-glyph left padding applied in `draw::render`.
+        let origin_x = win_x + self.char_advance;
+        let hex_x = origin_x + self.offset_col_width();
+        // ASCII is right-anchored to the inner content edge (see
+        // `HexViewer::ascii_col_x`); hit-test must use the same
+        // position or clicks land on the wrong cell.
+        let ascii_x = self.ascii_col_x(win_x);
 
         // Check ASCII column first.
         if self.config.show_ascii && mx >= ascii_x {

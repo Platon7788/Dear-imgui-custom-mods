@@ -43,6 +43,6 @@
 pub mod keyboard;
 
 pub use keyboard::{
-    dispatch_window_event, inject_ime_commit, physical_key_to_imgui,
-    reinforce_physical_key_state, try_inject_ctrl_alt_shortcut, try_inject_numpad_text,
+    dispatch_window_event, inject_ime_commit, physical_key_to_imgui, reinforce_physical_key_state,
+    try_inject_ctrl_alt_shortcut, try_inject_numpad_text,
 };
