@@ -286,7 +286,7 @@ pub struct Edge {
 /// Knowledge-graph colour sub-palette.
 ///
 /// Follows the same per-theme palette pattern as
-/// [`crate::borderless_window::TitlebarColors`] and
+/// [`crate::theme::TitlebarColors`] and
 /// [`crate::nav_panel::NavColors`]: a plain struct of RGBA `[f32; 4]` colours
 /// that the theme modules can fill in and that the viewer uses at render time.
 ///

@@ -15,17 +15,15 @@ license = "MIT"
 #
 # Inter-component dependencies are encoded transitively so toggling one
 # leaf component does the right thing (e.g. enabling `disasm_view`
-# automatically pulls `hex_viewer`; enabling `app_window` pulls
-# `borderless_window` + `code_editor`).
+# automatically pulls `hex_viewer`; enabling `app_window_v2` pulls
+# `code_editor`).
 
 [features]
 default = ["full"]
 
 # Meta-feature: every component.
 full = [
-    "app_window",
     "app_window_v2",
-    "borderless_window",
     "code_editor",
     "confirm_dialog",
     "diff_viewer",
@@ -46,13 +44,12 @@ full = [
 ]
 
 # ── Window chrome ───────────────────────────────────────────────────────────
-borderless_window = []
-# app_window is the composite wgpu+winit+ImGui host — pulls the chrome it
-# depends on transitively. Big feature (~MB of wgpu glue).
-app_window = ["borderless_window", "code_editor"]
-# app_window_v2: redesigned borderless host — pure ImGui hit detection, flat
-# config, WM_GETMINMAXINFO-only Win32 subclass, no DWM frame extension.
-app_window_v2 = ["borderless_window", "code_editor"]
+# app_window_v2: borderless wgpu+winit+ImGui host — pure ImGui hit detection,
+# flat config, WM_GETMINMAXINFO-only Win32 subclass, no DWM frame extension.
+# After the v1 / borderless_window removal (2026-04-29) this is the one
+# and only host framework — Phase 2 of the refactor will rename it back
+# to `app_window`.
+app_window_v2 = ["code_editor"]
 
 # ── Dialogs & small widgets ─────────────────────────────────────────────────
 confirm_dialog = []
@@ -158,72 +155,62 @@ harness = false
 [[example]]
 name = "demo_table"
 path = "examples/demo_table.rs"
-required-features = ["virtual_table", "app_window"]
+required-features = ["virtual_table", "app_window_v2"]
 
 [[example]]
 name = "demo_node_graph"
 path = "examples/demo_node_graph.rs"
-required-features = ["node_graph", "app_window"]
+required-features = ["node_graph", "app_window_v2"]
 
 [[example]]
 name = "demo_tree"
 path = "examples/demo_tree.rs"
-required-features = ["virtual_tree", "app_window"]
+required-features = ["virtual_tree", "app_window_v2"]
 
 [[example]]
 name = "demo_code_editor"
 path = "examples/demo_code_editor.rs"
-required-features = ["code_editor", "app_window"]
+required-features = ["code_editor", "app_window_v2"]
 
 [[example]]
 name = "demo_hex_viewer"
 path = "examples/demo_hex_viewer.rs"
-required-features = ["hex_viewer", "app_window"]
+required-features = ["hex_viewer", "app_window_v2"]
 
 [[example]]
 name = "demo_disasm_view"
 path = "examples/demo_disasm_view.rs"
-required-features = ["disasm_view", "app_window"]
+required-features = ["disasm_view", "app_window_v2"]
 
 [[example]]
 name = "demo_file_manager"
 path = "examples/demo_file_manager.rs"
-required-features = ["file_manager", "app_window"]
+required-features = ["file_manager", "app_window_v2"]
 
 [[example]]
 name = "demo_tab_control"
 path = "examples/demo_tab_control.rs"
-required-features = ["tab_control", "app_window"]
+required-features = ["tab_control", "app_window_v2"]
 
 [[example]]
 name = "demo_timeline"
 path = "examples/demo_timeline.rs"
-required-features = ["timeline", "app_window"]
+required-features = ["timeline", "app_window_v2"]
 
 [[example]]
 name = "demo_diff_viewer"
 path = "examples/demo_diff_viewer.rs"
-required-features = ["diff_viewer", "app_window"]
+required-features = ["diff_viewer", "app_window_v2"]
 
 [[example]]
 name = "demo_property_inspector"
 path = "examples/demo_property_inspector.rs"
-required-features = ["property_inspector", "app_window"]
+required-features = ["property_inspector", "app_window_v2"]
 
 [[example]]
 name = "demo_status_toolbar"
 path = "examples/demo_status_toolbar.rs"
-required-features = ["status_bar", "toolbar", "app_window"]
-
-[[example]]
-name = "demo_borderless"
-path = "examples/demo_borderless.rs"
-required-features = ["borderless_window", "app_window"]
-
-[[example]]
-name = "demo_app_window"
-path = "examples/demo_app_window.rs"
-required-features = ["app_window", "notifications", "confirm_dialog"]
+required-features = ["status_bar", "toolbar", "app_window_v2"]
 
 [[example]]
 name = "demo_app_window_v2"
@@ -233,17 +220,17 @@ required-features = ["app_window_v2", "confirm_dialog", "nav_panel", "status_bar
 [[example]]
 name = "demo_nav_panel"
 path = "examples/demo_nav_panel.rs"
-required-features = ["nav_panel", "app_window"]
+required-features = ["nav_panel", "app_window_v2"]
 
 [[example]]
 name = "demo_force_graph"
 path = "examples/demo_force_graph.rs"
-required-features = ["force_graph", "app_window"]
+required-features = ["force_graph", "app_window_v2"]
 
 [[example]]
 name = "demo_proc_mon"
 path = "examples/demo_proc_mon.rs"
-required-features = ["proc_mon", "app_window"]
+required-features = ["proc_mon", "app_window_v2"]
 
 
 # ─── Build profiles ──────────────────────────────────────────────────────────

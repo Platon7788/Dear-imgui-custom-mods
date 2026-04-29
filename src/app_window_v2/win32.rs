@@ -1,44 +1,161 @@
-//! Windows-specific helpers — minimal v1-equivalent set, delegating to
-//! the canonical implementation in [`crate::borderless_window::platform`].
+//! Windows-specific helpers for the borderless app-host.
 //!
 //! `app_window_v2` always creates `WS_POPUP + WS_THICKFRAME` windows
 //! (`with_decorations(false)` in [`super`]). That style has no caption,
 //! no system menu, no DWM chrome — DWM has nothing to draw or tint on
 //! focus change, so there is no inactive-window dimming to fight.
 //!
-//! This module provides only the *app-host*-specific extensions:
-//! 1. `WS_EX_TOOLWINDOW` for tool-window kinds (excludes from Alt-Tab).
-//! 2. A `WM_GETMINMAXINFO` subclass that clamps a maximised
+//! Provides the full set of Win32 hooks the framework needs:
+//! 1. HWND extraction from a `winit::Window`.
+//! 2. DWM dark-mode attribute on the OS titlebar.
+//! 3. Rounded corners (Win11 DWM, Win10 `SetWindowRgn` fallback).
+//! 4. `WS_EX_TOOLWINDOW` for tool-window kinds (excludes from Alt-Tab).
+//! 5. `WM_GETMINMAXINFO` subclass that clamps a maximised
 //!    `WS_THICKFRAME` window to the monitor work area so it doesn't
 //!    cover the taskbar.
-//! 3. `set_opacity` — toggles `WS_EX_LAYERED`.
-//! 4. `debug_log` — `OutputDebugStringW` so messages survive
+//! 6. `set_opacity` — toggles `WS_EX_LAYERED`.
+//! 7. `debug_log` — `OutputDebugStringW` so messages survive
 //!    `windows_subsystem = "windows"` (where stderr is detached).
 //!
-//! Everything else (HWND extraction, dark-mode attribute, rounded
-//! corners, Win11 detection) is re-exported from
-//! [`crate::borderless_window::platform`] so there is one source of
-//! truth across the crate.
+//! Before the v1 / `borderless_window` removal (2026-04-29), helpers
+//! 1-3 lived in `borderless_window::platform`; they are inlined here
+//! now so the framework is fully self-contained.
 
 #![cfg(windows)]
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows_sys::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows_sys::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    CreateRoundRectRgn, GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+    MonitorFromWindow, SetWindowRgn,
 };
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GetWindowLongPtrW, LWA_ALPHA, MINMAXINFO, SetLayeredWindowAttributes,
-    SetWindowLongPtrW, WM_DESTROY, WM_GETMINMAXINFO, WS_EX_LAYERED, WS_EX_TOOLWINDOW,
+    GWL_EXSTYLE, GetClientRect, GetWindowLongPtrW, LWA_ALPHA, MINMAXINFO,
+    SetLayeredWindowAttributes, SetWindowLongPtrW, WM_DESTROY, WM_GETMINMAXINFO, WS_EX_LAYERED,
+    WS_EX_TOOLWINDOW,
 };
 
-// ── Re-exports of the canonical helpers ──────────────────────────────────────
+// ── HWND extraction ──────────────────────────────────────────────────────────
 
-pub(super) use crate::borderless_window::platform::{
-    hwnd_of, is_win11_dwm_active as is_win11, update_rounded_region,
-};
+/// Extract the HWND from a winit window. Returns `None` if the window's
+/// raw handle is not a Win32 handle.
+pub(super) fn hwnd_of(window: &winit::window::Window) -> Option<isize> {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    if let Ok(h) = window.window_handle()
+        && let RawWindowHandle::Win32(w) = h.as_raw()
+    {
+        return Some(w.hwnd.get());
+    }
+    None
+}
+
+// ── Rounded corners + Win11 detection ────────────────────────────────────────
+
+// Process-wide cache for the Win11 DWM rounded-corners probe. Set by the first
+// successful `set_rounded_corners` call; read by `update_rounded_region` so it
+// can skip `SetWindowRgn` on Win11 — where mixing SetWindowRgn with the DWM
+// rounded frame causes a phantom caption strip to appear above the client area.
+static WIN11_DWM_CORNERS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Returns `true` when the Win11 DWM rounded-corners path was successfully
+/// applied during the last `set_rounded_corners` call. Used by the
+/// `restore-from-minimised-when-maximised` workaround in `gpu/mod.rs`.
+pub(super) fn is_win11() -> bool {
+    WIN11_DWM_CORNERS.get().copied().unwrap_or(false)
+}
+
+/// Apply rounded corners. On Win11 uses the DWM corner-preference attribute;
+/// on Win10 falls back to `SetWindowRgn` with a rounded-rect region. Returns
+/// `true` if the Win11 path succeeded.
+fn set_rounded_corners(hwnd: isize, radius: i32) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
+    // Win11: DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2.
+    const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    const DWMWCP_ROUND: u32 = 2;
+    let pref: u32 = DWMWCP_ROUND;
+    // SAFETY: stable Win32 DWM API. cbAttribute matches size_of::<u32>().
+    let hr = unsafe {
+        DwmSetWindowAttribute(
+            hwnd as _,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &pref as *const u32 as *const _,
+            std::mem::size_of::<u32>() as u32,
+        )
+    };
+    let win11 = hr == 0;
+    let _ = WIN11_DWM_CORNERS.set(win11);
+    if win11 {
+        return true;
+    }
+    apply_rounded_region_raw(hwnd, radius);
+    false
+}
+
+/// Re-apply the rounded window region after a resize (Win10-only path —
+/// no-op on Win11 because the DWM owns the corners and `SetWindowRgn`
+/// would clip its frame).
+pub(super) fn update_rounded_region(hwnd: isize, radius: i32) {
+    if hwnd == 0 || is_win11() {
+        return;
+    }
+    apply_rounded_region_raw(hwnd, radius);
+}
+
+fn apply_rounded_region_raw(hwnd: isize, radius: i32) {
+    let mut rect: RECT = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    // SAFETY: GetClientRect writes into our stack-allocated RECT. hwnd is the caller's responsibility.
+    let ok = unsafe { GetClientRect(hwnd as _, &mut rect) };
+    if ok == 0 {
+        return;
+    }
+    let w = rect.right - rect.left;
+    let h = rect.bottom - rect.top;
+    if w <= 0 || h <= 0 {
+        return;
+    }
+    let r = radius.max(0);
+    // SAFETY: SetWindowRgn takes ownership of the GDI region (redraw=TRUE),
+    // so the OS frees it on window destruction. If SetWindowRgn fails we
+    // leak one region per failed call — acceptable for a rare edge case.
+    unsafe {
+        let rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, r, r);
+        if !rgn.is_null() {
+            SetWindowRgn(hwnd as _, rgn, 1);
+        }
+    }
+}
+
+// ── DWM dark titlebar ────────────────────────────────────────────────────────
+
+/// Apply the DWM immersive-dark-mode attribute. Even with
+/// `with_decorations(false)`, Windows still renders a small drop-shadow;
+/// dark mode prevents the brief white flash on startup.
+pub(super) fn set_titlebar_dark_mode(hwnd: isize, dark: bool) {
+    if hwnd == 0 {
+        return;
+    }
+    let value: u32 = if dark { 1 } else { 0 };
+    // SAFETY: DwmSetWindowAttribute reads `cbAttribute` bytes from the pointer.
+    // We pass a stack u32 and its size — matches the documented layout.
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd as _,
+            DWMWA_USE_IMMERSIVE_DARK_MODE as u32,
+            &value as *const u32 as *const _,
+            std::mem::size_of::<u32>() as u32,
+        );
+    }
+}
 
 // ── Setup options ─────────────────────────────────────────────────────────────
 
@@ -59,8 +176,8 @@ pub(super) fn setup_window(hwnd: isize, opts: SetupOptions) {
     if hwnd == 0 {
         return;
     }
-    crate::borderless_window::platform::set_titlebar_dark_mode(hwnd, true);
-    crate::borderless_window::platform::set_rounded_corners(hwnd, opts.corner_radius);
+    set_titlebar_dark_mode(hwnd, true);
+    set_rounded_corners(hwnd, opts.corner_radius);
     apply_extended_styles(hwnd as HWND, opts.tool_window);
     install_minmax_subclass(hwnd as HWND);
 }

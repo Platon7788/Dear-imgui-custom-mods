@@ -10,7 +10,10 @@
 //!   - Drag-reorder, scroll, overflow dropdown, close confirmation
 //!   - Add (+) button hooked up to spawn new tabs
 
-use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow};
+use dear_imgui_custom_mod::app_window_v2::{
+    AppConfigV2 as AppConfig, AppHandlerV2 as AppHandler, AppStateV2 as AppState,
+    AppWindowV2 as AppWindow,
+};
 use dear_imgui_custom_mod::icons;
 use dear_imgui_custom_mod::tab_control::{
     Badge, CloseGlyph, TabAction, TabControl, TabControlConfig, TabItem, TabStatus, TabStyle,
@@ -372,6 +375,6 @@ fn propagate_style_to_nested(tc: &mut TabControl<OuterTab>, style: TabStyle) {
 // ─── Entry point ────────────────────────────────────────────────────────────
 
 fn main() -> Result<(), winit::error::EventLoopError> {
-    AppWindow::new(AppConfig::new("TabControl Demo", 1100.0, 720.0))
+    AppWindow::new(AppConfig::main("TabControl Demo", 1100.0, 720.0))
         .run(DemoApp::default())
 }

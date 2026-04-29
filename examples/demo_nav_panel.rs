@@ -3,8 +3,9 @@
 //! Run with:
 //!   cargo run --example demo_nav_panel
 
-use dear_imgui_custom_mod::app_window::{
-    AppConfig, AppHandler, AppState, AppWindow, StartPosition,
+use dear_imgui_custom_mod::app_window_v2::{
+    AppConfigV2 as AppConfig, AppHandlerV2 as AppHandler, AppStateV2 as AppState,
+    AppWindowV2 as AppWindow, PositionV2,
 };
 use dear_imgui_custom_mod::confirm_dialog::{
     DialogConfig, DialogIcon, DialogResult, render_confirm_dialog,
@@ -402,9 +403,9 @@ impl AppHandler for DemoApp {
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 fn main() {
-    let config = AppConfig::new("NavPanel Demo", 1100.0, 700.0)
+    let config = AppConfig::main("NavPanel Demo", 1100.0, 700.0)
         .with_min_size(800.0, 500.0)
-        .with_start_position(StartPosition::CenterScreen)
+        .with_position(PositionV2::ScreenCenter)
         .with_theme(Theme::Dark);
 
     AppWindow::new(config)

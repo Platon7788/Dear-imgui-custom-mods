@@ -1,8 +1,8 @@
 //! System-clipboard backend for the Dear ImGui context.
 //!
-//! Lives at the crate root so that both [`app_window`](crate::app_window)
-//! (v1) and [`app_window_v2`](crate::app_window_v2) can install the
-//! exact same backend without one feature pulling the other.
+//! Lives at the crate root so that [`app_window_v2`](crate::app_window_v2)
+//! and any future host can install the exact same backend without
+//! one feature pulling the other.
 //!
 //! Without this backend, every `InputText` ends up with a private paste
 //! buffer that does not interact with the OS — an immediate UX
@@ -22,8 +22,7 @@
 use dear_imgui_rs::ClipboardBackend;
 
 /// Default system clipboard backend — installed automatically on every
-/// [`crate::app_window::AppWindow`] / [`crate::app_window_v2::AppWindowV2`]
-/// unless the user supplies their own.
+/// [`crate::app_window_v2::AppWindowV2`] unless the user supplies their own.
 ///
 /// Implementation (Windows): direct
 /// `OpenClipboard + EmptyClipboard + GlobalAlloc(GHND) + GlobalLock +

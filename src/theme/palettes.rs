@@ -12,11 +12,9 @@
 //! palettes. That is a textbook inverse dependency: the foundation
 //! reaches up into the higher layers.
 //!
-//! After session 022 every palette **type** lives here. The consumer
-//! modules `pub use` them back so existing user code (`use
-//! dear_imgui_custom_mod::borderless_window::TitlebarColors`) keeps
-//! working — but the source of truth is now the theme system, and
-//! `theme/<name>.rs` builds palettes from a single import:
+//! After session 022 every palette **type** lives here. Consumer
+//! modules `pub use` them back, and the theme modules build palettes
+//! from a single import:
 //!
 //! ```ignore
 //! use super::{TitlebarColors, NavColors, DialogColors, NotificationColors};
@@ -36,7 +34,6 @@
 // ── TitlebarColors ──────────────────────────────────────────────────────────
 
 /// A complete set of colours for the borderless titlebar, consumed by
-/// [`crate::borderless_window`] and re-rendered by
 /// [`crate::app_window_v2`]'s chrome layer.
 #[derive(Debug, Clone)]
 pub struct TitlebarColors {

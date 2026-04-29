@@ -44,12 +44,9 @@
 //! - [`confirm_dialog`] — Reusable modal confirmation dialog with 4 draw-list icon
 //!   types (Warning/Error/Info/Question), dim overlay, keyboard shortcuts,
 //!   destructive/normal button styles, builder-pattern [`confirm_dialog::DialogConfig`]
-//! - [`borderless_window`] — Borderless window titlebar with resize zones, drag,
-//!   minimize/maximize/close, extra buttons, `hwnd_of()` utility, DWM dark mode,
-//!   Win11/Win10 rounded corners, cursor + resize-direction helpers. Has overlay
-//!   variant ([`borderless_window::render_titlebar_overlay`]) for foreground-draw-list
-//!   rendering without a host window.
-//! - [`app_window`] — Zero-boilerplate window (wgpu+winit+ImGui); re-exports [`theme::Theme`]
+//! - [`app_window_v2`] — Zero-boilerplate borderless window
+//!   (wgpu+winit+ImGui), pure ImGui hit detection, flat config.
+//!   Re-exports [`theme::Theme`].
 //! - [`input`] — Keyboard / IME fixes for `dear-imgui-winit`: layout-independent
 //!   `Ctrl+C` on Cyrillic/French/German layouts, numpad text injection, IME commit
 //!
@@ -83,10 +80,10 @@
 // source of silent API leaks from internal helpers. Kept at warn, not deny,
 // so intentional re-exports from `lib.rs` compile without per-item allow.
 //
-// We deliberately do NOT `forbid(unsafe_code)` — `borderless_window::platform`
-// uses `unsafe` for documented Win32 calls (DWM dark mode, SetCursor bypass,
-// SetWindowRgn fallback on Win10). Every such block carries a `// SAFETY:`
-// comment.
+// We deliberately do NOT `forbid(unsafe_code)` — `app_window_v2::win32` and
+// `clipboard_backend` use `unsafe` for documented Win32 calls (DWM dark mode,
+// SetCursor bypass, SetWindowRgn fallback on Win10, system clipboard
+// I/O). Every such block carries a `// SAFETY:` comment.
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 // Pre-existing rustdoc issues across several modules (broken intra-doc
@@ -132,12 +129,8 @@ pub mod utils;
 
 // ─── Component modules (gated behind features) ───────────────────────────────
 
-#[cfg(feature = "app_window")]
-pub mod app_window;
 #[cfg(feature = "app_window_v2")]
 pub mod app_window_v2;
-#[cfg(feature = "borderless_window")]
-pub mod borderless_window;
 #[cfg(feature = "code_editor")]
 pub mod code_editor;
 #[cfg(feature = "confirm_dialog")]
