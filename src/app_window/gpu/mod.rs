@@ -17,12 +17,12 @@ use dear_imgui_winit::WinitPlatform;
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
 use super::chrome::{
-    ResizeEdgeV2, TitlebarActionV2, TitlebarResultV2, cursor_for_edge, render_titlebar,
+    ResizeEdge, TitlebarAction, TitlebarResult, cursor_for_edge, render_titlebar,
     resize_direction, whole_window_resize,
 };
-use super::config::{AppConfigV2, ChromeV2};
-use super::handler::AppHandlerV2;
-use super::state::AppStateV2;
+use super::config::{AppConfig, Chrome};
+use super::handler::AppHandler;
+use super::state::AppState;
 
 // ── GpuState ──────────────────────────────────────────────────────────────────
 
@@ -35,11 +35,11 @@ pub(super) struct GpuState {
     pub context: dear_imgui_rs::Context,
     pub platform: WinitPlatform,
     pub renderer: WgpuRenderer,
-    pub app_state: AppStateV2,
+    pub app_state: AppState,
     /// `true` while the OS reports the window as the active foreground window.
     pub focused: bool,
     /// Event-driven mode flag — mirrors
-    /// `matches!(cfg.render_mode, RenderModeV2::EventDriven { .. })`.
+    /// `matches!(cfg.render_mode, RenderMode::EventDriven { .. })`.
     /// Hot-path scheduling decisions read this once per loop iteration.
     pub event_driven: bool,
     /// Foreground idle pulse (event-driven mode only).
@@ -55,24 +55,24 @@ pub(super) struct GpuState {
     pub unfocused_fps_interval: Duration,
     /// "Render at least N more frames" budget. Bumped by input events,
     /// animation widgets ([`crate::frame_demand`]) and explicit
-    /// [`AppStateV2::keep_alive`] calls. Decremented per frame.
+    /// [`AppState::keep_alive`] calls. Decremented per frame.
     pub pending_frames: u8,
     /// Wall-clock of the last completed render. Used to schedule the next
     /// idle-pulse via [`ControlFlow::WaitUntil`].
     pub last_redraw: Instant,
-    pub last_hover_edge: Option<ResizeEdgeV2>,
+    pub last_hover_edge: Option<ResizeEdge>,
     pub cursor_set: bool,
     pub pending_remax: bool,
     pub was_minimized: bool,
     pub started_at: Instant,
     /// Cached `theme.titlebar().bg` so the per-frame clear-pass doesn't
     /// build a fresh `TitlebarColors` (~200 B on stack) every redraw.
-    /// Refreshed when [`AppStateV2::pending_theme`] is applied.
+    /// Refreshed when [`AppState::pending_theme`] is applied.
     pub clear_color: wgpu::Color,
 }
 
 impl GpuState {
-    pub(super) fn refresh_clear_color(&mut self, cfg: &AppConfigV2) {
+    pub(super) fn refresh_clear_color(&mut self, cfg: &AppConfig) {
         let bg = cfg.theme.titlebar().bg;
         self.clear_color = wgpu::Color {
             r: bg[0] as f64,
@@ -85,9 +85,9 @@ impl GpuState {
 
 // ── Per-frame render ──────────────────────────────────────────────────────────
 
-pub(super) fn render_frame<H: AppHandlerV2>(
+pub(super) fn render_frame<H: AppHandler>(
     gpu: &mut GpuState,
-    cfg: &mut AppConfigV2,
+    cfg: &mut AppConfig,
     handler: &mut H,
     event_loop: &ActiveEventLoop,
 ) {
@@ -115,7 +115,7 @@ pub(super) fn render_frame<H: AppHandlerV2>(
             return;
         }
         other => {
-            let line = format!("app_window_v2: surface error: {other:?}");
+            let line = format!("app_window: surface error: {other:?}");
             eprintln!("{line}");
             super::win32_debug_log(&line);
             return;
@@ -128,7 +128,7 @@ pub(super) fn render_frame<H: AppHandlerV2>(
 
     gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
     let ui = gpu.context.frame();
-    let mut tb_result = TitlebarResultV2::none();
+    let mut tb_result = TitlebarResult::none();
 
     {
         let display = ui.io().display_size();
@@ -150,7 +150,7 @@ pub(super) fn render_frame<H: AppHandlerV2>(
             .build(|| {
                 let mut content_top = 0.0;
                 match &cfg.chrome {
-                    ChromeV2::None => {
+                    Chrome::None => {
                         // Splash / chrome-less: no titlebar at all.
                         let (edge, action) = whole_window_resize(
                             ui,
@@ -158,12 +158,12 @@ pub(super) fn render_frame<H: AppHandlerV2>(
                             cfg.os_resizable(),
                             gpu.app_state.titlebar.maximized,
                         );
-                        tb_result = TitlebarResultV2 {
+                        tb_result = TitlebarResult {
                             action,
                             hover_edge: edge,
                         };
                     }
-                    ChromeV2::Custom(t) => {
+                    Chrome::Custom(t) => {
                         let colors = cfg.theme.titlebar();
                         tb_result = render_titlebar(
                             ui,
@@ -227,7 +227,7 @@ pub(super) fn render_frame<H: AppHandlerV2>(
 
     // ── Collect "keep rendering" signals from this frame ──────────────
     // Built-in animation widgets and user code call `frame_demand::request`
-    // / `AppStateV2::keep_alive` from inside `handler.render()`.
+    // / `AppState::keep_alive` from inside `handler.render()`.
     // ImGui flags `want_text_input` whenever an InputText is active —
     // we need at least one more frame for the cursor blink to advance.
     let demanded = crate::frame_demand::take();
@@ -248,7 +248,7 @@ pub(super) fn render_frame<H: AppHandlerV2>(
     let mut enc = gpu
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("app_window_v2"),
+            label: Some("app_window"),
         });
     {
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -270,7 +270,7 @@ pub(super) fn render_frame<H: AppHandlerV2>(
         if draw_data.total_vtx_count > 0
             && let Err(e) = gpu.renderer.render_draw_data(draw_data, &mut pass)
         {
-            let line = format!("app_window_v2: imgui render error: {e:?}");
+            let line = format!("app_window: imgui render error: {e:?}");
             eprintln!("{line}");
             super::win32_debug_log(&line);
         }
@@ -285,37 +285,37 @@ pub(super) fn render_frame<H: AppHandlerV2>(
 
 // ── Action dispatcher ─────────────────────────────────────────────────────────
 
-fn dispatch_actions<H: AppHandlerV2>(
+fn dispatch_actions<H: AppHandler>(
     gpu: &mut GpuState,
-    cfg: &mut AppConfigV2,
+    cfg: &mut AppConfig,
     handler: &mut H,
-    tb: TitlebarResultV2,
+    tb: TitlebarResult,
     event_loop: &ActiveEventLoop,
 ) {
     // Titlebar actions first.
     match tb.action {
-        TitlebarActionV2::None => {}
-        TitlebarActionV2::Close => {
+        TitlebarAction::None => {}
+        TitlebarAction::Close => {
             gpu.app_state.should_exit = true;
         }
-        TitlebarActionV2::CloseRequested => {
+        TitlebarAction::CloseRequested => {
             handler.on_close_requested(&mut gpu.app_state);
         }
-        TitlebarActionV2::Extra(id) => {
+        TitlebarAction::Extra(id) => {
             handler.on_extra_button(id, &mut gpu.app_state);
         }
-        TitlebarActionV2::IconClick => {
+        TitlebarAction::IconClick => {
             handler.on_icon_click(&mut gpu.app_state);
         }
-        TitlebarActionV2::DragStart => {
+        TitlebarAction::DragStart => {
             gpu.cursor_set = false;
             gpu.window.drag_window().ok();
         }
-        TitlebarActionV2::ResizeStart(edge) => {
+        TitlebarAction::ResizeStart(edge) => {
             gpu.cursor_set = false;
             gpu.window.drag_resize_window(resize_direction(edge)).ok();
         }
-        TitlebarActionV2::Minimize => {
+        TitlebarAction::Minimize => {
             #[cfg(windows)]
             if super::win32::is_win11() && gpu.window.is_maximized() {
                 gpu.window.set_maximized(false);
@@ -323,7 +323,7 @@ fn dispatch_actions<H: AppHandlerV2>(
             }
             gpu.window.set_minimized(true);
         }
-        TitlebarActionV2::Maximize => {
+        TitlebarAction::Maximize => {
             let next = !gpu.window.is_maximized();
             gpu.window.set_maximized(next);
             // Flip the titlebar state immediately so the icon updates in the
@@ -333,7 +333,7 @@ fn dispatch_actions<H: AppHandlerV2>(
         }
     }
 
-    // AppStateV2-requested actions (set inside `render()` callbacks).
+    // AppState-requested actions (set inside `render()` callbacks).
     if let Some(v) = gpu.app_state.request_maximize.take() {
         gpu.window.set_maximized(v);
     }

@@ -258,7 +258,7 @@ pub fn reinforce_physical_key_state(io: &mut Io, event: &KeyEvent) {
 /// }
 /// ```
 ///
-/// `app_window` and `app_window_v2` already wire the same logic
+/// `app_window` and `app_window` already wire the same logic
 /// internally, so applications that build on those frameworks do not
 /// need this helper.
 pub fn dispatch_window_event(

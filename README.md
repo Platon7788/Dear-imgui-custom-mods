@@ -10,8 +10,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 | Component | Description | Docs |
 |-----------|-------------|------|
-| **`borderless_window`** | Reusable borderless-window titlebar — 5 built-in themes (Dark, Light, Midnight, Solarized, Monokai) via the unified `Theme` enum + per-instance `colors_override`, minimize/maximize/close buttons, 8-direction edge resize, drag-to-move, close-confirmation mode, optional focus-dim, drag-hint, separator, icon, extra buttons, `IconClick` action, overlay variant (`render_titlebar_overlay`) | [docs/borderless_window.md](docs/borderless_window.md) |
-| **`app_window`** | Zero-boilerplate application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Auto GPU backend (DX12→Vulkan→GL), auto HiDPI, FPS cap, `StartPosition`, atomic theme switching via `AppState::set_theme(Theme)` | [docs/app_window.md](docs/app_window.md) |
+| **`app_window`** | Zero-boilerplate borderless application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Pure ImGui hit-detection titlebar (5 built-in themes via the unified `Theme` enum + per-instance `colors_override`, minimize/maximize/close, 8-direction edge resize, drag-to-move, close-confirmation, icon, extra buttons), event-driven render loop (`RenderMode`), DPI font rebuild, system clipboard backend, layout-independent shortcuts, cross-thread `AppProxy::wake()`, raw `on_window_event` hook, `WindowKind` presets (Splash / Tool / Dialog / Main) | [docs/app_window.md](docs/app_window.md) |
 | **`nav_panel`** | Modern navigation panel (activity bar) — 3 docking positions (Left/Right/Top), flyout submenus, auto-hide with slide animation, toggle arrow, badges, button spacing/separators, per-button tooltip control, 5 unified themes, overlay variant (`render_nav_panel_overlay`) | [docs/nav_panel.md](docs/nav_panel.md) |
 | **`confirm_dialog`** | Reusable modal confirmation dialog — 5 unified themes + `colors_override`, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
 | **`notifications`** | Modern toast-notification center — 5 severity levels (Info/Success/Warning/Error/Debug) with draw-list icons, 6 stack placements (4 corners + top/bottom center), auto-dismiss timer with bottom progress bar, pause-on-hover, Fade/SlideIn/None animations, action buttons with caller-defined ids, manual `×` close, per-toast custom accent override, max-visible cap, 5 unified themes + `colors_override` | [docs/notifications.md](docs/notifications.md) |
@@ -57,12 +56,15 @@ src/
   utils/
     color.rs                        RGBA packing helpers
     text.rs                         CalcTextSize wrapper
-  borderless_window/
-    mod.rs                          render_titlebar() + render_titlebar_overlay() — draw-list titlebar, edge resize, buttons
-    config.rs                       BorderlessConfig (theme: Theme + colors_override), ButtonConfig, ExtraButton, CloseMode, TitleAlign
-    theme.rs                        TitlebarColors (shared struct)
-    actions.rs                      WindowAction, ResizeEdge, TitlebarResult (#[must_use])
-    state.rs                        TitlebarState — focused, maximized, confirm_close()
+  app_window/
+    mod.rs                          AppWindow + event loop, on_window_event, scale-factor font rebuild
+    handler.rs                      AppHandler trait
+    state.rs                        AppState (theme switch, keep_alive, proxy)
+    proxy.rs                        AppProxy (Send + Sync) — cross-thread `wake()`
+    win32.rs                        Self-contained Win32 glue (DWM, rounded corners, MinMax subclass, opacity)
+    chrome/                         Pure-ImGui titlebar — buttons, drag, edge resize, glyphs
+    config/                         AppConfig (Splash/Tool/Dialog/Main presets) + TitlebarConfig + RenderMode + FontStack
+    gpu/                            wgpu+winit setup, ImGui IO wiring, surface management
     platform.rs                     hwnd_of(), set_titlebar_dark_mode() — OS helpers
   app_window/
     mod.rs                          AppWindow::run(), AppHandler trait, re-exports borderless types
@@ -235,41 +237,18 @@ fn main() {
 }
 ```
 
-### Borderless Window (manual)
+### Borderless Window — use the bundled `AppWindow` host
 
-```rust
-use dear_imgui_custom_mod::borderless_window::{
-    BorderlessConfig, CloseMode, TitlebarState, WindowAction, render_titlebar,
-};
-use dear_imgui_custom_mod::theme::Theme;
+The custom titlebar (drag, edge resize, minimize / maximize / close,
+icon, extra buttons, all themes, close-confirm mode) lives **inside**
+`app_window` — there is no separate `borderless_window` crate path
+anymore. See [docs/app_window.md](docs/app_window.md) for the full
+config builder reference and the four window-kind presets
+(`splash` / `tool` / `dialog` / `main`).
 
-let cfg = BorderlessConfig::new("My App")
-    .with_theme(Theme::Solarized)
-    .with_close_mode(CloseMode::Confirm);
-let mut state = TitlebarState::new();
-
-// Inside a full-screen zero-padding Dear ImGui window each frame:
-let res = render_titlebar(ui, &cfg, &mut state);
-
-if let Some(edge) = res.hover_edge {
-    window.set_cursor(cursor_for_edge(edge));
-}
-match res.action {
-    WindowAction::Close          => event_loop.exit(),
-    WindowAction::CloseRequested => { /* show confirm dialog */ }
-    WindowAction::Minimize       => window.set_minimized(true),
-    WindowAction::Maximize       => window.set_maximized(!state.maximized),
-    WindowAction::DragStart      => { window.drag_window().ok(); }
-    WindowAction::ResizeStart(e) => { window.drag_resize_window(to_winit(e)).ok(); }
-    _ => {}
-}
-```
-
-Need a foreground-draw-list titlebar over your own windows instead of
-inside a host ImGui window? Use `render_titlebar_overlay(ui, &cfg, &mut
-state, origin, full_window_size)` — see [docs/borderless_window.md](docs/borderless_window.md).
-`nav_panel` and `status_bar` have matching `render_nav_panel_overlay` and
-`StatusBar::render_overlay` entry points.
+`nav_panel` and `status_bar` keep matching `render_nav_panel_overlay`
+and `StatusBar::render_overlay` entry points for foreground-draw-list
+composition over a host window.
 
 ### Node Graph
 

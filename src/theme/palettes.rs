@@ -34,7 +34,7 @@
 // ── TitlebarColors ──────────────────────────────────────────────────────────
 
 /// A complete set of colours for the borderless titlebar, consumed by
-/// [`crate::app_window_v2`]'s chrome layer.
+/// [`crate::app_window`]'s chrome layer.
 #[derive(Debug, Clone)]
 pub struct TitlebarColors {
     /// Titlebar background.

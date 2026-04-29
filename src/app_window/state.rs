@@ -1,18 +1,18 @@
-//! Per-frame application state passed to [`AppHandlerV2`](super::AppHandlerV2).
+//! Per-frame application state passed to [`AppHandler`](super::AppHandler).
 
-use super::proxy::AppProxyV2;
+use super::proxy::AppProxy;
 use crate::theme::Theme;
 
-// ── TitlebarStateV2 ─────────────────────────────────────────────────────────────
+// ── TitlebarState ─────────────────────────────────────────────────────────────
 
 /// Live state of the titlebar — kept in sync with the OS window state.
 #[derive(Debug, Clone)]
-pub struct TitlebarStateV2 {
+pub struct TitlebarState {
     pub maximized: bool,
     pub focused: bool,
 }
 
-impl Default for TitlebarStateV2 {
+impl Default for TitlebarState {
     fn default() -> Self {
         Self {
             maximized: false,
@@ -21,7 +21,7 @@ impl Default for TitlebarStateV2 {
     }
 }
 
-impl TitlebarStateV2 {
+impl TitlebarState {
     pub(super) fn new() -> Self {
         Self::default()
     }
@@ -33,16 +33,16 @@ impl TitlebarStateV2 {
     }
 }
 
-// ── AppStateV2 ──────────────────────────────────────────────────────────────────
+// ── AppState ──────────────────────────────────────────────────────────────────
 
-/// Mutable state available inside `AppHandlerV2` callbacks.
+/// Mutable state available inside `AppHandler` callbacks.
 ///
 /// Use the methods here to request window actions instead of holding an
 /// OS handle yourself.
-pub struct AppStateV2 {
-    pub titlebar: TitlebarStateV2,
+pub struct AppState {
+    pub titlebar: TitlebarState,
 
-    pub(super) proxy: AppProxyV2,
+    pub(super) proxy: AppProxy,
     pub(super) should_exit: bool,
     pub(super) request_minimize: bool,
     pub(super) request_maximize: Option<bool>,
@@ -52,10 +52,10 @@ pub struct AppStateV2 {
     pub(super) pending_opacity: Option<f32>,
 }
 
-impl AppStateV2 {
-    pub(super) fn new(proxy: AppProxyV2) -> Self {
+impl AppState {
+    pub(super) fn new(proxy: AppProxy) -> Self {
         Self {
-            titlebar: TitlebarStateV2::new(),
+            titlebar: TitlebarState::new(),
             proxy,
             should_exit: false,
             request_minimize: false,
@@ -70,11 +70,11 @@ impl AppStateV2 {
     /// Get a clone of the cross-thread wake-up proxy.
     ///
     /// Hand the returned handle to background threads / async tasks so they
-    /// can call [`AppProxyV2::wake`] when new work is ready. The proxy is
+    /// can call [`AppProxy::wake`] when new work is ready. The proxy is
     /// `Send + Sync + Clone`.
     ///
     /// ```rust,ignore
-    /// fn on_ready(&mut self, state: &mut AppStateV2) {
+    /// fn on_ready(&mut self, state: &mut AppState) {
     ///     let proxy = state.proxy();
     ///     std::thread::spawn(move || {
     ///         // …background work…
@@ -82,7 +82,7 @@ impl AppStateV2 {
     ///     });
     /// }
     /// ```
-    pub fn proxy(&self) -> AppProxyV2 {
+    pub fn proxy(&self) -> AppProxy {
         self.proxy.clone()
     }
 
@@ -114,7 +114,7 @@ impl AppStateV2 {
         self.pending_theme = Some(t);
     }
 
-    /// Confirm a `CloseModeV2::Confirm` close. Triggers exit at end of the current frame.
+    /// Confirm a `CloseMode::Confirm` close. Triggers exit at end of the current frame.
     pub fn confirm_close(&mut self) {
         self.should_exit = true;
     }

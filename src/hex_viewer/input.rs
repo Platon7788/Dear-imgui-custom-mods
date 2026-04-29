@@ -176,7 +176,7 @@ impl HexViewer {
         // is expected to wire in `crate::input::keyboard::*` helpers
         // (`try_inject_ctrl_alt_shortcut` + `reinforce_physical_key_state`)
         // around `platform.handle_event` — the same pattern used by
-        // `app_window` / `app_window_v2`. With those installed, ImGui
+        // `app_window`. With those installed, ImGui
         // sees the physical-key-derived `Key::C` regardless of the
         // active layout, so no per-widget VK fallback is needed here.
 

@@ -9,7 +9,7 @@
 //!   countdown timers, blinking cursors — call [`request(N)`] from inside
 //!   their per-frame render to mean *"I need at least N more frames after
 //!   this one to finish what I'm doing."*
-//! - The host (e.g. [`crate::app_window_v2`]) reads the value with
+//! - The host (e.g. [`crate::app_window`]) reads the value with
 //!   [`take()`] **after** running the user's render closure for one frame
 //!   and uses it to bump its own pending-frame counter, then calls
 //!   `Window::request_redraw()`.

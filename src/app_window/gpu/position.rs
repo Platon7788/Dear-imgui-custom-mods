@@ -2,12 +2,12 @@
 
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
-use super::super::config::PositionV2;
+use super::super::config::Position;
 
-pub(crate) fn position_window(window: &Window, pos: &PositionV2, event_loop: &ActiveEventLoop) {
+pub(crate) fn position_window(window: &Window, pos: &Position, event_loop: &ActiveEventLoop) {
     match pos {
-        PositionV2::Default => { /* OS default */ }
-        PositionV2::ScreenCenter => {
+        Position::Default => { /* OS default */ }
+        Position::ScreenCenter => {
             if let Some(mon) = event_loop.primary_monitor() {
                 let mp = mon.position();
                 let ms = mon.size();
@@ -18,10 +18,10 @@ pub(crate) fn position_window(window: &Window, pos: &PositionV2, event_loop: &Ac
                 ));
             }
         }
-        PositionV2::TopLeft => {
+        Position::TopLeft => {
             window.set_outer_position(winit::dpi::PhysicalPosition::new(0, 0));
         }
-        PositionV2::Custom(x, y) => {
+        Position::Custom(x, y) => {
             window.set_outer_position(winit::dpi::PhysicalPosition::new(*x, *y));
         }
     }

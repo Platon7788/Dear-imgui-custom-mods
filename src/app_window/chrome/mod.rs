@@ -10,12 +10,12 @@
 mod edge;
 mod glyph;
 
-pub use edge::{ResizeEdgeV2, cursor_for_edge, edge_at, resize_direction};
+pub use edge::{ResizeEdge, cursor_for_edge, edge_at, resize_direction};
 
 use dear_imgui_rs::{DrawListMut, MouseButton, Ui};
 
-use super::config::{CloseModeV2, TitleAlignV2, TitlebarConfigV2};
-use super::state::TitlebarStateV2;
+use super::config::{CloseMode, TitleAlign, TitlebarConfig};
+use super::state::TitlebarState;
 use crate::theme::TitlebarColors;
 use crate::utils::color::rgba_f32;
 use crate::utils::text::calc_text_size;
@@ -24,7 +24,7 @@ use crate::utils::text::calc_text_size;
 
 /// Action produced by the titlebar each frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TitlebarActionV2 {
+pub enum TitlebarAction {
     None,
     Minimize,
     Maximize,
@@ -32,21 +32,21 @@ pub enum TitlebarActionV2 {
     CloseRequested,
     DragStart,
     IconClick,
-    ResizeStart(ResizeEdgeV2),
+    ResizeStart(ResizeEdge),
     Extra(&'static str),
 }
 
 #[derive(Debug, Clone, Copy)]
 #[must_use = "titlebar actions must be dispatched"]
-pub struct TitlebarResultV2 {
-    pub action: TitlebarActionV2,
-    pub hover_edge: Option<ResizeEdgeV2>,
+pub struct TitlebarResult {
+    pub action: TitlebarAction,
+    pub hover_edge: Option<ResizeEdge>,
 }
 
-impl TitlebarResultV2 {
+impl TitlebarResult {
     pub(super) fn none() -> Self {
         Self {
-            action: TitlebarActionV2::None,
+            action: TitlebarAction::None,
             hover_edge: None,
         }
     }
@@ -61,13 +61,13 @@ impl TitlebarResultV2 {
 /// for any further content.
 pub fn render_titlebar(
     ui: &Ui,
-    cfg: &TitlebarConfigV2,
+    cfg: &TitlebarConfig,
     title: &str,
     colors: &TitlebarColors,
-    state: &TitlebarStateV2,
+    state: &TitlebarState,
     resize_zone: f32,
     os_resizable: bool,
-) -> TitlebarResultV2 {
+) -> TitlebarResult {
     let cursor = ui.cursor_screen_pos();
     let win_pos = ui.window_pos();
     let win_size = ui.window_size();
@@ -112,7 +112,7 @@ pub fn render_titlebar(
 
     let in_row = my >= cursor[1] && my < cursor[1] + h && ui.is_window_hovered();
     let clicked = ui.is_mouse_clicked(MouseButton::Left);
-    let mut action = TitlebarActionV2::None;
+    let mut action = TitlebarAction::None;
 
     // Icon + title.
     let mut title_x = cursor[0] + cfg.title_padding_left;
@@ -124,10 +124,10 @@ pub fn render_titlebar(
 
     if cfg.title_visible {
         match cfg.title_align {
-            TitleAlignV2::Left => {
+            TitleAlign::Left => {
                 draw.add_text([title_x, text_y], c32(colors.title), title);
             }
-            TitleAlignV2::Center => {
+            TitleAlign::Center => {
                 let tw = calc_text_size(title)[0];
                 let cx = cursor[0] + (ww - btn_total_w - tw) * 0.5;
                 draw.add_text([cx.max(title_x), text_y], c32(colors.title), title);
@@ -155,8 +155,8 @@ pub fn render_titlebar(
             clicked,
         ) {
             action = match cfg.close_mode {
-                CloseModeV2::Immediate => TitlebarActionV2::Close,
-                CloseModeV2::Confirm => TitlebarActionV2::CloseRequested,
+                CloseMode::Immediate => TitlebarAction::Close,
+                CloseMode::Confirm => TitlebarAction::CloseRequested,
             };
         }
         glyph::draw_close(&draw, cx_btn, cy_btn, ir, c32(colors.btn_close));
@@ -178,7 +178,7 @@ pub fn render_titlebar(
             mx,
             clicked,
         ) {
-            action = TitlebarActionV2::Maximize;
+            action = TitlebarAction::Maximize;
         }
         if state.maximized {
             glyph::draw_restore(
@@ -210,7 +210,7 @@ pub fn render_titlebar(
             mx,
             clicked,
         ) {
-            action = TitlebarActionV2::Minimize;
+            action = TitlebarAction::Minimize;
         }
         glyph::draw_minimize(&draw, cx_btn, cy_btn, ir, c32(colors.btn_minimize));
     }
@@ -232,8 +232,8 @@ pub fn render_titlebar(
             if let Some(tip) = extra.tooltip {
                 ui.tooltip_text(tip);
             }
-            if clicked && action == TitlebarActionV2::None {
-                action = TitlebarActionV2::Extra(extra.id);
+            if clicked && action == TitlebarAction::None {
+                action = TitlebarAction::Extra(extra.id);
             }
         }
         let [tw, th] = calc_text_size(extra.label);
@@ -255,31 +255,31 @@ pub fn render_titlebar(
     };
 
     // Resize click.
-    if action == TitlebarActionV2::None
+    if action == TitlebarAction::None
         && clicked
         && let Some(edge) = hover_edge
     {
-        action = TitlebarActionV2::ResizeStart(edge);
+        action = TitlebarAction::ResizeStart(edge);
     }
 
     // Icon click.
-    if action == TitlebarActionV2::None && clicked && cfg.icon.is_some() {
+    if action == TitlebarAction::None && clicked && cfg.icon.is_some() {
         let icon_start = cursor[0] + cfg.title_padding_left;
         if in_row && mx >= icon_start && mx < icon_end_x {
-            action = TitlebarActionV2::IconClick;
+            action = TitlebarAction::IconClick;
         }
     }
 
     // Drag / double-click maximize.
-    if action == TitlebarActionV2::None && in_row && mx < btn_area_x && hover_edge.is_none() {
+    if action == TitlebarAction::None && in_row && mx < btn_area_x && hover_edge.is_none() {
         if cfg.double_click_maximize && ui.is_mouse_double_clicked(MouseButton::Left) {
-            action = TitlebarActionV2::Maximize;
+            action = TitlebarAction::Maximize;
         } else if clicked {
-            action = TitlebarActionV2::DragStart;
+            action = TitlebarAction::DragStart;
         }
     }
 
-    TitlebarResultV2 { action, hover_edge }
+    TitlebarResult { action, hover_edge }
 }
 
 // ── Whole-window resize (chrome-less / splash) ───────────────────────────────
@@ -290,9 +290,9 @@ pub fn whole_window_resize(
     resize_zone: f32,
     os_resizable: bool,
     maximized: bool,
-) -> (Option<ResizeEdgeV2>, TitlebarActionV2) {
+) -> (Option<ResizeEdge>, TitlebarAction) {
     if !os_resizable || maximized {
-        return (None, TitlebarActionV2::None);
+        return (None, TitlebarAction::None);
     }
     let win_pos = ui.window_pos();
     let win_size = ui.window_size();
@@ -302,12 +302,12 @@ pub fn whole_window_resize(
     let edge = edge_at(lx, ly, win_size[0], win_size[1], resize_zone);
     let action = if let Some(e) = edge {
         if ui.is_mouse_clicked(MouseButton::Left) {
-            TitlebarActionV2::ResizeStart(e)
+            TitlebarAction::ResizeStart(e)
         } else {
-            TitlebarActionV2::None
+            TitlebarAction::None
         }
     } else {
-        TitlebarActionV2::None
+        TitlebarAction::None
     };
     (edge, action)
 }
@@ -317,7 +317,7 @@ pub fn whole_window_resize(
 #[allow(clippy::too_many_arguments)]
 fn button_hit(
     draw: &DrawListMut<'_>,
-    action: &mut TitlebarActionV2,
+    action: &mut TitlebarAction,
     bx: f32,
     btn_w: f32,
     ir: f32,
@@ -340,7 +340,7 @@ fn button_hit(
         .rounding(3.0)
         .build();
     }
-    hov && clicked && *action == TitlebarActionV2::None
+    hov && clicked && *action == TitlebarAction::None
 }
 
 #[inline]

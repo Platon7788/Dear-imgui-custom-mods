@@ -1,19 +1,19 @@
 //! Titlebar configuration: chrome, button bar, extra buttons.
 
-use super::enums::{CloseModeV2, TitleAlignV2};
+use super::enums::{CloseMode, TitleAlign};
 
 // ── Extra titlebar button ─────────────────────────────────────────────────────
 
 /// A custom button rendered to the left of the standard buttons.
 #[derive(Debug, Clone)]
-pub struct ExtraButtonV2 {
+pub struct ExtraButton {
     pub id: &'static str,
     pub label: &'static str,
     pub tooltip: Option<&'static str>,
     pub color: [f32; 4],
 }
 
-impl ExtraButtonV2 {
+impl ExtraButton {
     pub fn new(id: &'static str, label: &'static str, color: [f32; 4]) -> Self {
         Self {
             id,
@@ -28,11 +28,11 @@ impl ExtraButtonV2 {
     }
 }
 
-// ── ButtonsV2 ────────────────────────────────────────────────────────────────
+// ── Buttons ────────────────────────────────────────────────────────────────
 
 /// Which standard buttons to draw in the custom titlebar.
 #[derive(Debug, Clone)]
-pub struct ButtonsV2 {
+pub struct Buttons {
     pub minimize: bool,
     pub maximize: bool,
     pub close: bool,
@@ -44,7 +44,7 @@ pub struct ButtonsV2 {
     pub icon_hover_pad: f32,
 }
 
-impl Default for ButtonsV2 {
+impl Default for Buttons {
     fn default() -> Self {
         Self {
             minimize: true,
@@ -57,7 +57,7 @@ impl Default for ButtonsV2 {
     }
 }
 
-impl ButtonsV2 {
+impl Buttons {
     /// Close-only set (used by tool windows and dialogs).
     pub fn close_only() -> Self {
         Self {
@@ -69,48 +69,48 @@ impl ButtonsV2 {
     }
 }
 
-// ── TitlebarConfigV2 ──────────────────────────────────────────────────────────
+// ── TitlebarConfig ──────────────────────────────────────────────────────────
 
-/// Pixel-level titlebar configuration. Used inside [`ChromeV2::Custom`].
+/// Pixel-level titlebar configuration. Used inside [`Chrome::Custom`].
 #[derive(Debug, Clone)]
-pub struct TitlebarConfigV2 {
+pub struct TitlebarConfig {
     pub height: f32,
     pub title_visible: bool,
-    pub title_align: TitleAlignV2,
+    pub title_align: TitleAlign,
     pub title_padding_left: f32,
     pub icon: Option<String>,
     pub separator_visible: bool,
     pub separator_height: f32,
     pub double_click_maximize: bool,
-    pub buttons: ButtonsV2,
-    pub extras: Vec<ExtraButtonV2>,
-    pub close_mode: CloseModeV2,
+    pub buttons: Buttons,
+    pub extras: Vec<ExtraButton>,
+    pub close_mode: CloseMode,
 }
 
-impl Default for TitlebarConfigV2 {
+impl Default for TitlebarConfig {
     fn default() -> Self {
         Self {
             height: 28.0,
             title_visible: true,
-            title_align: TitleAlignV2::Left,
+            title_align: TitleAlign::Left,
             title_padding_left: 10.0,
             icon: None,
             separator_visible: true,
             separator_height: 1.0,
             double_click_maximize: true,
-            buttons: ButtonsV2::default(),
+            buttons: Buttons::default(),
             extras: Vec::new(),
-            close_mode: CloseModeV2::Immediate,
+            close_mode: CloseMode::Immediate,
         }
     }
 }
 
-impl TitlebarConfigV2 {
+impl TitlebarConfig {
     /// Compact preset for tool windows (smaller height, close-only).
     pub fn tool() -> Self {
         Self {
             height: 22.0,
-            buttons: ButtonsV2::close_only(),
+            buttons: Buttons::close_only(),
             double_click_maximize: false,
             ..Self::default()
         }
@@ -118,26 +118,26 @@ impl TitlebarConfigV2 {
     /// Dialog preset (fixed-size feel — no maximize).
     pub fn dialog() -> Self {
         Self {
-            buttons: ButtonsV2::close_only(),
+            buttons: Buttons::close_only(),
             double_click_maximize: false,
             ..Self::default()
         }
     }
 }
 
-// ── ChromeV2 ──────────────────────────────────────────────────────────────────
+// ── Chrome ──────────────────────────────────────────────────────────────────
 
 /// Titlebar mode selector. `None` for borderless splash; `Custom` for everything else.
 #[derive(Debug, Clone)]
-pub enum ChromeV2 {
+pub enum Chrome {
     /// No titlebar at all. The whole client area is yours.
     None,
     /// Custom titlebar drawn by the framework.
-    Custom(TitlebarConfigV2),
+    Custom(TitlebarConfig),
 }
 
-impl Default for ChromeV2 {
+impl Default for Chrome {
     fn default() -> Self {
-        Self::Custom(TitlebarConfigV2::default())
+        Self::Custom(TitlebarConfig::default())
     }
 }

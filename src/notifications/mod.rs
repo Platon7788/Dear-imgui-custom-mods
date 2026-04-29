@@ -282,7 +282,7 @@ impl NotificationCenter {
         reap_dismissed(&mut self.queue, cfg.animation, &mut events);
 
         // ── Pass 6: keep the renderer alive while toasts are animating ──
-        // In event-driven hosts (e.g. `app_window_v2` default) the loop
+        // In event-driven hosts (e.g. `app_window` default) the loop
         // would otherwise sleep mid-fade or stop ticking the auto-dismiss
         // countdown. Any non-dismissed toast (timer ticking) or any toast
         // mid-animation (enter_t < 1 or exit_t > 0) demands the next frame.

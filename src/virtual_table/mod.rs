@@ -527,7 +527,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         // Ctrl+C — copy selected rows. Layout-independence is provided
         // by `crate::input::keyboard::try_inject_ctrl_alt_shortcut` at
-        // the host level (see app_window / app_window_v2), so plain
+        // the host level (see app_window / app_window), so plain
         // ImGui `is_key_pressed(Key::C)` is enough — no per-widget VK
         // probe needed.
         if self.config.copy_to_clipboard

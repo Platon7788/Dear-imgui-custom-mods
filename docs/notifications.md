@@ -135,7 +135,7 @@ the anchor; older ones are pushed away.
 
 > **Custom titlebars:** `notifications` uses `io.display_size()` for anchor
 > math and does not know about host-window chrome. If your app draws a
-> custom titlebar (`borderless_window`, ~28 px by default), raise the top
+> custom titlebar (`app_window` chrome, ~28 px by default), raise the top
 > margin to clear it — e.g. `cfg.margin = [16.0, 44.0]` for `TopRight`.
 
 ## Severities
@@ -253,12 +253,12 @@ See [`examples/demo_app_window.rs`](../examples/demo_app_window.rs) for the
 full integration: all 5 severities, every placement, live animation switch,
 burst / dismiss-all, sticky + custom-color toasts, and theme sync.
 
-## Event-driven hosts (`app_window_v2`)
+## Event-driven hosts (`app_window`)
 
 `NotificationCenter::render` calls
 [`crate::frame_demand::request(1)`](frame_demand.md) when there is at
 least one toast alive (animating, dismissing, or ticking down towards
-auto-dismiss). This keeps an event-driven host like `app_window_v2`
+auto-dismiss). This keeps an event-driven host like `app_window`
 rendering at full refresh-rate while toasts are live, and lets the loop
 sleep again the moment the last toast finishes its exit animation —
 zero idle CPU/GPU during quiet periods.

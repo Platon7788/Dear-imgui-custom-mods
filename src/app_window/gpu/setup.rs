@@ -16,11 +16,11 @@ use std::sync::Arc;
 use pollster::block_on;
 use winit::window::Window;
 
-use super::super::config::{AppConfigV2, FpsModeV2, PowerModeV2};
+use super::super::config::{AppConfig, FpsMode, PowerMode};
 
 pub(crate) fn init_wgpu(
     window: &Arc<Window>,
-    cfg: &AppConfigV2,
+    cfg: &AppConfig,
 ) -> (
     wgpu::Instance,
     wgpu::Adapter,
@@ -118,15 +118,15 @@ pub(crate) fn init_wgpu(
 fn pick_adapter(
     instance: &wgpu::Instance,
     surface: &wgpu::Surface<'_>,
-    power: PowerModeV2,
+    power: PowerMode,
 ) -> wgpu::Adapter {
     // Both branches go through `request_adapter(compatible_surface)` —
     // the OS GPU manager handles the actual routing. On integrated-only
     // laptops `HighPerformance` returns the iGPU (only adapter). On
     // hybrid laptops the OS picks the display-attached GPU correctly.
     let preference = match power {
-        PowerModeV2::LowPower => wgpu::PowerPreference::LowPower,
-        PowerModeV2::HighPerformance => wgpu::PowerPreference::HighPerformance,
+        PowerMode::LowPower => wgpu::PowerPreference::LowPower,
+        PowerMode::HighPerformance => wgpu::PowerPreference::HighPerformance,
     };
 
     let primary = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -156,15 +156,15 @@ fn pick_adapter(
 ///
 /// NxT proved that hard-coded `Fifo` works on every Windows GPU we've
 /// tested (Intel iGPU, NVIDIA discrete, AMD discrete, software fallback).
-/// We respect the user's `FpsModeV2::Unlimited` preference by trying
+/// We respect the user's `FpsMode::Unlimited` preference by trying
 /// `Mailbox` / `Immediate` first, then falling back through `FifoRelaxed`
 /// to `Fifo`. `Fifo` is mandated by the wgpu spec to be supported on
 /// every surface, so the final fallback is guaranteed.
-fn pick_present_mode(available: &[wgpu::PresentMode], fps: &FpsModeV2) -> wgpu::PresentMode {
+fn pick_present_mode(available: &[wgpu::PresentMode], fps: &FpsMode) -> wgpu::PresentMode {
     let supports = |m: wgpu::PresentMode| available.contains(&m);
 
     match fps {
-        FpsModeV2::Unlimited => {
+        FpsMode::Unlimited => {
             // Triple-buffer with no vsync where possible.
             if supports(wgpu::PresentMode::Mailbox) {
                 wgpu::PresentMode::Mailbox
@@ -193,15 +193,15 @@ fn log_adapter(info: &wgpu::AdapterInfo) {
         info.name, info.device_type, info.backend, info.driver, info.driver_info,
     );
     eprintln!("{line}");
-    crate::app_window_v2::win32_debug_log(&line);
+    crate::app_window::win32_debug_log(&line);
     if info.device_type == wgpu::DeviceType::Cpu {
         let warn = "wgpu: WARNING: software renderer active — expect poor performance";
         eprintln!("{warn}");
-        crate::app_window_v2::win32_debug_log(warn);
+        crate::app_window::win32_debug_log(warn);
     }
 }
 
-fn frame_latency(_power: PowerModeV2) -> u32 {
+fn frame_latency(_power: PowerMode) -> u32 {
     // 2 = standard double-buffer. Tuning per power mode risks CPU stalls on weak
     // hardware (latency=1) or visible lag (latency=3) — not worth it for a UI toolkit.
     2

@@ -1,8 +1,8 @@
 //! Demo showing all four window kinds:
-//!   `cargo run --example demo_app_window_v2 -- splash`
-//!   `cargo run --example demo_app_window_v2 -- tool`
-//!   `cargo run --example demo_app_window_v2 -- dialog`
-//!   `cargo run --example demo_app_window_v2 -- main`   (default)
+//!   `cargo run --example demo_app_window -- splash`
+//!   `cargo run --example demo_app_window -- tool`
+//!   `cargo run --example demo_app_window -- dialog`
+//!   `cargo run --example demo_app_window -- main`   (default)
 //!
 //! Each variant is a separate run — you can't have multiple AppWindows in one
 //! winit event loop without further plumbing.
@@ -11,8 +11,8 @@
 
 use std::time::Duration;
 
-use dear_imgui_custom_mod::app_window_v2::{
-    AppConfigV2, AppHandlerV2, AppStateV2, AppWindowV2, ExtraButtonV2, Theme,
+use dear_imgui_custom_mod::app_window::{
+    AppConfig, AppHandler, AppState, AppWindow, ExtraButton, Theme,
 };
 use dear_imgui_custom_mod::confirm_dialog::{
     ConfirmStyle, DialogConfig, DialogIcon, DialogResult, render_confirm_dialog,
@@ -40,8 +40,8 @@ impl Default for Splash {
         }
     }
 }
-impl AppHandlerV2 for Splash {
-    fn render(&mut self, ui: &Ui, state: &mut AppStateV2) {
+impl AppHandler for Splash {
+    fn render(&mut self, ui: &Ui, state: &mut AppState) {
         // Splash has a continuous progress animation tied to wall-clock
         // time. In event-driven mode we must keep asking the host to
         // render the next frame — otherwise the bar would freeze on the
@@ -81,12 +81,12 @@ impl AppHandlerV2 for Splash {
 }
 
 fn run_splash() {
-    let cfg = AppConfigV2::splash("Splash", 600.0, 380.0)
+    let cfg = AppConfig::splash("Splash", 600.0, 380.0)
         .with_theme(Theme::Midnight)
         .with_corner_radius(16)
         .with_opacity(0.92)                    // semi-transparent splash
         .with_auto_close(Duration::from_secs(3));
-    AppWindowV2::new(cfg).run(Splash::default()).unwrap();
+    AppWindow::new(cfg).run(Splash::default()).unwrap();
 }
 
 // ── 2) Tool window ────────────────────────────────────────────────────────────
@@ -117,8 +117,8 @@ impl Default for ToolApp {
         }
     }
 }
-impl AppHandlerV2 for ToolApp {
-    fn render(&mut self, ui: &Ui, _state: &mut AppStateV2) {
+impl AppHandler for ToolApp {
+    fn render(&mut self, ui: &Ui, _state: &mut AppState) {
         ui.input_text("##search", &mut self.search)
             .hint("Filter…")
             .build();
@@ -133,10 +133,10 @@ impl AppHandlerV2 for ToolApp {
 }
 
 fn run_tool() {
-    let cfg = AppConfigV2::tool("Properties", 320.0, 460.0)
+    let cfg = AppConfig::tool("Properties", 320.0, 460.0)
         .with_theme(Theme::Dark)
         .stay_on_top();
-    AppWindowV2::new(cfg).run(ToolApp::default()).unwrap();
+    AppWindow::new(cfg).run(ToolApp::default()).unwrap();
 }
 
 // ── 3) Dialog window ──────────────────────────────────────────────────────────
@@ -148,8 +148,8 @@ fn run_tool() {
 struct DialogApp {
     result: Option<bool>,
 }
-impl AppHandlerV2 for DialogApp {
-    fn render(&mut self, ui: &Ui, state: &mut AppStateV2) {
+impl AppHandler for DialogApp {
+    fn render(&mut self, ui: &Ui, state: &mut AppState) {
         ui.spacing();
         ui.text("Discard unsaved changes?");
         ui.spacing();
@@ -170,8 +170,8 @@ impl AppHandlerV2 for DialogApp {
 }
 
 fn run_dialog() {
-    let cfg = AppConfigV2::dialog("Confirm", 420.0, 160.0).with_theme(Theme::Light);
-    AppWindowV2::new(cfg).run(DialogApp::default()).unwrap();
+    let cfg = AppConfig::dialog("Confirm", 420.0, 160.0).with_theme(Theme::Light);
+    AppWindow::new(cfg).run(DialogApp::default()).unwrap();
 }
 
 // ── 4) Main window ────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ struct MainApp {
     /// `on_window_event` reading `WindowEvent::DroppedFile`.
     last_dropped: Option<std::path::PathBuf>,
     /// Counter incremented from a 1 Hz background thread; the thread
-    /// also calls [`AppProxyV2::wake`] so the UI repaints to show the
+    /// also calls [`AppProxy::wake`] so the UI repaints to show the
     /// new value. Demonstrates cross-thread state delivery via shared
     /// atomics + proxy wake — no polling, no idle burn.
     background_ticks: std::sync::Arc<std::sync::atomic::AtomicU32>,
@@ -281,7 +281,7 @@ impl MainApp {
         self.status_bar.right(StatusItem::text("UTF-8"));
     }
 
-    fn handle_nav_events(&mut self, events: Vec<NavEvent>, state: &mut AppStateV2) {
+    fn handle_nav_events(&mut self, events: Vec<NavEvent>, state: &mut AppState) {
         for ev in events {
             match ev {
                 // `id` is `Cow<'static, str>` — match on the `&str` slice via
@@ -303,10 +303,10 @@ impl MainApp {
         }
     }
 
-    fn render_page(&mut self, ui: &Ui, state: &mut AppStateV2) {
+    fn render_page(&mut self, ui: &Ui, state: &mut AppState) {
         match self.page {
             "home" => {
-                ui.text("Welcome to AppWindowV2 demo.");
+                ui.text("Welcome to AppWindow demo.");
                 ui.text_disabled("Click the left-dock buttons to switch pages.");
                 ui.spacing();
                 ui.separator();
@@ -361,12 +361,12 @@ impl MainApp {
                 }
             }
             "about" => {
-                ui.text("dear-imgui-custom-mod  ·  app_window_v2 demo");
+                ui.text("dear-imgui-custom-mod  ·  app_window demo");
                 ui.text_disabled("Showcasing nav_panel + status_bar + confirm_dialog integration.");
             }
             "docs" => {
                 ui.text("Documentation");
-                ui.text_disabled("See docs/app_window.md and the rustdoc on AppConfigV2.");
+                ui.text_disabled("See docs/app_window.md and the rustdoc on AppConfig.");
             }
             other => {
                 ui.text(format!("Unknown page: {other}"));
@@ -424,8 +424,8 @@ impl MainApp {
     }
 }
 
-impl AppHandlerV2 for MainApp {
-    fn render(&mut self, ui: &Ui, state: &mut AppStateV2) {
+impl AppHandler for MainApp {
+    fn render(&mut self, ui: &Ui, state: &mut AppState) {
         // Close-confirm modal — uses the polished `confirm_dialog` widget.
         if self.show_confirm {
             let cfg = DialogConfig::new("Close application?", "Any unsaved work will be lost.")
@@ -506,11 +506,11 @@ impl AppHandlerV2 for MainApp {
         }
     }
 
-    fn on_close_requested(&mut self, _state: &mut AppStateV2) {
+    fn on_close_requested(&mut self, _state: &mut AppState) {
         self.show_confirm = true;
     }
 
-    fn on_extra_button(&mut self, id: &'static str, state: &mut AppStateV2) {
+    fn on_extra_button(&mut self, id: &'static str, state: &mut AppState) {
         if id == "theme" {
             // `Theme::next()` cycles through every variant in `Theme::ALL`,
             // so adding new themes (e.g. Catppuccin / Nord) automatically
@@ -520,11 +520,11 @@ impl AppHandlerV2 for MainApp {
         }
     }
 
-    /// Demonstrates [`AppProxyV2`] — spawn a 1 Hz background heartbeat
+    /// Demonstrates [`AppProxy`] — spawn a 1 Hz background heartbeat
     /// that wakes the (otherwise idle) UI loop via `proxy.wake()`. The
     /// counter advances even though the user is not interacting; this is
     /// the canonical pattern for HTTP / file-watch / IPC clients.
-    fn on_ready(&mut self, state: &mut AppStateV2) {
+    fn on_ready(&mut self, state: &mut AppState) {
         let proxy = state.proxy();
         let counter = std::sync::Arc::clone(&self.background_ticks);
         self._bg_thread = Some(std::thread::spawn(move || {
@@ -538,14 +538,14 @@ impl AppHandlerV2 for MainApp {
         }));
     }
 
-    /// Demonstrates [`AppHandlerV2::on_window_event`] — read raw winit
+    /// Demonstrates [`AppHandler::on_window_event`] — read raw winit
     /// events the framework would otherwise hide. Most notably,
     /// **`DroppedFile`** delivers the actual `PathBuf`; without this
     /// hook the path is invisible to the handler.
     fn on_window_event(
         &mut self,
         event: &dear_imgui_custom_mod::winit::event::WindowEvent,
-        _state: &mut AppStateV2,
+        _state: &mut AppState,
     ) -> bool {
         use dear_imgui_custom_mod::winit::event::WindowEvent;
         if let WindowEvent::DroppedFile(path) = event {
@@ -568,12 +568,12 @@ fn run_main() {
         })
         .collect::<Vec<u8>>();
 
-    let cfg = AppConfigV2::main("App Window Demo", 1100.0, 680.0)
+    let cfg = AppConfig::main("App Window Demo", 1100.0, 680.0)
         .with_theme(Theme::Dark)
         .with_close_confirm()
         .with_window_icon_rgba(icon, 16, 16)
         .with_extra_button(
-            ExtraButtonV2::new("theme", "T", [0.6, 0.85, 1.0, 1.0]).with_tooltip("Cycle theme"),
+            ExtraButton::new("theme", "T", [0.6, 0.85, 1.0, 1.0]).with_tooltip("Cycle theme"),
         );
     // ─── Render-mode reference ───────────────────────────────────────────
     // Default = event-driven: idle pulse 2 s foreground, 5 s background.
@@ -590,7 +590,7 @@ fn run_main() {
     //
     //     .continuous_render()
     //     .with_fps_limit(60)                                // explicit cap
-    AppWindowV2::new(cfg).run(MainApp::new()).unwrap();
+    AppWindow::new(cfg).run(MainApp::new()).unwrap();
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────

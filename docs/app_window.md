@@ -1,4 +1,4 @@
-# app_window_v2
+# app_window
 
 Borderless window framework — successor to [`app_window`](app_window.md).
 Custom Dear ImGui titlebar; native OS resize, Aero Snap, drop shadow,
@@ -12,16 +12,16 @@ taskbar / Alt-Tab integration preserved.
 - **Event-driven render loop by default.** Idle CPU/GPU usage drops to
   ≈ 0 %; full refresh-rate (60 / 144 / 240 Hz) on input. See
   [Render mode](#render-mode) below.
-- **Cross-thread wake-up** — [`AppProxyV2`](#cross-thread-wake-up) lets
+- **Cross-thread wake-up** — [`AppProxy`](#cross-thread-wake-up) lets
   background threads / async tasks repaint the UI without busy-polling.
   Mandatory for HTTP / file-watch / IPC / async runtimes.
 - **Raw event hook** —
-  [`AppHandlerV2::on_window_event`](#raw-event-hook) delivers winit
+  [`AppHandler::on_window_event`](#raw-event-hook) delivers winit
   `WindowEvent`s before ImGui sees them. Unlocks drag-drop file paths,
   layout-independent hotkeys, custom IME / touchpad gestures.
 - **System clipboard wired by default.** `Ctrl+C` / `Ctrl+V` in any
   `InputText` round-trips through the OS clipboard; no boilerplate.
-- **Multi-font Stack API** — `FontChoiceV2::Stack` merges base font +
+- **Multi-font Stack API** — `FontChoice::Stack` merges base font +
   icons + CJK overlays into a single atlas with per-layer glyph ranges.
 - **HiDPI font rebuild** —
   [`WindowEvent::ScaleFactorChanged`](#hidpi-font-rebuild) automatically
@@ -41,24 +41,23 @@ system menu, *no* DWM chrome — meaning DWM has nothing to draw or tint
 when the window loses focus. `WS_THICKFRAME` keeps native edge resize,
 Aero Snap, and the DWM drop shadow.
 
-Win32-side helpers are minimal. The DWM and rounded-corner attributes
-are **delegated** to the canonical implementation in
-[`borderless_window::platform`](borderless_window.md) — `app_window_v2`
-itself only owns the framework-host extensions:
+All Win32-side helpers live in `app_window::win32` (~270 LoC):
 
-| Helper | Provided by |
-|--------|-------------|
-| `hwnd_of(window)` | `borderless_window::platform::hwnd_of` |
-| `DWMWA_USE_IMMERSIVE_DARK_MODE` (Alt-Tab thumbnail) | `borderless_window::platform::set_titlebar_dark_mode` |
-| `DWMWA_WINDOW_CORNER_PREFERENCE` (Win11) / `SetWindowRgn` (Win10) | `borderless_window::platform::{set_rounded_corners,update_rounded_region}` |
-| Win11 detection | `borderless_window::platform::is_win11_dwm_active` |
-| `WS_EX_TOOLWINDOW` (tool-window kinds) | `app_window_v2::win32` (local) |
-| `WM_GETMINMAXINFO` subclass (clamp maximised rect to work area) | `app_window_v2::win32` (local) |
-| `set_opacity` (toggle `WS_EX_LAYERED`) | `app_window_v2::win32` (local) |
-| `OutputDebugStringW` debug log | `app_window_v2::win32` (local) |
+| Helper | Purpose |
+|--------|---------|
+| `hwnd_of(window)` | Extract the HWND from a winit window. |
+| `set_titlebar_dark_mode` | DWMWA_USE_IMMERSIVE_DARK_MODE — kills the white-flash on the Alt-Tab thumbnail. |
+| `set_rounded_corners` | DWMWA_WINDOW_CORNER_PREFERENCE on Win11; `SetWindowRgn` rounded-rect fallback on Win10. |
+| `update_rounded_region` | Re-apply the Win10 region after `WindowEvent::Resized` (no-op on Win11). |
+| `is_win11` | Cached probe — true when the Win11 DWM rounded-corner path succeeded. |
+| `WS_EX_TOOLWINDOW` | Excludes tool-window kinds from Alt-Tab. |
+| `WM_GETMINMAXINFO` subclass | Clamps a maximised `WS_THICKFRAME` window to the monitor work area so it doesn't cover the taskbar. |
+| `set_opacity` | Toggles `WS_EX_LAYERED`. |
+| `debug_log` | `OutputDebugStringW` — survives `windows_subsystem = "windows"`. |
 
-Single source of truth: every component that needs DWM dark mode or
-rounded corners imports from `borderless_window::platform`. No copies.
+Before the v1 + `borderless_window` removal (2026-04-29) the first
+five helpers lived in `borderless_window::platform`; they are inlined
+in `win32.rs` now so the framework is fully self-contained.
 
 The titlebar itself is pure Dear ImGui — buttons, drag, double-click are
 all drawn into the ImGui draw list and dispatched to the OS via
@@ -67,32 +66,32 @@ all drawn into the ImGui draw list and dispatched to the OS via
 ## Module layout
 
 ```text
-src/app_window_v2/
+src/app_window/
 ├── mod.rs            ~580 — event loop, needs_redraw matcher,
 │                            about_to_wait, on_window_event hook,
 │                            user_event impl, ScaleFactorChanged
 │                            font rebuild
-├── handler.rs         91 — AppHandlerV2 trait (incl. on_window_event)
-├── state.rs          158 — AppStateV2 (incl. keep_alive, proxy) +
-│                            TitlebarStateV2
-├── proxy.rs          ~95 — AppProxyV2 cross-thread wake-up +
+├── handler.rs         91 — AppHandler trait (incl. on_window_event)
+├── state.rs          158 — AppState (incl. keep_alive, proxy) +
+│                            TitlebarState
+├── proxy.rs          ~95 — AppProxy cross-thread wake-up +
 │                           WakeError + 3 unit-tests
 ├── clipboard.rs      174 — SystemClipboardBackend (direct Win32
 │                            CF_UNICODETEXT read+write, no
 │                            ig*ClipboardText round-trip)
-├── win32.rs          202 — host-specific glue (WS_EX_TOOLWINDOW, MinMax
-│                            subclass, set_opacity, debug_log).
-│                            DWM + rounded corners delegate to
-│                            `borderless_window::platform`
+├── win32.rs          ~270 — all host Win32 glue (HWND extract,
+│                            DWM dark mode, rounded corners,
+│                            WS_EX_TOOLWINDOW, MinMax subclass,
+│                            set_opacity, debug_log)
 ├── config/
-│   ├── mod.rs        ~600 — AppConfigV2 + presets + builders
+│   ├── mod.rs        ~600 — AppConfig + presets + builders
 │   │                        (incl. with_font_stack) + 11 unit-tests
 │   ├── enums.rs      195 — WindowKind/Border/Form/Position/Close/Fps/
-│   │                       Power/TitleAlign + RenderModeV2
-│   ├── titlebar.rs   143 — TitlebarConfigV2 + ChromeV2 + ButtonsV2 +
-│   │                       ExtraButtonV2
-│   ├── icon.rs        44 — WindowIconV2
-│   └── (FontChoiceV2 / FontLayerV2 / GlyphRangesV2 in mod.rs)
+│   │                       Power/TitleAlign + RenderMode
+│   ├── titlebar.rs   143 — TitlebarConfig + Chrome + Buttons +
+│   │                       ExtraButton
+│   ├── icon.rs        44 — WindowIcon
+│   └── (FontChoice / FontLayer / GlyphRanges in mod.rs)
 ├── chrome/
 │   ├── mod.rs        349 — public types + render_titlebar
 │   ├── edge.rs       151 — edge_at + cursor_for_edge + 5 unit-tests
@@ -110,25 +109,25 @@ src/app_window_v2/
 
 Module-level test count: **20** (`proxy::tests` 3 + `gpu::imgui::tests` 6 +
 `config::tests` 11). All run with `cargo test --features=full --lib
-app_window_v2`.
+app_window`.
 
 ## Quick start
 
 ```rust,no_run
-use dear_imgui_custom_mod::app_window_v2::{
-    AppConfigV2, AppHandlerV2, AppStateV2, AppWindowV2, Theme,
+use dear_imgui_custom_mod::app_window::{
+    AppConfig, AppHandler, AppState, AppWindow, Theme,
 };
 use dear_imgui_rs::Ui;
 
 struct MyApp;
-impl AppHandlerV2 for MyApp {
-    fn render(&mut self, ui: &Ui, _state: &mut AppStateV2) {
+impl AppHandler for MyApp {
+    fn render(&mut self, ui: &Ui, _state: &mut AppState) {
         ui.text("Hello, world!");
     }
 }
 
 fn main() {
-    AppWindowV2::new(AppConfigV2::main("My App", 1100.0, 680.0))
+    AppWindow::new(AppConfig::main("My App", 1100.0, 680.0))
         .run(MyApp).unwrap();
 }
 ```
@@ -137,10 +136,10 @@ fn main() {
 
 | Preset | Border | Chrome | Notes |
 |--------|--------|--------|-------|
-| `AppConfigV2::splash(title, w, h)` | None | None | Borderless, centred, stays on top, often paired with `with_auto_close` |
-| `AppConfigV2::tool(title, w, h)` | SizeToolWin | Compact custom | Stays on top, close-only |
-| `AppConfigV2::dialog(title, w, h)` | Dialog | Compact custom | Fixed size, close-only, screen-centred |
-| `AppConfigV2::main(title, w, h)` | Sizeable | Full custom | Default app skeleton |
+| `AppConfig::splash(title, w, h)` | None | None | Borderless, centred, stays on top, often paired with `with_auto_close` |
+| `AppConfig::tool(title, w, h)` | SizeToolWin | Compact custom | Stays on top, close-only |
+| `AppConfig::dialog(title, w, h)` | Dialog | Compact custom | Fixed size, close-only, screen-centred |
+| `AppConfig::main(title, w, h)` | Sizeable | Full custom | Default app skeleton |
 
 ## Builders (selected)
 
@@ -150,7 +149,7 @@ fn main() {
 |--------|--------|
 | `with_theme(Theme)` | Built-in palette (Dark / Light / Midnight / Solarized / Monokai) |
 | `with_corner_radius(i32)` | Rounded corners (Win10 `SetWindowRgn` fallback) |
-| `with_power_mode(PowerModeV2)` | GPU adapter pick (`HighPerformance` default / `LowPower`) — see [GPU adapter strategy](#gpu-adapter-strategy) |
+| `with_power_mode(PowerMode)` | GPU adapter pick (`HighPerformance` default / `LowPower`) — see [GPU adapter strategy](#gpu-adapter-strategy) |
 | `with_font_size(f32)` | Base font size in logical pixels |
 | `with_builtin_font(BuiltinFont)` | Pick from Hack / JetBrains Mono / JetBrains Mono NL |
 | `with_font_bytes(impl Into<Arc<[u8]>>)` | Custom TTF/OTF (e.g. `include_bytes!("Inter.ttf")`) |
@@ -159,7 +158,7 @@ fn main() {
 | `with_opacity(f32)` | Initial window alpha 0.0–1.0 |
 | `with_window_icon_rgba(rgba, w, h)` | Taskbar / Alt-Tab icon from raw pixels |
 | `with_close_confirm()` | X click fires `on_close_requested` first |
-| `with_extra_button(ExtraButtonV2)` | Custom button left of the standard trio |
+| `with_extra_button(ExtraButton)` | Custom button left of the standard trio |
 | `start_hidden()` | Create hidden; `state.show()` later |
 | `stay_on_top()` | `WS_EX_TOPMOST` |
 | `raw_content()` | Full-bleed content — skip default child wrapper / padding (see [Full-bleed content](#full-bleed-content) below) |
@@ -172,7 +171,7 @@ every desktop app — these builders are escape hatches.
 
 | Method | Effect |
 |--------|--------|
-| `with_render_mode(RenderModeV2)` | Replace the entire scheduling strategy |
+| `with_render_mode(RenderMode)` | Replace the entire scheduling strategy |
 | `with_idle_pulse(Duration)` | Foreground refresh cadence in event-driven mode |
 | `with_unfocused_idle_pulse(Duration)` | Background cadence (window not focused) |
 | `without_idle_pulse()` | Disable foreground pulse — paint only on input + animation requests |
@@ -183,13 +182,13 @@ every desktop app — these builders are escape hatches.
 
 ## Render mode
 
-`AppConfigV2` carries a [`RenderModeV2`] enum that picks one of two
+`AppConfig` carries a [`RenderMode`] enum that picks one of two
 scheduling strategies. The default is **event-driven** — repaint only
 on input events, animation requests, or the optional periodic *idle
 pulses* used for clocks / uptime / status metrics.
 
 ```rust
-pub enum RenderModeV2 {
+pub enum RenderMode {
     /// Default. Idle CPU/GPU ≈ 0 %.
     EventDriven {
         idle_pulse:           Option<Duration>,  // foreground; default 2 s
@@ -197,7 +196,7 @@ pub enum RenderModeV2 {
     },
     /// Game-style — every iteration repaints.
     Continuous {
-        fps_mode:      FpsModeV2,  // Auto / Fixed(n) / Unlimited
+        fps_mode:      FpsMode,  // Auto / Fixed(n) / Unlimited
         unfocused_fps: u32,        // 0 = same as foreground
     },
 }
@@ -244,7 +243,7 @@ APIs:
 // Inside a widget render — no AppState required:
 crate::frame_demand::request(1);
 
-// Inside a user `AppHandlerV2::render` — through state:
+// Inside a user `AppHandler::render` — through state:
 state.keep_alive(1);
 ```
 
@@ -264,7 +263,7 @@ Built-in widgets that already do this:
 
 ```rust
 // Default — usually right
-AppConfigV2::main("App", 1100.0, 680.0)
+AppConfig::main("App", 1100.0, 680.0)
 
 // Live clock with a second hand: 2 fps idle
 .with_idle_pulse(Duration::from_millis(500))
@@ -282,7 +281,7 @@ AppConfigV2::main("App", 1100.0, 680.0)
 .with_fps_limit(60).with_unfocused_fps(15)
 ```
 
-[`RenderModeV2`]: ../src/app_window_v2/config/enums.rs
+[`RenderMode`]: ../src/app_window/config/enums.rs
 
 ## Cross-thread wake-up
 
@@ -291,13 +290,13 @@ arrives. Background threads (HTTP, file watch, IPC, async runtimes) need
 a way to **wake** the loop when their work completes — otherwise the UI
 stalls until the next idle pulse (default: 2 s).
 
-[`AppProxyV2`] (returned by [`AppStateV2::proxy`]) is `Send + Sync +
+[`AppProxy`] (returned by [`AppState::proxy`]) is `Send + Sync +
 Clone` and exposes a single `wake()` method. Calls are idempotent and
 coalesce — multiple wakes between two iterations of the loop trigger
 exactly one redraw cycle.
 
 ```rust,ignore
-use dear_imgui_custom_mod::app_window_v2::{AppHandlerV2, AppStateV2, AppProxyV2};
+use dear_imgui_custom_mod::app_window::{AppHandler, AppState, AppProxy};
 use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
 
 struct MyApp {
@@ -305,9 +304,9 @@ struct MyApp {
     _bg: Option<std::thread::JoinHandle<()>>,
 }
 
-impl AppHandlerV2 for MyApp {
-    fn on_ready(&mut self, state: &mut AppStateV2) {
-        let proxy: AppProxyV2 = state.proxy();
+impl AppHandler for MyApp {
+    fn on_ready(&mut self, state: &mut AppState) {
+        let proxy: AppProxy = state.proxy();
         let counter = Arc::clone(&self.counter);
         self._bg = Some(std::thread::spawn(move || loop {
             std::thread::sleep(std::time::Duration::from_secs(1));
@@ -316,7 +315,7 @@ impl AppHandlerV2 for MyApp {
         }));
     }
 
-    fn render(&mut self, ui: &dear_imgui_rs::Ui, _state: &mut AppStateV2) {
+    fn render(&mut self, ui: &dear_imgui_rs::Ui, _state: &mut AppState) {
         ui.text(format!("Tick: {}", self.counter.load(Ordering::Relaxed)));
     }
 }
@@ -328,7 +327,7 @@ ignore the error.
 
 ## Raw event hook
 
-`AppHandlerV2::on_window_event(&self, event: &WindowEvent, state) ->
+`AppHandler::on_window_event(&self, event: &WindowEvent, state) ->
 bool` receives **every** winit `WindowEvent` *before* the ImGui
 platform layer processes it. Return `true` to **consume** the event so
 Dear ImGui does not see it.
@@ -350,7 +349,7 @@ this hook.
 ```rust,ignore
 use dear_imgui_custom_mod::winit::event::WindowEvent;
 
-fn on_window_event(&mut self, event: &WindowEvent, _: &mut AppStateV2) -> bool {
+fn on_window_event(&mut self, event: &WindowEvent, _: &mut AppState) -> bool {
     if let WindowEvent::DroppedFile(path) = event {
         self.last_dropped = Some(path.clone());
         // …open the file, populate buffer, etc.
@@ -368,8 +367,8 @@ Other use cases:
 
 ## System clipboard
 
-`AppWindowV2` installs a system clipboard backend on the ImGui context
-automatically (see `app_window_v2/clipboard.rs`). Without this, every
+`AppWindow` installs a system clipboard backend on the ImGui context
+automatically (see `app_window/clipboard.rs`). Without this, every
 `InputText` ends up with a private paste buffer that does not interact
 with the OS — an immediate UX regression for end users.
 
@@ -402,24 +401,24 @@ minor builder is on the roadmap.
 ## Multi-font Stack API
 
 ```rust,ignore
-use dear_imgui_custom_mod::app_window_v2::{
-    AppConfigV2, FontChoiceV2, FontLayerV2, GlyphRangesV2,
+use dear_imgui_custom_mod::app_window::{
+    AppConfig, FontChoice, FontLayer, GlyphRanges,
 };
 
-let cfg = AppConfigV2::main("App", 1100.0, 680.0)
+let cfg = AppConfig::main("App", 1100.0, 680.0)
     .with_font_stack(vec![
         // Base UI font (Latin only)
-        FontLayerV2::base(include_bytes!("Inter.ttf").as_slice(), 15.0),
+        FontLayer::base(include_bytes!("Inter.ttf").as_slice(), 15.0),
         // Material Design Icons merged on top — private-use plane
-        FontLayerV2::merge(include_bytes!("MDI.ttf").as_slice(), 13.0)
-            .with_glyph_ranges(GlyphRangesV2::Custom(vec![[0xF0001, 0xF1FFF]])),
+        FontLayer::merge(include_bytes!("MDI.ttf").as_slice(), 13.0)
+            .with_glyph_ranges(GlyphRanges::Custom(vec![[0xF0001, 0xF1FFF]])),
         // Cyrillic overlay if the UI text needs Russian glyphs
-        FontLayerV2::merge(include_bytes!("Inter-Cyrillic.ttf").as_slice(), 15.0)
-            .with_glyph_ranges(GlyphRangesV2::Cyrillic),
+        FontLayer::merge(include_bytes!("Inter-Cyrillic.ttf").as_slice(), 15.0)
+            .with_glyph_ranges(GlyphRanges::Cyrillic),
     ]);
 ```
 
-[`GlyphRangesV2`] presets cover Latin (`Default`), `Cyrillic`,
+[`GlyphRanges`] presets cover Latin (`Default`), `Cyrillic`,
 `Japanese`, `ChineseSimplified`/`Traditional`, `Korean`, `Thai`,
 `Vietnamese`, plus `Custom(Vec<[u32; 2]>)` for arbitrary inclusive
 ranges (icon fonts, math symbols, emoji). Ranges are inlined inside
@@ -428,9 +427,9 @@ the framework — decoupled from upstream Dear ImGui deprecation noise.
 The first layer is always the **base** (its `merge` flag is ignored —
 bases never merge); subsequent layers should set `merge = true`.
 
-[`AppProxyV2`]: ../src/app_window_v2/proxy.rs
-[`AppStateV2::proxy`]: ../src/app_window_v2/state.rs
-[`GlyphRangesV2`]: ../src/app_window_v2/config/mod.rs
+[`AppProxy`]: ../src/app_window/proxy.rs
+[`AppState::proxy`]: ../src/app_window/state.rs
+[`GlyphRanges`]: ../src/app_window/config/mod.rs
 
 ## GPU adapter strategy
 
@@ -444,7 +443,7 @@ without a working hardware-accelerated path.
 
 ### Why not enumerate-and-score?
 
-Earlier versions of `app_window_v2` used `wgpu::Instance::enumerate_adapters`
+Earlier versions of `app_window` used `wgpu::Instance::enumerate_adapters`
 and a manual score (discrete GPU > integrated GPU > software). On hybrid
 laptops where the display is routed through the iGPU but a discrete
 GPU is also visible, the score picked the dGPU; `request_device` could
@@ -465,7 +464,7 @@ routing.
 3. panic("wgpu: no usable adapter — primary + fallback both failed")
 ```
 
-### `PowerModeV2`
+### `PowerMode`
 
 Two variants — one strategy with one knob.
 
@@ -476,17 +475,17 @@ Two variants — one strategy with one knob.
 
 The previous `Auto` variant was a duplicate alias to
 `HighPerformance` and has been removed; users who wrote
-`PowerModeV2::Auto` should switch to
-`PowerModeV2::HighPerformance` (or simply
-`PowerModeV2::default()`).
+`PowerMode::Auto` should switch to
+`PowerMode::HighPerformance` (or simply
+`PowerMode::default()`).
 
 ### Present-mode validation
 
-`AppConfigV2.render_mode.fps_mode()` is mapped to a present-mode using
+`AppConfig.render_mode.fps_mode()` is mapped to a present-mode using
 `surface.get_capabilities().present_modes` so the choice is **always
 supported** by the actual adapter:
 
-| `FpsModeV2` | Tries (in order) |
+| `FpsMode` | Tries (in order) |
 |---|---|
 | `Auto` / `Fixed(n)` (vsync) | `FifoRelaxed` (adaptive) → `Fifo` (mandated by spec, always works) |
 | `Unlimited` | `Mailbox` → `Immediate` → `Fifo` |
@@ -513,7 +512,7 @@ see why performance is poor.
 
 ## Layout-independent keyboard
 
-`app_window_v2` (and now also `app_window` v1) intercepts every
+`app_window` (and now also `app_window` v1) intercepts every
 `WindowEvent::KeyboardInput` **before** Dear ImGui's platform layer
 sees it and fixes three latent issues that would otherwise force the
 user to switch keyboard layout:
@@ -545,7 +544,7 @@ Implementation (`gpu/imgui.rs::rebuild_fonts_for_scale`):
 1. `context.fonts().clear_fonts()` — drop every previously-added
    `ImFont` (texture data is rebuilt on demand by Dear ImGui 1.92+'s
    `RENDERER_HAS_TEXTURES` flag, which `dear_imgui_wgpu` sets).
-2. Re-add fonts using the stored [`AppConfigV2.font`] at the new
+2. Re-add fonts using the stored [`AppConfig.font`] at the new
    scale (`Builtin` / `Bytes` / `Stack` paths all supported).
 3. `renderer.invalidate_device_objects()` — flush the wgpu pipeline
    cache, render resources, frame resources, texture manager. Cheap
@@ -563,7 +562,7 @@ custom path — talk to the proxy and your handler), the same routine
 fires.
 
 [`WindowEvent::ScaleFactorChanged { scale_factor }`]: https://docs.rs/winit/latest/winit/event/enum.WindowEvent.html
-[`AppConfigV2.font`]: ../src/app_window_v2/config/mod.rs
+[`AppConfig.font`]: ../src/app_window/config/mod.rs
 
 ## Per-button colour palette (default)
 
@@ -581,18 +580,18 @@ draw-list primitives, no font dependency.
 ## State (runtime)
 
 ```rust
-pub struct AppStateV2 {
-    pub titlebar: TitlebarStateV2,    // .maximized / .focused
+pub struct AppState {
+    pub titlebar: TitlebarState,    // .maximized / .focused
     // ...mutators below queue actions for end-of-frame dispatch
 }
 
-impl AppStateV2 {
+impl AppState {
     fn exit(&mut self);
     fn minimize(&mut self);
     fn set_maximized(&mut self, v: bool);
     fn toggle_maximized(&mut self);
     fn set_theme(&mut self, t: Theme);
-    fn confirm_close(&mut self);    // for CloseModeV2::Confirm
+    fn confirm_close(&mut self);    // for CloseMode::Confirm
     fn show(&mut self) / hide(&mut self);
     fn set_title(&mut self, ...);
     fn set_opacity(&mut self, alpha: f32);
@@ -607,7 +606,7 @@ impl AppStateV2 {
     /// Cross-thread wake-up proxy. Clone freely; hand to background
     /// threads / async tasks; call `proxy.wake()` to repaint the UI.
     /// `Send + Sync + Clone`.
-    fn proxy(&self) -> AppProxyV2;
+    fn proxy(&self) -> AppProxy;
 }
 ```
 
@@ -620,33 +619,33 @@ drives them.
 ## Handler trait
 
 ```rust
-pub trait AppHandlerV2 {
+pub trait AppHandler {
     /// Per-frame render — the only required method.
-    fn render(&mut self, ui: &Ui, state: &mut AppStateV2);
+    fn render(&mut self, ui: &Ui, state: &mut AppState);
 
     /// Window close requested (X button, Alt-F4, OS close).
     /// Default: `state.exit()`. Override for confirm-close UX.
-    fn on_close_requested(&mut self, state: &mut AppStateV2) { state.exit(); }
+    fn on_close_requested(&mut self, state: &mut AppState) { state.exit(); }
 
-    /// Custom titlebar `ExtraButtonV2` clicked.
-    fn on_extra_button(&mut self, _id: &'static str, _state: &mut AppStateV2) {}
+    /// Custom titlebar `ExtraButton` clicked.
+    fn on_extra_button(&mut self, _id: &'static str, _state: &mut AppState) {}
 
     /// Titlebar icon glyph clicked (if set).
-    fn on_icon_click(&mut self, _state: &mut AppStateV2) {}
+    fn on_icon_click(&mut self, _state: &mut AppState) {}
 
     /// Theme changed via `state.set_theme(...)`.
-    fn on_theme_changed(&mut self, _theme: &Theme, _state: &mut AppStateV2) {}
+    fn on_theme_changed(&mut self, _theme: &Theme, _state: &mut AppState) {}
 
     /// Window is fully created and ready. Use `state.proxy()` here to
     /// grab the cross-thread wake-up handle for any background work.
-    fn on_ready(&mut self, _state: &mut AppStateV2) {}
+    fn on_ready(&mut self, _state: &mut AppState) {}
 
     /// Raw winit `WindowEvent` hook — called BEFORE the event reaches
     /// Dear ImGui's platform layer. Return `true` to consume.
     /// Use for: drag-drop file paths, layout-independent hotkeys,
     /// custom IME, touchpad gestures, application-level shortcuts.
     fn on_window_event(&mut self, _event: &winit::event::WindowEvent,
-                       _state: &mut AppStateV2) -> bool { false }
+                       _state: &mut AppState) -> bool { false }
 }
 ```
 
@@ -664,10 +663,10 @@ viewers, video players, 3D viewports, `node_graph` host viewports,
 full-bleed code editors — the default child-window wrapper and the 8-pixel
 padding stand in the way.
 
-Set [`AppConfigV2::raw_content()`] to opt out:
+Set [`AppConfig::raw_content()`] to opt out:
 
 ```rust,ignore
-AppConfigV2::main("Chart Studio", 1280.0, 800.0)
+AppConfig::main("Chart Studio", 1280.0, 800.0)
     .raw_content()    // ← handler runs directly inside the root window
 ```
 
@@ -677,7 +676,7 @@ What changes:
 - `WindowPadding=[8,8]` and `ItemSpacing=[6,4]` are **not pushed**.
 - `ui.set_cursor_pos([0.0, content_top])` still runs so the titlebar stays
   on top — the handler's `render` starts at the first pixel below the
-  titlebar (or at `[0, 0]` when chrome is `ChromeV2::None`).
+  titlebar (or at `[0, 0]` when chrome is `Chrome::None`).
 - `ui.content_region_avail()` now returns `[client_w, client_h - title_h]`
   with no padding subtraction.
 
@@ -690,7 +689,7 @@ wants. The most common pattern is to push your own `WindowPadding` /
 #### Sidebar + main + status (dashboard skeleton)
 
 ```rust,ignore
-fn render(&mut self, ui: &Ui, state: &mut AppStateV2) {
+fn render(&mut self, ui: &Ui, state: &mut AppState) {
     let avail = ui.content_region_avail();
     let sidebar_w = 240.0;
     let status_h  = 22.0;
@@ -758,7 +757,7 @@ ui.set_cursor_pos([10.0, avail[1] - 30.0]);       ui.button("Bottom-Left");
 ### What `raw_content` does **not** remove
 
 - **Titlebar (chrome).** Still rendered above `content_top`. To remove
-  it use `ChromeV2::None` (or [`AppConfigV2::splash`] preset) — that's
+  it use `Chrome::None` (or [`AppConfig::splash`] preset) — that's
   a separate axis from `raw_content`.
 - **The single root ImGui window.** You're inside `##app_root`. Multiple
   independent ImGui top-level windows still work — call
@@ -769,7 +768,7 @@ ui.set_cursor_pos([10.0, avail[1] - 30.0]);       ui.button("Bottom-Left");
 ### Composition
 
 ```rust,ignore
-AppConfigV2::main("Studio", 1280.0, 800.0)
+AppConfig::main("Studio", 1280.0, 800.0)
     .raw_content()                    // pixel-perfect layout
     .with_theme(Theme::Midnight)      // styling
     .continuous_render()              // game-style refresh (real-time chart)
@@ -780,7 +779,7 @@ All builders compose. For a fully chrome-less full-bleed canvas (no
 titlebar, no padding, custom window-icon-only Alt-Tab):
 
 ```rust,ignore
-AppConfigV2::splash("Visualizer", 1280.0, 720.0)
+AppConfig::splash("Visualizer", 1280.0, 720.0)
     .without_chrome()
     .raw_content()
 ```
@@ -788,16 +787,16 @@ AppConfigV2::splash("Visualizer", 1280.0, 720.0)
 Default for `raw_content` is `false`; existing handlers stay on the
 padded path with no migration cost.
 
-[`AppConfigV2::raw_content()`]: ../src/app_window_v2/config/mod.rs
-[`AppConfigV2::splash`]: ../src/app_window_v2/config/mod.rs
+[`AppConfig::raw_content()`]: ../src/app_window/config/mod.rs
+[`AppConfig::splash`]: ../src/app_window/config/mod.rs
 
 ## Demo
 
 ```bash
-cargo run --example demo_app_window_v2 -- main      # default
-cargo run --example demo_app_window_v2 -- splash
-cargo run --example demo_app_window_v2 -- tool
-cargo run --example demo_app_window_v2 -- dialog
+cargo run --example demo_app_window -- main      # default
+cargo run --example demo_app_window -- splash
+cargo run --example demo_app_window -- tool
+cargo run --example demo_app_window -- dialog
 ```
 
 `main` showcases: chrome + nav_panel (left dock with notification badge) +
@@ -806,17 +805,17 @@ status_bar (bottom strip with clickable theme cycler) + confirm_dialog
 
 ## Migration from v1
 
-| v1 (`app_window`) | v2 (`app_window_v2`) |
+| v1 (`app_window`) | v2 (`app_window`) |
 |-------------------|----------------------|
-| `AppConfig` | `AppConfigV2` |
-| `AppHandler` trait | `AppHandlerV2` trait |
-| `AppState` | `AppStateV2` |
-| `BorderlessConfig` (nested) | flat `ChromeV2::Custom(TitlebarConfigV2)` |
+| `AppConfig` | `AppConfig` |
+| `AppHandler` trait | `AppHandler` trait |
+| `AppState` | `AppState` |
+| `BorderlessConfig` (nested) | flat `Chrome::Custom(TitlebarConfig)` |
 | `with_decorations(true)` + DWM hacks | `with_decorations(false)` always |
 | `focus_dim` flag | removed (no DWM caption to dim) |
 | `show_drag_hint` flag | removed (it confused users with translucent overlay) |
-| `BuiltinFont` only | `FontChoiceV2::{Builtin, Bytes}` |
+| `BuiltinFont` only | `FontChoice::{Builtin, Bytes}` |
 
 The v1 module is **kept indefinitely** — switch when you specifically need
 v2's features. `cargo build --features=app_window` and
-`--features=app_window_v2` are independent.
+`--features=app_window` are independent.

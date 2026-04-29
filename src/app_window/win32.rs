@@ -1,6 +1,6 @@
 //! Windows-specific helpers for the borderless app-host.
 //!
-//! `app_window_v2` always creates `WS_POPUP + WS_THICKFRAME` windows
+//! `app_window` always creates `WS_POPUP + WS_THICKFRAME` windows
 //! (`with_decorations(false)` in [`super`]). That style has no caption,
 //! no system menu, no DWM chrome — DWM has nothing to draw or tint on
 //! focus change, so there is no inactive-window dimming to fight.

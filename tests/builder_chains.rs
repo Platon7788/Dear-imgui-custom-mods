@@ -11,8 +11,8 @@ use dear_imgui_custom_mod::theme::Theme;
 
 // (BorderlessConfig builder tests were removed alongside the
 // `borderless_window` module on 2026-04-29 — the chrome lives inside
-// `app_window_v2::config::TitlebarConfigV2` now and is exercised by the
-// `demo_app_window_v2` example. New unit tests for the v2 config
+// `app_window::config::TitlebarConfig` now and is exercised by the
+// `demo_app_window` example. New unit tests for the v2 config
 // builders are tracked separately.)
 
 // ── DialogConfig ────────────────────────────────────────────────────────────

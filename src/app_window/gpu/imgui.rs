@@ -6,11 +6,11 @@ use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
 use winit::window::Window;
 
-use super::super::config::{AppConfigV2, FontChoiceV2, FontLayerV2, GlyphRangesV2};
+use super::super::config::{AppConfig, FontChoice, FontLayer, GlyphRanges};
 
 // Codepoint ranges baked into the atlas, mirroring Dear ImGui's
 // `ImFontGlyphRanges*` presets. We inline them so our public
-// [`GlyphRangesV2`] enum is decoupled from upstream deprecations
+// [`GlyphRanges`] enum is decoupled from upstream deprecations
 // (ImGui 1.92+ favours dynamic on-demand loading; the classic preset
 // ranges remain perfectly valid Unicode blocks).
 //
@@ -42,7 +42,7 @@ pub(crate) fn init_imgui(
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface_format: wgpu::TextureFormat,
-    cfg: &AppConfigV2,
+    cfg: &AppConfig,
 ) -> (dear_imgui_rs::Context, WinitPlatform, WgpuRenderer) {
     let mut context = dear_imgui_rs::Context::create();
     let _ = context.set_ini_filename(None::<std::path::PathBuf>);
@@ -60,13 +60,13 @@ pub(crate) fn init_imgui(
     context.io_mut().set_font_global_scale(1.0 / hidpi);
 
     match &cfg.font {
-        FontChoiceV2::Builtin(b) => {
+        FontChoice::Builtin(b) => {
             add_single_font(&mut context, b.data(), b.display_name(), scaled);
         }
-        FontChoiceV2::Bytes(bytes) => {
+        FontChoice::Bytes(bytes) => {
             add_single_font(&mut context, bytes, "user", scaled);
         }
-        FontChoiceV2::Stack(layers) => {
+        FontChoice::Stack(layers) => {
             add_font_stack(&mut context, layers, hidpi);
         }
     }
@@ -118,7 +118,7 @@ pub(crate) fn init_imgui(
 pub(crate) fn rebuild_fonts_for_scale(
     context: &mut dear_imgui_rs::Context,
     renderer: &mut WgpuRenderer,
-    cfg: &AppConfigV2,
+    cfg: &AppConfig,
     new_hidpi: f32,
 ) {
     let new_hidpi = new_hidpi.clamp(1.0, 3.0);
@@ -130,13 +130,13 @@ pub(crate) fn rebuild_fonts_for_scale(
 
     // 2. Re-add fonts at the new scale.
     match &cfg.font {
-        FontChoiceV2::Builtin(b) => {
+        FontChoice::Builtin(b) => {
             add_single_font(context, b.data(), b.display_name(), scaled);
         }
-        FontChoiceV2::Bytes(bytes) => {
+        FontChoice::Bytes(bytes) => {
             add_single_font(context, bytes, "user", scaled);
         }
-        FontChoiceV2::Stack(layers) => {
+        FontChoice::Stack(layers) => {
             add_font_stack(context, layers, new_hidpi);
         }
     }
@@ -175,7 +175,7 @@ fn add_single_font(
     );
 }
 
-/// Resolve a [`GlyphRangesV2`] into the borrowed (or owned) `&[u32]`
+/// Resolve a [`GlyphRanges`] into the borrowed (or owned) `&[u32]`
 /// slice Dear ImGui expects — `[lo, hi, lo, hi, …, 0]` with a `0`
 /// terminator. Caller passes a `Vec<u32>` reference for the `Custom`
 /// variant to back the temporary slice.
@@ -184,19 +184,19 @@ fn add_single_font(
 /// variants (just hand back our `RANGES_*` `const`s), while `Custom`
 /// fills the supplied `Vec` and returns a slice into it.
 pub(super) fn resolve_glyph_ranges<'v>(
-    ranges: &GlyphRangesV2,
+    ranges: &GlyphRanges,
     scratch: &'v mut Vec<u32>,
 ) -> &'v [u32] {
     match ranges {
-        GlyphRangesV2::Default => RANGES_DEFAULT,
-        GlyphRangesV2::Cyrillic => RANGES_CYRILLIC,
-        GlyphRangesV2::Japanese => RANGES_JAPANESE,
-        GlyphRangesV2::ChineseSimplified => RANGES_CHINESE_SIMPLIFIED,
-        GlyphRangesV2::ChineseTraditional => RANGES_CHINESE_TRADITIONAL,
-        GlyphRangesV2::Korean => RANGES_KOREAN,
-        GlyphRangesV2::Thai => RANGES_THAI,
-        GlyphRangesV2::Vietnamese => RANGES_VIETNAMESE,
-        GlyphRangesV2::Custom(pairs) => {
+        GlyphRanges::Default => RANGES_DEFAULT,
+        GlyphRanges::Cyrillic => RANGES_CYRILLIC,
+        GlyphRanges::Japanese => RANGES_JAPANESE,
+        GlyphRanges::ChineseSimplified => RANGES_CHINESE_SIMPLIFIED,
+        GlyphRanges::ChineseTraditional => RANGES_CHINESE_TRADITIONAL,
+        GlyphRanges::Korean => RANGES_KOREAN,
+        GlyphRanges::Thai => RANGES_THAI,
+        GlyphRanges::Vietnamese => RANGES_VIETNAMESE,
+        GlyphRanges::Custom(pairs) => {
             scratch.clear();
             scratch.extend(pairs.iter().flat_map(|[a, b]| [*a, *b]));
             scratch.push(0);
@@ -205,10 +205,10 @@ pub(super) fn resolve_glyph_ranges<'v>(
     }
 }
 
-/// Bake a [`FontChoiceV2::Stack`] into the atlas: first layer is the base,
+/// Bake a [`FontChoice::Stack`] into the atlas: first layer is the base,
 /// subsequent layers are merged on top so their glyphs (icons / CJK /
 /// math) overlay the base font's metrics.
-fn add_font_stack(context: &mut dear_imgui_rs::Context, layers: &[FontLayerV2], hidpi: f32) {
+fn add_font_stack(context: &mut dear_imgui_rs::Context, layers: &[FontLayer], hidpi: f32) {
     if layers.is_empty() {
         // Empty stack — fall back to default builtin so the atlas isn't empty.
         let fallback = crate::fonts::BuiltinFont::Hack;
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn resolve_custom_ranges_appends_zero_terminator() {
-        let custom = GlyphRangesV2::Custom(vec![[0xF0001, 0xF1FFF], [0x4E00, 0x9FAF]]);
+        let custom = GlyphRanges::Custom(vec![[0xF0001, 0xF1FFF], [0x4E00, 0x9FAF]]);
         let mut scratch = Vec::new();
         let s = resolve_glyph_ranges(&custom, &mut scratch);
         assert_eq!(s, &[0xF0001, 0xF1FFF, 0x4E00, 0x9FAF, 0]);
@@ -283,14 +283,14 @@ mod tests {
     #[test]
     fn resolve_default_borrows_static() {
         let mut scratch = Vec::new();
-        let s = resolve_glyph_ranges(&GlyphRangesV2::Default, &mut scratch);
+        let s = resolve_glyph_ranges(&GlyphRanges::Default, &mut scratch);
         assert_eq!(s, RANGES_DEFAULT);
         assert!(scratch.is_empty(), "preset path should not touch scratch");
     }
 
     #[test]
     fn resolve_empty_custom_only_terminator() {
-        let custom = GlyphRangesV2::Custom(Vec::new());
+        let custom = GlyphRanges::Custom(Vec::new());
         let mut scratch = Vec::new();
         let s = resolve_glyph_ranges(&custom, &mut scratch);
         assert_eq!(s, &[0u32]);
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn resolve_overwrites_scratch_on_reuse() {
         let mut scratch = vec![1, 2, 3]; // garbage from prior call
-        let custom = GlyphRangesV2::Custom(vec![[0xA, 0xB]]);
+        let custom = GlyphRanges::Custom(vec![[0xA, 0xB]]);
         let s = resolve_glyph_ranges(&custom, &mut scratch);
         assert_eq!(s, &[0xA, 0xB, 0]); // garbage gone
     }

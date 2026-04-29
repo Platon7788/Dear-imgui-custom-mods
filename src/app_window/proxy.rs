@@ -1,15 +1,15 @@
-//! Cross-thread wake-up handle for the [`AppWindowV2`](super::AppWindowV2)
+//! Cross-thread wake-up handle for the [`AppWindow`](super::AppWindow)
 //! event loop.
 //!
 //! In event-driven mode the loop sleeps in `ControlFlow::Wait` until an OS
 //! event arrives. Background threads (HTTP, file watch, IPC, async runtime)
 //! cannot deliver work to the UI without a way to *wake* the loop —
-//! [`AppProxyV2::wake`] is exactly that, calling [`winit::event_loop::EventLoopProxy::send_event`]
+//! [`AppProxy::wake`] is exactly that, calling [`winit::event_loop::EventLoopProxy::send_event`]
 //! under the hood.
 //!
 //! The proxy is `Send + Sync + Clone` and may be shared across threads, futures
-//! and channels freely. It is exposed via [`super::AppStateV2::proxy`] inside
-//! `AppHandlerV2` callbacks.
+//! and channels freely. It is exposed via [`super::AppState::proxy`] inside
+//! `AppHandler` callbacks.
 
 use winit::event_loop::EventLoopProxy;
 
@@ -18,11 +18,11 @@ use winit::event_loop::EventLoopProxy;
 /// `wake()` is idempotent and cheap — multiple calls between two iterations
 /// of the event loop coalesce into a single redraw cycle.
 #[derive(Clone)]
-pub struct AppProxyV2 {
+pub struct AppProxy {
     inner: EventLoopProxy<()>,
 }
 
-impl AppProxyV2 {
+impl AppProxy {
     pub(super) fn new(inner: EventLoopProxy<()>) -> Self {
         Self { inner }
     }
@@ -40,13 +40,13 @@ impl AppProxyV2 {
     }
 }
 
-impl std::fmt::Debug for AppProxyV2 {
+impl std::fmt::Debug for AppProxy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AppProxyV2").finish_non_exhaustive()
+        f.debug_struct("AppProxy").finish_non_exhaustive()
     }
 }
 
-/// Failure mode of [`AppProxyV2::wake`].
+/// Failure mode of [`AppProxy::wake`].
 ///
 /// Currently only one variant — kept as an enum so future failure modes
 /// (e.g. cross-process proxy invalidation) stay backwards-compatible.

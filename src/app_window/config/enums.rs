@@ -1,11 +1,11 @@
-//! Small standalone enums used by [`AppConfigV2`](super::AppConfigV2).
+//! Small standalone enums used by [`AppConfig`](super::AppConfig).
 
-// ── WindowKindV2 ────────────────────────────────────────────────────────────────
+// ── WindowKind ────────────────────────────────────────────────────────────────
 
 /// High-level window preset. Picking one sets sensible defaults for everything
 /// else; you can still override any of them with the builder methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum WindowKindV2 {
+pub enum WindowKind {
     /// Borderless splash — no titlebar, no buttons, no resize.
     /// Whole client area is yours for a logo, video, or loading animation.
     Splash,
@@ -18,16 +18,16 @@ pub enum WindowKindV2 {
     Main,
 }
 
-// ── BorderStyleV2 ───────────────────────────────────────────────────────────────
+// ── BorderStyle ───────────────────────────────────────────────────────────────
 
 /// Border behaviour. Equivalent to RAD Studio `BorderStyle`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum BorderStyleV2 {
-    /// No border. Splash. Use [`WindowKindV2::Splash`].
+pub enum BorderStyle {
+    /// No border. Splash. Use [`WindowKind::Splash`].
     None,
     /// Single thin border, fixed size.
     Single,
-    /// Resizable border. Default for [`WindowKindV2::Main`].
+    /// Resizable border. Default for [`WindowKind::Main`].
     #[default]
     Sizeable,
     /// Dialog frame, fixed size.
@@ -38,7 +38,7 @@ pub enum BorderStyleV2 {
     SizeToolWin,
 }
 
-impl BorderStyleV2 {
+impl BorderStyle {
     /// Whether the OS should let the user resize the window by dragging edges.
     pub fn is_resizable(self) -> bool {
         matches!(self, Self::Sizeable | Self::SizeToolWin)
@@ -49,11 +49,11 @@ impl BorderStyleV2 {
     }
 }
 
-// ── FormStyleV2 ─────────────────────────────────────────────────────────────────
+// ── FormStyle ─────────────────────────────────────────────────────────────────
 
 /// Window stacking behaviour. Equivalent to RAD Studio `FormStyle`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FormStyleV2 {
+pub enum FormStyle {
     /// Normal window.
     #[default]
     Normal,
@@ -61,11 +61,11 @@ pub enum FormStyleV2 {
     StayOnTop,
 }
 
-// ── PositionV2 ──────────────────────────────────────────────────────────────────
+// ── Position ──────────────────────────────────────────────────────────────────
 
 /// Where the window opens. Equivalent to RAD Studio `Position`.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum PositionV2 {
+pub enum Position {
     /// OS picks. Default.
     #[default]
     Default,
@@ -77,27 +77,27 @@ pub enum PositionV2 {
     Custom(i32, i32),
 }
 
-// ── CloseModeV2 ─────────────────────────────────────────────────────────────────
+// ── CloseMode ─────────────────────────────────────────────────────────────────
 
 /// How the close button (and Alt-F4) behaves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CloseModeV2 {
+pub enum CloseMode {
     /// Close immediately. Default.
     #[default]
     Immediate,
-    /// Fire `AppHandlerV2::on_close_requested` first; the close completes only
-    /// when `AppStateV2::confirm_close` is called from there or from your
+    /// Fire `AppHandler::on_close_requested` first; the close completes only
+    /// when `AppState::confirm_close` is called from there or from your
     /// confirmation UI.
     Confirm,
 }
 
-// ── FpsModeV2 ───────────────────────────────────────────────────────────────────
+// ── FpsMode ───────────────────────────────────────────────────────────────────
 
 /// Frame rate control. Only consulted in
-/// [`RenderModeV2::Continuous`](RenderModeV2) — event-driven mode always
+/// [`RenderMode::Continuous`](RenderMode) — event-driven mode always
 /// uses adaptive vsync (`AutoVsync`).
 #[derive(Debug, Clone, Default)]
-pub enum FpsModeV2 {
+pub enum FpsMode {
     /// Adaptive vsync — wgpu picks FifoRelaxed (smooth on slow frames) or Fifo. Default.
     #[default]
     Auto,
@@ -107,7 +107,7 @@ pub enum FpsModeV2 {
     Unlimited,
 }
 
-// ── RenderModeV2 ────────────────────────────────────────────────────────────────
+// ── RenderMode ────────────────────────────────────────────────────────────────
 
 /// Top-level render strategy. Picks one of two scheduling models —
 /// **event-driven** (the default; idle CPU/GPU ≈ 0%) or **continuous**
@@ -118,7 +118,7 @@ pub enum FpsModeV2 {
 /// Continuous is for games, simulations, live previews, anything where
 /// content changes without input.
 #[derive(Debug, Clone)]
-pub enum RenderModeV2 {
+pub enum RenderMode {
     /// Default. Repaint only on input events, animation requests
     /// ([`crate::frame_demand`]), or the optional periodic *idle pulses*
     /// for time-based widgets (clocks, uptime counters, status metrics).
@@ -138,13 +138,13 @@ pub enum RenderModeV2 {
     /// frame cap (`fps_mode = Fixed(n)`). Use for game-style apps.
     Continuous {
         /// Foreground frame mode (vsync / fixed cap / unlimited).
-        fps_mode: FpsModeV2,
+        fps_mode: FpsMode,
         /// Background FPS cap when unfocused. `0` ⇒ no extra throttle.
         unfocused_fps: u32,
     },
 }
 
-impl Default for RenderModeV2 {
+impl Default for RenderMode {
     fn default() -> Self {
         Self::EventDriven {
             idle_pulse: Some(std::time::Duration::from_secs(2)),
@@ -153,22 +153,22 @@ impl Default for RenderModeV2 {
     }
 }
 
-impl RenderModeV2 {
+impl RenderMode {
     /// `true` iff this is the [`EventDriven`](Self::EventDriven) variant.
     pub fn is_event_driven(&self) -> bool {
         matches!(self, Self::EventDriven { .. })
     }
     /// FPS mode used for the wgpu surface. Event-driven mode always picks
-    /// [`FpsModeV2::Auto`] so vsync gates the frame timing.
-    pub fn fps_mode(&self) -> FpsModeV2 {
+    /// [`FpsMode::Auto`] so vsync gates the frame timing.
+    pub fn fps_mode(&self) -> FpsMode {
         match self {
             Self::Continuous { fps_mode, .. } => fps_mode.clone(),
-            Self::EventDriven { .. } => FpsModeV2::Auto,
+            Self::EventDriven { .. } => FpsMode::Auto,
         }
     }
 }
 
-// ── PowerModeV2 ─────────────────────────────────────────────────────────────────
+// ── PowerMode ─────────────────────────────────────────────────────────────────
 
 /// GPU adapter selection preference.
 ///
@@ -186,7 +186,7 @@ impl RenderModeV2 {
 /// The previous `Auto` variant was a duplicate alias and has been
 /// removed — there was only ever one strategy.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum PowerModeV2 {
+pub enum PowerMode {
     /// Ask the OS GPU manager for the highest-performance adapter.
     /// Default — works on every tested setup (integrated-only, hybrid,
     /// desktop, software fallback).
@@ -199,11 +199,11 @@ pub enum PowerModeV2 {
     LowPower,
 }
 
-// ── TitleAlignV2 ────────────────────────────────────────────────────────────────
+// ── TitleAlign ────────────────────────────────────────────────────────────────
 
 /// Title text horizontal alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TitleAlignV2 {
+pub enum TitleAlign {
     /// Left-aligned after icon. Default.
     #[default]
     Left,

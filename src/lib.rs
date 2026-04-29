@@ -44,7 +44,7 @@
 //! - [`confirm_dialog`] — Reusable modal confirmation dialog with 4 draw-list icon
 //!   types (Warning/Error/Info/Question), dim overlay, keyboard shortcuts,
 //!   destructive/normal button styles, builder-pattern [`confirm_dialog::DialogConfig`]
-//! - [`app_window_v2`] — Zero-boilerplate borderless window
+//! - [`app_window`] — Zero-boilerplate borderless window
 //!   (wgpu+winit+ImGui), pure ImGui hit detection, flat config.
 //!   Re-exports [`theme::Theme`].
 //! - [`input`] — Keyboard / IME fixes for `dear-imgui-winit`: layout-independent
@@ -80,7 +80,7 @@
 // source of silent API leaks from internal helpers. Kept at warn, not deny,
 // so intentional re-exports from `lib.rs` compile without per-item allow.
 //
-// We deliberately do NOT `forbid(unsafe_code)` — `app_window_v2::win32` and
+// We deliberately do NOT `forbid(unsafe_code)` — `app_window::win32` and
 // `clipboard_backend` use `unsafe` for documented Win32 calls (DWM dark mode,
 // SetCursor bypass, SetWindowRgn fallback on Win10, system clipboard
 // I/O). Every such block carries a `// SAFETY:` comment.
@@ -129,8 +129,8 @@ pub mod utils;
 
 // ─── Component modules (gated behind features) ───────────────────────────────
 
-#[cfg(feature = "app_window_v2")]
-pub mod app_window_v2;
+#[cfg(feature = "app_window")]
+pub mod app_window;
 #[cfg(feature = "code_editor")]
 pub mod code_editor;
 #[cfg(feature = "confirm_dialog")]

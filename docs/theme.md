@@ -55,7 +55,7 @@ let stbar = t.statusbar();  // StatusBarConfig (palette + default geometry)
 
 | Method | Return | Purpose |
 |--------|--------|---------|
-| `.titlebar()` | `TitlebarColors` | Palette for `borderless_window` |
+| `.titlebar()` | `TitlebarColors` | Palette for `app_window` chrome |
 | `.nav()` | `NavColors` | Palette for `nav_panel` |
 | `.dialog()` | `DialogColors` | Palette for `confirm_dialog` |
 | `.statusbar()` | `StatusBarConfig` | Colours + default geometry for `status_bar` |
@@ -66,7 +66,7 @@ let stbar = t.statusbar();  // StatusBarConfig (palette + default geometry)
 
 ## Per-instance palette override
 
-Every themed component (`BorderlessConfig`, `NavPanelConfig`, `DialogConfig`)
+Every themed component (`TitlebarConfig`, `NavPanelConfig`, `DialogConfig`)
 exposes two fields:
 
 - `theme: Theme` — the built-in selector, resolved at render time.
@@ -80,8 +80,7 @@ The builder methods that drive them:
   `.with_theme(...)` call resets it back to the built-in theme.
 
 ```rust
-use dear_imgui_custom_mod::borderless_window::{BorderlessConfig, TitlebarColors};
-use dear_imgui_custom_mod::theme::Theme;
+use dear_imgui_custom_mod::theme::{Theme, TitlebarColors};
 
 // Custom palette that bypasses the built-in themes.
 let colors = TitlebarColors {

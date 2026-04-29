@@ -1,4 +1,4 @@
-//! # app_window_v2
+//! # app_window
 //!
 //! Borderless-window framework. Custom Dear ImGui titlebar; native OS
 //! resize, Aero Snap, drop shadow, taskbar / Alt-Tab integration preserved.
@@ -25,34 +25,34 @@
 //! are all drawn into the ImGui draw list and dispatched to the OS via
 //! [`winit::window::Window::drag_window`] / `drag_resize_window`.
 //!
-//! Builder presets — [`AppConfigV2::splash`], [`AppConfigV2::tool`],
-//! [`AppConfigV2::dialog`], [`AppConfigV2::main`] — give sensible defaults;
-//! the builders ([`AppConfigV2::with_*`]) tune anything else.
+//! Builder presets — [`AppConfig::splash`], [`AppConfig::tool`],
+//! [`AppConfig::dialog`], [`AppConfig::main`] — give sensible defaults;
+//! the builders ([`AppConfig::with_*`]) tune anything else.
 //!
 //! ## Module layout
 //!
-//! - [`config`]   — declarative config types: [`AppConfigV2`] + presets + builders.
+//! - [`config`]   — declarative config types: [`AppConfig`] + presets + builders.
 //! - [`chrome`]   — custom titlebar render + resize-edge detection.
 //! - [`gpu`]      — wgpu / Dear ImGui setup + per-frame render loop.
-//! - [`state`]    — runtime state container ([`AppStateV2`]).
-//! - [`handler`]  — [`AppHandlerV2`] application-logic trait.
+//! - [`state`]    — runtime state container ([`AppState`]).
+//! - [`handler`]  — [`AppHandler`] application-logic trait.
 //! - `win32`     — Windows-specific glue (subclass, DWM, opacity).
 //!
 //! ## Example: main window
 //!
 //! ```rust,no_run
-//! use dear_imgui_custom_mod::app_window_v2::{AppConfigV2, AppHandlerV2, AppStateV2, AppWindowV2};
+//! use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow};
 //! use dear_imgui_rs::Ui;
 //!
 //! struct MyApp;
-//! impl AppHandlerV2 for MyApp {
-//!     fn render(&mut self, ui: &Ui, _state: &mut AppStateV2) {
+//! impl AppHandler for MyApp {
+//!     fn render(&mut self, ui: &Ui, _state: &mut AppState) {
 //!         ui.text("Hello, world!");
 //!     }
 //! }
 //!
 //! fn main() {
-//!     AppWindowV2::new(AppConfigV2::main("My App", 1100.0, 680.0))
+//!     AppWindow::new(AppConfig::main("My App", 1100.0, 680.0))
 //!         .run(MyApp)
 //!         .unwrap();
 //! }
@@ -62,14 +62,14 @@
 //!
 //! ```rust,no_run
 //! use std::time::Duration;
-//! use dear_imgui_custom_mod::app_window_v2::{AppConfigV2, AppWindowV2};
-//! # use dear_imgui_custom_mod::app_window_v2::{AppHandlerV2, AppStateV2};
+//! use dear_imgui_custom_mod::app_window::{AppConfig, AppWindow};
+//! # use dear_imgui_custom_mod::app_window::{AppHandler, AppState};
 //! # use dear_imgui_rs::Ui;
-//! # struct Splash; impl AppHandlerV2 for Splash {
-//! #   fn render(&mut self, _: &Ui, _: &mut AppStateV2) {} }
+//! # struct Splash; impl AppHandler for Splash {
+//! #   fn render(&mut self, _: &Ui, _: &mut AppState) {} }
 //!
-//! AppWindowV2::new(
-//!     AppConfigV2::splash("Loading…", 600.0, 400.0)
+//! AppWindow::new(
+//!     AppConfig::splash("Loading…", 600.0, 400.0)
 //!         .with_auto_close(Duration::from_secs(3))
 //!         .with_corner_radius(16),
 //! ).run(Splash).unwrap();
@@ -78,24 +78,24 @@
 //! ## Example: tool window
 //!
 //! ```rust,no_run
-//! # use dear_imgui_custom_mod::app_window_v2::{AppConfigV2, AppWindowV2, AppHandlerV2, AppStateV2};
+//! # use dear_imgui_custom_mod::app_window::{AppConfig, AppWindow, AppHandler, AppState};
 //! # use dear_imgui_rs::Ui;
-//! # struct Props; impl AppHandlerV2 for Props {
-//! #   fn render(&mut self, _: &Ui, _: &mut AppStateV2) {} }
-//! AppWindowV2::new(
-//!     AppConfigV2::tool("Properties", 320.0, 480.0).stay_on_top()
+//! # struct Props; impl AppHandler for Props {
+//! #   fn render(&mut self, _: &Ui, _: &mut AppState) {} }
+//! AppWindow::new(
+//!     AppConfig::tool("Properties", 320.0, 480.0).stay_on_top()
 //! ).run(Props).unwrap();
 //! ```
 //!
 //! ## Example: dialog
 //!
 //! ```rust,no_run
-//! # use dear_imgui_custom_mod::app_window_v2::{AppConfigV2, AppWindowV2, AppHandlerV2, AppStateV2};
+//! # use dear_imgui_custom_mod::app_window::{AppConfig, AppWindow, AppHandler, AppState};
 //! # use dear_imgui_rs::Ui;
-//! # struct Confirm; impl AppHandlerV2 for Confirm {
-//! #   fn render(&mut self, _: &Ui, _: &mut AppStateV2) {} }
-//! AppWindowV2::new(
-//!     AppConfigV2::dialog("Confirm", 400.0, 150.0)
+//! # struct Confirm; impl AppHandler for Confirm {
+//! #   fn render(&mut self, _: &Ui, _: &mut AppState) {} }
+//! AppWindow::new(
+//!     AppConfig::dialog("Confirm", 400.0, 150.0)
 //! ).run(Confirm).unwrap();
 //! ```
 
@@ -112,15 +112,15 @@ mod gpu;
 mod win32;
 
 pub use crate::theme::Theme;
-pub use chrome::{ResizeEdgeV2, TitlebarActionV2, TitlebarResultV2};
+pub use chrome::{ResizeEdge, TitlebarAction, TitlebarResult};
 pub use config::{
-    AppConfigV2, BorderStyleV2, ButtonsV2, ChromeV2, CloseModeV2, ExtraButtonV2, FontChoiceV2,
-    FontLayerV2, FormStyleV2, FpsModeV2, GlyphRangesV2, PositionV2, PowerModeV2, RenderModeV2,
-    TitleAlignV2, TitlebarConfigV2, WindowIconV2, WindowKindV2,
+    AppConfig, BorderStyle, Buttons, Chrome, CloseMode, ExtraButton, FontChoice,
+    FontLayer, FormStyle, FpsMode, GlyphRanges, Position, PowerMode, RenderMode,
+    TitleAlign, TitlebarConfig, WindowIcon, WindowKind,
 };
-pub use handler::AppHandlerV2;
-pub use proxy::AppProxyV2;
-pub use state::{AppStateV2, TitlebarStateV2};
+pub use handler::AppHandler;
+pub use proxy::AppProxy;
+pub use state::{AppState, TitlebarState};
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -145,20 +145,20 @@ pub(crate) fn win32_debug_log(msg: &str) {
 #[cfg(not(windows))]
 pub(crate) fn win32_debug_log(_msg: &str) {}
 
-// ── AppWindowV2 ─────────────────────────────────────────────────────────────────
+// ── AppWindow ─────────────────────────────────────────────────────────────────
 
 /// A managed application window. Wraps wgpu, winit and Dear ImGui.
-pub struct AppWindowV2 {
-    config: AppConfigV2,
+pub struct AppWindow {
+    config: AppConfig,
 }
 
-impl AppWindowV2 {
-    pub fn new(config: AppConfigV2) -> Self {
+impl AppWindow {
+    pub fn new(config: AppConfig) -> Self {
         Self { config }
     }
 
     /// Run the event loop, blocking until the window closes.
-    pub fn run<H: AppHandlerV2 + 'static>(
+    pub fn run<H: AppHandler + 'static>(
         self,
         handler: H,
     ) -> Result<(), winit::error::EventLoopError> {
@@ -166,7 +166,7 @@ impl AppWindowV2 {
         // loop via `EventLoopProxy::send_event(())`. The carrier type is
         // unit — payload data flows through user-owned mpsc/oneshot channels.
         let event_loop = EventLoop::<()>::with_user_event().build()?;
-        let proxy = AppProxyV2::new(event_loop.create_proxy());
+        let proxy = AppProxy::new(event_loop.create_proxy());
         let mut app = WinitApp::new(self.config, handler, proxy);
         event_loop.run_app(&mut app)
     }
@@ -174,16 +174,16 @@ impl AppWindowV2 {
 
 // ── Internal winit application ────────────────────────────────────────────────
 
-struct WinitApp<H: AppHandlerV2> {
-    config: AppConfigV2,
+struct WinitApp<H: AppHandler> {
+    config: AppConfig,
     handler: Option<H>,
     gpu: Option<gpu::GpuState>,
-    proxy: AppProxyV2,
+    proxy: AppProxy,
     on_ready_fired: bool,
 }
 
-impl<H: AppHandlerV2> WinitApp<H> {
-    fn new(config: AppConfigV2, handler: H, proxy: AppProxyV2) -> Self {
+impl<H: AppHandler> WinitApp<H> {
+    fn new(config: AppConfig, handler: H, proxy: AppProxy) -> Self {
         Self {
             config,
             handler: Some(handler),
@@ -194,8 +194,8 @@ impl<H: AppHandlerV2> WinitApp<H> {
     }
 }
 
-impl<H: AppHandlerV2 + 'static> ApplicationHandler<()> for WinitApp<H> {
-    /// Cross-thread wake-up via [`AppProxyV2::wake`]. Triggers two redraws
+impl<H: AppHandler + 'static> ApplicationHandler<()> for WinitApp<H> {
+    /// Cross-thread wake-up via [`AppProxy::wake`]. Triggers two redraws
     /// so any in-flight state mutated from the background propagates to
     /// the next stable hover frame as well.
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: ()) {
@@ -230,7 +230,7 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler<()> for WinitApp<H> {
         if let Some([w, h]) = cfg.max_size {
             attrs = attrs.with_max_inner_size(LogicalSize::new(w, h));
         }
-        if matches!(cfg.form_style, FormStyleV2::StayOnTop) {
+        if matches!(cfg.form_style, FormStyle::StayOnTop) {
             attrs = attrs.with_window_level(winit::window::WindowLevel::AlwaysOnTop);
         }
         if let Some(ref icon) = cfg.window_icon
@@ -252,8 +252,8 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler<()> for WinitApp<H> {
             let opts = win32::SetupOptions {
                 tool_window: matches!(
                     cfg.border,
-                    BorderStyleV2::ToolWindow | BorderStyleV2::SizeToolWin,
-                ) || matches!(cfg.kind, WindowKindV2::Tool),
+                    BorderStyle::ToolWindow | BorderStyle::SizeToolWin,
+                ) || matches!(cfg.kind, WindowKind::Tool),
                 corner_radius: cfg.corner_radius,
             };
             win32::setup_window(hwnd, opts);
@@ -288,7 +288,7 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler<()> for WinitApp<H> {
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                 {
                     let _rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("app_window_v2: priming clear"),
+                        label: Some("app_window: priming clear"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &view,
                             resolve_target: None,
@@ -335,7 +335,7 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler<()> for WinitApp<H> {
         // makes scheduling decisions with simple field reads.
         let (event_driven, idle_pulse, unfocused_idle_pulse, fps_interval, unfocused_fps_interval) =
             match &cfg.render_mode {
-                RenderModeV2::EventDriven {
+                RenderMode::EventDriven {
                     idle_pulse,
                     unfocused_idle_pulse,
                 } => (
@@ -345,12 +345,12 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler<()> for WinitApp<H> {
                     Duration::ZERO,
                     Duration::ZERO,
                 ),
-                RenderModeV2::Continuous {
+                RenderMode::Continuous {
                     fps_mode,
                     unfocused_fps,
                 } => {
                     let fi = match fps_mode {
-                        FpsModeV2::Fixed(n) if *n > 0 => Duration::from_secs_f64(1.0 / *n as f64),
+                        FpsMode::Fixed(n) if *n > 0 => Duration::from_secs_f64(1.0 / *n as f64),
                         _ => Duration::ZERO,
                     };
                     let ui = if *unfocused_fps > 0 {
@@ -379,7 +379,7 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler<()> for WinitApp<H> {
             context,
             platform,
             renderer,
-            app_state: state::AppStateV2::new(self.proxy.clone()),
+            app_state: state::AppState::new(self.proxy.clone()),
             focused: true,
             event_driven,
             idle_pulse,
@@ -409,7 +409,7 @@ impl<H: AppHandlerV2 + 'static> ApplicationHandler<()> for WinitApp<H> {
             return;
         };
 
-        // First-frame hook: AppHandlerV2::on_ready.
+        // First-frame hook: AppHandler::on_ready.
         if !self.on_ready_fired {
             self.on_ready_fired = true;
             handler.on_ready(&mut g.app_state);

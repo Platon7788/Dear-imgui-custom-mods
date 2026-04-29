@@ -1,10 +1,10 @@
 //! Clipboard write helper + Windows keyboard-layout switching.
 //!
 //! Layout-independent shortcut handling lives in [`crate::input::keyboard`]
-//! and is wired in by `app_window` / `app_window_v2` (and any host that
-//! mirrors that pattern in their `WindowEvent::KeyboardInput` arm). The
-//! per-widget VK-fallback code that used to live here was removed — see
-//! commit history before 2026-04-29 for context.
+//! and is wired in by `app_window` (and any host that mirrors that
+//! pattern in their `WindowEvent::KeyboardInput` arm). The per-widget
+//! VK-fallback code that used to live here was removed — see commit
+//! history before 2026-04-29 for context.
 
 #![allow(dead_code)]
 
