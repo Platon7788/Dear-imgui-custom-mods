@@ -151,8 +151,6 @@ pub mod nav_panel;
 pub mod node_graph;
 #[cfg(feature = "notifications")]
 pub mod notifications;
-#[cfg(feature = "proc_mon")]
-pub mod proc_mon;
 #[cfg(feature = "property_inspector")]
 pub mod property_inspector;
 #[cfg(feature = "status_bar")]

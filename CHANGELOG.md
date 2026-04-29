@@ -2,6 +2,109 @@
 
 ## [Unreleased]
 
+### Removed — `proc_mon` widget (2026-04-29, session 028)
+
+The `proc_mon` widget — and its `proc_enum` sibling-workspace
+dependency — has been removed. The crate is now exclusively a
+collection of UI mods; process enumeration moved to a separate
+project owned by the user.
+
+**BREAKING — feature gate gone**:
+
+- `proc_mon` Cargo feature deleted (was in the `full` meta-feature
+  by default).
+- `dep:serde` and `dep:proc_enum` optional dependencies removed —
+  `serde` was used solely by `proc_mon::types`; nothing else in the
+  crate touched it. The path dep on `../useful-lib/proc_enum` is
+  gone.
+- `dear_imgui_custom_mod::proc_mon` module removed (gated by the
+  feature, so no breakage for callers who didn't enable it).
+
+**Files deleted**:
+
+- `src/proc_mon/` — 4 files (`mod.rs`, `config.rs`, `types.rs`,
+  `ui.rs`).
+- `examples/demo_proc_mon.rs` (426 LoC).
+- `docs/proc_mon.md` (357 LoC).
+- `[[example]] demo_proc_mon` block in `Cargo.toml`.
+- README table row + tree entry + demo entry.
+
+Historical changelog entries for `proc_mon` (sessions 023–026)
+are kept in this file as a record of the past surface — they
+describe state that no longer exists.
+
+**Migration**: hosts that need process enumeration should use the
+user's separate monitoring library directly. The previous
+`MonitorColors` / `ColumnConfig` / `ProcessRow` types were tightly
+coupled to `proc_enum`'s data model and aren't portable — re-build
+on top of `virtual_table` against the new data source.
+
+### `disasm_view` audit follow-up — refresh trait drop + 6 hygiene items (2026-04-29, session 028)
+
+Post-overhaul audit pass on `src/disasm_view`. Found 0 critical /
+8 smells / 6 polish items; **7 fixed, 6 deferred** with explicit
+reasoning. No public API breaks beyond the trait method removal.
+
+**Trait surface**:
+
+- `DisasmDataProvider::refresh()` removed — the default-impl
+  no-op had **zero callers** anywhere (no `render()` invocation,
+  no host integration). Kept only as a stub from session 019;
+  cleaned up now to keep the trait surface honest.
+
+**Internal cleanups**:
+
+- Dropped dead `_first_visible_row: usize` parameter from
+  `draw_instruction_row` and `draw_arrows` — never read by either
+  method (arrow indices are local to the visible slice; row Y
+  comes from the caller).
+- Dropped dead `x += cols.bytes;` post-increment after the bytes
+  column in `draw_instruction_row` — `x` is only read once
+  afterwards (for `instr_data_x`), then never again. Replaced with
+  an explicit `bytes_end_x` calculation.
+- `EDIT_CELL_BG` and `EDIT_CELL_BORDER` extracted as module-level
+  constants — replaces 4 duplicate magic-number `[f32; 4]` literals
+  for the warm-amber inline-edit highlight.
+- `join_bytes_hex` helper added in `input.rs` — replaces 2
+  `format!("{:02X}", b)` + `Vec::collect` + `.join(" ")` triple-
+  allocation patterns (in `copy_selected` and the double-click
+  pre-fill) with the same single-allocation `String::with_capacity`
+  pattern `draw_instruction_row` already uses. Same treatment in
+  `draw.rs`'s tooltip block.
+
+**Behaviour changes**:
+
+- Dynamic `comment_x` pre-pass now runs **unconditionally** (was
+  gated on `show_comments`). The value is consumed by
+  `draw_header` for "Instruction" centring and by `mouse_to_cell`
+  to bound the Mnemonic hit-zone; only the comment-column draw
+  branches stay gated on `show_comments`.
+- **Mnemonic hit-zone gated** in `mouse_to_cell` — returns `None`
+  for the mnemonic+operands range until the assembler round-trip
+  is wired (`DisasmDataProvider::assemble` default-impl is no-op,
+  so opening the editor here would be a UX leak: type + Enter,
+  nothing happens). The `EditColumn::Mnemonic` variant and the
+  `commit_edit` branch stay alive — flip the `None` back to
+  `Some(...)` once `assemble` works.
+
+**Deferred (with reasons)**:
+
+- `BranchArrow.from_idx`/`to_idx` rename to `vis_*` — internal API
+  surface, behavioural risk without testable benefit.
+- Per-frame `Vec<&dyn Instruction>` allocation in arrow pre-pass —
+  no profile evidence; ~50 elements × 60 fps is well within
+  budget.
+- `parse_address` dedup with `hex_viewer::parse_address` — the two
+  use **different heuristics** (`disasm`: requires `a-f` letter to
+  classify as hex; `hex_viewer`: uses `len > 4` as proxy).
+  Behavioural merge requires explicit decision, not a mechanical
+  extract.
+- `BranchArrow` / `compute_arrows` / `MAX_ARROW_DEPTH`
+  visibility → `pub(crate)` — SemVer-relevant, defer to the 0.10
+  bump.
+- Goto-popup uses `compact_popup_body` but context-menu does not
+  — context menu sized by ImGui itself, intentional asymmetry.
+
 ### `disasm_view` polish — popup, column dividers, comment editing (2026-04-29, session 028)
 
 Fourth widget in the popup-cohesion arc (`hex_viewer` → `nav_panel`

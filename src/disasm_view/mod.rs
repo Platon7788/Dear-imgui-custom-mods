@@ -433,20 +433,24 @@ impl DisasmView {
                 };
                 let default_comment_x = mnemonic_col_x + cols.mnemonic + cols.operands;
                 let instr_data_x = mnemonic_col_x + draw::COL_INNER_PAD;
+                // Pre-pass runs unconditionally — even when the
+                // comment column is hidden, the value is consumed
+                // by `draw_header` for "Instruction" centring and by
+                // `mouse_to_cell` to bound the Mnemonic hit-zone.
+                // The Comment-column draw branches are individually
+                // gated on `show_comments`.
                 let mut max_instr_right = default_comment_x;
-                if self.config.show_comments {
-                    for row in first_row..last_row {
-                        if let Some(instr) = provider.instruction(row) {
-                            // Monospace assumption: width = char count
-                            // × char_advance (mnemonic + space + operands).
-                            let mn = instr.mnemonic().chars().count();
-                            let op = instr.operands().chars().count();
-                            let chars = mn + 1 + op;
-                            let row_right =
-                                instr_data_x + chars as f32 * self.char_advance + draw::COMMENT_GAP;
-                            if row_right > max_instr_right {
-                                max_instr_right = row_right;
-                            }
+                for row in first_row..last_row {
+                    if let Some(instr) = provider.instruction(row) {
+                        // Monospace assumption: width = char count
+                        // × char_advance (mnemonic + space + operands).
+                        let mn = instr.mnemonic().chars().count();
+                        let op = instr.operands().chars().count();
+                        let chars = mn + 1 + op;
+                        let row_right =
+                            instr_data_x + chars as f32 * self.char_advance + draw::COMMENT_GAP;
+                        if row_right > max_instr_right {
+                            max_instr_right = row_right;
                         }
                     }
                 }
@@ -492,7 +496,6 @@ impl DisasmView {
                             instr,
                             mouse_pos,
                             avail[0],
-                            first_row,
                             comment_x,
                         );
                     }
@@ -500,7 +503,7 @@ impl DisasmView {
 
                 // ── Draw branch arrows on top ─────────────────
                 if self.config.show_arrows && !self.cached_arrows.is_empty() {
-                    self.draw_arrows(&draw_list, origin_x, origin_y + header_h, first_row);
+                    self.draw_arrows(&draw_list, origin_x, origin_y + header_h);
                 }
 
                 // ── Vertical column dividers ──────────────────

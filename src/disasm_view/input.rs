@@ -7,6 +7,21 @@
 use super::config::DisasmDataProvider;
 use super::{DisasmView, EditColumn, EditState};
 use crate::utils::clipboard::set_clipboard;
+use crate::utils::hex::byte_hex;
+
+/// Reusable space-separated hex byte formatter — single-allocation
+/// `String` (3 chars/byte: two hex + one space, minus the trailing
+/// gap). Mirrors the per-row pattern in `draw::draw_instruction_row`.
+fn join_bytes_hex(bytes: &[u8], uppercase: bool) -> String {
+    let mut s = String::with_capacity(bytes.len() * 3);
+    for (i, b) in bytes.iter().enumerate() {
+        if i > 0 {
+            s.push(' ');
+        }
+        s.push_str(byte_hex(*b, uppercase));
+    }
+    s
+}
 
 impl DisasmView {
     pub(super) fn handle_keyboard(
@@ -257,12 +272,7 @@ impl DisasmView {
             && let Some(instr) = provider.instruction(idx)
         {
             let buf = match column {
-                EditColumn::Bytes => instr
-                    .bytes()
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>()
-                    .join(" "),
+                EditColumn::Bytes => join_bytes_hex(instr.bytes(), true),
                 EditColumn::Mnemonic => {
                     format!("{} {}", instr.mnemonic(), instr.operands())
                 }
@@ -380,8 +390,15 @@ impl DisasmView {
         }
         // Mnemonic + operands together (UI shows them as one
         // editable region for the future "edit instruction" path).
+        // **GATED**: returns `None` until the assembler round-trip is
+        // wired (`DisasmDataProvider::assemble` default-impl is no-op
+        // → opening the editor here would be a UX leak: type +
+        // Enter, nothing happens). The `EditColumn::Mnemonic` variant
+        // and the matching `commit_edit` branch stay alive for the
+        // future flow — flip this `None` back to
+        // `Some((row, EditColumn::Mnemonic))` once `assemble` works.
         if mx >= mnemonic_x && mx < comment_x {
-            return Some((row, EditColumn::Mnemonic));
+            return None;
         }
         // Comment cell — only when the comment column is visible.
         if self.config.show_comments && mx >= comment_x {
@@ -421,12 +438,7 @@ impl DisasmView {
                     } else {
                         format!("{:08X}", instr.address())
                     };
-                    let bytes_str: String = instr
-                        .bytes()
-                        .iter()
-                        .map(|b| format!("{:02X}", b))
-                        .collect::<Vec<_>>()
-                        .join(" ");
+                    let bytes_str = join_bytes_hex(instr.bytes(), true);
                     let comment = instr
                         .comment()
                         .map(|c| format!(" ; {}", c))

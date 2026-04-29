@@ -110,9 +110,6 @@ pub trait DisasmDataProvider {
     fn set_comment(&mut self, _addr: u64, _text: &str) -> bool {
         false
     }
-
-    /// Called every frame when auto-refresh is enabled.
-    fn refresh(&mut self) {}
 }
 
 // ── Default Instruction ─────────────────────────────────────────────────────

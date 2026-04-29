@@ -34,7 +34,6 @@ full = [
     "node_graph",
     "notifications",
     "tab_control",
-    "proc_mon",
     "property_inspector",
     "status_bar",
     "timeline",
@@ -90,15 +89,9 @@ timeline = []
 # color groups, BFS depth filter, and SVG/DOT/Mermaid export (Phase D).
 # Re-uses nav_panel palette for the sidebar. Requires slotmap for stable NodeId/EdgeId.
 force_graph = ["nav_panel", "dep:slotmap"]
-# Process monitor widget — UI layer over `proc_enum` (`useful-lib`).
-# The headless enumeration core (NT syscalls, ProcessInfo, ProcessDelta)
-# lives in `useful-lib/proc_enum`; this feature only wires the
-# VirtualTable widget on top.
-proc_mon = ["virtual_table", "dep:proc_enum", "dep:serde"]
 
 [dependencies]
 slotmap = { version = "1.0", optional = true }
-serde = { version = "1.0", features = ["derive"], optional = true }
 dear-imgui-rs = "0.11.0"
 dear-imgui-wgpu = "0.11.0"
 dear-imgui-winit = "0.11.0"
@@ -106,15 +99,6 @@ foldhash = "0.2.0"
 pollster = "0.4.0"
 wgpu = "29.0.1"
 winit = "0.30.13"
-
-# ─── Optional: proc_enum (Windows-only headless enumeration) ────────────────
-# Pulled in by the `proc_mon` feature. Holds `ProcessEnumerator`,
-# `ProcessInfo`, `ProcessDelta`, `ProcStatus`, and `Error` — the widget
-# in `proc_mon/ui.rs` re-exports them so existing call-sites
-# (`dear_imgui_custom_mod::proc_mon::ProcessInfo` etc.) keep working.
-# Path dep to sibling workspace for now; flip to a git/registry dep when
-# `useful-lib` publishes.
-proc_enum = { path = "../useful-lib/proc_enum", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
@@ -231,16 +215,11 @@ name = "demo_force_graph"
 path = "examples/demo_force_graph.rs"
 required-features = ["force_graph", "app_window"]
 
-[[example]]
-name = "demo_proc_mon"
-path = "examples/demo_proc_mon.rs"
-required-features = ["proc_mon", "app_window"]
-
 
 # ─── Build profiles ──────────────────────────────────────────────────────────
 #
 # `dev.package."*" opt-level = 2` builds all *dependencies* (wgpu, imgui,
-# winit, serde, syscalls, …) with near-release optimization while keeping
+# winit, …) with near-release optimization while keeping
 # our own crate at `opt-level = 0` for fast iterative compiles and full
 # `debug_assertions`. Render hot paths (wgpu/imgui) then behave as if they
 # were release-compiled — essential for GUI apps where a debug-compiled

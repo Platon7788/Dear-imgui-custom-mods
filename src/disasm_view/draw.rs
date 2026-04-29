@@ -26,6 +26,16 @@ pub(super) const COL_INNER_PAD: f32 = 6.0;
 /// the rightmost glyph so the divider never hugs the text.
 pub(super) const COMMENT_GAP: f32 = 10.0;
 
+/// Background tint of the inline edit cell (Bytes / Comment) — warm
+/// brown so the user sees instantly which cell is being edited.
+/// Theme-independent on purpose: this is a transient, modal-ish UI
+/// affordance that needs to read consistently across all themes.
+const EDIT_CELL_BG: [f32; 4] = [0.20, 0.15, 0.08, 0.95];
+
+/// Border colour of the inline edit cell — same warm-amber accent
+/// the cursor / focus highlight uses.
+const EDIT_CELL_BORDER: [f32; 4] = [1.0, 0.7, 0.3, 0.80];
+
 impl DisasmView {
     pub(super) fn draw_header(
         &self,
@@ -87,7 +97,6 @@ impl DisasmView {
         instr: &dyn Instruction,
         mouse_pos: [f32; 2],
         win_w: f32,
-        _first_visible_row: usize,
         comment_x: f32,
     ) {
         let cfg = &self.config;
@@ -240,7 +249,7 @@ impl DisasmView {
                     .add_rect(
                         [data_x - 2.0, y],
                         [x + cols.bytes, y + lh],
-                        col32([0.20, 0.15, 0.08, 0.95]),
+                        col32(EDIT_CELL_BG),
                     )
                     .filled(true)
                     .build();
@@ -248,7 +257,7 @@ impl DisasmView {
                     .add_rect(
                         [data_x - 2.0, y],
                         [x + cols.bytes, y + lh],
-                        col32([1.0, 0.7, 0.3, 0.80]),
+                        col32(EDIT_CELL_BORDER),
                     )
                     .build();
             } else {
@@ -264,13 +273,19 @@ impl DisasmView {
                 }
                 draw_list.add_text([data_x, y], col32(colors.bytes), &bytes_str);
             }
-            x += cols.bytes;
+            // (No `x +=` here — `x` is read once below for `instr_data_x`
+            //  and never again. Dropping the dead post-increment.)
         }
 
         // ── Mnemonic ──────────────────────────────────────────
         // Same COL_INNER_PAD treatment as Bytes: keep mnemonic/operand
         // text off the left divider.
-        let instr_data_x = x + COL_INNER_PAD;
+        let bytes_end_x = if cfg.show_bytes {
+            x + cols.bytes
+        } else {
+            x
+        };
+        let instr_data_x = bytes_end_x + COL_INNER_PAD;
         let mnemonic = instr.mnemonic();
         let mnemonic_color = colors.mnemonic_color(instr.flow_kind());
         draw_list.add_text([instr_data_x, y], col32(mnemonic_color), mnemonic);
@@ -311,7 +326,7 @@ impl DisasmView {
                     .add_rect(
                         [edit_x - 2.0, y],
                         [edit_x + cols.comment, y + lh],
-                        col32([0.20, 0.15, 0.08, 0.95]),
+                        col32(EDIT_CELL_BG),
                     )
                     .filled(true)
                     .build();
@@ -319,7 +334,7 @@ impl DisasmView {
                     .add_rect(
                         [edit_x - 2.0, y],
                         [edit_x + cols.comment, y + lh],
-                        col32([1.0, 0.7, 0.3, 0.80]),
+                        col32(EDIT_CELL_BORDER),
                     )
                     .build();
             } else if let Some(comment) = instr.comment() {
@@ -342,11 +357,13 @@ impl DisasmView {
 
                 let bytes = instr.bytes();
                 ui.text(format!("Size: {} bytes", bytes.len()));
-                let hex_str: String = bytes
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let mut hex_str = String::with_capacity(bytes.len() * 3);
+                for (i, b) in bytes.iter().enumerate() {
+                    if i > 0 {
+                        hex_str.push(' ');
+                    }
+                    hex_str.push_str(byte_hex(*b, true));
+                }
                 ui.text(format!("Bytes: {}", hex_str));
 
                 ui.text(format!("Instr: {} {}", instr.mnemonic(), instr.operands()));
@@ -429,7 +446,6 @@ impl DisasmView {
         draw_list: &dear_imgui_rs::DrawListMut<'_>,
         origin_x: f32,
         origin_y: f32,
-        _first_visible_row: usize,
     ) {
         let cols = &self.config.columns;
         let colors = &self.config.colors;
