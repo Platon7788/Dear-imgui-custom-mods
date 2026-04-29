@@ -210,7 +210,7 @@ pub struct HexViewer {
     data: Vec<u8>,
     reference: Vec<u8>,
     regions: Vec<ColorRegion>,
-    pub config: HexViewerConfig,
+    config: HexViewerConfig,
 
     // ── Cached ImGui IDs (built once at construction) ─────────
     goto_popup_id: String,
@@ -240,6 +240,18 @@ pub struct HexViewer {
     line_height: f32,
     focused: bool,
     frame_count: u32,
+
+    // ── VK-fallback front-edge detection ─────────────────────
+    // `GetAsyncKeyState` reports "key currently down", not "just
+    // transitioned" — without prev-frame snapshots, every Ctrl+Z while
+    // the key is held would fire a fresh undo. We track the previous
+    // state per shortcut key here and compute edges in `handle_keyboard`.
+    vk_prev_a: bool,
+    vk_prev_c: bool,
+    vk_prev_f: bool,
+    vk_prev_g: bool,
+    vk_prev_y: bool,
+    vk_prev_z: bool,
 }
 
 impl HexViewer {
@@ -274,6 +286,12 @@ impl HexViewer {
             line_height: 0.0,
             focused: false,
             frame_count: 0,
+            vk_prev_a: false,
+            vk_prev_c: false,
+            vk_prev_f: false,
+            vk_prev_g: false,
+            vk_prev_y: false,
+            vk_prev_z: false,
         }
     }
 
@@ -328,13 +346,21 @@ impl HexViewer {
         self.cursor
     }
 
+    /// Move the cursor to `offset` as an explicit navigation jump.
+    ///
+    /// Always records the previous position in the back/forward history
+    /// (so `goto` followed by Alt+Left returns to the prior spot) and
+    /// clears any active selection — that matches user expectations for
+    /// a "go here" command.
     pub fn set_cursor(&mut self, offset: usize) {
         let old = self.cursor;
-        self.cursor = offset.min(self.data.len().saturating_sub(1));
-        let bpr = self.config.bytes_per_row.value();
-        if old.abs_diff(self.cursor) > bpr {
+        let new = offset.min(self.data.len().saturating_sub(1));
+        if new != old {
             self.nav.push(self.config.base_address + old as u64);
         }
+        self.cursor = new;
+        self.selection = Selection::default();
+        let bpr = self.config.bytes_per_row.value();
         self.scroll_to_row = Some(self.cursor / bpr);
     }
 
@@ -395,6 +421,11 @@ impl HexViewer {
     /// should respond by re-fetching live data and pushing it via
     /// `set_data*`. Returns `false` when the feature is disabled
     /// (`auto_refresh_frames == 0`).
+    ///
+    /// **Note:** the internal counter is only advanced inside
+    /// [`HexViewer::render`]. If the widget is not rendered (hidden tab,
+    /// minimised window, headless test), this method will never return
+    /// `true` — by design, since there is nothing to refresh anyway.
     pub fn take_refresh_pending(&mut self) -> bool {
         let interval = self.config.auto_refresh_frames;
         if interval == 0 {
@@ -820,14 +851,26 @@ impl HexViewer {
     }
 
     /// Check if offset is within a search match.
+    ///
+    /// Hot — runs once per visible byte per frame. `search_results` is
+    /// sorted by construction (`find_pattern_masked` walks the buffer
+    /// left-to-right), so we binary-search for the candidate start
+    /// instead of scanning all matches. Brings overall hex-render cost
+    /// from O(visible_bytes × matches) down to O(visible_bytes × log
+    /// matches), which matters when a permissive wildcard pattern
+    /// produces thousands of hits.
     fn is_search_match(&self, offset: usize) -> bool {
         if self.search_results.is_empty() || self.search_pattern.is_empty() {
             return false;
         }
         let plen = self.search_pattern.len();
+        // We want the smallest match-start `s` with `s >= offset - (plen - 1)`,
+        // then verify `s <= offset`. A match covers `[s, s + plen)`.
+        let lower = offset.saturating_sub(plen.saturating_sub(1));
+        let pos = self.search_results.partition_point(|&s| s < lower);
         self.search_results
-            .iter()
-            .any(|&start| offset >= start && offset < start + plen)
+            .get(pos)
+            .is_some_and(|&s| s <= offset)
     }
 
     /// Get foreground color with diff/region overrides.
@@ -858,6 +901,25 @@ impl HexViewer {
         self.cursor = self.cursor.min(self.data.len().saturating_sub(1));
     }
 
+    /// Move the cursor to `new_cursor`, optionally extending the
+    /// selection. When `shift` is true and selection is currently
+    /// empty, anchors `selection.start` at the *previous* cursor
+    /// position so the byte under the old cursor is included in the
+    /// growing range. When `shift` is false, the selection is cleared.
+    fn move_cursor_with_selection(&mut self, new_cursor: usize, shift: bool) {
+        let old = self.cursor;
+        self.cursor = new_cursor.min(self.data.len().saturating_sub(1));
+        if shift {
+            if self.selection.is_empty() {
+                self.selection.start = old;
+            }
+            self.selection.end = self.cursor;
+        } else {
+            self.selection = Selection::default();
+        }
+        self.scroll_to_cursor();
+    }
+
     // ── Input handling ───────────────────────────────────────────────
 
     fn handle_keyboard(&mut self, ui: &dear_imgui_rs::Ui) {
@@ -870,52 +932,55 @@ impl HexViewer {
         }
 
         let shift = ui.io().key_shift();
-        // Use physical Ctrl detection (works with any keyboard layout).
         let ctrl = ui.io().key_ctrl();
+        let alt = ui.io().key_alt();
+
+        // VK-fallback front-edge detection. `GetAsyncKeyState` reports
+        // whether the key is currently held — without prev-state, every
+        // frame the key is down would re-fire the shortcut (multiple
+        // undos, looped clipboard writes, etc.). We compare the current
+        // physical state against the snapshot from last frame and only
+        // act on the rising edge.
+        let now_a = vk_down(VK_A);
+        let now_c = vk_down(VK_C);
+        let now_f = vk_down(VK_F);
+        let now_g = vk_down(VK_G);
+        let now_y = vk_down(VK_Y);
+        let now_z = vk_down(VK_Z);
+        let edge_a = now_a && !self.vk_prev_a;
+        let edge_c = now_c && !self.vk_prev_c;
+        let edge_f = now_f && !self.vk_prev_f;
+        let edge_g = now_g && !self.vk_prev_g;
+        let edge_y = now_y && !self.vk_prev_y;
+        let edge_z = now_z && !self.vk_prev_z;
+        self.vk_prev_a = now_a;
+        self.vk_prev_c = now_c;
+        self.vk_prev_f = now_f;
+        self.vk_prev_g = now_g;
+        self.vk_prev_y = now_y;
+        self.vk_prev_z = now_z;
 
         // === Hotkeys ===
-        // Combine ImGui logical key + physical VK fallback (for non-latin layouts).
-        // `vk_pressed` returns true only on the transition frame (not while held).
-        let vk_pressed = |vk: i32| -> bool {
-            // ImGui tracks key repeat internally via is_key_pressed.
-            // For VK fallback: we check VK is down AND the ImGui frame indicates
-            // a new key event (io.KeysDown changed). Simple approach: use ImGui's
-            // repeat detection via any key pressed + VK state.
-            vk_down(vk)
-        };
-
-        // Ctrl+C — copy
-        if ctrl && (ui.is_key_pressed(Key::C) || vk_pressed(VK_C)) {
+        if ctrl && (ui.is_key_pressed(Key::C) || edge_c) {
             self.copy_selection();
         }
-
-        // Ctrl+G — goto
-        if ctrl && (ui.is_key_pressed(Key::G) || vk_pressed(VK_G)) && !self.show_goto {
+        if ctrl && (ui.is_key_pressed(Key::G) || edge_g) && !self.show_goto {
             self.show_goto = true;
             self.goto_buf.clear();
         }
-
-        // Ctrl+F — search
-        if ctrl && (ui.is_key_pressed(Key::F) || vk_pressed(VK_F)) && !self.show_search {
+        if ctrl && (ui.is_key_pressed(Key::F) || edge_f) && !self.show_search {
             self.show_search = true;
         }
-
-        // Ctrl+A — select all
-        if ctrl && (ui.is_key_pressed(Key::A) || vk_pressed(VK_A)) {
+        if ctrl && (ui.is_key_pressed(Key::A) || edge_a) {
             self.selection = Selection { start: 0, end: len };
         }
-
-        // Ctrl+Z — undo (not shift)
-        if ctrl && !shift && (ui.is_key_pressed(Key::Z) || vk_pressed(VK_Z)) {
+        if ctrl && !shift && (ui.is_key_pressed(Key::Z) || edge_z) {
             self.undo();
         }
-
-        // Ctrl+Y — redo
-        if ctrl && (ui.is_key_pressed(Key::Y) || vk_pressed(VK_Y)) {
+        if ctrl && (ui.is_key_pressed(Key::Y) || edge_y) {
             self.redo();
         }
-        // Ctrl+Shift+Z — redo (alternative)
-        if ctrl && shift && (ui.is_key_pressed(Key::Z) || vk_pressed(VK_Z)) {
+        if ctrl && shift && (ui.is_key_pressed(Key::Z) || edge_z) {
             self.redo();
         }
 
@@ -943,7 +1008,6 @@ impl HexViewer {
         }
 
         // Alt+Left/Right — nav back/forward.
-        let alt = ui.io().key_alt();
         if alt && ui.is_key_pressed(Key::LeftArrow) {
             self.nav_back();
             return;
@@ -953,80 +1017,52 @@ impl HexViewer {
             return;
         }
 
-        // Navigation (not while in active popup).
+        // Navigation (all paths share `move_cursor_with_selection` so
+        // Shift-extends and selection-clear behave identically across
+        // arrows / PageUp-Down / Home-End).
         if !ctrl && !alt {
             if ui.is_key_pressed(Key::LeftArrow) {
-                if self.cursor > 0 {
-                    self.cursor -= 1;
-                }
-                if shift {
-                    self.selection.end = self.cursor;
-                } else {
-                    self.selection = Selection::default();
-                }
-                self.scroll_to_cursor();
+                let new = self.cursor.saturating_sub(1);
+                self.move_cursor_with_selection(new, shift);
             }
             if ui.is_key_pressed(Key::RightArrow) {
-                if self.cursor < len - 1 {
-                    self.cursor += 1;
-                }
-                if shift {
-                    self.selection.end = self.cursor;
-                } else {
-                    self.selection = Selection::default();
-                }
-                self.scroll_to_cursor();
+                let new = (self.cursor + 1).min(len - 1);
+                self.move_cursor_with_selection(new, shift);
             }
             if ui.is_key_pressed(Key::UpArrow) {
-                if self.cursor >= bpr {
-                    self.cursor -= bpr;
-                }
-                if shift {
-                    self.selection.end = self.cursor;
-                } else {
-                    self.selection = Selection::default();
-                }
-                self.scroll_to_cursor();
+                let new = self.cursor.saturating_sub(bpr);
+                self.move_cursor_with_selection(new, shift);
             }
             if ui.is_key_pressed(Key::DownArrow) {
-                if self.cursor + bpr < len {
-                    self.cursor += bpr;
-                }
-                if shift {
-                    self.selection.end = self.cursor;
-                } else {
-                    self.selection = Selection::default();
-                }
-                self.scroll_to_cursor();
+                let new = (self.cursor + bpr).min(len - 1);
+                self.move_cursor_with_selection(new, shift);
             }
             if ui.is_key_pressed(Key::PageUp) {
                 let rows = (ui.window_size()[1] / self.line_height) as usize;
-                self.cursor = self.cursor.saturating_sub(bpr * rows);
-                self.scroll_to_cursor();
+                let new = self.cursor.saturating_sub(bpr * rows);
+                self.move_cursor_with_selection(new, shift);
             }
             if ui.is_key_pressed(Key::PageDown) {
                 let rows = (ui.window_size()[1] / self.line_height) as usize;
-                self.cursor = (self.cursor + bpr * rows).min(len - 1);
-                self.scroll_to_cursor();
+                let new = (self.cursor + bpr * rows).min(len - 1);
+                self.move_cursor_with_selection(new, shift);
             }
             if ui.is_key_pressed(Key::Home) {
-                self.cursor -= self.cursor % bpr;
-                self.scroll_to_cursor();
+                let new = self.cursor - self.cursor % bpr;
+                self.move_cursor_with_selection(new, shift);
             }
             if ui.is_key_pressed(Key::End) {
-                self.cursor = ((self.cursor / bpr + 1) * bpr - 1).min(len - 1);
-                self.scroll_to_cursor();
+                let new = ((self.cursor / bpr + 1) * bpr - 1).min(len - 1);
+                self.move_cursor_with_selection(new, shift);
             }
         }
 
         // Ctrl+Home/End.
         if ctrl && ui.is_key_pressed(Key::Home) {
-            self.cursor = 0;
-            self.scroll_to_cursor();
+            self.move_cursor_with_selection(0, shift);
         }
         if ctrl && ui.is_key_pressed(Key::End) {
-            self.cursor = len - 1;
-            self.scroll_to_cursor();
+            self.move_cursor_with_selection(len - 1, shift);
         }
 
         // Hex / ASCII editing input.
@@ -1071,14 +1107,15 @@ impl HexViewer {
     fn handle_ascii_input(&mut self) {
         let chars = read_input_chars();
         for ch in chars {
-            // Accept any printable character (any language/case).
-            if ch.is_control() {
+            // Each cursor cell is exactly one byte. Multi-byte UTF-8 (e.g.
+            // Cyrillic 'А' = 0xD0 0x90) would only have its leading byte
+            // written here, silently corrupting the buffer with a stray
+            // 0xD0. Reject anything outside printable ASCII — the user
+            // should switch the input column to hex for non-ASCII writes.
+            if !ch.is_ascii() || ch.is_control() {
                 continue;
             }
-            let mut buf = [0u8; 4];
-            let encoded = ch.encode_utf8(&mut buf);
-            // Only write the first byte (ASCII-compatible for most cases).
-            let new_byte = encoded.as_bytes()[0];
+            let new_byte = ch as u8;
             if self.cursor < self.data.len() {
                 let old_byte = self.data[self.cursor];
                 self.undo.push(UndoEntry {
@@ -1506,12 +1543,21 @@ impl Drop for HexViewer {
 // ── Free helpers ─────────────────────────────────────────────────────────────
 
 fn read_input_chars() -> Vec<char> {
+    // SAFETY: `igGetIO_Nil` returns a pointer to ImGui's process-wide IO
+    // singleton, valid for the entire ImGui context lifetime. This
+    // helper is only called from `handle_*_input`, which themselves run
+    // inside `HexViewer::render` — so a frame is active and the IO
+    // struct (and its `InputQueueCharacters` ImVector) are live.
     let io = unsafe { &*dear_imgui_rs::sys::igGetIO_Nil() };
     let data = io.InputQueueCharacters.Data;
     let size = io.InputQueueCharacters.Size;
     if data.is_null() || size <= 0 {
         return Vec::new();
     }
+    // SAFETY: `ImWchar` is `u16` in the cimgui build we link against
+    // (no `IMGUI_USE_WCHAR32` define). `Data` + `Size` describe a
+    // contiguous ImGui-owned buffer that stays alive at least until
+    // the end of the current frame, so the slice is valid here.
     let slice = unsafe { std::slice::from_raw_parts(data as *const u16, size as usize) };
     slice
         .iter()
@@ -1740,6 +1786,59 @@ mod tests {
             .push(ColorRegion::new(4, 4, [1.0, 0.0, 0.0, 1.0], "magic"));
         let fg = v.byte_fg_with_overrides(5, 0);
         assert_eq!(fg, col32([1.0, 0.0, 0.0, 1.0]));
+    }
+
+    #[test]
+    fn test_is_search_match_binary() {
+        // Regression: pre-fix `is_search_match` linear-scanned all matches.
+        // Post-fix uses partition_point — guard that boundary cases still
+        // hold (offsets just before / just after / spanning a match).
+        let mut v = HexViewer::new("test");
+        v.set_data(&[0u8; 32]);
+        v.search_results = vec![5, 12, 25];
+        v.search_pattern = vec![PatternByte::Any; 3]; // covers [s, s+3)
+        assert!(!v.is_search_match(4));
+        assert!(v.is_search_match(5));
+        assert!(v.is_search_match(7)); // last byte of first match
+        assert!(!v.is_search_match(8));
+        assert!(v.is_search_match(13));
+        assert!(!v.is_search_match(15));
+        assert!(v.is_search_match(27));
+        assert!(!v.is_search_match(28));
+    }
+
+    #[test]
+    fn test_shift_arrow_anchors_selection() {
+        // Regression: pre-fix Shift+Arrow only updated `selection.end`,
+        // leaving `selection.start = 0` so growing selections always
+        // started at offset 0. Post-fix anchors `start` at the previous
+        // cursor position the moment the user begins selecting.
+        let mut v = HexViewer::new("test");
+        v.set_data(&[0u8; 32]);
+        v.cursor = 10;
+        v.move_cursor_with_selection(11, true);
+        assert_eq!(v.selection.start, 10);
+        assert_eq!(v.selection.end, 11);
+        // Continued shift-extends keep the anchor.
+        v.move_cursor_with_selection(13, true);
+        assert_eq!(v.selection.start, 10);
+        assert_eq!(v.selection.end, 13);
+        // Releasing shift collapses selection.
+        v.move_cursor_with_selection(14, false);
+        assert!(v.selection.is_empty());
+    }
+
+    #[test]
+    fn test_set_cursor_clears_selection_and_pushes_nav() {
+        // Regression: pre-fix `set_cursor` left stale selection in place
+        // and only pushed nav-history for jumps > bytes_per_row.
+        let mut v = HexViewer::new("test");
+        v.set_data(&[0u8; 64]);
+        v.selection = Selection { start: 4, end: 10 };
+        v.cursor = 4;
+        v.set_cursor(8); // small jump (within one row)
+        assert!(v.selection.is_empty(), "selection must clear on goto");
+        assert!(v.nav_history().can_go_back(), "nav must record the jump");
     }
 
     #[test]

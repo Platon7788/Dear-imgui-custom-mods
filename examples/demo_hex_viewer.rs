@@ -1,8 +1,12 @@
 //! Demo: HexViewer — binary hex dump viewer showcase.
 //!
-//! Demonstrates color regions, data inspector, wildcard search, goto,
-//! diff highlighting, editing with undo/redo, navigation history,
-//! semantic byte-category coloring, copy formats, and all configuration options.
+//! Demonstrates color regions (PE-header struct overlay), data inspector,
+//! wildcard hex search (`4D 5A ?? 00`), goto, diff highlighting, editing
+//! with undo/redo, navigation history, semantic byte-category coloring,
+//! copy formats (Hex / C / Rust / Base64 / ASCII), and **auto-refresh
+//! live-memory pattern via `take_refresh_pending()`** — toggle the
+//! "Auto-refresh" checkbox in the config panel to see the byte at 0x90
+//! roll over with each tick.
 //!
 //! Run: cargo run --example demo_hex_viewer
 
@@ -96,6 +100,11 @@ struct DemoState {
     search_mode_idx: usize,
     /// Snapshot for diff highlighting.
     reference: Vec<u8>,
+    /// Auto-refresh demo state. When enabled, simulates a "live memory"
+    /// view by mutating one byte every refresh tick (~60 frames). Driven
+    /// by `viewer.take_refresh_pending()` (new API).
+    auto_refresh: bool,
+    refresh_counter: u64,
 }
 
 impl DemoState {
@@ -117,10 +126,32 @@ impl DemoState {
             copy_fmt_idx: 0,
             search_mode_idx: 0,
             reference,
+            auto_refresh: false,
+            refresh_counter: 0,
+        }
+    }
+
+    /// Per-frame tick. When auto-refresh is enabled, polls
+    /// `take_refresh_pending` and mutates one byte to demonstrate the
+    /// live-memory pattern (debugger / process-monitor / MMAP-watch).
+    fn tick(&mut self) {
+        if !self.auto_refresh {
+            return;
+        }
+        if self.viewer.take_refresh_pending() {
+            self.refresh_counter += 1;
+            // Touch a single byte at 0x90 with a rolling value so the user
+            // can visually see the buffer "live".
+            let data = self.viewer.data_mut();
+            if data.len() > 0x90 {
+                data[0x90] = (self.refresh_counter & 0xFF) as u8;
+            }
         }
     }
 
     fn render(&mut self, ui: &Ui) {
+        // Live-data simulation tick: drives HexViewer::take_refresh_pending.
+        self.tick();
         ui.window("HexViewer Demo")
             .size([1100.0, 700.0], Condition::FirstUseEver)
             .build(|| {
@@ -310,22 +341,40 @@ impl DemoState {
         ui.separator();
         ui.text("Display");
 
-        ui.checkbox("Show Offsets", &mut self.viewer.config.show_offsets);
-        ui.checkbox("Show ASCII", &mut self.viewer.config.show_ascii);
-        ui.checkbox("Show Inspector", &mut self.viewer.config.show_inspector);
-        ui.checkbox(
-            "Column Headers",
-            &mut self.viewer.config.show_column_headers,
-        );
-        ui.checkbox("Uppercase Hex", &mut self.viewer.config.uppercase);
-        ui.checkbox("Dim Zeros", &mut self.viewer.config.dim_zeros);
-        ui.checkbox("Category Colors", &mut self.viewer.config.category_colors);
+        let cfg = self.viewer.config_mut();
+        ui.checkbox("Show Offsets", &mut cfg.show_offsets);
+        ui.checkbox("Show ASCII", &mut cfg.show_ascii);
+        ui.checkbox("Show Inspector", &mut cfg.show_inspector);
+        ui.checkbox("Column Headers", &mut cfg.show_column_headers);
+        ui.checkbox("Uppercase Hex", &mut cfg.uppercase);
+        ui.checkbox("Dim Zeros", &mut cfg.dim_zeros);
+        ui.checkbox("Category Colors", &mut cfg.category_colors);
 
         ui.spacing();
         ui.separator();
         ui.text("Mode");
 
-        ui.checkbox("Editable", &mut self.viewer.config.editable);
+        ui.checkbox("Editable", &mut self.viewer.config_mut().editable);
+
+        // ── Auto-refresh demo (uses HexViewer::take_refresh_pending) ─────
+        if ui.checkbox("Auto-refresh (live)", &mut self.auto_refresh) {
+            self.viewer.config_mut().auto_refresh_frames = if self.auto_refresh { 60 } else { 0 };
+            self.refresh_counter = 0;
+        }
+        if self.auto_refresh {
+            let mut interval = self.viewer.config().auto_refresh_frames as i32;
+            ui.set_next_item_width(-1.0);
+            if ui
+                .slider_config("Interval (frames)", 5, 240)
+                .build(&mut interval)
+            {
+                self.viewer.config_mut().auto_refresh_frames = interval.max(1) as u32;
+            }
+            ui.text_disabled(format!(
+                "Tick #{} — byte at 0x90 is rolling",
+                self.refresh_counter
+            ));
+        }
 
         if ui.checkbox("Show Regions", &mut self.show_regions) {
             if self.show_regions {
@@ -338,29 +387,29 @@ impl DemoState {
         if ui.checkbox("Diff Highlight", &mut self.diff_mode) {
             if self.diff_mode {
                 self.viewer.set_reference(&self.reference);
-                self.viewer.config.highlight_changes = true;
+                self.viewer.config_mut().highlight_changes = true;
             } else {
                 self.viewer.clear_reference();
-                self.viewer.config.highlight_changes = false;
+                self.viewer.config_mut().highlight_changes = false;
             }
         }
 
         ui.spacing();
         ui.separator();
         ui.text("Base Address");
-        let mut addr = self.viewer.config.base_address as i64;
+        let mut addr = self.viewer.config().base_address as i64;
         ui.set_next_item_width(-1.0);
         if ui.input_scalar("##base_addr", &mut addr).build() {
-            self.viewer.config.base_address = addr.max(0) as u64;
+            self.viewer.config_mut().base_address = addr.max(0) as u64;
         }
 
         ui.spacing();
         ui.separator();
 
         // Byte category legend
-        if self.viewer.config.category_colors {
+        if self.viewer.config().category_colors {
             ui.text("Byte Categories");
-            let cfg = &self.viewer.config;
+            let cfg = self.viewer.config();
             ui.text_colored(cfg.color_cat_zero, "00 = Zero");
             ui.text_colored(cfg.color_cat_control, "01..1F = Control");
             ui.text_colored(cfg.color_cat_printable, "20..7E = Printable");
@@ -376,7 +425,7 @@ impl DemoState {
                 ui.text_colored(
                     region.color,
                     format!(
-                        "0x{:04X}..{:04X} {}",
+                        "0x{:04X}..0x{:04X} {}",
                         region.offset,
                         region.offset + region.len,
                         region.label,
