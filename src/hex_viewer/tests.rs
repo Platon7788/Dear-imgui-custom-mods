@@ -143,13 +143,25 @@ fn test_search_utf16le_windows_string() {
 fn test_string_encoding_byte_widths() {
     // Pin the wire-byte widths so a future regression can't silently
     // shift the byte count and break consumer pattern math.
-    use super::search::{parse_ascii_pattern, parse_utf16le_pattern, parse_utf8_pattern};
+    use super::search::{parse_ascii_pattern, parse_utf8_pattern, parse_utf16le_pattern};
     assert_eq!(parse_ascii_pattern("AB").len(), 2, "ASCII = 1 byte/char");
-    assert_eq!(parse_utf8_pattern("AB").len(), 2, "UTF-8 ASCII = 1 byte/char");
+    assert_eq!(
+        parse_utf8_pattern("AB").len(),
+        2,
+        "UTF-8 ASCII = 1 byte/char"
+    );
     assert_eq!(parse_utf8_pattern("Я").len(), 2, "UTF-8 Cyrillic = 2 bytes");
-    assert_eq!(parse_utf16le_pattern("AB").len(), 4, "UTF-16LE BMP = 2 bytes/char");
+    assert_eq!(
+        parse_utf16le_pattern("AB").len(),
+        4,
+        "UTF-16LE BMP = 2 bytes/char"
+    );
     // Surrogate pair (𝄞 U+1D11E) → 2 UTF-16 code units = 4 wire bytes.
-    assert_eq!(parse_utf16le_pattern("𝄞").len(), 4, "UTF-16LE surrogate = 4 bytes");
+    assert_eq!(
+        parse_utf16le_pattern("𝄞").len(),
+        4,
+        "UTF-16LE surrogate = 4 bytes"
+    );
 }
 
 #[test]

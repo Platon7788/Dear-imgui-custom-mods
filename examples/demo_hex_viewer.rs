@@ -329,7 +329,12 @@ impl DemoState {
 
         // Search mode (default-encoding picker — Ctrl+F popup itself
         // exposes per-encoding radio buttons including UTF-8 / UTF-16LE).
-        let search_names = ["Hex (with ??)", "ASCII string", "UTF-8 string", "UTF-16LE string"];
+        let search_names = [
+            "Hex (with ??)",
+            "ASCII string",
+            "UTF-8 string",
+            "UTF-16LE string",
+        ];
         ui.set_next_item_width(-1.0);
         if ui.combo_simple_string("Search Mode", &mut self.search_mode_idx, &search_names) {
             self.viewer.config_mut().search_mode = match self.search_mode_idx {

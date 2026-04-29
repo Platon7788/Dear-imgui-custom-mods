@@ -8,7 +8,7 @@
 use super::HexViewer;
 use super::config::{BytesPerRow, HexSearchMode, StringEncoding};
 use super::search::parse_address;
-use crate::utils::popup::{success_button, themed_popup_style};
+use crate::utils::popup::{selected_button, success_button, themed_popup_style};
 
 // Approximate body width used for centring / right-anchoring the
 // goto / search popup buttons. Real popup width is auto-sized by
@@ -35,7 +35,7 @@ const ACTION_EDGE_GAP: f32 = 2.0;
 
 /// Push a tighter set of StyleVar guards over the body of an
 /// already-`themed_popup_style`'d popup. Used by goto / search /
-/// settings to render a denser layout (chec klists, multi-line
+/// settings to render a denser layout (checklists, multi-line
 /// option rows) while still inheriting the popup's base padding /
 /// rounding.
 ///
@@ -96,29 +96,16 @@ fn anchor_next_popup_centred(pos: [f32; 2]) {
     anchor_next_popup_at(pos, [0.5, 0.5]);
 }
 
-/// Render a small button styled as a "pseudo-radio" — if `selected`
-/// is true, the button background is forced to a brighter accent
-/// shade so the active option visually stands out among siblings;
-/// otherwise renders as a normal button. Returns `true` on click.
-///
-/// Used by the search popup's mode + encoding rows to give the user
-/// a clear "this is selected" cue without spending a full Combo
-/// widget on a 2-3 option set.
+/// Pseudo-radio mode pill — auto-fit-width wrapper around the
+/// crate-wide [`crate::utils::popup::selected_button`] helper. Kept
+/// as a local alias so the search-popup body reads
+/// `mode_pill(ui, "ASCII", is_ascii)` instead of the longer
+/// `selected_button(ui, "ASCII", [0.0, 0.0], is_ascii)`. All actual
+/// styling (BLUE accent, ±0.06 hover/active lift) lives in
+/// `utils::popup` — single source of truth shared with
+/// `success_button` / `danger_button`.
 fn mode_pill(ui: &dear_imgui_rs::Ui, label: &str, selected: bool) -> bool {
-    if selected {
-        let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Button, [0.30, 0.50, 0.90, 1.0]);
-        let _h = ui.push_style_color(
-            dear_imgui_rs::StyleColor::ButtonHovered,
-            [0.36, 0.56, 0.96, 1.0],
-        );
-        let _a = ui.push_style_color(
-            dear_imgui_rs::StyleColor::ButtonActive,
-            [0.24, 0.44, 0.84, 1.0],
-        );
-        ui.button(label)
-    } else {
-        ui.button(label)
-    }
+    selected_button(ui, label, [0.0, 0.0], selected)
 }
 
 /// Action-row layout shared by goto / search popups: Cancel pinned
@@ -342,6 +329,11 @@ impl HexViewer {
                 // without leaving the menu.
                 if ui.menu_item("\u{00BB}  Search\tCtrl+F") {
                     self.show_search = true;
+                    // search_focus_pending is also raised by the popup
+                    // body itself when `show_search` is true on the
+                    // open-trigger frame — kept here as belt-and-suspenders
+                    // so the context-menu path doesn't depend on the popup
+                    // body's flag-set order.
                     self.search_focus_pending = true;
                 }
 
@@ -428,14 +420,13 @@ impl HexViewer {
                             ui.same_line();
                         }
                         let is_current = preset.value() == current_bpr;
-                        let label = preset.display_name();
-                        if is_current {
-                            let _c = ui.push_style_color(
-                                dear_imgui_rs::StyleColor::Button,
-                                [0.30, 0.50, 0.90, 1.0],
-                            );
-                            ui.button_with_size(label, bpr_btn_size);
-                        } else if ui.button_with_size(label, bpr_btn_size) {
+                        // Same `selected_button` helper the search-popup
+                        // mode pills use — keeps the active-option BLUE
+                        // accent identical across hex_viewer popups
+                        // (single source of truth in `utils::popup`).
+                        if selected_button(ui, preset.display_name(), bpr_btn_size, is_current)
+                            && !is_current
+                        {
                             self.config.bytes_per_row = *preset;
                         }
                     }

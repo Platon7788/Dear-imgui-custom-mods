@@ -74,7 +74,11 @@ pub(super) fn parse_ascii_pattern(s: &str) -> Vec<PatternByte> {
 /// dispatch stays one-line-per-encoding and so the public name
 /// matches user expectation (`UTF-8 string:` hint).
 pub(super) fn parse_utf8_pattern(s: &str) -> Vec<PatternByte> {
-    s.as_bytes().iter().copied().map(PatternByte::Exact).collect()
+    s.as_bytes()
+        .iter()
+        .copied()
+        .map(PatternByte::Exact)
+        .collect()
 }
 
 /// Encode the string as UTF-16 little-endian wire bytes. Each
@@ -252,9 +256,7 @@ impl HexViewer {
     pub(super) fn do_search(&mut self) {
         self.search_pattern = match self.config.search_mode {
             HexSearchMode::Hex => parse_hex_pattern_masked(&self.search_buf),
-            HexSearchMode::String(encoding) => {
-                parse_string_pattern(&self.search_buf, encoding)
-            }
+            HexSearchMode::String(encoding) => parse_string_pattern(&self.search_buf, encoding),
         };
         if self.search_pattern.is_empty() {
             return;

@@ -88,6 +88,12 @@ pub const GREEN: [f32; 4] = [0.18, 0.52, 0.35, 1.0];
 /// affordances stay visually identical across the app.
 pub const RED: [f32; 4] = [0.70, 0.22, 0.22, 1.0];
 
+/// Semantic blue — "selected" / "active option" state for
+/// pseudo-radio button rows (mode-toggle pills, BPR pickers, etc.).
+/// Reads as a clear "this one is picked" cue without the implication
+/// of confirm (green) or destructive (red).
+pub const BLUE: [f32; 4] = [0.30, 0.50, 0.90, 1.0];
+
 /// Hover / active deltas for the auto-derived button stack. `+0.06`
 /// per channel for hover (slightly brighter), `-0.06` for active
 /// (slightly darker). Channels clamped to `0.0..=1.0` by [`lift`].
@@ -153,6 +159,25 @@ pub fn success_button(ui: &Ui, label: &str, size: [f32; 2]) -> bool {
 /// `size = [0.0, 0.0]` for auto-fit.
 pub fn danger_button(ui: &Ui, label: &str, size: [f32; 2]) -> bool {
     with_button_stack(ui, RED, || button_or_sized(ui, label, size))
+}
+
+/// Pseudo-radio "selected option" pill — when `selected` is true,
+/// pushes the [`BLUE`] semantic colour stack via the same unified
+/// `lift()` derivation as [`success_button`] / [`danger_button`].
+/// When `selected` is false, renders as a plain unstyled button.
+/// Returns `true` on click.
+///
+/// Use for inline mode toggles (Hex / String, ASCII / UTF-8 / UTF-16LE,
+/// bytes-per-row size pickers, etc.) where a full Combo widget would
+/// be overkill for a 2–7 option set.
+///
+/// `size = [0.0, 0.0]` for auto-fit.
+pub fn selected_button(ui: &Ui, label: &str, size: [f32; 2], selected: bool) -> bool {
+    if selected {
+        with_button_stack(ui, BLUE, || button_or_sized(ui, label, size))
+    } else {
+        button_or_sized(ui, label, size)
+    }
 }
 
 #[cfg(test)]

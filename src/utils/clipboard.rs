@@ -6,6 +6,15 @@
 //! VK-fallback code that used to live here was removed — see commit
 //! history before 2026-04-29 for context.
 
+// Module-wide `dead_code` allow because `activate_english_layout` /
+// `restore_keyboard_layout` (lines below the `#[cfg(target_os =
+// "windows")]` gate) become invisible to the linker on non-Windows
+// targets — Rust then warns the windows-only `static` and unsafe FFI
+// bodies are never used. The three functions defined here are all
+// genuinely used (set_clipboard from disasm_view / hex_viewer /
+// virtual_table / force_graph / code_editor; the layout switchers
+// from hex_viewer/input). Tighter item-level allows on the windows
+// statics would be cleaner — left as a follow-up nit.
 #![allow(dead_code)]
 
 /// Copy text to the system clipboard via Dear ImGui's C API.

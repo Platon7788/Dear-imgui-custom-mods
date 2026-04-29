@@ -11,5 +11,7 @@ pub mod text;
 pub mod tooltip;
 
 pub use color::pack_color_f32;
-pub use popup::{button_with_color, danger_button, success_button, themed_popup_style};
+pub use popup::{
+    button_with_color, danger_button, selected_button, success_button, themed_popup_style,
+};
 pub use tooltip::themed_tooltip;
