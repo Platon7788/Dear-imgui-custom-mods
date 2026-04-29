@@ -100,9 +100,72 @@ fn test_search_ascii() {
     let mut v = HexViewer::new("test");
     v.set_data(b"Hello World Hello");
     v.search_buf = "Hello".to_string();
-    v.config.search_mode = HexSearchMode::Ascii;
+    v.config.search_mode = HexSearchMode::String(StringEncoding::Ascii);
     v.do_search();
     assert_eq!(v.search_results, vec![0, 12]);
+}
+
+#[test]
+fn test_search_utf8_cyrillic() {
+    // Cyrillic "Тест" → UTF-8 wire bytes
+    //   Т = D0 A2, е = D0 B5, с = D1 81, т = D1 82
+    // Pattern matches at offsets where the full 8-byte sequence appears.
+    let mut v = HexViewer::new("test");
+    let needle: &[u8] = "Тест".as_bytes(); // 8 bytes
+    let mut data = vec![0u8; 32];
+    data.extend_from_slice(needle);
+    data.extend_from_slice(b"  pad ");
+    data.extend_from_slice(needle);
+    v.set_data(&data);
+    v.search_buf = "Тест".to_string();
+    v.config.search_mode = HexSearchMode::String(StringEncoding::Utf8);
+    v.do_search();
+    assert_eq!(v.search_results, vec![32, 32 + 8 + 6]);
+}
+
+#[test]
+fn test_search_utf16le_windows_string() {
+    // Match "Hi" as UTF-16LE — the canonical Windows wchar_t encoding.
+    //   H = 0x48 0x00, i = 0x69 0x00
+    let mut v = HexViewer::new("test");
+    let mut data = vec![0u8; 8];
+    data.extend_from_slice(&[0x48, 0x00, 0x69, 0x00]); // "Hi"
+    data.extend_from_slice(&[0xFF; 4]);
+    data.extend_from_slice(&[0x48, 0x00, 0x69, 0x00]); // "Hi"
+    v.set_data(&data);
+    v.search_buf = "Hi".to_string();
+    v.config.search_mode = HexSearchMode::String(StringEncoding::Utf16Le);
+    v.do_search();
+    assert_eq!(v.search_results, vec![8, 16]);
+}
+
+#[test]
+fn test_string_encoding_byte_widths() {
+    // Pin the wire-byte widths so a future regression can't silently
+    // shift the byte count and break consumer pattern math.
+    use super::search::{parse_ascii_pattern, parse_utf16le_pattern, parse_utf8_pattern};
+    assert_eq!(parse_ascii_pattern("AB").len(), 2, "ASCII = 1 byte/char");
+    assert_eq!(parse_utf8_pattern("AB").len(), 2, "UTF-8 ASCII = 1 byte/char");
+    assert_eq!(parse_utf8_pattern("Я").len(), 2, "UTF-8 Cyrillic = 2 bytes");
+    assert_eq!(parse_utf16le_pattern("AB").len(), 4, "UTF-16LE BMP = 2 bytes/char");
+    // Surrogate pair (𝄞 U+1D11E) → 2 UTF-16 code units = 4 wire bytes.
+    assert_eq!(parse_utf16le_pattern("𝄞").len(), 4, "UTF-16LE surrogate = 4 bytes");
+}
+
+#[test]
+fn test_utf16le_endianness_pinned() {
+    // Pin LE byte order so a Big-Endian regression (or accidental
+    // u16-as-be cast) stays fixable. ASCII char 'H' (U+0048) =
+    // little-endian bytes `[0x48, 0x00]`, NOT `[0x00, 0x48]`.
+    use super::search::parse_utf16le_pattern;
+    let bytes: Vec<u8> = parse_utf16le_pattern("H")
+        .into_iter()
+        .map(|p| match p {
+            super::search::PatternByte::Exact(b) => b,
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(bytes, vec![0x48, 0x00]);
 }
 
 #[test]

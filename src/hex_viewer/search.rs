@@ -6,7 +6,7 @@
 //! method that mutates `search_*` state.
 
 use super::HexViewer;
-use super::config::{CopyFormat, HexSearchMode};
+use super::config::{CopyFormat, HexSearchMode, StringEncoding};
 
 // ── Selection ────────────────────────────────────────────────────────────────
 
@@ -66,6 +66,44 @@ pub(super) fn parse_hex_pattern_masked(s: &str) -> Vec<PatternByte> {
 /// — matches on wire bytes regardless of multibyte boundaries).
 pub(super) fn parse_ascii_pattern(s: &str) -> Vec<PatternByte> {
     s.bytes().map(PatternByte::Exact).collect()
+}
+
+/// Encode the string as UTF-8 wire bytes. Identical to
+/// [`parse_ascii_pattern`] in this implementation since Rust `&str`
+/// is already UTF-8 — kept as a separate function so the parser
+/// dispatch stays one-line-per-encoding and so the public name
+/// matches user expectation (`UTF-8 string:` hint).
+pub(super) fn parse_utf8_pattern(s: &str) -> Vec<PatternByte> {
+    s.as_bytes().iter().copied().map(PatternByte::Exact).collect()
+}
+
+/// Encode the string as UTF-16 little-endian wire bytes. Each
+/// scalar value becomes 2 bytes (BMP) or 4 bytes (supplementary
+/// plane via surrogate pair). `"Hi"` → `48 00 69 00`,
+/// `"©"` (U+00A9) → `A9 00`, `"𝄞"` (U+1D11E, surrogate pair) →
+/// `34 D8 1E DD`.
+///
+/// Use for matching Windows / .NET / PE-resource strings, which
+/// are stored as `wchar_t` (= UTF-16LE on Windows).
+pub(super) fn parse_utf16le_pattern(s: &str) -> Vec<PatternByte> {
+    let mut bytes = Vec::with_capacity(s.len() * 2);
+    for code_unit in s.encode_utf16() {
+        let [lo, hi] = code_unit.to_le_bytes();
+        bytes.push(PatternByte::Exact(lo));
+        bytes.push(PatternByte::Exact(hi));
+    }
+    bytes
+}
+
+/// Dispatch helper: parse `query` according to `encoding`. Used by
+/// [`HexViewer::do_search`] so the encoding-to-bytes mapping has a
+/// single canonical site.
+pub(super) fn parse_string_pattern(query: &str, encoding: StringEncoding) -> Vec<PatternByte> {
+    match encoding {
+        StringEncoding::Ascii => parse_ascii_pattern(query),
+        StringEncoding::Utf8 => parse_utf8_pattern(query),
+        StringEncoding::Utf16Le => parse_utf16le_pattern(query),
+    }
 }
 
 /// Naive O(N·M) scan with wildcard support. Sufficient for interactive
@@ -214,7 +252,9 @@ impl HexViewer {
     pub(super) fn do_search(&mut self) {
         self.search_pattern = match self.config.search_mode {
             HexSearchMode::Hex => parse_hex_pattern_masked(&self.search_buf),
-            HexSearchMode::Ascii => parse_ascii_pattern(&self.search_buf),
+            HexSearchMode::String(encoding) => {
+                parse_string_pattern(&self.search_buf, encoding)
+            }
         };
         if self.search_pattern.is_empty() {
             return;

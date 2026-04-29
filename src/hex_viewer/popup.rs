@@ -6,7 +6,7 @@
 //! an inline overlay below the buffer, not a floating popup.
 
 use super::HexViewer;
-use super::config::{BytesPerRow, HexSearchMode};
+use super::config::{BytesPerRow, HexSearchMode, StringEncoding};
 use super::search::parse_address;
 use crate::utils::popup::{success_button, themed_popup_style};
 
@@ -73,6 +73,34 @@ fn anchor_next_popup(pos: [f32; 2]) {
 /// at the visual middle of the host viewer.
 fn anchor_next_popup_centred(pos: [f32; 2]) {
     anchor_next_popup_at(pos, [0.5, 0.5]);
+}
+
+/// Render a small button styled as a "pseudo-radio" — if `selected`
+/// is true, the button background is forced to a brighter accent
+/// shade so the active option visually stands out among siblings;
+/// otherwise renders as a normal button. Returns `true` on click.
+///
+/// Used by the search popup's mode + encoding rows to give the user
+/// a clear "this is selected" cue without spending a full Combo
+/// widget on a 2-3 option set.
+fn mode_pill(ui: &dear_imgui_rs::Ui, label: &str, selected: bool) -> bool {
+    if selected {
+        let _c = ui.push_style_color(
+            dear_imgui_rs::StyleColor::Button,
+            [0.30, 0.50, 0.90, 1.0],
+        );
+        let _h = ui.push_style_color(
+            dear_imgui_rs::StyleColor::ButtonHovered,
+            [0.36, 0.56, 0.96, 1.0],
+        );
+        let _a = ui.push_style_color(
+            dear_imgui_rs::StyleColor::ButtonActive,
+            [0.24, 0.44, 0.84, 1.0],
+        );
+        ui.button(label)
+    } else {
+        ui.button(label)
+    }
 }
 
 /// Action-row layout shared by goto / search popups: Cancel pinned
@@ -165,18 +193,50 @@ impl HexViewer {
 
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.search_popup_id) {
-                let mode_name = self.config.search_mode.display_name();
-                if ui.button(mode_name) {
-                    self.config.search_mode = match self.config.search_mode {
-                        HexSearchMode::Hex => HexSearchMode::Ascii,
-                        HexSearchMode::Ascii => HexSearchMode::Hex,
-                    };
+                // ── Mode row: Hex | String ────────────────────
+                // Two pseudo-radio buttons (highlighted-on-active).
+                // Selecting `String` preserves the previously chosen
+                // encoding (defaults to `Ascii` first time).
+                let is_hex = matches!(self.config.search_mode, HexSearchMode::Hex);
+                let is_string = self.config.search_mode.is_string();
+
+                if mode_pill(ui, "Hex", is_hex) {
+                    self.config.search_mode = HexSearchMode::Hex;
                 }
                 ui.same_line();
+                if mode_pill(ui, "String", is_string) {
+                    // Keep prior encoding choice if we were already
+                    // in String mode; otherwise default to ASCII.
+                    let encoding = match self.config.search_mode {
+                        HexSearchMode::String(e) => e,
+                        HexSearchMode::Hex => StringEncoding::Ascii,
+                    };
+                    self.config.search_mode = HexSearchMode::String(encoding);
+                }
 
+                // ── Encoding row (visible only in String mode) ─
+                if let HexSearchMode::String(current) = self.config.search_mode {
+                    ui.spacing();
+                    ui.text("Encoding:");
+                    ui.same_line();
+                    for (i, &enc) in StringEncoding::ALL.iter().enumerate() {
+                        if i > 0 {
+                            ui.same_line();
+                        }
+                        if mode_pill(ui, enc.display_name(), enc == current) {
+                            self.config.search_mode = HexSearchMode::String(enc);
+                        }
+                    }
+                }
+
+                ui.spacing();
                 let hint = match self.config.search_mode {
-                    HexSearchMode::Hex => "Hex (e.g. 4D 5A ?? 00):",
-                    HexSearchMode::Ascii => "ASCII string:",
+                    HexSearchMode::Hex => "Hex pattern (e.g. 4D 5A ?? 00):",
+                    HexSearchMode::String(StringEncoding::Ascii) => "ASCII string:",
+                    HexSearchMode::String(StringEncoding::Utf8) => "UTF-8 string:",
+                    HexSearchMode::String(StringEncoding::Utf16Le) => {
+                        "UTF-16LE string (e.g. Windows wchar_t):"
+                    }
                 };
                 ui.text(hint);
                 ui.spacing();

@@ -12,6 +12,7 @@
 
 use dear_imgui_custom_mod::hex_viewer::{
     ByteGrouping, BytesPerRow, ColorRegion, CopyFormat, Endianness, HexSearchMode, HexViewer,
+    StringEncoding,
 };
 use dear_imgui_rs::{Condition, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
@@ -326,13 +327,16 @@ impl DemoState {
             };
         }
 
-        // Search mode
-        let search_names = ["Hex (with ??)", "ASCII"];
+        // Search mode (default-encoding picker — Ctrl+F popup itself
+        // exposes per-encoding radio buttons including UTF-8 / UTF-16LE).
+        let search_names = ["Hex (with ??)", "ASCII string", "UTF-8 string", "UTF-16LE string"];
         ui.set_next_item_width(-1.0);
         if ui.combo_simple_string("Search Mode", &mut self.search_mode_idx, &search_names) {
             self.viewer.config_mut().search_mode = match self.search_mode_idx {
                 0 => HexSearchMode::Hex,
-                1 => HexSearchMode::Ascii,
+                1 => HexSearchMode::String(StringEncoding::Ascii),
+                2 => HexSearchMode::String(StringEncoding::Utf8),
+                3 => HexSearchMode::String(StringEncoding::Utf16Le),
                 _ => HexSearchMode::Hex,
             };
         }

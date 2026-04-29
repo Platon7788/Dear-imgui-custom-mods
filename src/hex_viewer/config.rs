@@ -301,22 +301,77 @@ impl AddressWidth {
     }
 }
 
+/// Text encoding used by [`HexSearchMode::String`] when converting the
+/// user-typed search query to bytes.
+///
+/// - [`Self::Ascii`] — single byte per char, treats the input as raw
+///   `s.bytes()`. Latin-1 subset only; non-ASCII chars become their
+///   leading UTF-8 byte (good for matching wire-level ASCII text in
+///   binary buffers).
+/// - [`Self::Utf8`] — full Unicode, encoded as UTF-8 wire bytes via
+///   `s.as_bytes()`. Use for Cyrillic / Asian / emoji strings stored
+///   as UTF-8 (Linux file content, modern web protocols).
+/// - [`Self::Utf16Le`] — 2 bytes per code unit, little-endian. The
+///   canonical Windows string encoding: PE / .NET strings, Win32
+///   `wchar_t`, registry values, MSGS, MUI resources. `"Hello"` →
+///   `48 00 65 00 6C 00 6C 00 6F 00`.
+///
+/// Surrogate-pair characters (U+10000+) are encoded as two UTF-16
+/// code units (4 bytes total) — `String::encode_utf16` handles that
+/// transparently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StringEncoding {
+    /// 1 byte per char, ASCII / Latin-1 wire bytes.
+    #[default]
+    Ascii,
+    /// Full UTF-8 wire bytes (Cyrillic / Asian text stored as UTF-8).
+    Utf8,
+    /// 2 bytes per UTF-16 code unit, little-endian (Windows
+    /// `wchar_t` / `LPCWSTR` / .NET strings).
+    Utf16Le,
+}
+
+impl StringEncoding {
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Ascii => "ASCII",
+            Self::Utf8 => "UTF-8",
+            Self::Utf16Le => "UTF-16LE",
+        }
+    }
+
+    /// All variants in display order — for radio-button rendering.
+    pub const ALL: &'static [StringEncoding] = &[
+        StringEncoding::Ascii,
+        StringEncoding::Utf8,
+        StringEncoding::Utf16Le,
+    ];
+}
+
 /// Search mode for the hex viewer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HexSearchMode {
     /// Hex pattern with optional `??` wildcards (e.g. `4D 5A ?? 00`).
     #[default]
     Hex,
-    /// ASCII string search.
-    Ascii,
+    /// String search — input is text, encoded into wire bytes via the
+    /// chosen [`StringEncoding`] before pattern matching.
+    String(StringEncoding),
 }
 
 impl HexSearchMode {
     pub fn display_name(self) -> &'static str {
         match self {
             Self::Hex => "Hex",
-            Self::Ascii => "ASCII",
+            Self::String(_) => "String",
         }
+    }
+
+    /// Whether this mode is the `String` variant. Convenience for UI
+    /// code that needs to render an encoding sub-selector when a
+    /// string mode is active.
+    pub fn is_string(self) -> bool {
+        matches!(self, Self::String(_))
     }
 }
 

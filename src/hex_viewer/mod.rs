@@ -39,8 +39,8 @@ mod tests;
 
 pub use config::{
     AddressWidth, ByteCategory, ByteGrouping, BytesPerRow, ColorRegion, CopyFormat, Endianness,
-    HexDataProvider, HexSearchMode, HexViewerConfig, NavHistory, UndoEntry, UndoStack,
-    VecDataProvider,
+    HexDataProvider, HexSearchMode, HexViewerConfig, NavHistory, StringEncoding, UndoEntry,
+    UndoStack, VecDataProvider,
 };
 pub use input::EditColumn;
 pub use search::{PatternByte, Selection};
