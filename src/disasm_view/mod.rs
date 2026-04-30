@@ -246,6 +246,22 @@ pub struct DisasmView {
     /// double-click hit-testing extends to the full visible width)
     /// and by the comment edit-cell renderer.
     pub(super) frame_comment_w: std::cell::Cell<f32>,
+
+    /// Bookmark address set — UI navigation aid. Up to
+    /// [`Self::MAX_BOOKMARKS`] addresses (BTreeSet keeps them sorted
+    /// for stable host-side save/restore). Bookmarks are pure
+    /// view-state; they are not attached to running-process concepts
+    /// like breakpoints. Persisting between sessions is the host's
+    /// job — read [`Self::bookmarks`] on shutdown, push back via
+    /// [`Self::add_bookmark`] on startup.
+    bookmarks: BTreeSet<u64>,
+}
+
+impl DisasmView {
+    /// Maximum number of bookmarks the view will hold. Calls to
+    /// [`Self::add_bookmark`] / [`Self::toggle_bookmark`] silently
+    /// no-op (returning `false`) once the cap is reached.
+    pub const MAX_BOOKMARKS: usize = 64;
 }
 
 impl DisasmView {
@@ -297,6 +313,7 @@ impl DisasmView {
             popup_open_pos: [0.0, 0.0],
             frame_comment_x: std::cell::Cell::new(0.0),
             frame_comment_w: std::cell::Cell::new(0.0),
+            bookmarks: BTreeSet::new(),
         }
     }
 
@@ -597,6 +614,78 @@ impl DisasmView {
     pub fn cursor_address(&self, provider: &dyn DisasmDataProvider) -> Option<u64> {
         let i = self.cursor_idx?;
         provider.instruction(i).map(|instr| instr.address())
+    }
+
+    // ── Bookmarks (UI navigation aid, view-state) ───────────────────
+    //
+    // Bookmarks let the user mark "interesting" addresses for quick
+    // recall — the gutter paints a coloured ring on bookmarked rows
+    // (`colors.bookmark`), the right-click menu offers an
+    // add/remove-toggle entry, and `Ctrl+B` toggles the bookmark on
+    // the cursor row. Capacity is fixed at [`Self::MAX_BOOKMARKS`]
+    // (64); calls past the cap silently no-op so the host can wire
+    // a button without managing the limit.
+    //
+    // Bookmarks are *view-state*, not provider-state — they are an
+    // editor-style navigation aid, not tied to a running-process
+    // concept like a breakpoint. Hosts that need cross-session
+    // persistence read the set via [`Self::bookmarks`] on shutdown
+    // and replay through [`Self::add_bookmark`] on startup.
+
+    /// Whether `addr` is currently bookmarked.
+    pub fn is_bookmarked(&self, addr: u64) -> bool {
+        self.bookmarks.contains(&addr)
+    }
+
+    /// Number of bookmarks currently set (`<=` [`Self::MAX_BOOKMARKS`]).
+    pub fn bookmark_count(&self) -> usize {
+        self.bookmarks.len()
+    }
+
+    /// Read-only access to the full bookmark set, sorted by address.
+    /// Use this for host-side save / export.
+    pub fn bookmarks(&self) -> &BTreeSet<u64> {
+        &self.bookmarks
+    }
+
+    /// Add `addr` to the bookmark set. Returns `true` when the
+    /// address is bookmarked after the call (i.e. the operation
+    /// succeeded **or** the address was already bookmarked); `false`
+    /// only when the [`Self::MAX_BOOKMARKS`] cap is reached and
+    /// `addr` wasn't already in the set.
+    pub fn add_bookmark(&mut self, addr: u64) -> bool {
+        if self.bookmarks.contains(&addr) {
+            return true;
+        }
+        if self.bookmarks.len() >= Self::MAX_BOOKMARKS {
+            return false;
+        }
+        self.bookmarks.insert(addr);
+        true
+    }
+
+    /// Remove `addr` from the bookmark set. Returns `true` when an
+    /// entry was removed, `false` when the address wasn't in the set.
+    pub fn remove_bookmark(&mut self, addr: u64) -> bool {
+        self.bookmarks.remove(&addr)
+    }
+
+    /// Toggle bookmark state on `addr`. Returns the **new** state
+    /// (`true` = bookmarked after the call). When transitioning
+    /// from off → on and the [`Self::MAX_BOOKMARKS`] cap is reached,
+    /// returns `false` and leaves the set unchanged.
+    pub fn toggle_bookmark(&mut self, addr: u64) -> bool {
+        if self.bookmarks.contains(&addr) {
+            self.bookmarks.remove(&addr);
+            false
+        } else {
+            self.add_bookmark(addr)
+        }
+    }
+
+    /// Drop every bookmark.
+    pub fn clear_bookmarks(&mut self) {
+        self.bookmarks.clear();
     }
 
     /// Scroll to and select the instruction at `addr`.
@@ -1437,6 +1526,104 @@ mod tests {
 
         view.select(3);
         assert_eq!(view.cursor_address(&p), Some(0x401008));
+    }
+
+    // ── Bookmarks ────────────────────────────────────────────────────
+
+    #[test]
+    fn bookmark_default_empty() {
+        let view = DisasmView::new("t");
+        assert_eq!(view.bookmark_count(), 0);
+        assert!(view.bookmarks().is_empty());
+        assert!(!view.is_bookmarked(0x401000));
+    }
+
+    #[test]
+    fn add_bookmark_inserts_and_is_idempotent() {
+        let mut view = DisasmView::new("t");
+        assert!(view.add_bookmark(0x401000));
+        assert!(view.is_bookmarked(0x401000));
+        assert_eq!(view.bookmark_count(), 1);
+        // Adding the same address again still returns true (idempotent)
+        // and doesn't duplicate.
+        assert!(view.add_bookmark(0x401000));
+        assert_eq!(view.bookmark_count(), 1);
+    }
+
+    #[test]
+    fn add_bookmark_capped_at_max() {
+        let mut view = DisasmView::new("t");
+        for i in 0..DisasmView::MAX_BOOKMARKS as u64 {
+            assert!(view.add_bookmark(0x400000 + i));
+        }
+        assert_eq!(view.bookmark_count(), DisasmView::MAX_BOOKMARKS);
+        // The 65th unique address must fail without mutating the set.
+        assert!(!view.add_bookmark(0x4FFFFF));
+        assert_eq!(view.bookmark_count(), DisasmView::MAX_BOOKMARKS);
+        assert!(!view.is_bookmarked(0x4FFFFF));
+    }
+
+    #[test]
+    fn remove_bookmark_returns_true_when_present() {
+        let mut view = DisasmView::new("t");
+        view.add_bookmark(0x401000);
+        assert!(view.remove_bookmark(0x401000));
+        assert!(!view.is_bookmarked(0x401000));
+        // Subsequent removal of the same address returns false.
+        assert!(!view.remove_bookmark(0x401000));
+    }
+
+    #[test]
+    fn toggle_bookmark_round_trip() {
+        let mut view = DisasmView::new("t");
+        // off → on
+        assert!(view.toggle_bookmark(0x401000));
+        assert!(view.is_bookmarked(0x401000));
+        // on → off
+        assert!(!view.toggle_bookmark(0x401000));
+        assert!(!view.is_bookmarked(0x401000));
+    }
+
+    #[test]
+    fn toggle_bookmark_at_cap_returns_false_for_new_address() {
+        let mut view = DisasmView::new("t");
+        for i in 0..DisasmView::MAX_BOOKMARKS as u64 {
+            view.add_bookmark(0x400000 + i);
+        }
+        // New address at cap → toggle on must fail.
+        assert!(!view.toggle_bookmark(0x4FFFFF));
+        assert!(!view.is_bookmarked(0x4FFFFF));
+        // Existing address must still toggle off correctly.
+        assert!(!view.toggle_bookmark(0x400000));
+        assert!(!view.is_bookmarked(0x400000));
+        assert_eq!(view.bookmark_count(), DisasmView::MAX_BOOKMARKS - 1);
+    }
+
+    #[test]
+    fn clear_bookmarks_empties_set() {
+        let mut view = DisasmView::new("t");
+        view.add_bookmark(0x401000);
+        view.add_bookmark(0x401004);
+        view.add_bookmark(0x401010);
+        assert_eq!(view.bookmark_count(), 3);
+        view.clear_bookmarks();
+        assert_eq!(view.bookmark_count(), 0);
+        assert!(view.bookmarks().is_empty());
+    }
+
+    #[test]
+    fn bookmarks_set_is_sorted_for_host_iteration() {
+        // Pin the BTreeSet ordering — hosts that round-trip the
+        // bookmark set through serde / config files want a stable
+        // ascending-address order. Insertion order is intentionally
+        // randomised here.
+        let mut view = DisasmView::new("t");
+        view.add_bookmark(0x401010);
+        view.add_bookmark(0x401000);
+        view.add_bookmark(0x40100F);
+        view.add_bookmark(0x401004);
+        let collected: Vec<u64> = view.bookmarks().iter().copied().collect();
+        assert_eq!(collected, vec![0x401000, 0x401004, 0x40100F, 0x401010]);
     }
 
     #[test]

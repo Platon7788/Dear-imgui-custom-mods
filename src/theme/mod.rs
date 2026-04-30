@@ -797,6 +797,10 @@ mod tests {
                 ]
             };
             assert_eq!(tabs.strip_bg, to_u8(nav.bg), "{theme:?}: strip_bg");
+            assert_eq!(
+                tabs.content_bg, tabs.strip_bg,
+                "{theme:?}: content_bg must mirror strip_bg by default",
+            );
             assert_eq!(tabs.tab_hover, to_u8(nav.btn_hover), "{theme:?}: tab_hover");
             assert_eq!(tabs.text, to_u8(nav.icon_active), "{theme:?}: text");
             assert_eq!(

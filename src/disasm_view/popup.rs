@@ -224,6 +224,23 @@ impl DisasmView {
                     ui.close_current_popup();
                 }
 
+                // ── Toggle Bookmark (`\u{25CB}` outline ring —
+                //    bookmark visual). State-aware label: "Add to
+                //    bookmarks" when not yet marked, "Remove from
+                //    bookmarks" otherwise. Shortcut Ctrl+B.
+                let bookmarked = instr_addr.is_some_and(|a| self.is_bookmarked(a));
+                let bookmark_label = if bookmarked {
+                    "\u{25CB}  Remove from bookmarks\tCtrl+B"
+                } else {
+                    "\u{25CB}  Add to bookmarks\tCtrl+B"
+                };
+                if ui.menu_item(bookmark_label) {
+                    if let Some(addr) = instr_addr {
+                        self.toggle_bookmark(addr);
+                    }
+                    ui.close_current_popup();
+                }
+
                 ui.separator();
 
                 // ── Settings (`…` ellipsis — universal "more")
@@ -262,6 +279,7 @@ impl DisasmView {
                     ui.checkbox("Show comments", &mut self.config.show_comments);
                     ui.checkbox("Show branch arrows", &mut self.config.show_arrows);
                     ui.checkbox("Show breakpoints", &mut self.config.show_breakpoints);
+                    ui.checkbox("Show bookmarks", &mut self.config.show_bookmarks);
                     ui.checkbox("Show block tints", &mut self.config.show_block_tints);
                     ui.checkbox("Show header", &mut self.config.show_header);
                     ui.checkbox(

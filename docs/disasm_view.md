@@ -122,6 +122,43 @@ impl DisasmDataProvider for IcedDecoder {
 | `select_function(provider)` | Select cursor-row → function-end inclusive (`Ctrl+L`) |
 | `follow_at_cursor(provider) -> bool` | Follow `branch_target()` (call/jmp/jcc), or scan operand for resolvable address. Lazy-decodes through `provider.decode_range`. Returns `false` when nothing followable — host can fall through to a different action. (`Enter` / `Space` / dblclick on Instruction column.) |
 
+### Bookmarks (UI navigation aid, view-state)
+
+Up to **64 addresses** can be bookmarked for quick navigation. Bookmarks
+are pure view-state — they're an editor-style aid, not tied to
+runtime-debugger concepts like breakpoints. Hosts that want
+cross-session persistence read the set on shutdown and replay it at
+startup.
+
+| Method | Description |
+|--------|-------------|
+| `is_bookmarked(addr) -> bool` | Whether `addr` is currently bookmarked |
+| `add_bookmark(addr) -> bool` | Insert; idempotent. Returns `false` only when the 64-cap is hit *and* `addr` wasn't already in the set. |
+| `remove_bookmark(addr) -> bool` | Returns `true` if an entry was removed |
+| `toggle_bookmark(addr) -> bool` | Flip state; returns the **new** state |
+| `bookmarks() -> &BTreeSet<u64>` | Read-only access — sorted ascending, suitable for save/export |
+| `bookmark_count() -> usize` | `<=` `MAX_BOOKMARKS` |
+| `clear_bookmarks()` | Drop every bookmark |
+| `MAX_BOOKMARKS` (assoc const) | `64` |
+
+Visual: bookmark rows render an outline ring in the breakpoint gutter
+(`colors.bookmark`, default `theme.accent()` family). Coexists with
+breakpoint dot — both can be drawn on the same row. Toggle via
+right-click context menu (label flips to "Add" / "Remove" depending on
+state) or `Ctrl+B` on the cursor row. Disable rendering globally with
+`config.show_bookmarks = false`.
+
+```rust
+// Host-side persistence example:
+let saved: Vec<u64> = view.bookmarks().iter().copied().collect();
+// … write `saved` to config file …
+
+// On startup:
+for addr in saved_from_config {
+    view.add_bookmark(addr);
+}
+```
+
 ### Host-toolbar convenience helpers
 
 These let a host implement a Top / Bottom / Current IP / Breakpoint
@@ -164,6 +201,7 @@ provider state `is_current()` / `has_breakpoint()` reports).
 | `Ctrl+F` | Open byte-search popup (wildcard hex pattern, e.g. `4D 5A ?? 00 89`) |
 | `F3` / `Shift+F3` | Step to next / previous byte-search match |
 | `F9` | Toggle breakpoint at cursor |
+| `Ctrl+B` | Toggle bookmark at cursor (up to 64 bookmarks) |
 | `Ctrl+Up` / `Ctrl+Down` | Jump to function start / end |
 | `Ctrl+L` | Select cursor → function end |
 | `Ctrl+C` | Copy selected instruction(s) |
@@ -285,6 +323,7 @@ cfg.show_bytes = true;
 cfg.show_comments = true;
 cfg.show_arrows = true;
 cfg.show_breakpoints = true;
+cfg.show_bookmarks = true;           // outline-ring marker in the gutter
 cfg.show_block_tints = false;        // disabled by default — use theme tints sparingly
 cfg.show_column_dividers = true;     // vertical lines between Address / Bytes / Instruction / Comment
 cfg.show_header = true;

@@ -583,9 +583,20 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
             // user widgets from sitting flush against the strip /
             // outer-window edges, while staying invisible enough not
             // to read as a margin.
+            //
+            // The child's `ChildBg` is driven from `colors.content_bg`
+            // (default = `strip_bg`), so the padding inherits the
+            // configured background hue. Hosts that want a contrasting
+            // content surface (e.g. white-on-dark editor on a dark
+            // chrome) just set `tabs.config.colors.content_bg = [...]`
+            // — the padding inset is painted in the same colour.
             let _wp = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding(
                 pc.config.content_padding,
             ));
+            let _bg = ui.push_style_color(
+                dear_imgui_rs::StyleColor::ChildBg,
+                rgba(pc.config.colors.content_bg, 1.0),
+            );
             ui.child_window("##tab_content")
                 .size([0.0, 0.0])
                 .border(false)

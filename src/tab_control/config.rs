@@ -174,6 +174,15 @@ pub struct TabColors {
     pub close_hover: [u8; 3],
     /// Background of the entire tab strip (behind tabs and side buttons).
     pub strip_bg: [u8; 3],
+    /// Background of the active tab's content area — the borderless
+    /// child-window the strip's `render_content()` runs inside when
+    /// [`TabControlConfig::content_padding_enabled`] is `true`.
+    /// Default mirrors [`Self::strip_bg`] so the content surface sits
+    /// in the same plane as the strip and the 1-px padding inset
+    /// reads as invisible breathing space. Set to a contrasting hue
+    /// when the host wants the content area to read as a distinct
+    /// surface (e.g. white-on-dark editor on a dark chrome).
+    pub content_bg: [u8; 3],
     /// Color of the bottom-of-strip separator line and other thin dividers.
     pub separator: [u8; 3],
     pub status_active: [u8; 3],
@@ -195,6 +204,7 @@ impl Default for TabColors {
             text_muted: [0x90, 0x98, 0xa6],
             close_hover: [0xe0, 0x60, 0x60],
             strip_bg: [0x2a, 0x2e, 0x37],
+            content_bg: [0x2a, 0x2e, 0x37], // matches strip_bg
             separator: [0x3f, 0x46, 0x54],
             status_active: [0x5f, 0xb8, 0x70],
             status_inactive: [0x8a, 0x92, 0xa1],
@@ -248,6 +258,7 @@ impl TabColors {
             text_muted: to_u8(nav.icon_default),
             close_hover: to_u8(sb.error),
             strip_bg: to_u8(nav.bg),
+            content_bg: to_u8(nav.bg), // mirrors strip_bg per default contract
             separator: to_u8(nav.separator),
             status_active: to_u8(sb.success),
             status_inactive: to_u8(sb.text_dim),

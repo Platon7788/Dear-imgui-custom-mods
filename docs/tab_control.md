@@ -245,6 +245,19 @@ tc.config.content_padding_enabled = false;
 
 Stacks cleanly with `external_content: true` — disable both if your host renders content outside `tc.render(ui)` and applies its own padding.
 
+### Content background color
+
+The borderless child-window's `ChildBg` is driven from `colors.content_bg`. Default `content_bg == strip_bg` (= `nav.bg` for any themed palette), so the content surface sits in the same plane as the strip and the 1-px padding inset reads as invisible breathing space — **default visual layout unchanged**.
+
+Hosts who want a contrasting content surface (e.g. a white-on-dark editor inside a dark chrome) override the single field — the padding inset is painted in the same color:
+
+```rust
+// Distinct content surface — strip stays nav.bg, content goes white.
+tc.config.colors.content_bg = [0xFC, 0xFC, 0xFA];
+```
+
+Pin the contract: `Theme::tab_colors()` keeps `content_bg == strip_bg` for every built-in theme so a theme switch never desyncs the surfaces (see `theme::tests::tab_colors_track_nav_and_statusbar`).
+
 ## Theme integration
 
 `TabControl` plugs into the crate-wide `Theme` system via the

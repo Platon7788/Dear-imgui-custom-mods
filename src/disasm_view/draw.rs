@@ -255,6 +255,23 @@ impl DisasmView {
                 let ty = y + (lh - text_h) * 0.5;
                 draw_list.add_text([tx, ty], col32(bp_color), &label);
             }
+            // ── Bookmark ring marker (overlay; coexists with BP) ──
+            // Outline-only circle in the same gutter cell so the row
+            // visually carries both states when applicable. Centered
+            // horizontally inside `cols.margin`, sized off the line
+            // height (matches the breakpoint dot scale used in
+            // `code_editor`).
+            if cfg.show_bookmarks && self.is_bookmarked(instr.address()) {
+                let cx = x + cols.margin * 0.5;
+                let cy = y + lh * 0.5;
+                let radius = (lh * 0.30).min(cols.margin * 0.40);
+                draw_list
+                    .add_circle([cx, cy], radius, col32(colors.bookmark))
+                    .filled(false)
+                    .thickness(1.4)
+                    .num_segments(20)
+                    .build();
+            }
             x += cols.margin;
         }
 

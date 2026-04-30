@@ -531,6 +531,12 @@ pub struct DisasmViewColors {
     /// visually so the three highlights never read as the same
     /// state.
     pub search_match_bg: [f32; 4],
+    /// Bookmark ring marker drawn in the breakpoint gutter for any
+    /// row whose address is in [`crate::disasm_view::DisasmView::bookmarks`].
+    /// Default: `accent` family — reads as a "navigation marker"
+    /// distinct from the breakpoint hue (red/danger) and the
+    /// current-line fill (warning/amber).
+    pub bookmark: [f32; 4],
     /// Column header / separator color.
     pub header: [f32; 4],
     /// Separator line between columns.
@@ -682,6 +688,10 @@ impl DisasmViewColors {
             // accent (selection) so the three row states never
             // collide visually.
             search_match_bg: with_a(t.success, 0.32),
+            // Bookmark ring — accent family so the marker reads as
+            // a "navigation aid" hue, distinct from breakpoint
+            // (danger / red) and current-line (warning / amber).
+            bookmark: t.accent,
             // Header row labels ("Address", "Bytes", "Instruction",
             // "Comment") — pinned to `fg` (full-strength text) so
             // they read as bright white in dark themes and bold dark

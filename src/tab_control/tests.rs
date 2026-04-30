@@ -426,6 +426,18 @@ fn content_padding_defaults_are_one_pixel_inset_enabled() {
     assert_eq!(cfg.content_padding, [1.0, 1.0]);
 }
 
+#[test]
+fn content_bg_default_mirrors_strip_bg() {
+    // Pin the contract: by default the active tab's content area
+    // sits on the same surface as the strip — content_bg == strip_bg
+    // so the 1-px padding inset reads as invisible breathing space.
+    // Hosts who want a contrasting content surface override this
+    // single field; theme accessor preserves the same invariant
+    // (both sides come from `nav.bg`).
+    let palette = TabColors::default();
+    assert_eq!(palette.content_bg, palette.strip_bg);
+}
+
 // ─── enforce_pinned_partition stability ────────────────────────────────────
 
 #[test]

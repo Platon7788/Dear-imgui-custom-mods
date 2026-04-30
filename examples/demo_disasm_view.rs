@@ -358,6 +358,12 @@ impl DemoState {
         let mut view = DisasmView::new("##disasm_demo");
         view.select(0);
 
+        // Pre-populate two bookmarks so the gutter ring marker is
+        // visible at startup. Showcases `add_bookmark()` plus the
+        // ring/dot coexistence on row 16 (which also has BP #2).
+        view.add_bookmark(0x0040_1014); // je null-check
+        view.add_bookmark(0x0040_1033); // call log_warning (also BP #2)
+
         Self {
             view,
             provider,
@@ -502,11 +508,17 @@ impl DemoState {
         ui.text_colored(c.operand_string, "String");
 
         ui.spacing();
+        ui.text("Gutter Markers");
+        ui.text_colored(c.breakpoint, "\u{25CF}  Breakpoint (filled)");
+        ui.text_colored(c.bookmark, "\u{25CB}  Bookmark (ring)");
+
+        ui.spacing();
         ui.separator();
         ui.text_disabled("Up/Down: Navigate");
         ui.text_disabled("Enter: Follow branch");
         ui.text_disabled("G: Goto address");
         ui.text_disabled("F9: Toggle breakpoint");
+        ui.text_disabled("Ctrl+B: Toggle bookmark");
         ui.text_disabled("Ctrl+C: Copy");
         ui.text_disabled("Alt+</>: Nav history");
         ui.text_disabled("Right-click: Context menu");

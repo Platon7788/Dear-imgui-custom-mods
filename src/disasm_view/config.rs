@@ -647,6 +647,11 @@ pub struct DisasmViewConfig {
     pub show_arrows: bool,
     /// Show breakpoint markers in margin.
     pub show_breakpoints: bool,
+    /// Show bookmark ring markers in the margin gutter for any row whose
+    /// address is in [`crate::disasm_view::DisasmView::bookmarks`].
+    /// Default `true`. Bookmarks coexist with breakpoints — both can be
+    /// drawn on the same row (filled BP dot + outline ring overlay).
+    pub show_bookmarks: bool,
     /// Show alternating per-block background tinting (semantic hues
     /// at low alpha, rotated by `block_index`). Default **`false`**
     /// — the tint reads as visual noise during normal browsing /
@@ -696,6 +701,7 @@ impl Default for DisasmViewConfig {
             show_comments: true,
             show_arrows: true,
             show_breakpoints: true,
+            show_bookmarks: true,
             show_block_tints: false,
             show_header: true,
             show_column_dividers: true,

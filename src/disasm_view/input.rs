@@ -186,6 +186,17 @@ impl DisasmView {
             provider.toggle_breakpoint(instr.address());
         }
 
+        // Ctrl+B → toggle bookmark on the cursor row. Editor-style
+        // shortcut (VS Code / JetBrains / Sublime). Silently no-ops
+        // at the 64-bookmark cap when adding; removal always works.
+        if ctrl
+            && ui.is_key_pressed(Key::B)
+            && let Some(idx) = self.cursor_idx
+            && let Some(instr) = provider.instruction(idx)
+        {
+            self.toggle_bookmark(instr.address());
+        }
+
         // Alt+Left → nav back.
         if alt && ui.is_key_pressed(Key::LeftArrow) {
             self.nav_back(provider);
