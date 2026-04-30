@@ -91,22 +91,43 @@ pub trait NodeGraphViewer<T> {
     }
 
     /// Called after a connection is made. Use for side-effects (e.g. propagation).
+    ///
+    /// **NOT WIRED YET (2026-04-30 audit):** the renderer takes the
+    /// viewer as `&dyn NodeGraphViewer` (immutable), so this method
+    /// cannot be invoked from inside the render loop. Subscribe to
+    /// [`crate::node_graph::GraphAction::Connected`] events from
+    /// `render()`'s return value instead — fully equivalent for
+    /// every use case the trait method covers.
     fn on_connect(&mut self, _from: OutPinId, _to: InPinId, _graph: &Graph<T>) {}
 
     /// Called after a connection is removed.
+    ///
+    /// **NOT WIRED YET (2026-04-30 audit):** see
+    /// [`Self::on_connect`] — listen for
+    /// [`crate::node_graph::GraphAction::Disconnected`] events
+    /// instead.
     fn on_disconnect(&mut self, _from: OutPinId, _to: InPinId, _graph: &Graph<T>) {}
 
     /// Tooltip text when hovering a node. Return `None` for no tooltip.
+    ///
+    /// **NOT WIRED YET (2026-04-30 audit):** the renderer's
+    /// `hover_time` / `prev_hovered` state machine tracks hover
+    /// timing but never paints the actual tooltip. Implement this
+    /// method to forward-prepare your tooltip text; it'll start
+    /// rendering once the hover-tooltip pass lands. Tracked as a
+    /// deferred fix.
     fn node_tooltip<'a>(&'a self, _node: &'a T) -> Option<&'a str> {
         None
     }
 
     /// Tooltip text when hovering an input pin.
+    /// See [`Self::node_tooltip`] for current rendering status.
     fn input_tooltip<'a>(&'a self, _node: &'a T, _input: u8) -> Option<&'a str> {
         None
     }
 
     /// Tooltip text when hovering an output pin.
+    /// See [`Self::node_tooltip`] for current rendering status.
     fn output_tooltip<'a>(&'a self, _node: &'a T, _output: u8) -> Option<&'a str> {
         None
     }

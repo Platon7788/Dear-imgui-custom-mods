@@ -309,14 +309,19 @@ pub fn render_titlebar(
 // ── Whole-window resize (chrome-less / splash) ───────────────────────────────
 
 /// For chrome-less windows: detect resize edges over the full window area.
+///
+/// Returns the same [`TitlebarResult`] shape as [`render_titlebar`]
+/// so the caller pipeline (`gpu/mod.rs`) treats the chrome and the
+/// chrome-less paths uniformly. Was historically a `(Option<edge>,
+/// TitlebarAction)` tuple — drift cleaned up 2026-04-30 audit.
 pub fn whole_window_resize(
     ui: &Ui,
     resize_zone: f32,
     os_resizable: bool,
     maximized: bool,
-) -> (Option<ResizeEdge>, TitlebarAction) {
+) -> TitlebarResult {
     if !os_resizable || maximized {
-        return (None, TitlebarAction::None);
+        return TitlebarResult::none();
     }
     let win_pos = ui.window_pos();
     let win_size = ui.window_size();
@@ -333,7 +338,10 @@ pub fn whole_window_resize(
     } else {
         TitlebarAction::None
     };
-    (edge, action)
+    TitlebarResult {
+        action,
+        hover_edge: edge,
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

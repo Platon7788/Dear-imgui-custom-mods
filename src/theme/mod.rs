@@ -278,12 +278,13 @@ impl Theme {
             Self::Midnight => NotificationColors::midnight(),
             Self::Solarized => NotificationColors::solarized(),
             Self::Monokai => NotificationColors::monokai(),
-            // The new themes don't ship custom notification palettes yet —
-            // pick the closest-fitting existing one. Catppuccin's mauve/pink
-            // accents read naturally on Monokai's neon stack; Nord's cool
-            // greys land closest to Midnight.
-            Self::Catppuccin => NotificationColors::monokai(),
-            Self::Nord => NotificationColors::midnight(),
+            // Native Catppuccin/Nord palettes added 2026-04-30 —
+            // previously fell back to Monokai/Midnight which had
+            // visibly clashing hue families (Catppuccin pastels
+            // vs Monokai neon; Nord's frost-blue vs Midnight
+            // jewel tones).
+            Self::Catppuccin => NotificationColors::catppuccin(),
+            Self::Nord => NotificationColors::nord(),
         }
     }
 

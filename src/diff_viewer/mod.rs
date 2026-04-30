@@ -351,14 +351,18 @@ impl DiffViewer {
             DiffMode::SideBySide => {
                 let panel_w = (avail[0] - 2.0) * 0.5;
 
-                // Borrow lines before closures to avoid per-frame clone
-                let left_ptr = self.left_lines.as_ptr();
-                let left_len = self.left_lines.len();
-                let right_ptr = self.right_lines.as_ptr();
-                let right_len = self.right_lines.len();
-                // SAFETY: left_lines/right_lines are not mutated during render
-                let left_slice = unsafe { std::slice::from_raw_parts(left_ptr, left_len) };
-                let right_slice = unsafe { std::slice::from_raw_parts(right_ptr, right_len) };
+                // Borrow lines as plain `&[DisplayLine]` slices —
+                // disjoint immutable borrows of `self.left_lines`
+                // / `self.right_lines`, both alive for the duration
+                // of the two `child_window().build(...)` closures
+                // (which only *read* the slices and never touch
+                // `self`). Replaces a historic `from_raw_parts`
+                // unsafe block whose SAFETY note ("not mutated
+                // during render") was correct but unenforceable
+                // — any future refactor that mutates the lines
+                // mid-render would silently invoke UB.
+                let left_slice: &[DisplayLine] = &self.left_lines;
+                let right_slice: &[DisplayLine] = &self.right_lines;
 
                 let char_advance = self.char_advance;
                 let line_height = self.line_height;

@@ -2,6 +2,126 @@
 
 ## [Unreleased]
 
+### Session 030 — full-codebase audit, deferred fixes, 7 more criticals (2026-04-30)
+
+Autonomous overnight session. Six parallel `code-analyzer` agents
+swept the remaining widgets (`code_editor`, `diff_viewer`,
+`file_manager`, `nav_panel`, `virtual_table`, `virtual_tree`,
+`timeline`, `toolbar`, `tab_control`, `status_bar`, `force_graph`,
+`property_inspector`, `confirm_dialog`, `input`) plus the
+foundation (`theme`, `utils`, `lib.rs`, `clipboard_backend`,
+`frame_demand`, `icons`, `fonts`). 150+ findings; criticals +
+high-impact mediums fixed in this commit.
+
+**Library tests: 696 (held). Clippy: 0 warnings throughout.**
+
+#### Critical fixes (7 new bugs)
+
+- **`disasm_view::do_search`** — sparse provider correctness:
+  rebuilt `(byte_offset, global_idx)` table using
+  `partition_point` last-le / first-ge semantics. Previous
+  `binary_search` on duplicate offsets (from `None` instructions)
+  could map a hit into the wrong row.
+- **`disasm_view::find_function_start`** — dropped bogus
+  `(i + 1).min(count - 1)` clamp that returned the
+  previous-function RET when the cursor was on the very last
+  instruction.
+- **`timeline::span_color`** — was calling `data_time_range()`
+  per span in `ColorMode::ByDuration` (`O(spans × spans)` per
+  frame). Hoisted the range into the render loop, plumbed it
+  through `span_color(..., data_range)`. Tests updated.
+- **`property_inspector::render`** — documented that the returned
+  `Vec<PropertyChangedEvent>` is **always empty** today
+  (read-only renderer; edit widgets unimplemented). API signature
+  preserved for forward-compat. Stops users wiring change handlers
+  that silently never fire.
+- **`force_graph::render` search-highlight** — was calling
+  `node.style.label.to_ascii_lowercase()` per node per frame.
+  Pre-lowered query once outside the loop, added
+  `contains_ignore_ascii_case` helper that scans without
+  allocation. Saves N allocs per frame on graphs with active
+  search.
+- **`code_editor` fold-badge x-position** — used `line_str.len()`
+  (bytes) when `chars().count()` was needed. Badge drifted by
+  N bytes for any UTF-8 multibyte source line (Cyrillic, CJK,
+  emoji). Same fix for `badge_w`.
+- **`diff_viewer::diff_lines` Myers memory** — added hard cap
+  `MAX_DIFF_INPUT_LINES = 20_000`; above the threshold falls
+  back to a "delete-all-then-insert-all" coarse diff so the
+  algorithm can't allocate gigabytes for the trace Vec on huge
+  inputs. (Historic 50k cap on `max_d` could allocate ~40 GB
+  on 100k-line files.)
+- **`diff_viewer` unsafe slice trick** — replaced the
+  `from_raw_parts` block in side-by-side render with plain
+  `&self.left_lines` / `&self.right_lines` immutable borrows.
+  The original SAFETY note ("not mutated during render") was
+  correct but unenforceable across future refactors.
+
+#### Deferred items from session 029 — done
+
+- **`notifications`** — pre-formatted action button labels +
+  close-button ID at `push()` time (was per-frame `format!` per
+  visible toast per action). Threaded `est_h` from layout pass
+  into `render_toast` so `estimate_height` runs once per toast
+  per frame (was twice).
+- **`notifications`** — added native `NotificationColors::catppuccin()`
+  and `NotificationColors::nord()` palettes, wired them into
+  `Theme::notifications()`. Catppuccin/Nord no longer fall back to
+  Monokai/Midnight (whose hue families clashed visually).
+- **`app_window::chrome::whole_window_resize`** — signature
+  unified to `TitlebarResult` (was `(Option<ResizeEdge>,
+  TitlebarAction)` tuple — caller in `gpu/mod.rs` immediately
+  re-packed it into a `TitlebarResult` anyway). API drift gone.
+- **`app_window`** — removed orphaned `TitlebarColors` fields
+  `bg_erase`, `drag_hint`, `bg_inactive`, `title_inactive` —
+  defined by all 7 themes for years, zero in-tree consumers.
+  All 7 theme files updated; unused `TITLE_INACTIVE_BG`
+  constants in 5 themes removed alongside.
+- **`node_graph` viewer hooks** — documented `on_connect` /
+  `on_disconnect` / `node_tooltip` / `input_tooltip` /
+  `output_tooltip` as **NOT WIRED YET** with concrete pointers
+  to `GraphAction::Connected` / `Disconnected` events as
+  current-API equivalents. Implementation tracked as
+  next-session deferred (requires `&mut dyn` viewer
+  signature change + tooltip pass after hover-tracking
+  block).
+
+#### Audit findings deferred to next session
+
+(150+ findings in total — only criticals + key mediums fixed in
+this batch. Below is the prioritised follow-up list.)
+
+- `code_editor`: legacy `crate::theme::{DANGER, SEPARATOR,
+  TEXT_PRIMARY, TEXT_MUTED}` constants used in 8+ sites — break
+  on Light/Solarized themes. Needs `SyntaxColors` extension +
+  per-theme `code_editor_colors()` accessor.
+- `diff_viewer`: zero `crate::theme` integration, hardcoded
+  hover/accent colours, missing `MiniMap`. Needs
+  `DiffViewerColors` palette + `Theme::diff_viewer_colors()`.
+- `tab_control`: hardcoded RGBA in close-confirm popup.
+- `timeline`, `toolbar`, `property_inspector`, `node_graph`,
+  `force_graph`: each carries widget-local colour state with no
+  `Theme` palette accessor.
+- `virtual_table` ring-buffer head invariant fragility,
+  scroll-snap centre math, sort clears selection.
+- `virtual_tree` tree-line continuation depth limit (64),
+  drag-drop reparent-only (no sibling reorder).
+- `notifications` `estimate_height` line-count math is wrong
+  for wrapped text; hard-coded pixel metrics break under DPI
+  scaling; theme.rs is a 16-line stub.
+- `force_graph` Barnes-Hut allocations per tick;
+  collision pass O(N²); community placeholder file.
+- `file_manager` Type-to-search ASCII-only; UTC mtime label
+  with no zone suffix.
+- `nav_panel` submenu hit-test ignores window occlusion.
+- `app_window` per-frame `Vec<u32>` scratch in font rebuild;
+  `pending_frames` u8 saturation; `subclass_proc` four-call
+  `DefSubclassProc` redundancy.
+- `disasm_view` tooltip path allocates 5+ `String`s per hover
+  frame; `compute_arrows_clipped` O(N²) on `VecDisasmProvider`
+  for very large buffers; `frame_comment_x` `<= 0.0` sentinel
+  fragility.
+
 ### Session 029 — disasm_view feature blast + 4-module audit (2026-04-30)
 
 Single-session sweep that landed 8 user-driven feature batches plus a

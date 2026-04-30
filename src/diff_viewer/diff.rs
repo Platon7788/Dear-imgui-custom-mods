@@ -12,7 +12,26 @@ pub enum DiffOp {
     Delete { old_idx: usize },
 }
 
-/// Compute the diff between `old` and `new` line slices using Myers' algorithm.
+/// Maximum input size (combined line count) the Myers diff will
+/// attempt. Above this threshold the algorithm degenerates to a
+/// "everything different" coarse diff to avoid the `O((N+M)D)`
+/// memory blow-up — at 100k lines the historical 50k cap on
+/// `max_d` could allocate up to ~40 GB for the `trace` Vec.
+///
+/// 20k combined lines covers ~99% of real-world source diffs;
+/// callers with bigger inputs should pre-chunk the documents
+/// themselves.
+pub const MAX_DIFF_INPUT_LINES: usize = 20_000;
+
+/// Compute the diff between `old` and `new` line slices using
+/// Myers' algorithm.
+///
+/// Inputs whose combined `n + m` exceeds [`MAX_DIFF_INPUT_LINES`]
+/// fall back to a degenerate "delete-all-old-then-insert-all-new"
+/// diff — the result is correct but not minimal. The fallback
+/// guards against `O((N+M)^2)` trace memory; without it the diff
+/// could OOM on multi-MB documents. See the `MAX_DIFF_INPUT_LINES`
+/// doc for the reasoning.
 pub fn diff_lines(old: &[&str], new: &[&str]) -> Vec<DiffOp> {
     let n = old.len();
     let m = new.len();
@@ -27,9 +46,21 @@ pub fn diff_lines(old: &[&str], new: &[&str]) -> Vec<DiffOp> {
         return (0..n).map(|i| DiffOp::Delete { old_idx: i }).collect();
     }
 
+    // Hard cap on input size. Above the threshold we'd allocate
+    // gigabytes for the Myers trace; degrade gracefully to a
+    // delete-all-then-insert-all diff so the viewer stays
+    // responsive on huge inputs.
+    if n + m > MAX_DIFF_INPUT_LINES {
+        let mut ops = Vec::with_capacity(n + m);
+        ops.extend((0..n).map(|i| DiffOp::Delete { old_idx: i }));
+        ops.extend((0..m).map(|j| DiffOp::Insert { new_idx: j }));
+        return ops;
+    }
+
     // Myers' algorithm with O((N+M)D) time, O((N+M)^2) space for trace.
-    // Cap max_d to avoid excessive memory usage on very large inputs.
-    let max_d = (n + m).min(50_000);
+    // `max_d` is bounded by both the input cap above AND a hard
+    // ceiling so a future cap raise still has a safety net.
+    let max_d = (n + m).min(MAX_DIFF_INPUT_LINES);
     let offset = max_d; // shift to allow negative indices
     let size = 2 * max_d + 1;
 

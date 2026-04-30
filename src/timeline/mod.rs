@@ -199,7 +199,14 @@ impl Timeline {
 
     // ── Color resolution ────────────────────────────────────────────────────
 
-    fn span_color(&self, span: &Span) -> [f32; 4] {
+    /// Resolve the fill colour for `span` given a pre-computed
+    /// `data_range` (lo, hi) shared across the whole render frame.
+    /// The render path computes `data_range` ONCE up front and
+    /// threads it here — without that, `ByDuration` mode used to
+    /// re-walk every track on every span (O(spans × spans) per
+    /// frame), measured as the worst hot-path during the
+    /// 2026-04-30 audit on multi-thousand-span traces.
+    fn span_color(&self, span: &Span, data_range: (f64, f64)) -> [f32; 4] {
         let cfg = &self.config;
         let palette = &cfg.span_palette;
 
@@ -218,7 +225,7 @@ impl Timeline {
                 palette[idx]
             }
             ColorMode::ByDuration => {
-                let (lo, hi) = self.data_time_range();
+                let (lo, hi) = data_range;
                 let range = (hi - lo).max(1e-12);
                 let t = ((span.duration() / range) as f32).clamp(0.0, 1.0);
                 let r = (t * 2.0).min(1.0);
@@ -420,6 +427,13 @@ impl Timeline {
                 }
 
                 // ── Tracks & spans ──────────────────────────────────────
+                // Pre-compute the global data time range ONCE per
+                // frame so `span_color(.., ColorMode::ByDuration)`
+                // doesn't re-walk every track per span (was O(N²),
+                // measured in 2026-04-30 audit). Cheap when not in
+                // ByDuration mode — just one extra range scan
+                // amortised across all visible spans.
+                let data_range = self.data_time_range();
                 let mut y = content_y - self.vp.scroll_y;
 
                 for (ti, track) in self.tracks.iter().enumerate() {
@@ -496,7 +510,7 @@ impl Timeline {
                                 continue;
                             }
 
-                            let span_color = self.span_color(span);
+                            let span_color = self.span_color(span, data_range);
                             draw.add_rect([sx, sy], [sx + span_w, ey], col32(span_color))
                                 .filled(true)
                                 .build();
@@ -808,8 +822,9 @@ mod tests {
         tl.add_track(t);
         tl.config.color_mode = ColorMode::ByName;
 
-        let c1 = tl.span_color(&tl.tracks[0].spans[0]);
-        let c2 = tl.span_color(&tl.tracks[0].spans[1]);
+        let dr = tl.data_time_range();
+        let c1 = tl.span_color(&tl.tracks[0].spans[0], dr);
+        let c2 = tl.span_color(&tl.tracks[0].spans[1], dr);
         assert!(c1[3] > 0.0);
         assert!(c2[3] > 0.0);
     }
@@ -823,8 +838,9 @@ mod tests {
         tl.add_track(t);
         tl.config.color_mode = ColorMode::ByDuration;
 
-        let cs = tl.span_color(&tl.tracks[0].spans[0]);
-        let cl = tl.span_color(&tl.tracks[0].spans[1]);
+        let dr = tl.data_time_range();
+        let cs = tl.span_color(&tl.tracks[0].spans[0], dr);
+        let cl = tl.span_color(&tl.tracks[0].spans[1], dr);
         assert!(cs[2] > cl[2]);
         assert!(cl[0] > cs[0]);
     }

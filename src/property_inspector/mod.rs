@@ -174,6 +174,16 @@ impl PropertyInspector {
     }
 
     /// Render the inspector. Returns change events.
+    ///
+    /// **Note (2026-04-30 audit):** the inspector currently renders
+    /// properties **read-only** — all values display via
+    /// `ui.text(...)`, no edit widgets are wired in. Therefore the
+    /// returned `Vec<PropertyChangedEvent>` is **always empty** at
+    /// the moment. The signature is preserved so when inline-edit
+    /// support lands (planned: text input for `String`, drag
+    /// widgets for numerics, checkbox for `Bool`, color picker for
+    /// `Color`) callers won't need to migrate. Tracked as
+    /// "implement value-edit widgets" in the deferred-fixes list.
     pub fn render(&mut self, ui: &Ui) -> Vec<PropertyChangedEvent> {
         let events = Vec::new();
         let cfg = self.config; // Copy, not clone

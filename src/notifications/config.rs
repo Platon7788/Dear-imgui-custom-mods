@@ -152,6 +152,14 @@ pub struct Notification {
     /// Pre-formatted ImGui window ID — built once at `push()` time so the
     /// hot render path doesn't `format!("##toast_{}", id)` every frame.
     pub(crate) win_id: String,
+    /// Pre-formatted close-button ImGui ID (`##close_{id}`) — same
+    /// rationale as `win_id`, eliminates a per-frame `format!` per
+    /// visible toast.
+    pub(crate) close_id: String,
+    /// Pre-formatted action button ImGui IDs (`{label}##act_{id}_{n}`)
+    /// — one per [`NotificationAction`] in `actions`. Built once at
+    /// `push()` time. Same length as `actions`.
+    pub(crate) action_ids: Vec<String>,
 }
 
 impl Notification {
@@ -172,10 +180,12 @@ impl Notification {
             enter_t: 0.0,
             exit_t: 0.0,
             dismissing: false,
-            // `NotificationCenter::push` overwrites this with the real id-bearing
-            // string; the placeholder here keeps the struct constructible from
-            // any of the severity-named factories.
+            // `NotificationCenter::push` overwrites these with the real
+            // id-bearing strings; the placeholders here keep the struct
+            // constructible from any of the severity-named factories.
             win_id: String::new(),
+            close_id: String::new(),
+            action_ids: Vec::new(),
         }
     }
 

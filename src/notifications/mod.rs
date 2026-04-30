@@ -153,9 +153,18 @@ impl NotificationCenter {
         }
         self.next_id = id.wrapping_add(1).max(1);
         n.id = id;
-        // Pre-format the ImGui window ID once — saves a per-frame
-        // `format!` allocation on every visible toast.
+        // Pre-format ALL ImGui IDs once at push() time — saves
+        // per-frame `format!` allocations on every visible toast.
+        // The hot render path then reads these pre-built strings
+        // instead of allocating each frame.
         n.win_id = format!("##toast_{id}");
+        n.close_id = format!("##close_{id}");
+        n.action_ids = n
+            .actions
+            .iter()
+            .enumerate()
+            .map(|(idx, act)| format!("{}##act_{id}_{idx}", act.label))
+            .collect();
         self.queue.push(n);
         id
     }
@@ -269,7 +278,7 @@ impl NotificationCenter {
                 continue;
             }
 
-            let outcome = render_toast(ui, n, &colors, &cfg, px, py, alpha);
+            let outcome = render_toast(ui, n, &colors, &cfg, px, py, alpha, est_h);
 
             hover_flags.push((n.id, outcome.hovered));
 
@@ -470,6 +479,10 @@ fn animated_pos(
 }
 
 /// Render a single toast window. Returns user-interaction flags.
+///
+/// `est_h` is computed once by the caller (layout pass) and threaded
+/// through here so we don't re-walk `calc_text_size` over the title /
+/// body strings a second time per toast per frame.
 fn render_toast(
     ui: &Ui,
     n: &Notification,
@@ -478,6 +491,7 @@ fn render_toast(
     x: f32,
     y: f32,
     alpha: f32,
+    est_h: f32,
 ) -> ToastOutcome {
     let mut outcome = ToastOutcome {
         hovered: false,
@@ -492,8 +506,6 @@ fn render_toast(
     let _pad = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0])); // manual inner layout
     let _bg = ui.push_style_color(StyleColor::WindowBg, c.bg);
     let _brdc = ui.push_style_color(StyleColor::Border, c.border);
-
-    let est_h = estimate_height(n, cfg);
 
     ui.window(&n.win_id)
         .position([x, y], Condition::Always)
@@ -644,12 +656,20 @@ fn render_toast(
                 let _bca = ui.push_style_color(StyleColor::ButtonActive, c.btn_action_active);
                 let _btc = ui.push_style_color(StyleColor::Text, c.btn_action_text);
 
+                // Use pre-formatted `n.action_ids[idx]` instead of
+                // building a fresh `format!` per button per frame —
+                // saves N allocations per visible toast where N is
+                // the action count.
                 for (idx, act) in n.actions.iter().enumerate() {
                     if idx > 0 {
                         ui.same_line();
                     }
-                    let label = format!("{}##act_{}_{}", act.label, n.id, act.id);
-                    if ui.button(&label) {
+                    let label = n
+                        .action_ids
+                        .get(idx)
+                        .map(String::as_str)
+                        .unwrap_or(act.label.as_str());
+                    if ui.button(label) {
                         outcome.action_clicked = Some(act.id);
                     }
                 }
@@ -659,8 +679,9 @@ fn render_toast(
             if n.closable {
                 let close_size = 14.0;
                 ui.set_cursor_pos([cfg.width - cfg.padding[0] - close_size, cfg.padding[1]]);
-                let clicked =
-                    ui.invisible_button(format!("##close_{}", n.id), [close_size, close_size]);
+                // Pre-formatted `n.close_id` instead of per-frame
+                // `format!("##close_{id}")`.
+                let clicked = ui.invisible_button(&n.close_id, [close_size, close_size]);
                 let hov = ui.is_item_hovered();
                 let col = if hov { c.close_hover } else { c.close };
                 let cx = win_pos[0] + cfg.width - cfg.padding[0] - close_size * 0.5;

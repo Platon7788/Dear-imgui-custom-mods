@@ -55,14 +55,6 @@ pub struct TitlebarColors {
     pub btn_close_hover_bg: [f32; 4],
     /// Window icon color (if `BorderlessConfig::icon` is set).
     pub icon: [f32; 4],
-    /// Titlebar background colour used to "erase" overlapping icon layers (restore icon).
-    pub bg_erase: [f32; 4],
-    /// Subtle hover tint over the drag-move zone.
-    pub drag_hint: [f32; 4],
-    /// Titlebar background when the window loses OS focus.
-    pub bg_inactive: [f32; 4],
-    /// Title text color when the window loses OS focus.
-    pub title_inactive: [f32; 4],
 }
 
 // ── DialogColors ────────────────────────────────────────────────────────────
@@ -903,6 +895,62 @@ impl NotificationColors {
             btn_action_hover: [0.34, 0.32, 0.30, 1.0],
             btn_action_active: [0.20, 0.18, 0.17, 1.0],
             btn_action_text: [0.98, 0.96, 0.90, 1.0],
+        }
+    }
+
+    /// Catppuccin (Mocha) palette — soft pastels over a desaturated
+    /// charcoal base. Pulls from the canonical Catppuccin Mocha
+    /// colour swatches so notifications visually match the rest of
+    /// the chrome. Added 2026-04-30 to replace the historic
+    /// monokai() fallback that visually clashed with Catppuccin's
+    /// pastel tone.
+    pub fn catppuccin() -> Self {
+        Self {
+            bg: [0.118, 0.118, 0.180, 0.97],   // base
+            border: [0.196, 0.196, 0.275, 1.0], // surface0
+            title: [0.804, 0.839, 0.957, 1.0], // text
+            body: [0.651, 0.678, 0.784, 1.0],  // subtext1
+            close: [0.486, 0.510, 0.612, 1.0], // overlay1
+            close_hover: [0.804, 0.839, 0.957, 1.0],
+            progress_bg: [0.196, 0.196, 0.275, 0.8],
+
+            info: [0.537, 0.706, 0.980, 1.0],     // sapphire
+            success: [0.651, 0.890, 0.631, 1.0],  // green
+            warning: [0.980, 0.886, 0.643, 1.0],  // yellow
+            error: [0.953, 0.545, 0.659, 1.0],    // red/maroon
+            debug: [0.541, 0.557, 0.643, 1.0],    // overlay2
+
+            btn_action: [0.196, 0.196, 0.275, 1.0],
+            btn_action_hover: [0.251, 0.251, 0.345, 1.0],
+            btn_action_active: [0.157, 0.157, 0.227, 1.0],
+            btn_action_text: [0.804, 0.839, 0.957, 1.0],
+        }
+    }
+
+    /// Nord palette — frost-blue accents over a polar-night base.
+    /// Mirrors the Nord-theme chrome family. Added 2026-04-30 to
+    /// replace the historic midnight() fallback (Nord and Tokyo
+    /// Night share a hue family but Nord runs notably cooler).
+    pub fn nord() -> Self {
+        Self {
+            bg: [0.180, 0.204, 0.251, 0.97],   // nord0
+            border: [0.231, 0.259, 0.322, 1.0], // nord1
+            title: [0.925, 0.937, 0.957, 1.0], // nord4
+            body: [0.847, 0.871, 0.914, 1.0],  // nord5 / 6
+            close: [0.392, 0.439, 0.522, 1.0], // mid
+            close_hover: [0.925, 0.937, 0.957, 1.0],
+            progress_bg: [0.231, 0.259, 0.322, 0.8],
+
+            info: [0.506, 0.631, 0.757, 1.0],     // nord9 (frost-blue)
+            success: [0.639, 0.745, 0.549, 1.0],  // nord14 (aurora-green)
+            warning: [0.922, 0.796, 0.545, 1.0],  // nord13 (aurora-yellow)
+            error: [0.749, 0.380, 0.416, 1.0],    // nord11 (aurora-red)
+            debug: [0.631, 0.671, 0.749, 1.0],    // nord4-mute
+
+            btn_action: [0.231, 0.259, 0.322, 1.0],
+            btn_action_hover: [0.298, 0.337, 0.416, 1.0],
+            btn_action_active: [0.180, 0.204, 0.251, 1.0],
+            btn_action_text: [0.925, 0.937, 0.957, 1.0],
         }
     }
 }

@@ -61,10 +61,6 @@ pub fn titlebar_colors() -> TitlebarColors {
         btn_hover_bg: hex(BG_FRAME, 0.85),
         btn_close_hover_bg: hex(RED, 0.85),
         icon,
-        bg_erase: bg,
-        drag_hint: hex(BG_FRAME, 0.35),
-        bg_inactive: hex(BASE03, 1.0),
-        title_inactive: hex(BASE01, 1.0),
     }
 }
 

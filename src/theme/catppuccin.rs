@@ -52,7 +52,6 @@ const LAVENDER: u32 = 0xb4befe;
 const MAUVE: u32 = 0xcba6f7; // question / dialog accent
 
 // Active inactive variants (dim).
-const TITLE_INACTIVE_BG: u32 = 0x0a0a12;
 
 // Primary accent — official Mocha "blue" is the most-used UI accent.
 const ACCENT: u32 = BLUE;
@@ -76,10 +75,6 @@ pub fn titlebar_colors() -> TitlebarColors {
         btn_hover_bg: hex(SURFACE1, 0.85),
         btn_close_hover_bg: hex(RED, 0.40),
         icon,
-        bg_erase: bg,
-        drag_hint: hex(SURFACE1, 0.35),
-        bg_inactive: hex(TITLE_INACTIVE_BG, 1.0),
-        title_inactive: hex(OVERLAY1, 1.0),
     }
 }
 

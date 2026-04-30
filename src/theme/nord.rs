@@ -53,7 +53,6 @@ const NORD14: u32 = 0xa3be8c; // green — success / cancel
 const NORD15: u32 = 0xb48ead; // purple — info / question
 
 // Inactive titlebar.
-const TITLE_INACTIVE_BG: u32 = 0x252a33;
 
 // Primary accent — frost cyan-blue (matches Nord conventions).
 const ACCENT: u32 = NORD8;
@@ -77,10 +76,6 @@ pub fn titlebar_colors() -> TitlebarColors {
         btn_hover_bg: hex(NORD3, 0.85),
         btn_close_hover_bg: hex(NORD11, 0.40),
         icon,
-        bg_erase: bg,
-        drag_hint: hex(NORD3, 0.35),
-        bg_inactive: hex(TITLE_INACTIVE_BG, 1.0),
-        title_inactive: hex(NORD3, 1.0),
     }
 }
 

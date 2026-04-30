@@ -39,7 +39,6 @@ const FG_DISABLED: u32 = 0x6c696d;
 
 // Titlebar bg — one step darker than window to separate chrome.
 const TITLE_BG: u32 = 0x221f22;
-const TITLE_INACTIVE_BG: u32 = 0x1a171a;
 
 // Monokai neon accents.
 const RED: u32 = 0xff6188; // hot pink
@@ -74,10 +73,6 @@ pub fn titlebar_colors() -> TitlebarColors {
         btn_hover_bg: hex(BG_FRAME_HOVER, 0.85),
         btn_close_hover_bg: hex(RED, 0.85),
         icon,
-        bg_erase: bg,
-        drag_hint: hex(BG_FRAME_HOVER, 0.35),
-        bg_inactive: hex(TITLE_INACTIVE_BG, 1.0),
-        title_inactive: hex(FG_DISABLED, 1.0),
     }
 }
 

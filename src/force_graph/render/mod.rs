@@ -36,6 +36,34 @@ fn col(c: [f32; 4]) -> u32 {
     pack_color_f32(c)
 }
 
+/// `haystack.to_ascii_lowercase().contains(needle_lc)` without the
+/// per-call allocation. `needle_lc` MUST already be lowercased
+/// (caller's responsibility — typically pre-lowered once per
+/// frame). Used by the search-highlight path in the per-node loop
+/// where allocating per node was a measured hot-path cost on
+/// graphs >5k nodes.
+fn contains_ignore_ascii_case(haystack: &str, needle_lc: &str) -> bool {
+    if needle_lc.is_empty() {
+        return true;
+    }
+    if haystack.len() < needle_lc.len() {
+        return false;
+    }
+    let nbytes = needle_lc.as_bytes();
+    let hbytes = haystack.as_bytes();
+    let win = nbytes.len();
+    'outer: for start in 0..=hbytes.len() - win {
+        for i in 0..win {
+            if hbytes[start + i].eq_ignore_ascii_case(&nbytes[i]) {
+                continue;
+            }
+            continue 'outer;
+        }
+        return true;
+    }
+    false
+}
+
 // ─── Okabe-Ito palette (8 colors, colorblind-safe) ────────────────────────────
 
 const OKABE_ITO: [[f32; 4]; 8] = [
@@ -351,6 +379,18 @@ pub(crate) fn render(
     }
 
     // 20. Draw nodes.
+    // Pre-lowercase the search query ONCE per frame instead of
+    // re-lowercasing it inside the per-node loop (was up to N
+    // allocations per frame — measured as one of the hottest paths
+    // for graphs >5k nodes during the 2026-04-30 audit). Empty
+    // string when search is inactive — `String::new` does not
+    // allocate.
+    let search_query_lc: String = if config.search_highlight_mode {
+        ctx.filter.search_query.to_ascii_lowercase()
+    } else {
+        String::new()
+    };
+
     for (node_id, node) in graph.nodes.iter() {
         if !visible.contains(node_id) {
             continue;
@@ -383,16 +423,19 @@ pub(crate) fn render(
             1.0
         };
 
-        // Search-highlight: dim nodes that don't match the active query.
-        if config.search_highlight_mode && !ctx.filter.search_query.is_empty() {
-            let q = ctx.filter.search_query.to_ascii_lowercase();
-            let label_match = node.style.label.to_ascii_lowercase().contains(&q);
+        // Search-highlight: dim nodes that don't match the active
+        // query. Uses `contains_ignore_ascii_case` to avoid the
+        // historic per-node `to_ascii_lowercase()` allocations
+        // (one per label + N per tag list per frame). Pre-lowered
+        // `search_query_lc` is computed once above the loop.
+        if !search_query_lc.is_empty() {
+            let label_match = contains_ignore_ascii_case(&node.style.label, &search_query_lc);
             let tag_match = ctx.filter.search_match_tags
                 && node
                     .style
                     .tags
                     .iter()
-                    .any(|t| t.to_ascii_lowercase().contains(&q));
+                    .any(|t| contains_ignore_ascii_case(t, &search_query_lc));
             if !label_match && !tag_match {
                 node_alpha *= 0.15;
             }

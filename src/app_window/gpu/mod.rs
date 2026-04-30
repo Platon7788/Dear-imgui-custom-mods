@@ -192,16 +192,16 @@ pub(super) fn render_frame<H: AppHandler>(
                 match &cfg.chrome {
                     Chrome::None => {
                         // Splash / chrome-less: no titlebar at all.
-                        let (edge, action) = whole_window_resize(
+                        // `whole_window_resize` returns the same
+                        // `TitlebarResult` shape as `render_titlebar`
+                        // (unified 2026-04-30 audit) — no manual
+                        // tuple repacking needed.
+                        tb_result = whole_window_resize(
                             ui,
                             6.0,
                             cfg.os_resizable(),
                             gpu.app_state.titlebar.maximized,
                         );
-                        tb_result = TitlebarResult {
-                            action,
-                            hover_edge: edge,
-                        };
                     }
                     Chrome::Custom(t) => {
                         // Cached palette — `cached_titlebar` is

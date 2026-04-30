@@ -43,7 +43,6 @@ const FG_DISABLED: u32 = 0x9096a2;
 // Titlebar surfaces (a tiny step darker than the window bg so the bar reads
 // as chrome rather than content).
 const TITLE_BG: u32 = 0xe3e5ea;
-const TITLE_INACTIVE_BG: u32 = 0xdbdde2;
 
 // Accent — light-theme-optimised blue (saturated but not electric).
 const ACCENT: u32 = 0x2e6fb8;
@@ -82,10 +81,6 @@ pub fn titlebar_colors() -> TitlebarColors {
         btn_hover_bg: hex(SECONDARY_HOVER, 0.85),
         btn_close_hover_bg: hex(DANGER, 0.85),
         icon,
-        bg_erase: bg,
-        drag_hint: hex(SECONDARY_HOVER, 0.35),
-        bg_inactive: hex(TITLE_INACTIVE_BG, 1.0),
-        title_inactive: hex(FG_DISABLED, 1.0),
     }
 }
 

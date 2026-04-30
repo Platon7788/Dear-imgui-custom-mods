@@ -2165,9 +2165,16 @@ impl CodeEditor {
                     let badge = format!(" ... {hidden} lines ");
                     let line_str = self.buffer.line(line_idx);
                     let text_x = win_x + gutter_width + 4.0;
-                    let badge_x = text_x + line_str.len() as f32 * self.char_advance;
+                    // CRITICAL: use `chars().count()` not `len()` so
+                    // the badge anchors at the last visible glyph,
+                    // not at the byte length. UTF-8 multibyte chars
+                    // (Cyrillic, CJK, emoji) made the badge drift
+                    // by N bytes for any non-ASCII source line.
+                    // Same fix for `badge_w` below.
+                    let badge_x =
+                        text_x + line_str.chars().count() as f32 * self.char_advance;
                     let badge_y = y;
-                    let badge_w = badge.len() as f32 * self.char_advance;
+                    let badge_w = badge.chars().count() as f32 * self.char_advance;
 
                     // Badge background
                     let bg = col32([0.20, 0.22, 0.28, 0.85]);
