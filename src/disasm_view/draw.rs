@@ -291,21 +291,48 @@ impl DisasmView {
                         .build();
                 }
             }
-            // Right half — breakpoint number, centred between the
-            // centre gap and the right edge pad. Digit only, no
-            // background fill (drawn straight in `bp_color`).
+            // Right half — breakpoint / watchpoint label. Priority:
+            //   - read AND write set    -> "RW"
+            //   - write set only        -> "W"
+            //   - read set only         -> "R"
+            //   - execution breakpoint  -> "<bp_number>"
+            //
+            // Watchpoints are rendered in the breakpoint colour
+            // family so all three live in the same visual class
+            // ("things that pause the running process") while the
+            // letter / digit content distinguishes the kind. Digit
+            // / letter only — no background fill.
             if cfg.show_breakpoints {
+                let has_r = instr.has_read_watchpoint();
+                let has_w = instr.has_write_watchpoint();
                 let bp_num = instr.breakpoint_number();
-                if bp_num > 0 {
-                    let bp_color = colors.bp_color(bp_num);
-                    let label = format!("{}", bp_num);
+                let label_str: Option<&str> = if has_r && has_w {
+                    Some("RW")
+                } else if has_w {
+                    Some("W")
+                } else if has_r {
+                    Some("R")
+                } else {
+                    None
+                };
+                let label_owned: String;
+                let label: Option<&str> = if let Some(s) = label_str {
+                    Some(s)
+                } else if bp_num > 0 {
+                    label_owned = format!("{}", bp_num);
+                    Some(label_owned.as_str())
+                } else {
+                    None
+                };
+                if let Some(label) = label {
+                    let label_color = colors.bp_color(bp_num.max(1));
                     let text_w = label.len() as f32 * self.char_advance;
                     let cx =
                         x + GUTTER_EDGE_PAD + half + GUTTER_CENTRE_GAP + half * 0.5;
                     let tx = cx - text_w * 0.5;
                     let text_h = self.line_height - 4.0;
                     let ty = y + (lh - text_h) * 0.5;
-                    draw_list.add_text([tx, ty], col32(bp_color), &label);
+                    draw_list.add_text([tx, ty], col32(label_color), label);
                 }
             }
             x += cols.margin;

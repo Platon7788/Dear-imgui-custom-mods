@@ -223,6 +223,20 @@ impl DisasmView {
                     }
                     ui.close_current_popup();
                 }
+                // ── Toggle Read Watchpoint (`R` glyph in gutter) ──
+                if ui.menu_item("R  Toggle Read Watchpoint") {
+                    if let Some(addr) = instr_addr {
+                        provider.toggle_read_watchpoint(addr);
+                    }
+                    ui.close_current_popup();
+                }
+                // ── Toggle Write Watchpoint (`W` glyph in gutter) ──
+                if ui.menu_item("W  Toggle Write Watchpoint") {
+                    if let Some(addr) = instr_addr {
+                        provider.toggle_write_watchpoint(addr);
+                    }
+                    ui.close_current_popup();
+                }
 
                 // ── Toggle Bookmark (`\u{25CB}` outline ring —
                 //    bookmark visual). State-aware label: "Add to
