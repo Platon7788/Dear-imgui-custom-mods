@@ -608,23 +608,45 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         && let Some(entry) = pc.tabs.iter_mut().find(|t| t.id == active_id)
     {
         if pc.config.content_padding_enabled {
-            // Inset the host's content widgets from the outer-window
-            // edges by `pad` pixels on the left/top. ImGui's
-            // `set_cursor_pos` for the next item is the only path
-            // ImGui *guarantees* takes effect — earlier attempts to
-            // wrap render_content in a child_window with a reduced
-            // size, or push `WindowPadding` as inner-padding, either
-            // collapsed the child to 0×0 or moved widgets *inside*
-            // the child while the child itself stayed flush against
-            // the outer window (user feedback 2026-04-30: "внутри
-            // программы должен быть зазор в 2 пикселя").
+            // True visible frame: paint two rectangles directly via
+            // the draw list, then offset the cursor inside the inner
+            // rect for `render_content`. ASCII model from user
+            // feedback 2026-04-30:
             //
-            // Right/bottom margin isn't enforced — host widgets that
-            // hug the right edge will still touch it. The visible
-            // breathing strip on left+top is the user-reported gap;
-            // a future variant could clip via `push_clip_rect` if
-            // right/bottom enforcement matters.
+            //   [Tab strip]
+            //   |-------------------------------------|   <- outer (strip_bg)
+            //   ||-----------------------------------||   <- inner (content_bg)
+            //   ||                                   ||      gap = strip_bg
+            //   ||                                   ||      inset by `pad`
+            //   |-------------------------------------|
+            //
+            // The previous attempts wrapped the host content in a
+            // child_window which collapsed to 0×0 or only padded
+            // inner widgets — neither produced the visible frame.
+            // Drawing rectangles by hand and shifting the cursor is
+            // the path that actually works.
             let pad = pc.config.content_padding;
+            let cur_screen = ui.cursor_screen_pos();
+            let avail = ui.content_region_avail();
+            let outer_min = cur_screen;
+            let outer_max = [cur_screen[0] + avail[0], cur_screen[1] + avail[1]];
+            let inner_min = [outer_min[0] + pad[0], outer_min[1] + pad[1]];
+            let inner_max = [outer_max[0] - pad[0], outer_max[1] - pad[1]];
+
+            let draw = ui.get_window_draw_list();
+            // Outer fill — extends the chrome / strip surface into
+            // the body so the gap reads as "frame around content".
+            draw.add_rect(outer_min, outer_max, c32(pc.config.colors.strip_bg, 255))
+                .filled(true)
+                .build();
+            // Inner fill — the content surface. When `content_bg !=
+            // strip_bg` the gap becomes visibly distinct.
+            draw.add_rect(inner_min, inner_max, c32(pc.config.colors.content_bg, 255))
+                .filled(true)
+                .build();
+
+            // Offset cursor so widgets inside `render_content` start
+            // at the inner rect's top-left.
             let cur = ui.cursor_pos();
             ui.set_cursor_pos([cur[0] + pad[0], cur[1] + pad[1]]);
         }

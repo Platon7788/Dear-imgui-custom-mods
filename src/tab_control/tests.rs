@@ -478,15 +478,14 @@ fn remove_keeps_pending_close_for_other_id() {
 }
 
 #[test]
-fn content_bg_default_mirrors_strip_bg() {
-    // Pin the contract: by default the active tab's content area
-    // sits on the same surface as the strip — content_bg == strip_bg
-    // so the 1-px padding inset reads as invisible breathing space.
-    // Hosts who want a contrasting content surface override this
-    // single field; theme accessor preserves the same invariant
-    // (both sides come from `nav.bg`).
+fn content_bg_default_differs_from_strip_bg_for_visible_frame() {
+    // Pin the contract: content_bg is intentionally darker than
+    // strip_bg so the framed-content visual works (outer rect =
+    // strip_bg fills the gap, inner rect = content_bg fills the
+    // body). User feedback 2026-04-30 — visible inset is what
+    // distinguishes a "tab body" from "strip extends downward".
     let palette = TabColors::default();
-    assert_eq!(palette.content_bg, palette.strip_bg);
+    assert_ne!(palette.content_bg, palette.strip_bg);
 }
 
 // ─── enforce_pinned_partition stability ────────────────────────────────────

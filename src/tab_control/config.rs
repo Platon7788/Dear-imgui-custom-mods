@@ -204,7 +204,11 @@ impl Default for TabColors {
             text_muted: [0x90, 0x98, 0xa6],
             close_hover: [0xe0, 0x60, 0x60],
             strip_bg: [0x2a, 0x2e, 0x37],
-            content_bg: [0x2a, 0x2e, 0x37], // matches strip_bg
+            // Slightly darker than strip_bg so the visible frame
+            // (2-px gap = strip_bg, inner = content_bg) reads as a
+            // genuine "tab body". Match `from_palettes` default
+            // semantics — close to nav.bg lifted -0.04.
+            content_bg: [0x22, 0x26, 0x2e],
             separator: [0x3f, 0x46, 0x54],
             status_active: [0x5f, 0xb8, 0x70],
             status_inactive: [0x8a, 0x92, 0xa1],
@@ -258,7 +262,18 @@ impl TabColors {
             text_muted: to_u8(nav.icon_default),
             close_hover: to_u8(sb.error),
             strip_bg: to_u8(nav.bg),
-            content_bg: to_u8(nav.bg), // mirrors strip_bg per default contract
+            // Slightly darker than strip_bg so the visible frame
+            // (gap = strip_bg, inner = content_bg) reads as a
+            // genuine "tab body" inset.
+            content_bg: {
+                let lift = -0.04_f32;
+                to_u8([
+                    (nav.bg[0] + lift).clamp(0.0, 1.0),
+                    (nav.bg[1] + lift).clamp(0.0, 1.0),
+                    (nav.bg[2] + lift).clamp(0.0, 1.0),
+                    nav.bg[3],
+                ])
+            },
             separator: to_u8(nav.separator),
             status_active: to_u8(sb.success),
             status_inactive: to_u8(sb.text_dim),
