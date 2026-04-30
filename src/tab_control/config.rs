@@ -204,12 +204,11 @@ impl Default for TabColors {
             text_muted: [0x90, 0x98, 0xa6],
             close_hover: [0xe0, 0x60, 0x60],
             strip_bg: [0x2a, 0x2e, 0x37],
-            // Visibly darker than strip_bg so the framed-content
-            // visual works on every theme out of the box (gap =
-            // strip_bg, inner = body_bg). Earlier defaults of
-            // ~`-0.04` lift were too subtle on dark themes — the
-            // frame got lost in the surrounding chrome.
-            body_bg: [0x18, 0x1c, 0x24],
+            // Subtly darker than strip_bg — enough to hint at a
+            // body inset without going near-black. User feedback
+            // 2026-04-30: the prior `[0x18, 0x1c, 0x24]` read as
+            // "чёрное" against light tabs.
+            body_bg: [0x24, 0x28, 0x30],
             separator: [0x3f, 0x46, 0x54],
             status_active: [0x5f, 0xb8, 0x70],
             status_inactive: [0x8a, 0x92, 0xa1],
@@ -263,14 +262,13 @@ impl TabColors {
             text_muted: to_u8(nav.icon_default),
             close_hover: to_u8(sb.error),
             strip_bg: to_u8(nav.bg),
-            // Visibly darker than strip_bg so the framed-content
-            // visual reads as a genuine "tab body" inset on every
-            // theme out of the box. `-0.10` lift gives a clear ~25
-            // u8 step on dark themes; light themes still get a
-            // visible tonal step because the clamp keeps it
-            // monotonic.
+            // Subtly darker than strip_bg (= nav.bg) so the
+            // framed-content visual hints at a body inset without
+            // dropping to near-black. `-0.04` matches the original
+            // contract; `-0.10` was too aggressive on already-dark
+            // chrome and read as "чёрное".
             body_bg: {
-                let lift = -0.10_f32;
+                let lift = -0.04_f32;
                 to_u8([
                     (nav.bg[0] + lift).clamp(0.0, 1.0),
                     (nav.bg[1] + lift).clamp(0.0, 1.0),
