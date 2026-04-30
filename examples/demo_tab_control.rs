@@ -193,6 +193,12 @@ impl TabItem for DiagnosticsTab {
 /// Settings tab — controls the parent style live.
 struct SettingsTab {
     style_idx: usize,
+    /// Mirror of `outer_tabs.config.content_padding` — slider writes
+    /// here, the outer `DemoApp::render` reads + applies before
+    /// rendering the strip.
+    content_pad: f32,
+    /// Mirror of `outer_tabs.config.content_padding_enabled`.
+    content_pad_enabled: bool,
 }
 
 impl TabItem for SettingsTab {
@@ -223,6 +229,17 @@ impl TabItem for SettingsTab {
         ui.spacing();
         ui.separator();
         ui.spacing();
+
+        // Content frame controls — toggle + thickness slider for the
+        // outer-edge padding around the active tab's content area.
+        ui.text("Content frame:");
+        ui.spacing();
+        ui.checkbox("Enable inset frame", &mut self.content_pad_enabled);
+        ui.slider("Padding (px)", 0.0, 16.0, &mut self.content_pad);
+        ui.spacing();
+        ui.separator();
+        ui.spacing();
+
         ui.text_wrapped(
             "Tips: drag-reorder, middle-click to close, Ctrl+W on the active tab. \
              Pinned tabs (Home, Settings) stay on the left even with many tabs open.",
@@ -382,7 +399,13 @@ impl Default for DemoApp {
         tc.add(OuterTab::Inbox(InboxTab { unread: 3 }));
         tc.add(OuterTab::Diag(DiagnosticsTab));
         tc.add(OuterTab::Nested(Box::new(NestedTab::new())));
-        tc.add(OuterTab::Settings(SettingsTab { style_idx: 0 }));
+        tc.add(OuterTab::Settings(SettingsTab {
+            style_idx: 0,
+            // Mirror `TabControlConfig::default()` — slider starts
+            // matching what the strip already shows.
+            content_pad: 4.0,
+            content_pad_enabled: true,
+        }));
         // Activate Home tab first so the first thing the user sees is the welcome
         let first_id = tc.iter().next().map(|(id, _)| id);
         if let Some(id) = first_id {
@@ -398,6 +421,11 @@ impl AppHandler for DemoApp {
         let outer_style = current_style(&self.tc);
         self.tc.config.tab_style = outer_style;
         propagate_style_to_nested(&mut self.tc, outer_style);
+
+        // Apply the content-frame thickness chosen in SettingsTab.
+        let (pad, pad_enabled) = current_content_frame(&self.tc);
+        self.tc.config.content_padding = [pad, pad];
+        self.tc.config.content_padding_enabled = pad_enabled;
 
         ui.spacing();
         if let Some(TabAction::AddRequested) = self.tc.render(ui) {
@@ -419,6 +447,17 @@ fn current_style(tc: &TabControl<OuterTab>) -> TabStyle {
         }
     }
     TabStyle::Pill
+}
+
+/// Read the `(pad, enabled)` pair from the SettingsTab so the host
+/// can apply them to the outer config each frame.
+fn current_content_frame(tc: &TabControl<OuterTab>) -> (f32, bool) {
+    for (_, item) in tc.iter() {
+        if let OuterTab::Settings(s) = item {
+            return (s.content_pad, s.content_pad_enabled);
+        }
+    }
+    (4.0, true)
 }
 
 fn propagate_style_to_nested(tc: &mut TabControl<OuterTab>, style: TabStyle) {
