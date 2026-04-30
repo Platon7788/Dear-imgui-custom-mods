@@ -204,7 +204,7 @@ struct SettingsTab {
     /// `[u8; 3]` when applying.
     body_bg_rgb: [f32; 3],
     /// Mirror of `tabs.config.colors.strip_bg` — same conversion.
-    strip_bg_rgb: [f32; 3],
+    frame_bg_rgb: [f32; 3],
 }
 
 impl TabItem for SettingsTab {
@@ -244,7 +244,7 @@ impl TabItem for SettingsTab {
         ui.spacing();
         ui.checkbox("Enable inset frame", &mut self.body_inset_enabled_state);
         ui.slider("Padding (px)", 0.0, 16.0, &mut self.body_inset_state);
-        ui.color_edit3("Outer (gap)", &mut self.strip_bg_rgb);
+        ui.color_edit3("Outer (gap)", &mut self.frame_bg_rgb);
         ui.color_edit3("Inner (body)", &mut self.body_bg_rgb);
         ui.spacing();
         ui.separator();
@@ -411,7 +411,7 @@ impl Default for DemoApp {
         tc.add(OuterTab::Nested(Box::new(NestedTab::new())));
         // Initial mirrors — match `TabControlConfig::default()` so
         // the sliders / pickers don't snap-jump on the first frame.
-        let init_strip = tc.config.colors.strip_bg;
+        let init_frame = tc.config.colors.frame_bg;
         let init_content = tc.config.colors.body_bg;
         let to_f32 = |c: [u8; 3]| {
             [
@@ -424,7 +424,7 @@ impl Default for DemoApp {
             style_idx: 0,
             body_inset_state: 4.0,
             body_inset_enabled_state: true,
-            strip_bg_rgb: to_f32(init_strip),
+            frame_bg_rgb: to_f32(init_frame),
             body_bg_rgb: to_f32(init_content),
         }));
         // Activate Home tab first so the first thing the user sees is the welcome
@@ -444,7 +444,7 @@ impl AppHandler for DemoApp {
         propagate_style_to_nested(&mut self.tc, outer_style);
 
         // Apply the content-frame thickness + colours chosen in SettingsTab.
-        let (pad, pad_enabled, strip_rgb, content_rgb) = current_content_frame(&self.tc);
+        let (pad, pad_enabled, frame_rgb, content_rgb) = current_content_frame(&self.tc);
         self.tc.config.body_inset = [pad, pad];
         self.tc.config.body_inset_enabled = pad_enabled;
         let to_u8 = |c: [f32; 3]| {
@@ -454,7 +454,7 @@ impl AppHandler for DemoApp {
                 (c[2] * 255.0).round().clamp(0.0, 255.0) as u8,
             ]
         };
-        self.tc.config.colors.strip_bg = to_u8(strip_rgb);
+        self.tc.config.colors.frame_bg = to_u8(frame_rgb);
         self.tc.config.colors.body_bg = to_u8(content_rgb);
 
         ui.spacing();
@@ -479,7 +479,7 @@ fn current_style(tc: &TabControl<OuterTab>) -> TabStyle {
     TabStyle::Pill
 }
 
-/// Read the `(pad, enabled, strip_rgb, content_rgb)` tuple from the
+/// Read the `(pad, enabled, frame_rgb, content_rgb)` tuple from the
 /// SettingsTab so the host can apply them to the outer config each
 /// frame. Colours are normalized `[f32; 3]` (0..1) — the host
 /// converts to `[u8; 3]` before writing into `TabColors`.
@@ -489,7 +489,7 @@ fn current_content_frame(tc: &TabControl<OuterTab>) -> (f32, bool, [f32; 3], [f3
             return (
                 s.body_inset_state,
                 s.body_inset_enabled_state,
-                s.strip_bg_rgb,
+                s.frame_bg_rgb,
                 s.body_bg_rgb,
             );
         }

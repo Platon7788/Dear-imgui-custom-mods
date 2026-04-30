@@ -174,6 +174,15 @@ pub struct TabColors {
     pub close_hover: [u8; 3],
     /// Background of the entire tab strip (behind tabs and side buttons).
     pub strip_bg: [u8; 3],
+    /// Background of the **outer frame** drawn below the strip when
+    /// [`TabControlConfig::body_inset_enabled`] is `true`. This is the
+    /// surface filling the `body_inset`-wide gap around the inner
+    /// body rectangle (the visible "frame around content" effect).
+    /// Default mirrors [`Self::strip_bg`] so the strip and frame
+    /// read as one continuous chrome surface, but hosts can colour
+    /// the frame independently — changing this field DOES NOT
+    /// affect the tab strip itself.
+    pub frame_bg: [u8; 3],
     /// Background of the active tab's content area — the borderless
     /// child-window the strip's `render_content()` runs inside when
     /// [`TabControlConfig::body_inset_enabled`] is `true`.
@@ -204,6 +213,10 @@ impl Default for TabColors {
             text_muted: [0x90, 0x98, 0xa6],
             close_hover: [0xe0, 0x60, 0x60],
             strip_bg: [0x2a, 0x2e, 0x37],
+            // Default mirrors strip_bg so the strip + frame read as
+            // one chrome surface; hosts override `frame_bg` to
+            // distinguish them.
+            frame_bg: [0x2a, 0x2e, 0x37],
             // Slightly *lighter* than strip_bg so the body reads as
             // a "raised inset surface" rather than a dark hole.
             // User feedback 2026-04-30: prior darker defaults read
@@ -264,6 +277,9 @@ impl TabColors {
             text_muted: to_u8(nav.icon_default),
             close_hover: to_u8(sb.error),
             strip_bg: to_u8(nav.bg),
+            // Mirrors strip_bg by default — same chrome surface;
+            // hosts override for independent colouring.
+            frame_bg: to_u8(nav.bg),
             // Slightly *lighter* than strip_bg (= nav.bg) so the
             // body reads as a raised inset surface. Earlier
             // attempts went darker which read as a "dark hole" on

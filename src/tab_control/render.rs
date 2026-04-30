@@ -642,9 +642,12 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
             // "A DrawListMut is already in use!" — drop it here first.
             {
                 let draw = ui.get_window_draw_list();
-                // Outer fill — extends the chrome / strip surface into
-                // the body so the gap reads as a frame around content.
-                draw.add_rect(outer_min, outer_max, c32(pc.config.colors.strip_bg, 255))
+                // Outer fill — `frame_bg` paints the gap around the
+                // inner body. Default mirrors `strip_bg` so the
+                // strip + frame read as one chrome surface; hosts
+                // can recolour `frame_bg` independently without
+                // touching the tab strip itself.
+                draw.add_rect(outer_min, outer_max, c32(pc.config.colors.frame_bg, 255))
                     .filled(true)
                     .build();
             }
