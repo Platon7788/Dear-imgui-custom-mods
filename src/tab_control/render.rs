@@ -608,48 +608,27 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         && let Some(entry) = pc.tabs.iter_mut().find(|t| t.id == active_id)
     {
         if pc.config.content_padding_enabled {
-            // True outer-edge inset: shift the cursor inwards by
-            // `content_padding`, then shrink the child by the same
-            // amount on both sides so a visible gap sits between
-            // the outer window edges and the child rectangle.
-            //
-            // Earlier the code pushed `StyleVar::WindowPadding(...)`
-            // as an INNER padding — that only moved widgets within
+            // Inset the host's content widgets from the outer-window
+            // edges by `pad` pixels on the left/top. ImGui's
+            // `set_cursor_pos` for the next item is the only path
+            // ImGui *guarantees* takes effect — earlier attempts to
+            // wrap render_content in a child_window with a reduced
+            // size, or push `WindowPadding` as inner-padding, either
+            // collapsed the child to 0×0 or moved widgets *inside*
             // the child while the child itself stayed flush against
-            // the outer window. User feedback 2026-04-30:
-            // "внутри программы должен быть зазор в 2 пикселя —
-            // точнее внутри таба" / "падинг тупо нету" — they wanted
-            // the child rect itself inset from the outer window, not
-            // padding inside the child.
+            // the outer window (user feedback 2026-04-30: "внутри
+            // программы должен быть зазор в 2 пикселя").
             //
-            // The child's `ChildBg` is driven from `colors.content_bg`
-            // (default = `strip_bg`), so the gap reads as the same
-            // surface as the strip. Hosts that want a contrasting
-            // content surface (e.g. white-on-dark editor on a dark
-            // chrome) just set `tabs.config.colors.content_bg = [...]`
-            // — the gap stays the parent / strip surface and the
-            // contrasting hue paints the inner rect.
+            // Right/bottom margin isn't enforced — host widgets that
+            // hug the right edge will still touch it. The visible
+            // breathing strip on left+top is the user-reported gap;
+            // a future variant could clip via `push_clip_rect` if
+            // right/bottom enforcement matters.
             let pad = pc.config.content_padding;
             let cur = ui.cursor_pos();
             ui.set_cursor_pos([cur[0] + pad[0], cur[1] + pad[1]]);
-            let avail_full = ui.content_region_avail();
-            let inner = [
-                (avail_full[0] - 2.0 * pad[0]).max(0.0),
-                (avail_full[1] - 2.0 * pad[1]).max(0.0),
-            ];
-            let _bg = ui.push_style_color(
-                dear_imgui_rs::StyleColor::ChildBg,
-                rgba(pc.config.colors.content_bg, 1.0),
-            );
-            ui.child_window("##tab_content")
-                .size(inner)
-                .border(false)
-                .build(ui, || {
-                    entry.item.render_content(ui);
-                });
-        } else {
-            entry.item.render_content(ui);
         }
+        entry.item.render_content(ui);
     }
 
     action
