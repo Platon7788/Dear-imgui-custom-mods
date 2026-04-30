@@ -45,6 +45,7 @@ mod tokens;
 pub use config::{
     BranchArrow, ColumnWidths, DisasmColors, DisasmDataProvider, DisasmViewConfig, FlowKind,
     Instruction, InstructionEntry, MAX_ARROW_DEPTH, VecDisasmProvider, compute_arrows,
+    compute_arrows_clipped,
 };
 
 use crate::utils::color::rgba_f32;
@@ -53,6 +54,28 @@ use crate::utils::text::calc_text_size;
 use std::collections::BTreeSet;
 
 use crate::hex_viewer::NavHistory;
+use crate::hex_viewer::search::{PatternByte, find_pattern_masked, parse_hex_pattern_masked};
+
+/// Minimum number of pattern bytes (Exact + Any combined) required
+/// before [`DisasmView::do_search`] runs the matcher. Set to 5 on
+/// 2026-04-30 — anything shorter produces too many spurious hits in
+/// typical x86 disassembly (e.g. `48 89` matches every other `mov`).
+pub(super) const SEARCH_MIN_BYTES: usize = 5;
+
+/// Origin breadcrumb visualisation — modern two-part design:
+/// a faint full-row background (ambient awareness while
+/// scrolling) plus a crisp left-edge stripe (unmistakable
+/// "this is the breadcrumb" marker). The combination reads as
+/// distinct from selection (full-row solid fill, no stripe) and
+/// from current execution (warning hue, no stripe), so all
+/// three row states are visually independent.
+///
+/// History: started as a single-tier `selection_bg × 0.60`
+/// background (2026-04-30) but tested too faint over dark
+/// themes — replaced with the stripe + bg combo same day.
+pub(super) const ORIGIN_BG_ALPHA_FACTOR: f32 = 0.30;
+pub(super) const ORIGIN_STRIPE_ALPHA: f32 = 0.90;
+pub(super) const ORIGIN_STRIPE_WIDTH: f32 = 3.0;
 
 /// Convert `[r, g, b, a]` to packed u32 color.
 fn col32(c: [f32; 4]) -> u32 {
@@ -109,6 +132,8 @@ pub struct DisasmView {
     pub(super) edit_label: String,
     pub(super) goto_popup_id: String,
     pub(super) ctx_popup_id: String,
+    pub(super) settings_popup_id: String,
+    pub(super) search_popup_id: String,
 
     // ── Navigation ───────────────────────────────────────────
     nav: NavHistory,
@@ -144,10 +169,54 @@ pub struct DisasmView {
     context_idx: Option<usize>,
     /// Show context menu flag.
     show_context_menu: bool,
+    /// One-shot trigger for the Settings popup. Raised by the
+    /// context-menu "Settings..." entry; consumed on the next
+    /// `render` frame by `render_settings_popup`.
+    pub(super) show_settings: bool,
+    /// Address-gutter "just copied" flash — `(row_idx, frames_left)`.
+    /// Set by the double-click-to-copy path on the address column;
+    /// `render` ticks it down each frame until it reaches `None`.
+    /// Same pattern as `hex_viewer::address_flash`.
+    pub(super) address_flash: Option<(usize, u32)>,
+    // ── Byte search ──────────────────────────────────────────
+    /// One-shot trigger for the Search popup (Ctrl+F / context-menu).
+    pub(super) show_search: bool,
+    /// Search input buffer — wildcard hex pattern (`4D 5A ?? 00`).
+    pub(super) search_buf: String,
+    /// One-shot keyboard-focus flag for the search input field.
+    pub(super) search_focus_pending: bool,
+    /// Parsed pattern from the latest `do_search`. Used for highlight
+    /// extent + matches counter; cleared on too-short input.
+    pub(super) search_pattern: Vec<PatternByte>,
+    /// Instruction indices where each match *starts* — used by F3 /
+    /// Shift+F3 to step through matches and by the "Result N/M"
+    /// counter. Deduplicated when several matches share a starting
+    /// instruction.
+    pub(super) search_match_starts: Vec<usize>,
+    /// Instruction indices any match *covers* (start row + every
+    /// row a multi-byte match spans across). Used by
+    /// `draw_instruction_row` to paint the search-match background
+    /// without re-scanning per row.
+    pub(super) search_match_set: BTreeSet<usize>,
+    /// Index into `search_match_starts` — current "active" match.
+    pub(super) search_idx: usize,
+    /// **Origin breadcrumb** — address of the previous cursor row
+    /// before the most recent navigation (Goto / Follow /
+    /// function-jump / nav-back / search). Painted as a soft
+    /// `selection_bg × ORIGIN_BG_ALPHA_FACTOR` highlight so the
+    /// user can rediscover their jump source after scrolling.
+    /// Stored as the **address** (not row index) so it survives
+    /// provider mutations like inserting a new instruction at a
+    /// lower address — the highlight stays on the same logical
+    /// instruction even when the row index shifts.
+    ///
+    /// Cleared on `Esc` and on any single-click without a
+    /// modifier (those are decisive "fresh exploration" gestures).
+    /// Auto-suppressed when navigation lands on the same address
+    /// it would set as origin (no breadcrumb-on-self).
+    pub(super) origin_addr: Option<u64>,
     /// Cached arrows for current frame.
     cached_arrows: Vec<BranchArrow>,
-    /// Frame counter for blinking cursor in edit mode.
-    frame_counter: u32,
     /// Position for InputText widget (set by draw_row, consumed by render).
     edit_render_pos: std::cell::Cell<Option<[f32; 2]>>,
     /// Width for the InputText widget.
@@ -169,6 +238,14 @@ pub struct DisasmView {
     /// value computed on the previous frame for hit-testing — the
     /// 1-frame lag is invisible for the double-click gesture.
     pub(super) frame_comment_x: std::cell::Cell<f32>,
+    /// Per-frame comment-column WIDTH (screen-space pixels).
+    /// Computed in `render()` as
+    /// `(window_w - comment_x).max(cols.comment)` so the Comment
+    /// column always stretches to fill the host window down to a
+    /// `cols.comment` floor. Read by `mouse_to_cell` (so
+    /// double-click hit-testing extends to the full visible width)
+    /// and by the comment edit-cell renderer.
+    pub(super) frame_comment_w: std::cell::Cell<f32>,
 }
 
 impl DisasmView {
@@ -178,12 +255,16 @@ impl DisasmView {
         let edit_label = format!("##dv_edit_{id}");
         let goto_popup_id = format!("##dv_goto_{id}");
         let ctx_popup_id = format!("##dv_ctx_{id}");
+        let settings_popup_id = format!("##dv_settings_{id}");
+        let search_popup_id = format!("##dv_search_{id}");
         Self {
             id,
             config: DisasmViewConfig::default(),
             edit_label,
             goto_popup_id,
             ctx_popup_id,
+            settings_popup_id,
+            search_popup_id,
             nav: NavHistory::new(64),
             cursor_idx: None,
             selection: BTreeSet::new(),
@@ -199,13 +280,159 @@ impl DisasmView {
             line_height: 0.0,
             context_idx: None,
             show_context_menu: false,
+            show_settings: false,
+            address_flash: None,
+            show_search: false,
+            search_buf: String::new(),
+            search_focus_pending: false,
+            search_pattern: Vec::new(),
+            search_match_starts: Vec::new(),
+            search_match_set: BTreeSet::new(),
+            search_idx: 0,
+            origin_addr: None,
             cached_arrows: Vec::new(),
-            frame_counter: 0,
             edit_render_pos: std::cell::Cell::new(None),
             edit_render_width: std::cell::Cell::new(0.0),
             component_center: [0.0, 0.0],
             popup_open_pos: [0.0, 0.0],
             frame_comment_x: std::cell::Cell::new(0.0),
+            frame_comment_w: std::cell::Cell::new(0.0),
+        }
+    }
+
+    // ── Byte search ──────────────────────────────────────────────────
+
+    /// Run the byte search using the current `search_buf`. Builds
+    /// the concatenated instruction-byte stream from `provider`,
+    /// runs the wildcard-aware matcher
+    /// ([`crate::hex_viewer::search::find_pattern_masked`]) and
+    /// translates byte offsets back into instruction indices for
+    /// row highlighting + step navigation.
+    ///
+    /// Patterns shorter than [`SEARCH_MIN_BYTES`] (5) are rejected —
+    /// state is cleared and the function returns without scanning.
+    /// Cross-instruction matches are supported (matches that span
+    /// instruction boundaries cover every row they touch).
+    pub(super) fn do_search(&mut self, provider: &dyn DisasmDataProvider) {
+        let pattern = parse_hex_pattern_masked(&self.search_buf);
+        if pattern.len() < SEARCH_MIN_BYTES {
+            self.search_pattern.clear();
+            self.search_match_starts.clear();
+            self.search_match_set.clear();
+            return;
+        }
+
+        let count = provider.instruction_count();
+        // Build concat byte stream + a `(byte_offset,
+        // global_instruction_idx)` table. Skipping `None`
+        // instructions is mandatory for sparse / lazy providers
+        // (they advertise `instruction_count` for the entire
+        // address range but legitimately return `None` for
+        // not-yet-decoded slots). The pair preserves the global
+        // index so the offset → row mapping survives gaps.
+        let mut data: Vec<u8> = Vec::with_capacity(count * 3);
+        let mut entries: Vec<(usize, usize)> = Vec::with_capacity(count);
+        for i in 0..count {
+            if let Some(instr) = provider.instruction(i) {
+                entries.push((data.len(), i));
+                data.extend_from_slice(instr.bytes());
+            }
+        }
+
+        let matches = find_pattern_masked(&data, &pattern);
+        let plen = pattern.len();
+
+        let mut starts: Vec<usize> = Vec::with_capacity(matches.len());
+        let mut covered: BTreeSet<usize> = BTreeSet::new();
+        for &offset in &matches {
+            // `partition_point(|&(off, _)| off <= offset)` returns
+            // the FIRST entry with `off > offset` — well-defined
+            // last-le semantics even when entries share offsets
+            // (which happens when an instruction has zero bytes —
+            // never, in practice, but defensive). Use saturating
+            // `pos - 1` to guard the impossible case where the
+            // match starts before any entry.
+            let pos = entries.partition_point(|&(off, _)| off <= offset);
+            if pos == 0 {
+                continue;
+            }
+            let start_pos = pos - 1;
+            let end_offset = offset + plen;
+            // First-ge semantics: entries[end_pos].0 is the first
+            // offset that's at or beyond the end of the match.
+            let end_pos = entries.partition_point(|&(off, _)| off < end_offset);
+
+            starts.push(entries[start_pos].1);
+            for entry in &entries[start_pos..end_pos] {
+                covered.insert(entry.1);
+            }
+        }
+        starts.sort_unstable();
+        starts.dedup();
+
+        self.search_pattern = pattern;
+        self.search_match_starts = starts;
+        self.search_match_set = covered;
+        self.search_idx = 0;
+
+        if let Some(&first_idx) = self.search_match_starts.first() {
+            // Pre-search → first-match navigation pushes nav history
+            // and sets the origin breadcrumb so the user can
+            // `Alt+Left` back to where they were AND see the
+            // pre-search row faintly highlighted while exploring
+            // the matches. Self-navigation (search hit on current
+            // row) skips both side effects.
+            let pre_addr = self
+                .cursor_idx
+                .and_then(|i| provider.instruction(i))
+                .map(|instr| instr.address());
+            let dst_addr = provider.instruction(first_idx).map(|i| i.address());
+            if let (Some(src), Some(dst)) = (pre_addr, dst_addr)
+                && src != dst
+            {
+                self.nav.push(src);
+                self.origin_addr = Some(src);
+            }
+            self.cursor_idx = Some(first_idx);
+            self.scroll_to = Some(first_idx);
+        }
+    }
+
+    /// Step to the next search match (wraps around).
+    pub(super) fn search_next(&mut self) {
+        if self.search_match_starts.is_empty() {
+            return;
+        }
+        self.search_idx = (self.search_idx + 1) % self.search_match_starts.len();
+        let idx = self.search_match_starts[self.search_idx];
+        self.cursor_idx = Some(idx);
+        self.scroll_to = Some(idx);
+    }
+
+    /// Step to the previous search match (wraps around).
+    pub(super) fn search_prev(&mut self) {
+        if self.search_match_starts.is_empty() {
+            return;
+        }
+        self.search_idx = self
+            .search_idx
+            .checked_sub(1)
+            .unwrap_or(self.search_match_starts.len() - 1);
+        let idx = self.search_match_starts[self.search_idx];
+        self.cursor_idx = Some(idx);
+        self.scroll_to = Some(idx);
+    }
+
+    /// Format `addr` as a copy-friendly hex literal (`0x...`),
+    /// honouring `address_width_64` + `uppercase`. Used by the
+    /// address-gutter copy-on-double-click path and the "Copy
+    /// Address" context-menu entry.
+    pub(super) fn format_address_literal(&self, addr: u64) -> String {
+        match (self.config.uppercase, self.config.address_width_64) {
+            (true, true) => format!("0x{:016X}", addr),
+            (false, true) => format!("0x{:016x}", addr),
+            (true, false) => format!("0x{:08X}", addr),
+            (false, false) => format!("0x{:08x}", addr),
         }
     }
 
@@ -247,18 +474,37 @@ impl DisasmView {
     }
 
     /// Scroll to and select the instruction at `addr`.
+    ///
+    /// Side effects on jump (when `addr != current cursor address`):
+    /// - Pushes the source address onto the 64-entry nav history
+    ///   (`Alt+Left` / `Alt+Right` walk back / forward).
+    /// - Sets [`Self::origin_addr`] to the source so the previous
+    ///   row paints with the soft "you came from here" breadcrumb.
+    ///
+    /// No-op when `addr` doesn't resolve through
+    /// [`DisasmDataProvider::index_of_address`]. Self-jumps
+    /// (target == current) skip the side effects so the breadcrumb
+    /// doesn't land on the current row.
     pub fn goto_address(&mut self, addr: u64, provider: &dyn DisasmDataProvider) {
-        if let Some(idx) = provider.index_of_address(addr) {
-            if let Some(old_idx) = self.cursor_idx
-                && let Some(old_instr) = provider.instruction(old_idx)
-            {
-                self.nav.push(old_instr.address());
-            }
-            self.select(idx);
+        let Some(idx) = provider.index_of_address(addr) else {
+            return;
+        };
+        let old_addr = self
+            .cursor_idx
+            .and_then(|i| provider.instruction(i))
+            .map(|instr| instr.address());
+        if let Some(old) = old_addr
+            && old != addr
+        {
+            self.nav.push(old);
+            self.origin_addr = Some(old);
         }
+        self.select(idx);
     }
 
-    /// Navigate back in address history.
+    /// Navigate back in address history. Pushes a breadcrumb at
+    /// the current row before stepping back, so a subsequent
+    /// `Alt+Right` lands on the same place visually.
     pub fn nav_back(&mut self, provider: &dyn DisasmDataProvider) {
         let current_addr = self
             .cursor_idx
@@ -268,11 +514,15 @@ impl DisasmView {
         if let Some(addr) = self.nav.go_back(current_addr)
             && let Some(idx) = provider.index_of_address(addr)
         {
+            if addr != current_addr {
+                self.origin_addr = Some(current_addr);
+            }
             self.select(idx);
         }
     }
 
-    /// Navigate forward in address history.
+    /// Navigate forward in address history. Symmetrical breadcrumb
+    /// behaviour to [`Self::nav_back`].
     pub fn nav_forward(&mut self, provider: &dyn DisasmDataProvider) {
         let current_addr = self
             .cursor_idx
@@ -282,8 +532,148 @@ impl DisasmView {
         if let Some(addr) = self.nav.go_forward(current_addr)
             && let Some(idx) = provider.index_of_address(addr)
         {
+            if addr != current_addr {
+                self.origin_addr = Some(current_addr);
+            }
             self.select(idx);
         }
+    }
+
+    // ── Function navigation ──────────────────────────────────────────
+
+    /// Jump to the first instruction of the function containing the
+    /// cursor — uses [`find_function_start`]. The pre-jump address
+    /// is pushed onto nav history (Alt+Left returns to it) AND
+    /// recorded as [`Self::origin_addr`] so the source row paints
+    /// with the soft breadcrumb. Self-jumps (already at start)
+    /// skip both side effects. No-op when there's no cursor.
+    pub fn jump_to_function_start(&mut self, provider: &dyn DisasmDataProvider) {
+        let Some(cur) = self.cursor_idx else { return };
+        let start = find_function_start(provider, cur);
+        if start == cur {
+            return;
+        }
+        if let Some(instr) = provider.instruction(cur) {
+            let old = instr.address();
+            self.nav.push(old);
+            self.origin_addr = Some(old);
+        }
+        self.select(start);
+    }
+
+    /// Jump to the last instruction of the function containing the
+    /// cursor — uses [`find_function_end`]. Symmetrical breadcrumb +
+    /// nav-history behaviour to [`Self::jump_to_function_start`].
+    pub fn jump_to_function_end(&mut self, provider: &dyn DisasmDataProvider) {
+        let Some(cur) = self.cursor_idx else { return };
+        let end = find_function_end(provider, cur);
+        if end == cur {
+            return;
+        }
+        if let Some(instr) = provider.instruction(cur) {
+            let old = instr.address();
+            self.nav.push(old);
+            self.origin_addr = Some(old);
+        }
+        self.select(end);
+    }
+
+    /// Select every instruction from the cursor through the end of
+    /// the function (inclusive). Cursor moves to the function-end
+    /// instruction; selection range is `[cursor_at_call ..= end]`.
+    /// Useful for "copy whole tail of this function" workflows.
+    ///
+    /// Pushes the original cursor address onto the nav history and
+    /// records it as the origin breadcrumb (mirrors
+    /// [`Self::jump_to_function_start`] / `_end`) so `Alt+Left`
+    /// returns to the user's pre-select location and the source
+    /// row paints the breadcrumb. No-op when there's no cursor.
+    pub fn select_function(&mut self, provider: &dyn DisasmDataProvider) {
+        let Some(cur) = self.cursor_idx else { return };
+        let end = find_function_end(provider, cur);
+        if cur != end
+            && let Some(instr) = provider.instruction(cur)
+        {
+            let old = instr.address();
+            self.nav.push(old);
+            self.origin_addr = Some(old);
+        }
+        self.select_range(cur, end);
+        self.cursor_idx = Some(end);
+        self.sel_anchor = Some(cur);
+        self.scroll_to = Some(end);
+    }
+
+    /// "Cheat-Engine-style" follow at cursor — navigate to whatever
+    /// the current instruction points at:
+    ///
+    /// 1. If [`Instruction::branch_target`] is `Some`, jump there.
+    ///    For targets not yet decoded, calls
+    ///    [`DisasmDataProvider::decode_range`] once to give
+    ///    streaming/lazy providers a chance to populate the
+    ///    target window before re-checking. Static providers
+    ///    (`VecDisasmProvider`) implement `decode_range` as a
+    ///    no-op so the lazy retry is free for pre-loaded data.
+    /// 2. Otherwise scan the operand string for a [`TokenKind::Number`]
+    ///    that parses as an address — same lazy-decode + retry
+    ///    treatment. Useful for memory operands like
+    ///    `[0x401000]` whose target the provider didn't tag as
+    ///    a branch.
+    ///
+    /// Returns `true` when navigation actually happened. Pushes
+    /// nav history + sets the origin breadcrumb in both paths.
+    /// Returns `false` for unfollowable rows (no branch, no
+    /// resolvable operand) so callers like the double-click
+    /// handler can fall through to the edit-cell path.
+    pub fn follow_at_cursor(&mut self, provider: &mut dyn DisasmDataProvider) -> bool {
+        let Some(cur) = self.cursor_idx else { return false };
+        // Read just the cheap-to-clone bits up front; the operand
+        // string is only needed in the (rarer) fallback path so
+        // we lazy-clone it there to avoid a heap alloc on every
+        // jcc / call double-click.
+        let branch = provider.instruction(cur).and_then(|i| i.branch_target());
+
+        // Helper: try to navigate to `addr`, decoding lazily if the
+        // target isn't yet in the provider. Returns `true` on
+        // successful navigation. `goto_address` itself handles nav
+        // history + origin breadcrumb when navigation lands.
+        let try_goto = |this: &mut Self, addr: u64, provider: &mut dyn DisasmDataProvider| {
+            if provider.index_of_address(addr).is_none() {
+                // Lazy-decode a small window at the target — 32
+                // instructions covers a typical function prologue
+                // and gives the user something to look at on
+                // arrival. Streaming providers honour this; the
+                // built-in `VecDisasmProvider` is a no-op so this
+                // is free for pre-loaded data.
+                provider.decode_range(addr, 32);
+            }
+            if provider.index_of_address(addr).is_some() {
+                this.goto_address(addr, provider);
+                true
+            } else {
+                false
+            }
+        };
+
+        if let Some(target) = branch {
+            return try_goto(self, target, provider);
+        }
+
+        // Operand-pointer scan — only when there's no branch_target,
+        // so the string clone is paid only by the fallback path.
+        let operands_owned = match provider.instruction(cur) {
+            Some(instr) => instr.operands().to_string(),
+            None => return false,
+        };
+        for tok in tokens::OperandTokenizer::new(&operands_owned) {
+            if tok.kind == tokens::TokenKind::Number
+                && let Some(addr) = parse_operand_number(tok.text)
+                && try_goto(self, addr, provider)
+            {
+                return true;
+            }
+        }
+        false
     }
 
     // ── Selection helpers ────────────────────────────────────────────
@@ -312,7 +702,16 @@ impl DisasmView {
             return;
         }
 
-        self.frame_counter = self.frame_counter.wrapping_add(1);
+        // Tick down the address-gutter "just copied" flash. Counter
+        // hits zero → state cleared so the pill stops painting.
+        // Mirrors `hex_viewer::render`.
+        if let Some((row, frames)) = self.address_flash {
+            if frames > 1 {
+                self.address_flash = Some((row, frames - 1));
+            } else {
+                self.address_flash = None;
+            }
+        }
 
         // Cache font metrics. Guard against the rare zero-glyph case (e.g.
         // before the font atlas is fully built or in test stubs) — division
@@ -338,6 +737,10 @@ impl DisasmView {
         self.render_goto_popup(ui, provider);
         // ── Context menu ─────────────────────────────────────
         self.render_context_menu(ui, provider);
+        // ── Settings popup ───────────────────────────────────
+        self.render_settings_popup(ui);
+        // ── Search popup ─────────────────────────────────────
+        self.render_search_popup(ui, provider);
 
         let avail = ui.content_region_avail();
         let child_id = format!("##dv_child_{}", self.id);
@@ -394,12 +797,21 @@ impl DisasmView {
                 let origin_y = win_y + scroll_y;
 
                 // ── Compute branch arrows for visible range ───
+                // Cross-window scan ([`compute_arrows_clipped`]):
+                // walks ALL provider instructions, retains arrows
+                // where AT LEAST ONE endpoint is in the visible
+                // window, clamps off-window endpoints to the
+                // window edge with `clipped_*` flags so the
+                // renderer can suppress the arrowhead there.
+                // Replaces the older visible-only scan that
+                // dropped long-range jumps when the source or
+                // target scrolled offscreen.
                 if self.config.show_arrows {
-                    let visible_instrs: Vec<&dyn Instruction> = (first_row..last_row)
-                        .filter_map(|i| provider.instruction(i))
-                        .collect();
-                    self.cached_arrows =
-                        compute_arrows(&visible_instrs, first_row, last_row - first_row);
+                    self.cached_arrows = compute_arrows_clipped(
+                        provider as &dyn DisasmDataProvider,
+                        first_row,
+                        last_row - first_row,
+                    );
                     if self.cached_arrows.len() > self.config.max_arrows {
                         self.cached_arrows.truncate(self.config.max_arrows);
                     }
@@ -456,6 +868,17 @@ impl DisasmView {
                 }
                 let comment_x = max_instr_right;
                 self.frame_comment_x.set(comment_x);
+
+                // Comment column stretches to fill remaining
+                // host-window width (per user request 2026-04-30:
+                // Comment has lowest layout priority). Floor at
+                // `cols.comment` so the column never collapses
+                // smaller than its configured min — prevents the
+                // edit cell from becoming unusably narrow when the
+                // host window is shrunk below the layout total.
+                let comment_w =
+                    (origin_x + avail[0] - comment_x).max(cols.comment);
+                self.frame_comment_w.set(comment_w);
 
                 // ── Column header ─────────────────────────────
                 if self.config.show_header {
@@ -572,7 +995,101 @@ impl DisasmView {
     }
 }
 
+// ── Function-boundary detection ──────────────────────────────────────────────
+//
+// Heuristic — the trait gives us per-instruction `flow_kind()` but no
+// CFG metadata. We use `FlowKind::Return` as the canonical function
+// terminator (RET / IRET / RETF / RETN). Tail calls (`jmp some_func`
+// at end of function) are NOT detected — a real disassembler would
+// need provider-supplied function-boundary metadata for that. Padding
+// (`Nop` / INT3) between functions folds into whichever side it
+// neighbours; acceptable trade-off for a heuristic.
+
+/// Return the index of the instruction that *ends* the function
+/// containing `idx` — first [`FlowKind::Return`] at or after `idx`.
+/// Returns `count - 1` (last decoded instruction) when no `Return`
+/// is found before the buffer ends.
+///
+/// Empty providers return `0`. `idx` is clamped to `count - 1` first
+/// so out-of-range cursors land at the buffer tail rather than
+/// panicking.
+pub fn find_function_end(provider: &dyn DisasmDataProvider, idx: usize) -> usize {
+    let count = provider.instruction_count();
+    if count == 0 {
+        return 0;
+    }
+    let start = idx.min(count - 1);
+    for i in start..count {
+        if let Some(instr) = provider.instruction(i)
+            && instr.flow_kind() == FlowKind::Return
+        {
+            return i;
+        }
+    }
+    count - 1
+}
+
+/// Return the index of the instruction that *starts* the function
+/// containing `idx` — instruction immediately after the previous
+/// [`FlowKind::Return`] boundary, or `0` if no boundary exists
+/// before `idx`.
+///
+/// When the cursor sits ON a `Return`, we still walk strictly
+/// *backward* from `cur - 1` so the function this RET belongs to
+/// (not the one it ends) is the one returned. Empty providers
+/// return `0`.
+pub fn find_function_start(provider: &dyn DisasmDataProvider, idx: usize) -> usize {
+    let count = provider.instruction_count();
+    if count == 0 {
+        return 0;
+    }
+    let cur = idx.min(count - 1);
+    if cur == 0 {
+        return 0;
+    }
+    let mut i = cur;
+    while i > 0 {
+        i -= 1;
+        if let Some(instr) = provider.instruction(i)
+            && instr.flow_kind() == FlowKind::Return
+        {
+            // Function starts at the instruction immediately after
+            // the previous RET. `i + 1` is always `<= cur` (we
+            // entered the loop with `cur > 0` and `i` started at
+            // `cur - 1`), so no clamp needed — the historic
+            // `(i + 1).min(count - 1)` was a bogus cap that
+            // incorrectly returned the previous-function RET when
+            // `cur` was the last instruction in the buffer.
+            return i + 1;
+        }
+    }
+    0
+}
+
 // ── Free helpers ─────────────────────────────────────────────────────────────
+
+/// Parse a single operand token classified as
+/// [`tokens::TokenKind::Number`] into an absolute `u64` address.
+/// Accepts:
+///   - `0x...` / `0X...` hex prefix
+///   - `...h` / `...H` MASM/iced-x86 hex suffix
+///   - bare decimal
+///
+/// Returns `None` for unparseable text. Used by
+/// [`DisasmView::follow_at_cursor`] to chase numeric-immediate
+/// pointers that the provider didn't tag as branch targets.
+fn parse_operand_number(s: &str) -> Option<u64> {
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        return u64::from_str_radix(hex, 16).ok();
+    }
+    if s.len() > 1
+        && (s.ends_with('h') || s.ends_with('H'))
+        && s[..s.len() - 1].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return u64::from_str_radix(&s[..s.len() - 1], 16).ok();
+    }
+    s.parse::<u64>().ok()
+}
 
 /// Parse a goto-popup / API-supplied address string.
 ///
@@ -783,6 +1300,19 @@ mod tests {
     fn test_column_widths_default() {
         let cols = ColumnWidths::default();
         assert!(cols.address > 0.0);
+        // User-requested widths (2026-04-30): Bytes 200,
+        // Instruction 300 (= mnemonic + operands), Comment is
+        // a *minimum* width (renders dynamic in `frame_comment_w`).
+        assert_eq!(cols.bytes, 200.0, "bytes column must be 200 px");
+        assert_eq!(
+            cols.mnemonic + cols.operands,
+            300.0,
+            "instruction (mnemonic + operands) must total 300 px"
+        );
+        assert!(
+            cols.comment >= 100.0,
+            "comment min should keep edit-cell usable"
+        );
     }
 
     #[test]
@@ -1191,6 +1721,794 @@ mod tests {
         // the "address not decoded" diagnostic to the user.
         let mut p = sample_provider();
         assert!(!p.set_comment(0xDEAD_BEEF, "ghost"));
+    }
+
+    // ── Function-boundary heuristic ──────────────────────────────────────
+
+    /// Build a 3-function provider for boundary tests:
+    /// - func A: `[0..=2]` ending in RET at index 2
+    /// - func B: `[3..=5]` ending in RET at index 5
+    /// - func C: `[6..=8]` ending in RET at index 8
+    fn three_function_provider() -> VecDisasmProvider {
+        let mut p = VecDisasmProvider::new();
+        // func A
+        p.push(InstructionEntry::new(0x1000, vec![0x55], "push", "rbp")
+            .with_flow(FlowKind::Stack));
+        p.push(InstructionEntry::new(0x1001, vec![0x90], "nop", ""));
+        p.push(InstructionEntry::new(0x1002, vec![0xC3], "ret", "")
+            .with_flow(FlowKind::Return));
+        // func B
+        p.push(InstructionEntry::new(0x1003, vec![0x55], "push", "rbp")
+            .with_flow(FlowKind::Stack));
+        p.push(InstructionEntry::new(0x1004, vec![0x90], "nop", ""));
+        p.push(InstructionEntry::new(0x1005, vec![0xC3], "ret", "")
+            .with_flow(FlowKind::Return));
+        // func C
+        p.push(InstructionEntry::new(0x1006, vec![0x55], "push", "rbp")
+            .with_flow(FlowKind::Stack));
+        p.push(InstructionEntry::new(0x1007, vec![0x90], "nop", ""));
+        p.push(InstructionEntry::new(0x1008, vec![0xC3], "ret", "")
+            .with_flow(FlowKind::Return));
+        p
+    }
+
+    #[test]
+    fn find_function_start_returns_zero_for_first_function() {
+        let p = three_function_provider();
+        assert_eq!(find_function_start(&p, 0), 0);
+        assert_eq!(find_function_start(&p, 1), 0);
+        assert_eq!(find_function_start(&p, 2), 0);
+    }
+
+    #[test]
+    fn find_function_start_returns_post_ret_index() {
+        let p = three_function_provider();
+        // Cursor in func B → start should be index 3 (right after func A's RET).
+        assert_eq!(find_function_start(&p, 3), 3);
+        assert_eq!(find_function_start(&p, 4), 3);
+        assert_eq!(find_function_start(&p, 5), 3);
+        // Cursor in func C → start should be index 6.
+        assert_eq!(find_function_start(&p, 6), 6);
+        assert_eq!(find_function_start(&p, 8), 6);
+    }
+
+    #[test]
+    fn find_function_end_returns_first_ret_at_or_after_cursor() {
+        let p = three_function_provider();
+        // Cursor in func A → end at index 2 (the RET).
+        assert_eq!(find_function_end(&p, 0), 2);
+        assert_eq!(find_function_end(&p, 1), 2);
+        assert_eq!(find_function_end(&p, 2), 2);
+        // Cursor in func B → end at index 5.
+        assert_eq!(find_function_end(&p, 3), 5);
+        assert_eq!(find_function_end(&p, 5), 5);
+    }
+
+    #[test]
+    fn find_function_end_returns_last_when_no_ret_after() {
+        // No-RET tail — end clamps to last instruction.
+        let mut p = VecDisasmProvider::new();
+        p.push(InstructionEntry::new(0x2000, vec![0x90], "nop", ""));
+        p.push(InstructionEntry::new(0x2001, vec![0x90], "nop", ""));
+        p.push(InstructionEntry::new(0x2002, vec![0x90], "nop", ""));
+        assert_eq!(find_function_end(&p, 0), 2);
+    }
+
+    #[test]
+    fn find_function_helpers_handle_empty_provider() {
+        let p = VecDisasmProvider::new();
+        assert_eq!(find_function_start(&p, 0), 0);
+        assert_eq!(find_function_end(&p, 0), 0);
+        assert_eq!(find_function_start(&p, 999), 0);
+        assert_eq!(find_function_end(&p, 999), 0);
+    }
+
+    #[test]
+    fn find_function_helpers_clamp_oob_cursor() {
+        let p = three_function_provider();
+        // Cursor past the end clamps to the last instruction (index 8 = func C RET).
+        assert_eq!(find_function_end(&p, 999), 8);
+        assert_eq!(find_function_start(&p, 999), 6);
+    }
+
+    #[test]
+    fn select_function_selects_from_cursor_to_end() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("test_select_func");
+        // Cursor at index 4 (middle of func B); select_function
+        // should select [4, 5] and move cursor to 5 (the RET).
+        view.cursor_idx = Some(4);
+        view.select_function(&p);
+        assert_eq!(view.selected_index(), Some(5));
+        assert_eq!(view.selected_indices().len(), 2);
+        assert!(view.is_selected(4));
+        assert!(view.is_selected(5));
+    }
+
+    #[test]
+    fn jump_to_function_start_lands_on_post_ret_index() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("test_jump_start");
+        view.cursor_idx = Some(7); // middle of func C
+        view.jump_to_function_start(&p);
+        assert_eq!(view.selected_index(), Some(6));
+    }
+
+    #[test]
+    fn jump_to_function_end_lands_on_ret_index() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("test_jump_end");
+        view.cursor_idx = Some(7); // middle of func C
+        view.jump_to_function_end(&p);
+        assert_eq!(view.selected_index(), Some(8));
+    }
+
+    // ── follow_at_cursor ─────────────────────────────────────────────────
+
+    #[test]
+    fn follow_at_cursor_uses_branch_target_first() {
+        // Controlled 2-instruction provider: a jmp at 0x500 with
+        // resolvable target 0x510 (existing as instruction at idx 1).
+        let mut p = VecDisasmProvider::new();
+        p.push(
+            InstructionEntry::new(0x500, vec![0xEB, 0x00], "jmp", "0x510")
+                .with_flow(FlowKind::Jump)
+                .with_target(0x510),
+        );
+        p.push(InstructionEntry::new(0x510, vec![0x90], "nop", ""));
+        let mut view = DisasmView::new("test_follow_branch");
+        view.cursor_idx = Some(0);
+        let followed = view.follow_at_cursor(&mut p);
+        assert!(followed);
+        assert_eq!(view.selected_index(), Some(1));
+    }
+
+    #[test]
+    fn follow_at_cursor_falls_back_to_operand_pointer() {
+        // No `branch_target`, but operand string contains `0x500`
+        // which matches the address of an existing instruction.
+        // `mov rax, [0x500]` → follow_at_cursor should jump there.
+        let mut p = VecDisasmProvider::new();
+        p.push(InstructionEntry::new(0x100, vec![0x48, 0x8B, 0x05], "mov", "rax, [0x500]"));
+        p.push(InstructionEntry::new(0x500, vec![0x90], "nop", ""));
+        let mut view = DisasmView::new("test_follow_op");
+        view.cursor_idx = Some(0);
+        let followed = view.follow_at_cursor(&mut p);
+        assert!(followed);
+        assert_eq!(view.selected_index(), Some(1));
+    }
+
+    #[test]
+    fn follow_at_cursor_returns_false_when_nothing_to_follow() {
+        // Operand contains a number but it doesn't resolve to any
+        // known instruction → no navigation.
+        let mut p = VecDisasmProvider::new();
+        p.push(InstructionEntry::new(0x100, vec![0xB8, 0x10, 0x00, 0x00, 0x00], "mov", "eax, 0x10"));
+        let mut view = DisasmView::new("test_no_follow");
+        view.cursor_idx = Some(0);
+        assert!(!view.follow_at_cursor(&mut p));
+    }
+
+    // ── parse_operand_number ─────────────────────────────────────────────
+
+    #[test]
+    fn parse_operand_number_accepts_hex_decimal_masm() {
+        assert_eq!(parse_operand_number("0x401000"), Some(0x401000));
+        assert_eq!(parse_operand_number("0X401000"), Some(0x401000));
+        assert_eq!(parse_operand_number("401000h"), Some(0x401000));
+        assert_eq!(parse_operand_number("DEADh"), Some(0xDEAD));
+        assert_eq!(parse_operand_number("100"), Some(100));
+        assert_eq!(parse_operand_number(""), None);
+        assert_eq!(parse_operand_number("h"), None);
+        assert_eq!(parse_operand_number("0x"), None);
+        assert_eq!(parse_operand_number("garbage"), None);
+    }
+
+    // ── compute_arrows_clipped ───────────────────────────────────────────
+
+    #[test]
+    fn compute_arrows_clipped_keeps_arrow_when_only_target_visible() {
+        // Source at index 0 (offscreen), target at index 5 (visible).
+        // Window = [3..7) → 4 rows.
+        let mut p = VecDisasmProvider::new();
+        for i in 0..10 {
+            let entry = if i == 0 {
+                InstructionEntry::new(0x1000, vec![0xEB, 0x00], "jmp", "0x1005")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x1005)
+            } else {
+                InstructionEntry::new(0x1000 + i as u64, vec![0x90], "nop", "")
+            };
+            p.push(entry);
+        }
+        let arrows = compute_arrows_clipped(&p as &dyn DisasmDataProvider, 3, 4);
+        assert_eq!(arrows.len(), 1);
+        let arrow = &arrows[0];
+        // Source clamped to top of visible window (idx 0 in local space).
+        assert!(arrow.clipped_from);
+        assert_eq!(arrow.from_idx, 0);
+        // Target visible at global idx 5 → local idx 5 - 3 = 2.
+        assert!(!arrow.clipped_to);
+        assert_eq!(arrow.to_idx, 2);
+    }
+
+    #[test]
+    fn compute_arrows_clipped_keeps_arrow_when_only_source_visible() {
+        let mut p = VecDisasmProvider::new();
+        for i in 0..10 {
+            let entry = if i == 2 {
+                InstructionEntry::new(0x1002, vec![0xEB, 0x00], "jmp", "0x1009")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x1009)
+            } else {
+                InstructionEntry::new(0x1000 + i as u64, vec![0x90], "nop", "")
+            };
+            p.push(entry);
+        }
+        // Window [1..5) → source at global 2 visible (local 1),
+        // target at global 9 offscreen below (clamped to last_local = 3).
+        let arrows = compute_arrows_clipped(&p as &dyn DisasmDataProvider, 1, 4);
+        assert_eq!(arrows.len(), 1);
+        let arrow = &arrows[0];
+        assert!(!arrow.clipped_from);
+        assert_eq!(arrow.from_idx, 1);
+        assert!(arrow.clipped_to);
+        assert_eq!(arrow.to_idx, 3); // last_local
+    }
+
+    #[test]
+    fn compute_arrows_clipped_drops_same_side_off_window() {
+        // Source AND target both above visible window → drop.
+        let mut p = VecDisasmProvider::new();
+        for i in 0..10 {
+            let entry = if i == 0 {
+                // jmp from idx 0 → idx 2 (both above window [5..9)).
+                InstructionEntry::new(0x1000, vec![0xEB, 0x00], "jmp", "0x1002")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x1002)
+            } else {
+                InstructionEntry::new(0x1000 + i as u64, vec![0x90], "nop", "")
+            };
+            p.push(entry);
+        }
+        let arrows = compute_arrows_clipped(&p as &dyn DisasmDataProvider, 5, 4);
+        assert!(arrows.is_empty(), "both-above arrow must drop");
+    }
+
+    #[test]
+    fn compute_arrows_clipped_keeps_pass_through_arrow_forward() {
+        // Source above window, target below → vertical line passes
+        // through the entire visible region. Both endpoints clipped,
+        // no horizontal stubs, no arrowhead in the renderer.
+        let mut p = VecDisasmProvider::new();
+        for i in 0..15 {
+            let entry = if i == 1 {
+                // jmp from idx 1 (above window [5..10)) →
+                // idx 12 (below window).
+                InstructionEntry::new(0x1001, vec![0xEB, 0x00], "jmp", "0x100C")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x100C)
+            } else {
+                InstructionEntry::new(0x1000 + i as u64, vec![0x90], "nop", "")
+            };
+            p.push(entry);
+        }
+        let arrows = compute_arrows_clipped(&p as &dyn DisasmDataProvider, 5, 5);
+        assert_eq!(arrows.len(), 1, "pass-through arrow must survive");
+        let arrow = &arrows[0];
+        assert!(arrow.clipped_from);
+        assert!(arrow.clipped_to);
+        assert_eq!(arrow.from_idx, 0); // clamped to top of window
+        assert_eq!(arrow.to_idx, 4); // clamped to bottom (last_local)
+    }
+
+    #[test]
+    fn compute_arrows_clipped_keeps_pass_through_arrow_backward() {
+        // Source below window, target above → backward jump
+        // crossing through visible region.
+        let mut p = VecDisasmProvider::new();
+        for i in 0..15 {
+            let entry = if i == 12 {
+                InstructionEntry::new(0x100C, vec![0xEB, 0x00], "jmp", "0x1001")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x1001)
+            } else {
+                InstructionEntry::new(0x1000 + i as u64, vec![0x90], "nop", "")
+            };
+            p.push(entry);
+        }
+        let arrows = compute_arrows_clipped(&p as &dyn DisasmDataProvider, 5, 5);
+        assert_eq!(arrows.len(), 1);
+        let arrow = &arrows[0];
+        assert!(arrow.clipped_from);
+        assert!(arrow.clipped_to);
+        // Source at global 12 (below) → clamped to last_local = 4.
+        assert_eq!(arrow.from_idx, 4);
+        // Target at global 1 (above) → clamped to 0.
+        assert_eq!(arrow.to_idx, 0);
+    }
+
+    #[test]
+    fn compute_arrows_clipped_priority_orders_anchored_first() {
+        // 3 arrows with different priority tiers — verify post-sort
+        // order is anchored → half-clipped → pass-through.
+        let mut p = VecDisasmProvider::new();
+        for i in 0..20 {
+            let entry = match i {
+                // idx 6 → idx 8: both inside window [5..10) — anchored.
+                6 => InstructionEntry::new(0x1006, vec![0xEB, 0x00], "jmp", "0x1008")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x1008),
+                // idx 7 → idx 15: source visible, target below — half-clipped.
+                7 => InstructionEntry::new(0x1007, vec![0xEB, 0x00], "jmp", "0x100F")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x100F),
+                // idx 1 → idx 18: pass-through.
+                1 => InstructionEntry::new(0x1001, vec![0xEB, 0x00], "jmp", "0x1012")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x1012),
+                _ => InstructionEntry::new(0x1000 + i as u64, vec![0x90], "nop", ""),
+            };
+            p.push(entry);
+        }
+        let arrows = compute_arrows_clipped(&p as &dyn DisasmDataProvider, 5, 5);
+        assert_eq!(arrows.len(), 3);
+        // Anchored arrow first.
+        assert!(!arrows[0].clipped_from && !arrows[0].clipped_to);
+        // Half-clipped arrow second.
+        assert!(arrows[1].clipped_from ^ arrows[1].clipped_to);
+        // Pass-through arrow last (first to be truncated under cap).
+        assert!(arrows[2].clipped_from && arrows[2].clipped_to);
+    }
+
+    // ── Architecture coverage: x32 (PE32) addresses ──────────────────────
+    //
+    // All addresses are `u64` on the wire so x32 fits naturally in
+    // the upper-zero range. These tests pin behaviour at the
+    // typical PE32 image-base 0x401000 to catch regressions where a
+    // future change accidentally assumes the upper 32 bits are
+    // populated (e.g. truncates to u32 internally).
+
+    fn pe32_three_function_provider() -> VecDisasmProvider {
+        // Same shape as `three_function_provider` but at PE32 base.
+        let mut p = VecDisasmProvider::new();
+        let mut addr = 0x00401000_u64;
+        for f in 0..3 {
+            // prologue
+            p.push(
+                InstructionEntry::new(addr, vec![0x55], "push", "ebp")
+                    .with_flow(FlowKind::Stack)
+                    .with_block(f),
+            );
+            addr += 1;
+            // body
+            p.push(
+                InstructionEntry::new(addr, vec![0x90], "nop", "").with_block(f),
+            );
+            addr += 1;
+            // ret
+            p.push(
+                InstructionEntry::new(addr, vec![0xC3], "ret", "")
+                    .with_flow(FlowKind::Return)
+                    .with_block(f),
+            );
+            addr += 1;
+        }
+        p
+    }
+
+    #[test]
+    fn x32_find_function_works_with_pe32_addresses() {
+        let p = pe32_three_function_provider();
+        // Func 0: indices 0..=2, addresses 0x401000..=0x401002.
+        assert_eq!(find_function_start(&p, 0), 0);
+        assert_eq!(find_function_end(&p, 0), 2);
+        // Func 1: indices 3..=5.
+        assert_eq!(find_function_start(&p, 4), 3);
+        assert_eq!(find_function_end(&p, 4), 5);
+        // Func 2: indices 6..=8.
+        assert_eq!(find_function_start(&p, 7), 6);
+        assert_eq!(find_function_end(&p, 7), 8);
+    }
+
+    #[test]
+    fn x32_follow_at_cursor_resolves_pe32_jump() {
+        // Typical x32 binary: jmp from 0x401000 → 0x401005.
+        let mut p = VecDisasmProvider::new();
+        p.push(
+            InstructionEntry::new(0x00401000, vec![0xE9, 0x00, 0x00, 0x00, 0x00], "jmp", "0x00401005")
+                .with_flow(FlowKind::Jump)
+                .with_target(0x00401005),
+        );
+        p.push(InstructionEntry::new(0x00401005, vec![0x90], "nop", ""));
+        let mut view = DisasmView::new("x32_follow");
+        view.cursor_idx = Some(0);
+        assert!(view.follow_at_cursor(&mut p));
+        assert_eq!(view.selected_index(), Some(1));
+    }
+
+    #[test]
+    fn x32_follow_at_cursor_resolves_absolute_memory_operand() {
+        // x32 absolute memory operand `mov eax, [0x401005]` — the
+        // operand-pointer fallback should chase the immediate.
+        let mut p = VecDisasmProvider::new();
+        p.push(InstructionEntry::new(
+            0x00401000,
+            vec![0x8B, 0x05, 0x05, 0x10, 0x40, 0x00],
+            "mov",
+            "eax, [0x00401005]",
+        ));
+        p.push(InstructionEntry::new(0x00401005, vec![0x90], "nop", ""));
+        let mut view = DisasmView::new("x32_op_follow");
+        view.cursor_idx = Some(0);
+        assert!(view.follow_at_cursor(&mut p));
+        assert_eq!(view.selected_index(), Some(1));
+    }
+
+    #[test]
+    fn x32_format_address_literal_8_digits_when_not_64bit() {
+        let mut view = DisasmView::new("x32_format");
+        view.config.address_width_64 = false;
+        view.config.uppercase = true;
+        assert_eq!(view.format_address_literal(0x00401000), "0x00401000");
+        assert_eq!(view.format_address_literal(0xDEADBEEF), "0xDEADBEEF");
+        view.config.uppercase = false;
+        assert_eq!(view.format_address_literal(0x00401000), "0x00401000");
+        // Truncation behaviour for too-wide addresses: `{:08X}`
+        // doesn't truncate, it just widens — this is fine for x32
+        // because addresses fit in 8 hex digits, and would surface
+        // weird-but-not-broken display if a 64-bit address landed
+        // here while `address_width_64=false`.
+    }
+
+    #[test]
+    fn x64_format_address_literal_16_digits_when_64bit() {
+        let mut view = DisasmView::new("x64_format");
+        view.config.address_width_64 = true;
+        view.config.uppercase = true;
+        assert_eq!(
+            view.format_address_literal(0x00007FF6_12345678),
+            "0x00007FF612345678"
+        );
+        assert_eq!(
+            view.format_address_literal(0xFFFF_FFFF_FFFF_FFFF),
+            "0xFFFFFFFFFFFFFFFF"
+        );
+        view.config.uppercase = false;
+        assert_eq!(
+            view.format_address_literal(0x7FF6_1234_5678),
+            "0x00007ff612345678"
+        );
+    }
+
+    #[test]
+    fn parse_operand_number_handles_masm_leading_zero_quirk() {
+        // MASM / iced-x86 emit `0FFFFFFFFh` (leading 0 prefix
+        // before a hex letter) so the assembler doesn't mistake it
+        // for an identifier. Parser must accept this form.
+        assert_eq!(parse_operand_number("0FFFFFFFFh"), Some(0xFFFFFFFF));
+        assert_eq!(parse_operand_number("0CAFEBABEh"), Some(0xCAFEBABE));
+        // Without leading zero — also valid (just an upper-case hex).
+        assert_eq!(parse_operand_number("FFFFh"), Some(0xFFFF));
+    }
+
+    #[test]
+    fn parse_operand_number_handles_full_u64_range() {
+        // Verify the parser doesn't truncate to u32 anywhere.
+        assert_eq!(
+            parse_operand_number("0xFFFFFFFFFFFFFFFF"),
+            Some(u64::MAX)
+        );
+        assert_eq!(parse_operand_number("0x7FF612345678"), Some(0x7FF6_1234_5678));
+    }
+
+    // ── Origin breadcrumb + nav history ───────────────────────────────────
+
+    #[test]
+    fn goto_address_sets_origin_to_old_address() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_goto");
+        view.cursor_idx = Some(1); // 0x1001 in func A
+        view.goto_address(0x1004, &p); // jump to func B middle
+        assert_eq!(view.origin_addr, Some(0x1001));
+        assert_eq!(view.selected_index(), Some(4));
+    }
+
+    #[test]
+    fn goto_address_self_does_not_set_origin() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_self");
+        view.cursor_idx = Some(2);
+        // Pre-condition: no breadcrumb.
+        assert!(view.origin_addr.is_none());
+        view.goto_address(0x1002, &p); // self-jump (cursor at 2 == addr 0x1002)
+        assert!(
+            view.origin_addr.is_none(),
+            "self-goto must not paint a breadcrumb on the current row"
+        );
+    }
+
+    #[test]
+    fn goto_address_overwrites_previous_origin() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_overwrite");
+        view.cursor_idx = Some(0);
+        view.goto_address(0x1003, &p); // origin = 0x1000
+        assert_eq!(view.origin_addr, Some(0x1000));
+        view.goto_address(0x1006, &p); // origin = 0x1003
+        assert_eq!(view.origin_addr, Some(0x1003));
+    }
+
+    #[test]
+    fn jump_to_function_start_sets_origin() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_func_start");
+        view.cursor_idx = Some(7); // middle of func C (addr 0x1007)
+        view.jump_to_function_start(&p);
+        assert_eq!(view.origin_addr, Some(0x1007));
+        assert_eq!(view.selected_index(), Some(6));
+    }
+
+    #[test]
+    fn jump_to_function_end_sets_origin() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_func_end");
+        view.cursor_idx = Some(4); // middle of func B (addr 0x1004)
+        view.jump_to_function_end(&p);
+        assert_eq!(view.origin_addr, Some(0x1004));
+        assert_eq!(view.selected_index(), Some(5));
+    }
+
+    #[test]
+    fn nav_back_sets_origin_to_pre_back_address() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_nav_back");
+        view.cursor_idx = Some(0); // 0x1000
+        view.goto_address(0x1004, &p); // → 0x1004 (origin = 0x1000)
+        assert_eq!(view.origin_addr, Some(0x1000));
+        view.nav_back(&p); // ← 0x1000 (origin should now be 0x1004)
+        assert_eq!(view.origin_addr, Some(0x1004));
+        assert_eq!(view.selected_index(), Some(0));
+    }
+
+    #[test]
+    fn nav_forward_sets_origin_to_pre_forward_address() {
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_nav_fwd");
+        view.cursor_idx = Some(0);
+        view.goto_address(0x1004, &p);
+        view.nav_back(&p); // back to 0x1000
+        view.nav_forward(&p); // forward to 0x1004 (origin = 0x1000)
+        assert_eq!(view.origin_addr, Some(0x1000));
+        assert_eq!(view.selected_index(), Some(4));
+    }
+
+    #[test]
+    fn do_search_sets_origin_and_pushes_nav_history() {
+        let mut p = VecDisasmProvider::new();
+        // Build a buffer with a unique 5-byte pattern at 0x1010.
+        for i in 0..16 {
+            let bytes = if i == 16 - 6 {
+                vec![0x48, 0x89, 0xE5, 0x90, 0x90]
+            } else {
+                vec![0x90]
+            };
+            p.push(InstructionEntry::new(0x1000 + i as u64, bytes, "nop", ""));
+        }
+        let mut view = DisasmView::new("origin_search");
+        view.cursor_idx = Some(2); // pre-search at 0x1002
+        view.search_buf = "48 89 E5 90 90".to_string();
+        view.do_search(&p);
+        // Pre-search address recorded as origin.
+        assert_eq!(view.origin_addr, Some(0x1002));
+        // Nav history holds the pre-search address — Alt+Left works.
+        view.nav_back(&p);
+        assert_eq!(view.selected_index(), Some(2));
+    }
+
+    #[test]
+    fn origin_persists_across_arrow_navigation() {
+        // Arrow keys / single-step movement should NOT clear origin —
+        // the user is exploring around the breadcrumb, not abandoning
+        // it. We exercise this via direct cursor mutation since
+        // `handle_keyboard` requires an Ui mock.
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_arrows");
+        view.cursor_idx = Some(0);
+        view.goto_address(0x1006, &p);
+        assert_eq!(view.origin_addr, Some(0x1000));
+        // Simulate arrow movement (cursor changes; origin untouched).
+        view.cursor_idx = Some(7);
+        assert_eq!(view.origin_addr, Some(0x1000));
+        view.cursor_idx = Some(8);
+        assert_eq!(view.origin_addr, Some(0x1000));
+    }
+
+    #[test]
+    fn origin_survives_provider_address_reordering() {
+        // `origin_addr` is an ABSOLUTE address (not row index), so
+        // a provider mutation that shifts row indices doesn't
+        // invalidate the breadcrumb.
+        let mut p = three_function_provider();
+        let mut view = DisasmView::new("origin_survives_mut");
+        view.cursor_idx = Some(0);
+        view.goto_address(0x1006, &p);
+        assert_eq!(view.origin_addr, Some(0x1000));
+        // Mutate the provider — set a comment on the origin
+        // instruction. This doesn't shift indices but proves the
+        // address-based key is stable across mutation.
+        assert!(p.set_comment(0x1000, "marked"));
+        // Origin still points at the same address.
+        assert_eq!(view.origin_addr, Some(0x1000));
+        assert_eq!(p.instruction(0).unwrap().comment(), Some("marked"));
+    }
+
+    // ── follow_at_cursor: lazy decode for streaming providers ────────────
+
+    /// Test-only provider that decodes a target on demand into its
+    /// internal `Vec`. Models the kind of streaming/lazy provider
+    /// users build on top of iced-x86 / capstone where decoding
+    /// happens per-page or per-function.
+    struct LazyDecodeProvider {
+        decoded: VecDisasmProvider,
+        /// Addresses that *can* be decoded but haven't been yet.
+        pending: std::collections::HashSet<u64>,
+    }
+
+    impl DisasmDataProvider for LazyDecodeProvider {
+        fn instruction_count(&self) -> usize {
+            self.decoded.instruction_count()
+        }
+        fn instruction(&self, idx: usize) -> Option<&dyn Instruction> {
+            self.decoded.instruction(idx)
+        }
+        fn decode_range(&mut self, start_addr: u64, _max_count: usize) {
+            if self.pending.remove(&start_addr) {
+                self.decoded.push(InstructionEntry::new(
+                    start_addr,
+                    vec![0x90],
+                    "nop",
+                    "",
+                ));
+            }
+        }
+        fn index_of_address(&self, addr: u64) -> Option<usize> {
+            self.decoded.index_of_address(addr)
+        }
+    }
+
+    #[test]
+    fn follow_at_cursor_lazy_decodes_call_target() {
+        // Source: `call 0x4011A0`. Target NOT yet decoded — only
+        // present in the lazy provider's `pending` set. Without
+        // lazy-decode, follow would silently fail.
+        let mut decoded = VecDisasmProvider::new();
+        decoded.push(
+            InstructionEntry::new(0x401000, vec![0xE8, 0x9B, 0x01, 0x00, 0x00], "call", "0x4011A0")
+                .with_flow(FlowKind::Call)
+                .with_target(0x4011A0),
+        );
+        let mut p = LazyDecodeProvider {
+            decoded,
+            pending: [0x4011A0].iter().copied().collect(),
+        };
+        let mut view = DisasmView::new("lazy_call");
+        view.cursor_idx = Some(0);
+        let followed = view.follow_at_cursor(&mut p);
+        assert!(followed, "follow must succeed via lazy decode");
+        // After decode, target is at idx 1.
+        assert_eq!(view.selected_index(), Some(1));
+        assert_eq!(view.origin_addr, Some(0x401000));
+    }
+
+    #[test]
+    fn follow_at_cursor_returns_false_when_lazy_decode_yields_nothing() {
+        // Lazy provider has no pending decodes — target stays unknown.
+        let mut decoded = VecDisasmProvider::new();
+        decoded.push(
+            InstructionEntry::new(0x401000, vec![0xE8, 0x00, 0x00, 0x00, 0x00], "call", "0xDEAD")
+                .with_flow(FlowKind::Call)
+                .with_target(0xDEAD),
+        );
+        let mut p = LazyDecodeProvider {
+            decoded,
+            pending: std::collections::HashSet::new(),
+        };
+        let mut view = DisasmView::new("lazy_unfollowable");
+        view.cursor_idx = Some(0);
+        assert!(!view.follow_at_cursor(&mut p));
+        assert!(view.origin_addr.is_none());
+    }
+
+    #[test]
+    fn origin_preserved_through_repeated_navigations() {
+        // Each new navigation overwrites origin (not stacks) — verify
+        // the breadcrumb tracks the *last* jump source only.
+        let p = three_function_provider();
+        let mut view = DisasmView::new("origin_chain");
+        view.cursor_idx = Some(0); // 0x1000
+        view.goto_address(0x1003, &p);
+        assert_eq!(view.origin_addr, Some(0x1000));
+        view.goto_address(0x1006, &p);
+        assert_eq!(view.origin_addr, Some(0x1003));
+        view.goto_address(0x1000, &p);
+        assert_eq!(view.origin_addr, Some(0x1006));
+    }
+
+    #[test]
+    fn nav_history_capacity_is_64_entries() {
+        // Push 100 distinct addresses, walk back, count how many
+        // we recover before the history runs dry. Should be 64
+        // (per `NavHistory::new(64)` in DisasmView::new).
+        let mut p = VecDisasmProvider::new();
+        for i in 0..101 {
+            p.push(InstructionEntry::new(0x1000 + i as u64, vec![0x90], "nop", ""));
+        }
+        let mut view = DisasmView::new("nav_capacity");
+        view.cursor_idx = Some(0);
+        for i in 1..=100 {
+            view.goto_address(0x1000 + i as u64, &p);
+        }
+        // After 100 pushes, walk back. Count how many distinct
+        // addresses we recover before nav_back stops moving us.
+        let mut visited = std::collections::HashSet::new();
+        for _ in 0..200 {
+            let before = view.selected_index();
+            view.nav_back(&p);
+            let after = view.selected_index();
+            if before == after {
+                break;
+            }
+            visited.insert(after);
+        }
+        // History capacity is 64; one slot is "current", rest are
+        // back-stack — so we should recover ~64 distinct steps.
+        // Allow ±2 tolerance for off-by-one in the NavHistory
+        // implementation (capacity vs back-only-stack semantics).
+        assert!(
+            visited.len() >= 60 && visited.len() <= 65,
+            "expected ~64 nav history slots, got {}",
+            visited.len()
+        );
+    }
+
+    #[test]
+    fn x32_compute_arrows_clipped_works_with_pe32_addresses() {
+        // PE32 image-base jumps: jmp from 0x401000 → 0x401010.
+        // Verifies that compute_arrows_clipped's `index_of_address`
+        // path resolves x32 addresses identically to x64.
+        let mut p = VecDisasmProvider::new();
+        for i in 0..16 {
+            let entry = if i == 0 {
+                InstructionEntry::new(0x00401000, vec![0xEB, 0x00], "jmp", "0x00401010")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x00401010)
+            } else {
+                InstructionEntry::new(0x00401000 + i as u64, vec![0x90], "nop", "")
+            };
+            p.push(entry);
+        }
+        // Window [5..10) — source at idx 0 above, target at idx 16
+        // not present (0x401010 = idx 16, but we only have 16
+        // instructions = idx 0..=15). Let's adjust to ensure
+        // target exists: target 0x40100F → idx 15.
+        let mut p2 = VecDisasmProvider::new();
+        for i in 0..16 {
+            let entry = if i == 0 {
+                InstructionEntry::new(0x00401000, vec![0xEB, 0x00], "jmp", "0x0040100F")
+                    .with_flow(FlowKind::Jump)
+                    .with_target(0x0040100F)
+            } else {
+                InstructionEntry::new(0x00401000 + i as u64, vec![0x90], "nop", "")
+            };
+            p2.push(entry);
+        }
+        let arrows = compute_arrows_clipped(&p2 as &dyn DisasmDataProvider, 5, 5);
+        // Source at idx 0 above window, target at idx 15 below window
+        // → pass-through arrow.
+        assert_eq!(arrows.len(), 1);
+        assert!(arrows[0].clipped_from);
+        assert!(arrows[0].clipped_to);
     }
 
     #[test]

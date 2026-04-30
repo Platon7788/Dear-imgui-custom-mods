@@ -398,6 +398,7 @@ impl<H: AppHandler + 'static> ApplicationHandler<()> for WinitApp<H> {
             was_minimized: false,
             started_at: Instant::now(),
             clear_color,
+            cached_titlebar: cfg.theme.titlebar(),
         });
     }
 

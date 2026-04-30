@@ -139,12 +139,22 @@ impl NotificationCenter {
     }
 
     /// Push a notification onto the stack and return its id.
+    ///
+    /// On `u64` wrap-around (after ~10^19 pushes — practically
+    /// impossible but defensively handled) we scan the live queue
+    /// for the next unused id so a sticky long-lived toast that
+    /// happens to occupy the post-wrap range can't collide with a
+    /// fresh one. Pre-wrap behaviour is unchanged.
     pub fn push(&mut self, mut n: Notification) -> u64 {
-        let id = self.next_id;
-        self.next_id = self.next_id.wrapping_add(1).max(1);
+        let mut id = self.next_id;
+        // Skip 0 (reserved as "no id") and any id already in flight.
+        while id == 0 || self.queue.iter().any(|n| n.id == id) {
+            id = id.wrapping_add(1);
+        }
+        self.next_id = id.wrapping_add(1).max(1);
         n.id = id;
-        // Pre-format the ImGui window ID once — saves a per-frame `format!`
-        // allocation on every visible toast.
+        // Pre-format the ImGui window ID once — saves a per-frame
+        // `format!` allocation on every visible toast.
         n.win_id = format!("##toast_{id}");
         self.queue.push(n);
         id
@@ -231,6 +241,14 @@ impl NotificationCenter {
         let mut cum_y = 0.0_f32;
         let mut hover_flags: Vec<(u64, bool)> = Vec::with_capacity(indices.len());
         let mut to_dismiss: Vec<u64> = Vec::new();
+        // Single-frame click-consumed latch — guards against the
+        // (theoretical) case where overlapping or stacked toasts
+        // each report `is_window_hovered() && is_mouse_clicked()`
+        // for the same physical click. ImGui normally returns
+        // hover for the topmost window only, but defensive
+        // gating ensures *one* click → *one* event regardless of
+        // window stacking flags.
+        let mut click_consumed = false;
 
         for &i in &indices {
             let n = &self.queue[i];
@@ -255,18 +273,23 @@ impl NotificationCenter {
 
             hover_flags.push((n.id, outcome.hovered));
 
-            if outcome.close_clicked {
+            if outcome.close_clicked && !click_consumed {
                 to_dismiss.push(n.id);
+                click_consumed = true;
             }
-            if let Some(aid) = outcome.action_clicked {
+            if let Some(aid) = outcome.action_clicked
+                && !click_consumed
+            {
                 events.push(NotificationEvent::ActionClicked {
                     id: n.id,
                     action_id: aid,
                 });
                 to_dismiss.push(n.id);
+                click_consumed = true;
             }
-            if outcome.body_clicked {
+            if outcome.body_clicked && !click_consumed {
                 events.push(NotificationEvent::Clicked(n.id));
+                click_consumed = true;
             }
         }
 

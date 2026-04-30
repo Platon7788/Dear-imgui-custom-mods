@@ -383,25 +383,30 @@ impl HexViewer {
 
         // ── Address-gutter affordance ────────────────────────────────
         // Hovering the address column shows a `Hand` cursor + tooltip
-        // ("Click to copy 0x...") so the click-to-copy behaviour is
-        // discoverable. A bare left click (no modifier) copies the
+        // ("Double-click to copy 0x...") so the gesture is
+        // discoverable. A bare double-click (no modifier) copies the
         // row's address as a hex literal to the clipboard and triggers
-        // a brief background flash on the address text. Modifier-held
-        // clicks fall through to the normal hex/ASCII handler so
-        // shift-extend / ctrl-toggle still work in the data area.
+        // a brief background flash. Single-click was the historic
+        // gesture but the user reported it felt accidental on
+        // 2026-04-30 — promoted to double-click for parity with
+        // `disasm_view`'s address-gutter copy. Modifier-held clicks
+        // still fall through so shift-extend / ctrl-toggle work in
+        // the data area when the cursor happens to be over the
+        // address column edge.
         if let Some(row) = self.mouse_to_address_row(ui) {
             ui.set_mouse_cursor(Some(dear_imgui_rs::MouseCursor::Hand));
             let bpr = self.config.bytes_per_row.value();
             let addr = self.config.base_address + (row * bpr) as u64;
             let formatted = self.format_address_literal(addr);
             crate::utils::tooltip::themed_tooltip(ui, || {
-                ui.text(format!("Click to copy: {}", formatted));
+                ui.text(format!("Double-click to copy: {}", formatted));
             });
-            if !shift && !ctrl && ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left) {
+            if !shift && !ctrl && ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
+            {
                 set_clipboard(&formatted);
                 self.address_flash = Some((row, ADDRESS_FLASH_FRAMES));
                 // Don't fall through into the hex/ASCII click handler:
-                // the click was intended for the address gutter.
+                // the gesture was intended for the address gutter.
                 return;
             }
         }

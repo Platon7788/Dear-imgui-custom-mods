@@ -50,7 +50,10 @@ pub enum PatternByte {
 /// Parse a whitespace-delimited hex pattern with `??` / `?` wildcards
 /// (e.g. `"4D 5A ?? 00"`). Tokens that are not valid hex bytes nor
 /// wildcards are silently skipped — convenient for partial input.
-pub(super) fn parse_hex_pattern_masked(s: &str) -> Vec<PatternByte> {
+///
+/// `pub(crate)` so `disasm_view`'s search popup can drive the same
+/// parser; both widgets must agree on wildcard syntax exactly.
+pub(crate) fn parse_hex_pattern_masked(s: &str) -> Vec<PatternByte> {
     s.split_whitespace()
         .filter_map(|tok| {
             if tok == "??" || tok == "?" {
@@ -117,7 +120,10 @@ pub(super) fn parse_string_pattern(query: &str, encoding: StringEncoding) -> Vec
 /// The result vec is **sorted ascending** by construction (we walk
 /// `data` left-to-right) — `is_search_match` relies on that for its
 /// binary-search probe.
-pub(super) fn find_pattern_masked(data: &[u8], pattern: &[PatternByte]) -> Vec<usize> {
+///
+/// `pub(crate)` so `disasm_view`'s search popup can scan its
+/// concatenated instruction-byte stream with the same matcher.
+pub(crate) fn find_pattern_masked(data: &[u8], pattern: &[PatternByte]) -> Vec<usize> {
     if pattern.is_empty() || pattern.len() > data.len() {
         return Vec::new();
     }

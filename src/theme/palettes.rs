@@ -485,10 +485,26 @@ pub struct DisasmViewColors {
     // ── Address / bytes ─────────────────────────────────────
     /// Address column color.
     pub address: [f32; 4],
-    /// Hex bytes column color.
+    /// Hex bytes column color — used as the fallback when
+    /// per-byte category tinting is disabled.
     pub bytes: [f32; 4],
     /// Comment color.
     pub comment: [f32; 4],
+
+    // ── Byte categories (mirrors `HexViewerColors` cat_*) ───
+    // Per-byte semantic tint for the Bytes column. Picks the same
+    // 5-tier ByteCategory split hex_viewer uses so the same buffer
+    // reads identically across both widgets.
+    /// `0x00` byte — null padding.
+    pub bytes_cat_zero: [f32; 4],
+    /// `0x01..=0x1F` + `0x7F` — control chars.
+    pub bytes_cat_control: [f32; 4],
+    /// `0x20..=0x7E` — printable ASCII.
+    pub bytes_cat_printable: [f32; 4],
+    /// `0x80..=0xFE` — high / extended.
+    pub bytes_cat_high: [f32; 4],
+    /// `0xFF` — all-ones byte.
+    pub bytes_cat_full: [f32; 4],
 
     // ── Branch arrows ───────────────────────────────────────
     /// Jump arrow color.
@@ -517,6 +533,12 @@ pub struct DisasmViewColors {
     pub selection_bg: [f32; 4],
     /// Row hover highlight.
     pub hover_bg: [f32; 4],
+    /// Background fill for instruction rows whose bytes match the
+    /// active byte search. Sits between `current_line_bg` (warning
+    /// hue, exec pointer) and `selection_bg` (accent hue, click)
+    /// visually so the three highlights never read as the same
+    /// state.
+    pub search_match_bg: [f32; 4],
     /// Column header / separator color.
     pub header: [f32; 4],
     /// Separator line between columns.
@@ -566,6 +588,22 @@ impl DisasmViewColors {
         self.breakpoint_colors[((number - 1) as usize) % self.breakpoint_colors.len()]
     }
 
+    /// Per-byte foreground colour for the Bytes column — same
+    /// 5-tier `ByteCategory` split that
+    /// [`crate::hex_viewer::HexViewerConfig::byte_fg_color`] uses, so
+    /// the same buffer reads identically across both widgets. Always
+    /// returns a category-tinted colour; pass `colors.bytes`
+    /// directly at the call site to opt out.
+    pub fn byte_fg_color(&self, byte: u8) -> [f32; 4] {
+        match byte {
+            0x00 => self.bytes_cat_zero,
+            0x01..=0x1F | 0x7F => self.bytes_cat_control,
+            0x20..=0x7E => self.bytes_cat_printable,
+            0xFF => self.bytes_cat_full,
+            _ => self.bytes_cat_high, // 0x80..=0xFE
+        }
+    }
+
     /// Get block tint color for a given block index.
     pub fn block_tint(&self, block_index: usize) -> [f32; 4] {
         if self.block_tints.is_empty() {
@@ -603,6 +641,15 @@ impl DisasmViewColors {
             bytes: with_a(t.fg_muted, 0.85),
             comment: with_a(t.success, 0.75),
 
+            // ── Byte categories — mirror hex_viewer ──────────────
+            // Same 5-tier split (`HexViewerColors::from_tokens`) so
+            // the Bytes column reads identically in both widgets.
+            bytes_cat_zero: with_a(t.fg_muted, 0.45),
+            bytes_cat_control: with_a(t.fg_muted, 0.70),
+            bytes_cat_printable: t.success,
+            bytes_cat_high: t.purple,
+            bytes_cat_full: t.warning,
+
             // ── Branch arrows — same family as mnemonics ─────────
             arrow_jump: with_a(t.warning, 0.90),
             arrow_call: with_a(t.success, 0.90),
@@ -638,7 +685,18 @@ impl DisasmViewColors {
             current_line_bg: with_a(t.warning, 0.35),
             selection_bg: with_a(t.accent, 0.45),
             hover_bg: with_a(t.fg, 0.04),
-            header: with_a(t.fg_muted, 0.85),
+            // Search-match row background — semantic-green (success)
+            // hue at low alpha. Distinct from warning (exec) and
+            // accent (selection) so the three row states never
+            // collide visually.
+            search_match_bg: with_a(t.success, 0.32),
+            // Header row labels ("Address", "Bytes", "Instruction",
+            // "Comment") — pinned to `fg` (full-strength text) so
+            // they read as bright white in dark themes and bold dark
+            // in light themes. Mirrors `HexViewerColors::header`,
+            // which had the same washed-out problem before being
+            // bumped from `fg_muted` to `fg`.
+            header: t.fg,
             separator: with_a(t.fg_muted, 0.40),
         }
     }

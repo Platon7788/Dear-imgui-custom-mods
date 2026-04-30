@@ -195,7 +195,13 @@ fn render_wire_flow_dots(
     let speed = config.wire_flow_speed;
     let dot_r = 2.0;
 
-    let samples = 40;
+    // Sampling resolution for the arc-length parameterisation. The
+    // `arcs` buffer is sized `SAMPLES + 1` because index `0` holds
+    // the starting arc length (always `0.0`) and we fill `1..=SAMPLES`.
+    // Tying both values to the same `const` prevents the silent OOB
+    // that lurks when the literal `[f32; 41]` and `samples = 40`
+    // drift apart.
+    const SAMPLES: usize = 40;
     let offset = (time * speed) % spacing;
 
     match style {
@@ -203,10 +209,10 @@ fn render_wire_flow_dots(
             let (cp0, cp1) = bezier_control_points(from, to, config.wire_curvature);
             let mut prev = from;
             let mut arc = 0.0_f32;
-            let mut arcs: [f32; 41] = [0.0; 41];
+            let mut arcs: [f32; SAMPLES + 1] = [0.0; SAMPLES + 1];
             #[allow(clippy::needless_range_loop)]
-            for i in 1..=samples {
-                let t = i as f32 / samples as f32;
+            for i in 1..=SAMPLES {
+                let t = i as f32 / SAMPLES as f32;
                 let pt = cubic_bezier(from, cp0, cp1, to, t);
                 let dx = pt[0] - prev[0];
                 let dy = pt[1] - prev[1];
@@ -215,11 +221,11 @@ fn render_wire_flow_dots(
                 prev = pt;
             }
             let mut next_dot = offset;
-            for i in 1..=samples {
+            for i in 1..=SAMPLES {
                 while next_dot <= arcs[i] && next_dot > arcs[i - 1] {
                     let frac = (next_dot - arcs[i - 1]) / (arcs[i] - arcs[i - 1]).max(0.001);
-                    let t0 = (i - 1) as f32 / samples as f32;
-                    let t1 = i as f32 / samples as f32;
+                    let t0 = (i - 1) as f32 / SAMPLES as f32;
+                    let t1 = i as f32 / SAMPLES as f32;
                     let t = t0 + frac * (t1 - t0);
                     let pt = cubic_bezier(from, cp0, cp1, to, t);
                     draw.add_circle(pt, dot_r, c32(color, 180))

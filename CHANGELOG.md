@@ -2,6 +2,173 @@
 
 ## [Unreleased]
 
+### Session 029 — disasm_view feature blast + 4-module audit (2026-04-30)
+
+Single-session sweep that landed 8 user-driven feature batches plus a
+quality audit of `app_window`, `disasm_view`, `node_graph`, and
+`notifications` (82 findings; criticals + key mediums fixed).
+Library test count: **655 → 696** (+41), clippy: 0 warnings throughout.
+
+#### `disasm_view` features
+
+- **Per-byte category colouring** in the Bytes column — same 5-tier
+  `ByteCategory` split (zero / control / printable / high / `0xFF`)
+  hex_viewer uses, so the same buffer reads identically across both
+  widgets. New `DisasmViewColors::byte_fg_color()`, new config flag
+  `DisasmViewConfig::byte_category_colors` (default `true`).
+- **Byte search** — wildcard hex pattern (`4D 5A ?? 00 89`),
+  Ctrl+F to open, F3 / Shift+F3 to step matches, minimum 5 bytes.
+  Cross-instruction matches supported (concatenated byte stream
+  scanned by `crate::hex_viewer::search::find_pattern_masked`,
+  promoted from `pub(super)` to `pub(crate)`). Search popup mirrors
+  hex_view's geometry. New palette field
+  `DisasmViewColors::search_match_bg`.
+- **Function navigation** — `find_function_start` / `find_function_end`
+  free helpers (RET-based heuristic), public methods
+  `select_function`, `jump_to_function_start`, `jump_to_function_end`.
+  Hotkeys: `Ctrl+Up`, `Ctrl+Down`, `Ctrl+L`. Context-menu entries.
+- **Follow at cursor** — `follow_at_cursor()` tries `branch_target()`
+  first, then scans operand `Number` tokens for resolvable
+  addresses. Lazy `decode_range` retry for streaming providers (call
+  targets outside the currently-decoded window now navigate
+  correctly). Triggers: `Enter`, `Space`, double-click in
+  Instruction column.
+- **Address-column double-click copy** — Hand cursor + tooltip on
+  hover, double-click copies via `format_address_literal`,
+  flash-pill animation (mirrors `hex_viewer::address_flash`).
+  hex_viewer's address copy promoted from single-click → double-click
+  for parity (single-click felt accidental).
+- **Origin breadcrumb** — soft "you came from here" highlight on the
+  previous cursor row after navigation (Goto / Follow / function-jump
+  / nav-back / search). Two-tier: faint background fill (alpha 0.30)
+  + 3-px crisp left-edge stripe (alpha 0.90) — modern bookmark
+  pattern, distinct from cursor (full-row solid) and current
+  execution (warning hue). Stored as **address** so it survives
+  provider mutation. Cleared on `Esc` or new navigation; preserved
+  across single-click and arrow movement (user explicitly wants
+  to scroll/click around without losing the breadcrumb).
+- **Branch-arrow improvements** — new `compute_arrows_clipped()`
+  scans cross-window so long jumps with off-screen endpoints stay
+  visible (clamped to window edge with `clipped_from`/`clipped_to`
+  flags; renderer suppresses arrowhead and stub at clipped ends).
+  Pass-through arrows (source above + target below) preserved.
+  Priority sort `(anchored, half-clipped, pass-through)` so
+  `truncate(max_arrows)` drops least-informative first.
+  `max_arrows` default bumped 64 → 256 (heavily-jumped functions
+  no longer hit the cap).
+- **Settings popup + reordered context menu** — Goto / Search /
+  Copy / Follow / function nav / breakpoint / Settings.
+- **Column widths** — Bytes 200, Instruction 300 (mnemonic 80 +
+  operands 220), Comment dynamic (`frame_comment_w` per-frame:
+  fills remaining window width down to a `cols.comment` floor).
+- **Header label colour fix** — `DisasmViewColors::header` flipped
+  from `fg_muted × 0.85` → `t.fg` (white in dark themes / bold
+  dark in light) — matches the hex_view header treatment.
+
+#### `disasm_view` audit fixes (this pass)
+
+- **CRIT** `do_search` — sparse providers (lazy decode, gaps in
+  `[0..count)`) produced wrong row mappings due to duplicate
+  byte-offset entries when `provider.instruction(i) == None` and
+  `binary_search` returning any of the duplicates. Rewrote to use
+  `(byte_offset, global_idx)` pairs + `partition_point` for
+  deterministic last-le / first-ge semantics. Skips `None`
+  entries entirely.
+- **CRIT** `find_function_start` — clamped result to `count - 1`
+  which incorrectly returned the previous-function RET when the
+  cursor was on the last instruction. Drop the clamp; `i + 1` is
+  always `<= cur` by loop precondition.
+- `select_function` now pushes nav history + sets origin
+  breadcrumb (parity with `jump_to_function_*`).
+- `follow_at_cursor` clones operand string only on the
+  branch-target-miss fallback path (per-double-click alloc
+  eliminated for the common jcc / call case).
+- Drop dead `frame_counter` field + per-frame tick (orphaned —
+  doc claimed "blink cursor" but no consumer).
+- Drop dead `search_results: Vec<usize>` field (raw matcher
+  output was never read after `do_search`; `search_match_starts`
+  + `search_match_set` cover all consumers).
+- Drop unnecessary `unsafe` block in byte-category render path —
+  pass `byte_hex(b, uppercase)` (already `&'static str`)
+  directly to `add_text`.
+
+#### `app_window` audit fixes
+
+- **CRIT** `Suboptimal` swap chain frame now reconfigures the
+  surface immediately (same path as `Outdated` / `Lost`). Was
+  painting the stale frame and requesting redraw → visible
+  tearing on DPI / monitor switches, potential present-chain
+  stall on some DX12 drivers.
+- **MED** Cache `theme.titlebar()` in `GpuState::cached_titlebar`
+  — was rebuilt from scratch every frame for the chrome render.
+  Refreshed alongside `clear_color` in `refresh_clear_color()`
+  on theme change.
+- **MED** `confirm_close()` deduped to delegate to `exit()` —
+  was a copy-paste twin with risk of divergence.
+- **chrome/glyph.rs** (earlier in session) — replaced cascade
+  overlay restore glyph with "doc-window" style (single rect +
+  filled top titlebar). `bg` parameter dropped from
+  `draw_restore` signature.
+
+#### `notifications` audit fixes
+
+- **CRIT** Click bleed-through — single click could emit
+  `Clicked(id)` events for multiple stacked toasts in the same
+  frame. Added `click_consumed` latch across the render loop so
+  one click = one event, regardless of ImGui window stacking.
+- **CRIT** `next_id` collision after `u64` wrap — push-loop now
+  scans the live queue and skips occupied ids (also skips id 0
+  as the "no id" sentinel).
+
+#### `node_graph` audit fixes
+
+- **MED** `arcs: [f32; 41]` literal coupled to `samples = 40` via
+  silent invariant — bumping `samples` would OOB-panic. Replaced
+  with `const SAMPLES: usize = 40;` + `[f32; SAMPLES + 1]` so
+  the buffer size derives from the same source as the loop bound.
+- **MED** `reset_viewport()` now cancels in-progress
+  interactions (`node_drag`, `new_wire`, `rect_select`) before
+  resetting zoom/offset — was leaving dangling screen-space
+  state mid-drag, producing visual glitches until next click.
+
+#### `hex_viewer` (during disasm session)
+
+- Promoted `parse_hex_pattern_masked` and `find_pattern_masked`
+  from `pub(super)` to `pub(crate)` so `disasm_view`'s search
+  uses the exact same matcher (single source of truth).
+- Address gutter copy: single-click → double-click (parity with
+  `disasm_view`).
+- Dropped trailing `:` from address gutter format string —
+  divider already separates the address from hex content. Column
+  width reduced from `digits + 2` to `digits + 1` (one trailing
+  space for the divider gap). Two tests updated.
+
+#### Theme palettes
+
+- New `DisasmViewColors` fields: 5 `bytes_cat_*` (byte category
+  tint), `search_match_bg` (semantic-green at 0.32 alpha).
+- `DisasmViewColors::header` token changed from `fg_muted × 0.85`
+  → `t.fg`.
+
+#### Audit findings deferred (next session)
+
+- `node_graph`: tooltip system tracked but not rendered;
+  `on_connect`/`on_disconnect` hooks never invoked; frustum
+  culling extends only to node body, not to wires/pins.
+- `notifications`: per-frame `format!` allocations for action /
+  close button labels; `estimate_height` line-count math wrong
+  for wrapped text; hard-coded pixel metrics break under DPI
+  scaling; `theme.rs` 16-line stub could be inlined.
+- `app_window`: `bg_erase` palette field orphaned (no consumer
+  after `draw_restore` change) — needs theme version bump
+  before removal; `whole_window_resize` API drift (returns tuple
+  vs sibling `TitlebarResult`).
+- `disasm_view`: tooltip path allocates 5+ `String`s per hover
+  frame; `compute_arrows_clipped` is `O(N²)` on
+  `VecDisasmProvider` for very large buffers (provider
+  responsibility — switch to indexed impl); `frame_comment_x`
+  uses `<= 0.0` as uninitialised sentinel.
+
 ### Removed — `proc_mon` widget (2026-04-29, session 028)
 
 The `proc_mon` widget — and its `proc_enum` sibling-workspace

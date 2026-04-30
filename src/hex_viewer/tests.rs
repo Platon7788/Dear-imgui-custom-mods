@@ -451,24 +451,24 @@ fn test_byte_colors_changed() {
 
 #[test]
 fn test_offset_col_width_compact_for_32bit_address() {
-    // 8 hex digits + `: ` (colon + trailing space from the format
-    // string) = 10 char advances. After the 2026-04-29 padding-halve,
-    // the cell no longer reserves an extra glyph of dead space.
+    // 8 hex digits + 1 trailing space (no colon — dropped 2026-04-30)
+    // = 9 char advances. The trailing space sits inside the column
+    // so the divider has its 1-ca breathing gap to the address text.
     let mut v = HexViewer::new("test");
     v.set_data(&[0u8; 16]); // forces auto → 8-digit gutter
     v.config.address_width = AddressWidth::Bits32;
     v.char_advance = 7.0;
-    assert_eq!(v.offset_col_width(), 70.0, "8 digits + 2 chars padding");
+    assert_eq!(v.offset_col_width(), 63.0, "8 digits + 1 trailing space");
 }
 
 #[test]
 fn test_offset_col_width_wide_for_64bit_address() {
-    // 16 hex digits + `: ` = 18 char advances.
+    // 16 hex digits + 1 trailing space = 17 char advances.
     let mut v = HexViewer::new("test");
     v.set_data(&[0u8; 16]);
     v.config.address_width = AddressWidth::Bits64;
     v.char_advance = 7.0;
-    assert_eq!(v.offset_col_width(), 126.0, "16 digits + 2 chars padding");
+    assert_eq!(v.offset_col_width(), 119.0, "16 digits + 1 trailing space");
 }
 
 #[test]

@@ -69,6 +69,12 @@ pub(super) struct GpuState {
     /// build a fresh `TitlebarColors` (~200 B on stack) every redraw.
     /// Refreshed when [`AppState::pending_theme`] is applied.
     pub clear_color: wgpu::Color,
+    /// Cached `theme.titlebar()` palette — same rationale as
+    /// `clear_color`: the per-frame chrome render reads ~10 colour
+    /// fields, building `TitlebarColors` from scratch every redraw
+    /// would re-execute the theme constructor (and any `with_a`
+    /// helper) on every frame. Refreshed via [`Self::refresh_clear_color`].
+    pub cached_titlebar: crate::theme::TitlebarColors,
 }
 
 impl GpuState {
@@ -91,6 +97,7 @@ impl GpuState {
         // window.
         self.clear_color =
             crate::utils::color::wgpu_clear_color(cfg.theme.window_bg(), self.surface_cfg.format);
+        self.cached_titlebar = cfg.theme.titlebar();
     }
 }
 
@@ -116,11 +123,16 @@ pub(super) fn render_frame<H: AppHandler>(
 
     let frame = match gpu.surface.get_current_texture() {
         wgpu::CurrentSurfaceTexture::Success(f) => f,
-        wgpu::CurrentSurfaceTexture::Suboptimal(f) => {
-            gpu.window.request_redraw();
-            f
-        }
-        wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+        // `Suboptimal` historically painted the stale frame and
+        // requested a redraw, but on DPI / monitor switches that
+        // can produce a long suboptimal streak — visible tearing
+        // and (on some DX12 drivers) stalled present chains.
+        // Reconfigure immediately on the same path as
+        // `Outdated`/`Lost`; the requested redraw paints the next
+        // frame fresh against the new surface.
+        wgpu::CurrentSurfaceTexture::Suboptimal(_)
+        | wgpu::CurrentSurfaceTexture::Outdated
+        | wgpu::CurrentSurfaceTexture::Lost => {
             gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
             gpu.window.request_redraw();
             return;
@@ -192,12 +204,15 @@ pub(super) fn render_frame<H: AppHandler>(
                         };
                     }
                     Chrome::Custom(t) => {
-                        let colors = cfg.theme.titlebar();
+                        // Cached palette — `cached_titlebar` is
+                        // refreshed on theme change, so the per-frame
+                        // hot path reads it directly instead of
+                        // rebuilding from `cfg.theme.titlebar()`.
                         tb_result = render_titlebar(
                             ui,
                             t,
                             &cfg.title,
-                            &colors,
+                            &gpu.cached_titlebar,
                             &gpu.app_state.titlebar,
                             6.0,
                             cfg.os_resizable(),

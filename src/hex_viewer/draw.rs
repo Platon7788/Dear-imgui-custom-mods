@@ -169,10 +169,10 @@ impl HexViewer {
                     let div_top = win_y;
                     let div_bot = win_y + visible_h;
                     let hex_x_local = origin_x + self.offset_col_width();
-                    // Offset side: visible address (`:`) ends at
+                    // Offset side: visible address ends at
                     // `hex_x_local - ca`, hex content starts at
                     // `hex_x_local` — the visible gap is exactly 1 ca
-                    // wide (the trailing space of `"{addr}: "` lives
+                    // wide (the trailing space of `"{addr} "` lives
                     // inside `offset_col_width`). Centre the divider in
                     // it at `hex_x_local - 0.5 ca`.
                     if self.config.show_offsets {
@@ -308,19 +308,21 @@ impl HexViewer {
 impl HexViewer {
     pub(super) fn offset_col_width(&self) -> f32 {
         if self.config.show_offsets {
-            // address digits + `: ` (2 chars from `format!("{addr}: ")`).
-            // Pre-2026-04-29 this column reserved an extra `+1 ca` of
-            // padding (`digits + 3`) which left the address text
-            // visually drowning in whitespace before the divider. The
-            // user reported the gutter as oversized; halving the
-            // padding to its current `digits + 2` keeps the trailing
-            // format-space (so the address text never touches the
-            // divider line) but trims the overrun.
+            // address digits + 1 trailing space (no colon — the
+            // column divider already separates this gutter from the
+            // hex content; the `:` was redundant signal). The 1-ca
+            // trailing space stays so the address text doesn't graze
+            // the divider line (centred at column-edge − 0.5 ca).
+            //
+            // Width history:
+            //   pre 2026-04-29 → `digits + 3` (over-padded gutter)
+            //   2026-04-29     → `digits + 2` (tightened, kept `:`)
+            //   2026-04-30     → `digits + 1` (dropped `:`)
             let digits = self
                 .config
                 .address_width
                 .hex_digits(self.config.base_address, self.data.len());
-            self.char_advance * (digits + 2) as f32
+            self.char_advance * (digits + 1) as f32
         } else {
             0.0
         }
@@ -518,13 +520,16 @@ impl HexViewer {
                 let fade =
                     (frames as f32 / super::input::ADDRESS_FLASH_FRAMES as f32).clamp(0.0, 1.0);
                 let c = cfg.color_cursor_bg;
-                // Span = 1 char left padding + the visible address
-                // glyphs (`{:0NX}` + `:`) — leaves the trailing format
-                // space + extra-padding char unhighlighted so the pill
-                // doesn't visually fuse into the column divider.
+                // Span = 0.5 ca left padding + the visible address
+                // glyphs (`{:0NX}`) + 0.5 ca right padding — leaves
+                // the trailing format-space unhighlighted so the
+                // pill doesn't visually fuse into the column
+                // divider. Was `digits + 1` while the format string
+                // appended `:`; dropped to `digits` on 2026-04-30
+                // when the colon was removed.
                 let pad_x = self.char_advance * 0.5;
                 let bg_left = origin_x - pad_x;
-                let bg_right = origin_x + self.char_advance * (digits + 1) as f32 + pad_x;
+                let bg_right = origin_x + self.char_advance * digits as f32 + pad_x;
                 draw_list
                     .add_rect(
                         [bg_left, y],
@@ -538,11 +543,16 @@ impl HexViewer {
 
             // 16-digit path covers x86_64 / kernel-space dumps; 8-digit
             // is the compact default for files / 32-bit memory.
+            // No trailing `:` — the column divider already separates
+            // the address from the hex content (user request,
+            // 2026-04-30). The single trailing space keeps a 1-ca
+            // gap before the divider so the address text never
+            // grazes the line.
             let txt = match (cfg.uppercase, digits) {
-                (true, 16) => format!("{:016X}: ", addr),
-                (false, 16) => format!("{:016x}: ", addr),
-                (true, _) => format!("{:08X}: ", addr),
-                (false, _) => format!("{:08x}: ", addr),
+                (true, 16) => format!("{:016X} ", addr),
+                (false, 16) => format!("{:016x} ", addr),
+                (true, _) => format!("{:08X} ", addr),
+                (false, _) => format!("{:08x} ", addr),
             };
             draw_list.add_text([origin_x, y], col32(cfg.color_offset), &txt);
         }

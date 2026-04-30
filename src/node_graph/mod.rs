@@ -269,7 +269,18 @@ impl<T> NodeGraph<T> {
     }
 
     /// Reset viewport to default (zoom 1.0, centered at origin).
+    ///
+    /// Also cancels any in-progress interactive state — node drag,
+    /// new-wire drag, rectangle select. Without this guard a viewport
+    /// reset mid-drag would leave dangling interaction state with
+    /// stale screen-space coordinates, producing visual glitches
+    /// (rect-select rectangle pinned at the wrong location, wire
+    /// preview from the previous mouse position) until the user
+    /// clicks again.
     pub fn reset_viewport(&mut self) {
+        self.state.node_drag = None;
+        self.state.new_wire = None;
+        self.state.rect_select = None;
         self.state.viewport.zoom = 1.0;
         self.state.zoom_target = 1.0;
         self.state.viewport.offset = [0.0, 0.0];

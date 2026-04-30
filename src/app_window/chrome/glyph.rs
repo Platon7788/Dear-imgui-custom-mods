@@ -51,19 +51,23 @@ pub(super) fn draw_maximize(d: &DrawListMut<'_>, cx: f32, cy: f32, r: f32, col: 
         .build();
 }
 
-pub(super) fn draw_restore(d: &DrawListMut<'_>, cx: f32, cy: f32, r: f32, col: u32, bg: u32) {
+/// "Doc-window" restore glyph — single window outline with a thin
+/// filled bar at the top edge (the title bar). Replaces the historic
+/// cascade pattern (two overlapping squares) on 2026-04-30 — the
+/// project owner asked for the document-with-titlebar look so the
+/// restore state reads as "windowed mode" rather than the generic
+/// "switch task" cascade icon. Same outer footprint as
+/// [`draw_maximize`] so the two glyphs share visual weight.
+pub(super) fn draw_restore(d: &DrawListMut<'_>, cx: f32, cy: f32, r: f32, col: u32) {
     let cx = snap(cx);
     let cy = snap(cy);
     let p = r * 0.72;
-    let sh = r * 0.38;
-    d.add_rect([cx - p + sh, cy - p - sh], [cx + p + sh, cy + p - sh], col)
-        .thickness(1.2)
-        .build();
-    d.add_rect([cx - p, cy - p + sh], [cx + p - sh, cy + p + sh], bg)
-        .filled(true)
-        .build();
-    d.add_rect([cx - p, cy - p + sh], [cx + p - sh, cy + p + sh], col)
+    d.add_rect([cx - p, cy - p], [cx + p, cy + p], col)
         .thickness(1.5)
+        .build();
+    let bar_h = r * 0.30;
+    d.add_rect([cx - p, cy - p], [cx + p, cy - p + bar_h], col)
+        .filled(true)
         .build();
 }
 

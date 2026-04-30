@@ -9,6 +9,11 @@ use super::{DisasmView, EditColumn, EditState};
 use crate::utils::clipboard::set_clipboard;
 use crate::utils::hex::byte_hex;
 
+/// How many frames the address-gutter "just copied" pill stays
+/// painted after a double-click-to-copy. ~30 frames @ 60 fps ≈ 0.5 s
+/// — same dwell as `hex_viewer::ADDRESS_FLASH_FRAMES`.
+pub(super) const ADDRESS_FLASH_FRAMES: u32 = 30;
+
 /// Reusable space-separated hex byte formatter — single-allocation
 /// `String` (3 chars/byte: two hex + one space, minus the trailing
 /// gap). Mirrors the per-row pattern in `draw::draw_instruction_row`.
@@ -59,8 +64,12 @@ impl DisasmView {
             s.cursor_idx = Some(new_idx);
         };
 
-        // Arrow keys.
-        if ui.is_key_pressed(Key::UpArrow) && !alt {
+        // Arrow keys. Gated on `!ctrl` because the Ctrl-modified
+        // variants below trigger function-scope navigation
+        // (Ctrl+Up = function start, Ctrl+Down = function end) and
+        // would otherwise also fire single-row movement on the same
+        // keystroke.
+        if ui.is_key_pressed(Key::UpArrow) && !alt && !ctrl {
             let idx = self.cursor_idx.unwrap_or(0);
             if idx > 0 {
                 let new = idx - 1;
@@ -68,7 +77,7 @@ impl DisasmView {
                 self.ensure_visible(new, ui);
             }
         }
-        if ui.is_key_pressed(Key::DownArrow) && !alt {
+        if ui.is_key_pressed(Key::DownArrow) && !alt && !ctrl {
             let idx = self.cursor_idx.unwrap_or(0);
             if idx + 1 < count {
                 let new = idx + 1;
@@ -91,14 +100,32 @@ impl DisasmView {
             self.scroll_to = Some(new);
         }
 
-        // Home/End.
-        if ui.is_key_pressed(Key::Home) {
+        // Home/End — buffer-wide. Gated `!ctrl` so future
+        // Ctrl+Home/End additions don't double-fire.
+        if ui.is_key_pressed(Key::Home) && !ctrl {
             move_cursor(self, 0);
             self.scroll_to = Some(0);
         }
-        if ui.is_key_pressed(Key::End) {
+        if ui.is_key_pressed(Key::End) && !ctrl {
             move_cursor(self, count - 1);
             self.scroll_to = Some(count - 1);
+        }
+
+        // ── Function-scope navigation (Ctrl+Up / Ctrl+Down / Ctrl+L) ──
+        // Mirrors common reverse-engineering convention (IDA, x64dbg
+        // style "go to func top / bottom / select procedure"). The
+        // boundary heuristic is RET-based — see
+        // [`super::find_function_start`] / [`super::find_function_end`]
+        // for caveats (tail-call jumps not detected, padding folds
+        // into either neighbour).
+        if ctrl && ui.is_key_pressed(Key::UpArrow) {
+            self.jump_to_function_start(provider);
+        }
+        if ctrl && ui.is_key_pressed(Key::DownArrow) {
+            self.jump_to_function_end(provider);
+        }
+        if ctrl && ui.is_key_pressed(Key::L) {
+            self.select_function(provider);
         }
 
         // Ctrl+A — select all. Layout-independence is provided by
@@ -110,19 +137,40 @@ impl DisasmView {
             }
         }
 
-        // Enter → follow branch target.
-        if ui.is_key_pressed(Key::Enter)
-            && let Some(idx) = self.cursor_idx
-            && let Some(instr) = provider.instruction(idx)
-            && let Some(target) = instr.branch_target()
-        {
-            self.goto_address(target, provider);
+        // Enter / Space → "Cheat-Engine-style" follow at cursor.
+        // Tries [`Instruction::branch_target`] first, then falls
+        // back to scanning operand `Number` tokens for an
+        // address known to the provider — see
+        // [`super::DisasmView::follow_at_cursor`]. Both keys land
+        // here so the user can pick whichever is comfortable
+        // (Enter for keyboard-only flow, Space when one hand sits
+        // on the arrows).
+        if ui.is_key_pressed(Key::Enter) || ui.is_key_pressed(Key::Space) {
+            self.follow_at_cursor(provider);
         }
 
         // G → goto address popup.
         if ui.is_key_pressed(Key::G) && !ctrl {
             self.show_goto = true;
             self.goto_buf.clear();
+        }
+
+        // Ctrl+F → search-bytes popup. Mirrors `hex_viewer`'s
+        // Ctrl+F. Doesn't clear `search_buf` so the user can re-open
+        // the popup and tweak the previous query without retyping.
+        if ctrl && ui.is_key_pressed(Key::F) && !self.show_search {
+            self.show_search = true;
+            self.search_focus_pending = true;
+        }
+
+        // F3 / Shift+F3 → step through search matches (no-op when
+        // no active search). Wraps around at both ends.
+        if ui.is_key_pressed(Key::F3) && !self.search_match_starts.is_empty() {
+            if shift {
+                self.search_prev();
+            } else {
+                self.search_next();
+            }
         }
 
         // Ctrl+C → copy selected instruction.
@@ -145,6 +193,15 @@ impl DisasmView {
         // Alt+Right → nav forward.
         if alt && ui.is_key_pressed(Key::RightArrow) {
             self.nav_forward(provider);
+        }
+
+        // Esc → clear navigation breadcrumb (origin highlight).
+        // Decisive "I'm done with the trail" gesture. Edit-mode
+        // Esc is handled separately inside `handle_edit_keyboard`
+        // (cancels the edit instead) — this branch only runs
+        // when no edit is active.
+        if ui.is_key_pressed(Key::Escape) {
+            self.origin_addr = None;
         }
     }
 
@@ -209,6 +266,35 @@ impl DisasmView {
         let ctrl = ui.io().key_ctrl();
         let shift = ui.io().key_shift();
 
+        // ── Address-gutter double-click-to-copy ──────────────────
+        // Hovering the address column shows a `Hand` cursor + tooltip
+        // ("Double-click to copy 0x...") so the gesture is
+        // discoverable. A bare double-click (no modifier) copies the
+        // row's address as a hex literal and triggers a brief flash
+        // pill behind the text. Single-click keeps its normal
+        // select-row semantics — user reported single-click copy felt
+        // accidental on 2026-04-30.
+        if let Some(row) = self.mouse_to_address_row(ui, provider) {
+            ui.set_mouse_cursor(Some(dear_imgui_rs::MouseCursor::Hand));
+            if let Some(instr) = provider.instruction(row) {
+                let addr = instr.address();
+                let formatted = self.format_address_literal(addr);
+                crate::utils::tooltip::themed_tooltip(ui, || {
+                    ui.text(format!("Double-click to copy: {}", formatted));
+                });
+                if !shift
+                    && !ctrl
+                    && ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
+                {
+                    set_clipboard(&formatted);
+                    self.address_flash = Some((row, ADDRESS_FLASH_FRAMES));
+                    // Don't fall through into the row-edit double-click
+                    // handler below — gesture was for the address gutter.
+                    return;
+                }
+            }
+        }
+
         // Click to select — with Ctrl/Shift modifiers.
         if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Left) {
             if let Some(idx) = self.mouse_to_instruction(ui, provider) {
@@ -231,6 +317,13 @@ impl DisasmView {
                     self.cursor_idx = Some(idx);
                     self.sel_anchor = Some(idx);
                 } else {
+                    // Single-click moves the cursor + replaces
+                    // the selection. Origin breadcrumb is *kept*
+                    // — clicking around the disasm to read code
+                    // shouldn't wipe the "where I jumped from"
+                    // highlight. Explicit dismissal is `Esc` (or
+                    // a new navigation, which overwrites origin
+                    // anyway).
                     self.selection.clear();
                     self.selection.insert(idx);
                     self.cursor_idx = Some(idx);
@@ -256,6 +349,26 @@ impl DisasmView {
         // Release drag.
         if ui.is_mouse_released(dear_imgui_rs::MouseButton::Left) {
             self.drag_origin = None;
+        }
+
+        // Double-click in Instruction column → "Cheat-Engine-style"
+        // follow at cursor. Independent of `editable` because this
+        // gesture is read-only (just navigates), and gated to
+        // happen *before* the edit-cell double-click branch so
+        // double-click on a `jmp` / `call` row never falls
+        // through into the edit path. Only fires when
+        // [`DisasmView::follow_at_cursor`] actually navigates;
+        // otherwise lets the edit-cell branch take over (e.g.
+        // double-click on a `mov` with no followable operand can
+        // still open the bytes / comment editor in the right
+        // sub-column).
+        if ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
+            && let Some(row) = self.mouse_in_instruction_column(ui, provider)
+        {
+            self.cursor_idx = Some(row);
+            if self.follow_at_cursor(provider) {
+                return;
+            }
         }
 
         // Double-click to edit (if editable). Cell hit-test picks
@@ -325,6 +438,82 @@ impl DisasmView {
         let row = (rel_y / self.line_height) as usize + scroll_offset;
 
         if row < provider.instruction_count() {
+            Some(row)
+        } else {
+            None
+        }
+    }
+
+    /// Hit-test the mouse against the address gutter: returns the
+    /// instruction row index when the cursor X falls between the end
+    /// of the arrow/breakpoint area and the start of the bytes
+    /// column. Mirrors `hex_viewer::mouse_to_address_row`.
+    pub(super) fn mouse_to_address_row(
+        &self,
+        ui: &dear_imgui_rs::Ui,
+        provider: &dyn DisasmDataProvider,
+    ) -> Option<usize> {
+        let row = self.mouse_to_instruction(ui, provider)?;
+        let [mx, _my] = ui.io().mouse_pos();
+        let [win_x, _win_y] = ui.cursor_screen_pos();
+        let cols = &self.config.columns;
+        // Left edge of the address column = origin + breakpoint
+        // gutter + arrows gutter (whichever are enabled).
+        let mut addr_left = win_x + ui.scroll_x();
+        if self.config.show_breakpoints {
+            addr_left += cols.margin;
+        }
+        if self.config.show_arrows {
+            addr_left += cols.arrows;
+        }
+        let addr_right = addr_left + cols.address;
+        if mx >= addr_left && mx < addr_right {
+            Some(row)
+        } else {
+            None
+        }
+    }
+
+    /// Hit-test: returns the instruction row when the mouse X falls
+    /// inside the Instruction (mnemonic + operands) column. Used by
+    /// the "Cheat-Engine follow on double-click" gesture, which
+    /// fires regardless of `editable` — pure navigation, no edit
+    /// affordance.
+    pub(super) fn mouse_in_instruction_column(
+        &self,
+        ui: &dear_imgui_rs::Ui,
+        provider: &dyn DisasmDataProvider,
+    ) -> Option<usize> {
+        let row = self.mouse_to_instruction(ui, provider)?;
+        let [mx, _] = ui.io().mouse_pos();
+        let [win_x, _] = ui.cursor_screen_pos();
+        let cols = &self.config.columns;
+        let mut x = win_x + ui.scroll_x();
+        if self.config.show_breakpoints {
+            x += cols.margin;
+        }
+        if self.config.show_arrows {
+            x += cols.arrows;
+        }
+        x += cols.address;
+        let mnemonic_x = if self.config.show_bytes {
+            x + cols.bytes
+        } else {
+            x
+        };
+        // Same per-frame dynamic comment-X used by `mouse_to_cell` —
+        // when the comment column shifted right last frame, the
+        // Instruction column extends to match so the user double-
+        // clicks the glyphs they actually see.
+        let comment_x = {
+            let v = self.frame_comment_x.get();
+            if v <= 0.0 {
+                mnemonic_x + cols.mnemonic + cols.operands
+            } else {
+                v
+            }
+        };
+        if mx >= mnemonic_x && mx < comment_x {
             Some(row)
         } else {
             None

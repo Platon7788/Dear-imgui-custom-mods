@@ -189,14 +189,7 @@ pub fn render_titlebar(
         }
         let r = if hov { ir * zoom } else { ir };
         if state.maximized {
-            glyph::draw_restore(
-                &draw,
-                cx_btn,
-                cy_btn,
-                r,
-                c32(colors.btn_maximize),
-                c32(colors.bg_erase),
-            );
+            glyph::draw_restore(&draw, cx_btn, cy_btn, r, c32(colors.btn_maximize));
         } else {
             glyph::draw_maximize(&draw, cx_btn, cy_btn, r, c32(colors.btn_maximize));
         }

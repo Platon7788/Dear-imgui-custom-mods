@@ -32,7 +32,11 @@ pub mod config;
 mod draw;
 mod input;
 mod popup;
-mod search;
+// `pub(crate)` so `disasm_view` can re-use the wildcard-aware byte
+// search primitives (`PatternByte`, `parse_hex_pattern_masked`,
+// `find_pattern_masked`) — both widgets must agree on byte-search
+// semantics, so a single source of truth beats a clone.
+pub(crate) mod search;
 
 #[cfg(test)]
 mod tests;

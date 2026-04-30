@@ -127,6 +127,59 @@ impl DisasmView {
                 .build();
         }
 
+        // ── Search-match highlight ────────────────────────────
+        // Painted before selection so user-selection still wins
+        // visually when both apply (selection is the more transient
+        // / interactive state). Set lookup is O(log n) on BTreeSet
+        // so the per-row cost stays bounded as match counts grow.
+        if self.search_match_set.contains(&idx) {
+            draw_list
+                .add_rect(
+                    [origin_x, y],
+                    [origin_x + win_w, y + lh],
+                    col32(colors.search_match_bg),
+                )
+                .filled(true)
+                .build();
+        }
+
+        // ── Origin breadcrumb (two-part: bg fill + left stripe) ──
+        // - Faint background fill: ambient "you came from here"
+        //   awareness while scrolling; same hue as cursor (visual
+        //   grouping) but `ORIGIN_BG_ALPHA_FACTOR=0.30` so it
+        //   doesn't compete.
+        // - Crisp 3-px left-edge stripe at `ORIGIN_STRIPE_ALPHA=0.90`:
+        //   the unmistakable marker that survives stacking with
+        //   block tints / search-match / hover backgrounds.
+        // Compared by address — survives provider mutations like
+        // inserting a new instruction below the breadcrumb. The
+        // cursor row's full-alpha highlight overdraws the bg fill;
+        // the stripe peeks through at the very left edge so the
+        // user can still see "you're back at the breadcrumb".
+        if let Some(origin) = self.origin_addr
+            && instr.address() == origin
+        {
+            let bg = colors.selection_bg;
+            // 1. Ambient background fill.
+            draw_list
+                .add_rect(
+                    [origin_x, y],
+                    [origin_x + win_w, y + lh],
+                    col32([bg[0], bg[1], bg[2], bg[3] * super::ORIGIN_BG_ALPHA_FACTOR]),
+                )
+                .filled(true)
+                .build();
+            // 2. Left-edge stripe.
+            draw_list
+                .add_rect(
+                    [origin_x, y],
+                    [origin_x + super::ORIGIN_STRIPE_WIDTH, y + lh],
+                    col32([bg[0], bg[1], bg[2], super::ORIGIN_STRIPE_ALPHA]),
+                )
+                .filled(true)
+                .build();
+        }
+
         // ── Selection highlight ───────────────────────────────
         let is_selected = self.selection.contains(&idx);
         let is_cursor = self.cursor_idx == Some(idx);
@@ -223,6 +276,36 @@ impl DisasmView {
         } else {
             format!("{:08x}", addr)
         };
+
+        // "Just copied" address-gutter flash — translucent
+        // accent-coloured pill behind the address text whenever the
+        // user has just double-clicked the gutter. Fades over its
+        // dwell so it reads as "happened just now, about to
+        // disappear". Same idiom as `hex_viewer::draw_row`.
+        if let Some((flash_row, frames)) = self.address_flash
+            && flash_row == idx
+            && frames > 0
+        {
+            let fade = (frames as f32 / super::input::ADDRESS_FLASH_FRAMES as f32)
+                .clamp(0.0, 1.0);
+            let c = colors.selection_bg;
+            let pad_x = self.char_advance * 0.5;
+            let bg_left = x - pad_x;
+            // Pill spans the visible address glyphs (`addr_str` is
+            // monospace) plus a half-glyph cushion on each side so
+            // the highlight doesn't graze the divider.
+            let bg_right = x + addr_str.len() as f32 * self.char_advance + pad_x;
+            draw_list
+                .add_rect(
+                    [bg_left, y],
+                    [bg_right, y + lh],
+                    col32([c[0], c[1], c[2], c[3] * 0.65 * fade]),
+                )
+                .filled(true)
+                .rounding(2.0)
+                .build();
+        }
+
         draw_list.add_text([x, y], col32(colors.address), &addr_str);
         x += cols.address;
 
@@ -261,17 +344,39 @@ impl DisasmView {
                     )
                     .build();
             } else {
-                // Reuse a single buffer (3 chars/byte) instead of N per-byte
-                // String allocations from `format!` in a `map().collect()`.
                 let bytes = instr.bytes();
-                let mut bytes_str = String::with_capacity(bytes.len() * 3);
-                for (i, b) in bytes.iter().enumerate() {
-                    if i > 0 {
-                        bytes_str.push(' ');
+                if cfg.byte_category_colors {
+                    // Per-byte category tint — same 5-tier scheme
+                    // `hex_viewer` uses (zero / control / printable
+                    // / high / 0xFF). Each byte gets its own
+                    // `add_text` call because draw_list lacks a
+                    // multi-colour run primitive — but the cost is
+                    // bounded (instructions are 1..=15 bytes on x86)
+                    // and the visual parity with hex_viewer is the
+                    // whole point of the feature. Uses the
+                    // `&'static str` returned by `byte_hex` directly
+                    // — no copy, no `unsafe`, no allocation.
+                    let cw = self.char_advance;
+                    let mut bx = data_x;
+                    for b in bytes.iter() {
+                        let s = byte_hex(*b, cfg.uppercase);
+                        let fg = colors.byte_fg_color(*b);
+                        draw_list.add_text([bx, y], col32(fg), s);
+                        bx += cw * 3.0;
                     }
-                    bytes_str.push_str(byte_hex(*b, cfg.uppercase));
+                } else {
+                    // Flat colour fallback — single buffer alloc
+                    // (3 chars/byte) so we don't pay the per-byte
+                    // `add_text` cost when category tinting is off.
+                    let mut bytes_str = String::with_capacity(bytes.len() * 3);
+                    for (i, b) in bytes.iter().enumerate() {
+                        if i > 0 {
+                            bytes_str.push(' ');
+                        }
+                        bytes_str.push_str(byte_hex(*b, cfg.uppercase));
+                    }
+                    draw_list.add_text([data_x, y], col32(colors.bytes), &bytes_str);
                 }
-                draw_list.add_text([data_x, y], col32(colors.bytes), &bytes_str);
             }
             // (No `x +=` here — `x` is read once below for `instr_data_x`
             //  and never again. Dropping the dead post-increment.)
@@ -313,11 +418,14 @@ impl DisasmView {
             if is_editing_comment {
                 // Hand the inline-input slot off to render() —
                 // same pattern as the Bytes edit path. Use the
-                // comment column width so the input field has
-                // generous room for free-form text.
+                // **dynamic** comment column width so the input
+                // field stretches to the right edge of the host
+                // window (per the per-frame `frame_comment_w`).
                 let edit_x = comment_x + COMMENT_LEFT_PAD;
+                let edit_w = (self.frame_comment_w.get() - COMMENT_LEFT_PAD)
+                    .max(cols.comment.max(120.0));
                 self.edit_render_pos.set(Some([edit_x, y]));
-                self.edit_render_width.set(cols.comment.max(120.0));
+                self.edit_render_width.set(edit_w);
 
                 // Highlight the comment cell in the same warm
                 // accent the bytes-edit path uses, so the user
@@ -325,7 +433,7 @@ impl DisasmView {
                 draw_list
                     .add_rect(
                         [edit_x - 2.0, y],
-                        [edit_x + cols.comment, y + lh],
+                        [edit_x + edit_w, y + lh],
                         col32(EDIT_CELL_BG),
                     )
                     .filled(true)
@@ -333,7 +441,7 @@ impl DisasmView {
                 draw_list
                     .add_rect(
                         [edit_x - 2.0, y],
-                        [edit_x + cols.comment, y + lh],
+                        [edit_x + edit_w, y + lh],
                         col32(EDIT_CELL_BORDER),
                     )
                     .build();
@@ -469,34 +577,46 @@ impl DisasmView {
             let color = col32(colors.arrow_color(arrow.flow_kind));
             let thickness = if arrow.depth == 0 { 1.5 } else { 1.0 };
 
-            // Horizontal from source to vertical line.
-            draw_list
-                .add_line([arrow_base_x, from_y], [x, from_y], color)
-                .thickness(thickness)
-                .build();
+            // Horizontal stub at the source end — suppressed when
+            // the source is offscreen (clipped) so the arrow visually
+            // reads as "vertical line entering from above/below"
+            // rather than "wraps into the gutter at this row".
+            if !arrow.clipped_from {
+                draw_list
+                    .add_line([arrow_base_x, from_y], [x, from_y], color)
+                    .thickness(thickness)
+                    .build();
+            }
             // Vertical line.
             draw_list
                 .add_line([x, from_y], [x, to_y], color)
                 .thickness(thickness)
                 .build();
-            // Horizontal to target.
-            draw_list
-                .add_line([x, to_y], [arrow_base_x, to_y], color)
-                .thickness(thickness)
-                .build();
+            // Horizontal stub at the target end — same suppression
+            // for clipped target as for clipped source.
+            if !arrow.clipped_to {
+                draw_list
+                    .add_line([x, to_y], [arrow_base_x, to_y], color)
+                    .thickness(thickness)
+                    .build();
+            }
 
-            // Arrowhead at target.
-            let dir = if to_y > from_y { 1.0 } else { -1.0 };
-            let head_size = 4.0;
-            draw_list
-                .add_triangle(
-                    [arrow_base_x, to_y],
-                    [arrow_base_x - head_size, to_y - head_size * dir],
-                    [arrow_base_x - head_size, to_y + head_size * dir],
-                    color,
-                )
-                .filled(true)
-                .build();
+            // Arrowhead at target — only when the target is in
+            // window; suppressing the head for clipped targets is
+            // the visual cue "continues offscreen".
+            if !arrow.clipped_to {
+                let dir = if to_y > from_y { 1.0 } else { -1.0 };
+                let head_size = 4.0;
+                draw_list
+                    .add_triangle(
+                        [arrow_base_x, to_y],
+                        [arrow_base_x - head_size, to_y - head_size * dir],
+                        [arrow_base_x - head_size, to_y + head_size * dir],
+                        color,
+                    )
+                    .filled(true)
+                    .build();
+            }
         }
     }
 

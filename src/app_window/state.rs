@@ -114,9 +114,12 @@ impl AppState {
         self.pending_theme = Some(t);
     }
 
-    /// Confirm a `CloseMode::Confirm` close. Triggers exit at end of the current frame.
+    /// Confirm a [`CloseMode::Confirm`](super::config::CloseMode) close.
+    /// Semantically identical to [`Self::exit`] — provided as a named
+    /// alias so confirm-dialog handlers read more clearly at the call
+    /// site. Both delegate to a single `should_exit = true` mutation.
     pub fn confirm_close(&mut self) {
-        self.should_exit = true;
+        self.exit();
     }
 
     /// Make the window visible (useful after `.start_hidden()` or a previous `.hide()`).
