@@ -95,13 +95,21 @@ impl TabItem for EditorTab {
     }
     fn render_content(&mut self, ui: &Ui) {
         ui.spacing();
+        // Reserve a single line at the bottom for status + Save
+        // button; editor fills the rest of the available height.
+        // Earlier `200.0` was a magic number that left dead space
+        // in tall windows and clipped content in short ones — bad
+        // showcase for the Nested tab. `content_region_avail` here
+        // already accounts for the parent frame inset(s).
+        let avail = ui.content_region_avail();
+        let status_row_h: f32 = 28.0;
+        let editor_h = (avail[1] - status_row_h).max(60.0);
         if ui
-            .input_text_multiline("##editor", &mut self.text, [-1.0, 200.0])
+            .input_text_multiline("##editor", &mut self.text, [-1.0, editor_h])
             .build()
         {
             self.dirty = true;
         }
-        ui.spacing();
         ui.text(if self.dirty {
             "Status: unsaved changes"
         } else {
@@ -280,6 +288,11 @@ impl NestedTab {
             TabControlConfig {
                 show_add_button: true,
                 tab_style: TabStyle::Underline, // visually distinct from outer
+                // Disable the inner frame inset — outer already
+                // paints its own frame; cascading another inset on
+                // top steals 4×2 px on each axis from the editor's
+                // multiline area for no visual gain.
+                body_inset_enabled: false,
                 ..Default::default()
             },
         );
@@ -297,9 +310,9 @@ impl TabItem for NestedTab {
         Some(icons::FOLDER_MULTIPLE_OUTLINE)
     }
     fn render_content(&mut self, ui: &Ui) {
-        ui.spacing();
-        ui.text("This tab contains its own TabControl:");
-        ui.spacing();
+        // No leading spacing / decoration — give the inner control
+        // every available pixel so the nested editor's multiline
+        // textarea reads at full size.
         if let Some(TabAction::AddRequested) = self.inner.render(ui) {
             let n = self.inner.tab_count();
             self.inner
