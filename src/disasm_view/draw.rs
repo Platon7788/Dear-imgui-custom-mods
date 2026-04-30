@@ -243,42 +243,26 @@ impl DisasmView {
 
         let mut x = origin_x;
 
-        // ── Breakpoint margin (numbered, colored) ──────────────
-        if cfg.show_breakpoints {
-            let bp_num = instr.breakpoint_number();
-            if bp_num > 0 {
-                let bp_color = colors.bp_color(bp_num);
-                // Background tint for the gutter cell.
-                draw_list
-                    .add_rect(
-                        [x, y],
-                        [x + cols.margin, y + lh],
-                        col32([
-                            bp_color[0] * 0.3,
-                            bp_color[1] * 0.3,
-                            bp_color[2] * 0.3,
-                            0.35,
-                        ]),
-                    )
-                    .filled(true)
-                    .build();
-                // Numbered label (centered).
-                let label = format!("{}", bp_num);
-                let text_w = label.len() as f32 * self.char_advance;
-                let tx = x + (cols.margin - text_w) * 0.5;
-                let text_h = self.line_height - 4.0;
-                let ty = y + (lh - text_h) * 0.5;
-                draw_list.add_text([tx, ty], col32(bp_color), &label);
-            }
-            // ── Bookmark marker (overlay; coexists with BP) ─────
-            // When the host registered the MDI font
-            // (`icons_available = true`), draw the
-            // `BOOKMARK_CHECK_OUTLINE` glyph centred in the gutter
-            // cell — the user-recognisable bookmark icon. When the
-            // font isn't available, fall back to a ring outline so
-            // the marker still reads.
+        // ── Margin gutter (bookmark | breakpoint number) ───────
+        // Layout inside the single `cols.margin` column:
+        //
+        //   |  bookmark  |  bp number  |
+        //   | left half  |  right half |
+        //
+        // - LEFT half: bookmark marker (icon glyph or ring fallback).
+        // - RIGHT half: breakpoint number — coloured digit only,
+        //   NO background fill (user feedback 2026-04-30: the dark
+        //   tint read as a heavy "highlighted band" rather than a
+        //   small numeric tag).
+        //
+        // Margin reserved when EITHER feature is on; both flags
+        // gate independently so disabling one doesn't hide the
+        // other.
+        if cfg.show_breakpoints || cfg.show_bookmarks {
+            let half = cols.margin * 0.5;
+            // Left half — bookmark marker.
             if cfg.show_bookmarks && self.is_bookmarked(instr.address()) {
-                let cx = x + cols.margin * 0.5;
+                let cx = x + half * 0.5;
                 let cy = y + lh * 0.5;
                 if cfg.icons_available {
                     let glyph = crate::icons::BOOKMARK_CHECK_OUTLINE;
@@ -289,13 +273,27 @@ impl DisasmView {
                         glyph,
                     );
                 } else {
-                    let radius = (lh * 0.30).min(cols.margin * 0.40);
+                    let radius = (lh * 0.28).min(half * 0.40);
                     draw_list
                         .add_circle([cx, cy], radius, col32(colors.bookmark))
                         .filled(false)
                         .thickness(1.4)
                         .num_segments(20)
                         .build();
+                }
+            }
+            // Right half — breakpoint number (digit only, no fill).
+            if cfg.show_breakpoints {
+                let bp_num = instr.breakpoint_number();
+                if bp_num > 0 {
+                    let bp_color = colors.bp_color(bp_num);
+                    let label = format!("{}", bp_num);
+                    let text_w = label.len() as f32 * self.char_advance;
+                    let cx = x + half + half * 0.5;
+                    let tx = cx - text_w * 0.5;
+                    let text_h = self.line_height - 4.0;
+                    let ty = y + (lh - text_h) * 0.5;
+                    draw_list.add_text([tx, ty], col32(bp_color), &label);
                 }
             }
             x += cols.margin;
