@@ -40,7 +40,14 @@ const DOUBLE_CLICK_THRESHOLD_SECS: f64 = 0.35;
 /// Pixels of horizontal mouse movement before a tab drag begins.
 const DRAG_START_THRESHOLD_PX: f32 = 5.0;
 /// Smooth-scroll exponential coefficient (higher = snappier).
-const SMOOTH_SCROLL_COEF: f32 = 14.0;
+/// Exponential-decay coefficient for the smooth-scroll easing —
+/// `scroll_offset += diff * (1 - exp(-COEF * dt))` per frame. Higher
+/// = faster ease. `28.0` lands on the active tab in ~3 frames @ 60 fps
+/// (1/e time ≈ 36 ms) — reads as "instant but not jarring", per user
+/// feedback 2026-04-30 ("уменьшить анимацию"). Earlier `14.0` felt
+/// sluggish on long jumps; the temporary hard-snap (commit `feea46f`)
+/// felt too abrupt — this is the middle ground.
+const SMOOTH_SCROLL_COEF: f32 = 28.0;
 /// Per-side hit-area padding for close buttons (matches the visual hover bg).
 const CLOSE_HIT_PAD: f32 = 2.0;
 
@@ -158,32 +165,49 @@ fn tick_animations<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
 fn render_empty_placeholder(ui: &Ui, cfg: &TabControlConfig) {
     let avail = ui.content_region_avail();
     let strings = &cfg.strings;
-    let icon = icons::VIEW_DASHBOARD_OUTLINE;
+    // Show the MDI dashboard glyph only when the host has registered
+    // the icon font; otherwise the placeholder would read `? No tabs`
+    // (M4 from session 035 audit, visible in user screenshot).
+    let icon: Option<&str> = if cfg.icons_available {
+        Some(icons::VIEW_DASHBOARD_OUTLINE)
+    } else {
+        None
+    };
 
-    let icon_sz = calc_text_size(icon);
+    let icon_sz = icon.map(calc_text_size).unwrap_or([0.0, 0.0]);
     let main_sz = calc_text_size(strings.no_tabs);
     let hint_sz = calc_text_size(strings.empty_hint);
 
     let spacing = 8.0;
-    let total_h = icon_sz[1] + spacing + main_sz[1] + spacing * 0.5 + hint_sz[1];
+    // Skip the icon row in the centring math when the icon is hidden,
+    // so `No tabs` lands at the visual centre (not biased upward by
+    // the gap that would have hosted the missing glyph).
+    let icon_block = if icon.is_some() {
+        icon_sz[1] + spacing
+    } else {
+        0.0
+    };
+    let total_h = icon_block + main_sz[1] + spacing * 0.5 + hint_sz[1];
     let start_y = (avail[1] - total_h) * 0.5;
     let cs = ui.cursor_pos();
 
     let label_color = rgba(cfg.colors.text_muted, 1.0);
     let hint_color = rgba(cfg.colors.text_muted, 0.7);
 
-    ui.set_cursor_pos([cs[0] + (avail[0] - icon_sz[0]) * 0.5, cs[1] + start_y]);
-    ui.text_colored(label_color, icon);
+    if let Some(glyph) = icon {
+        ui.set_cursor_pos([cs[0] + (avail[0] - icon_sz[0]) * 0.5, cs[1] + start_y]);
+        ui.text_colored(label_color, glyph);
+    }
 
     ui.set_cursor_pos([
         cs[0] + (avail[0] - main_sz[0]) * 0.5,
-        cs[1] + start_y + icon_sz[1] + spacing,
+        cs[1] + start_y + icon_block,
     ]);
     ui.text_colored(label_color, strings.no_tabs);
 
     ui.set_cursor_pos([
         cs[0] + (avail[0] - hint_sz[0]) * 0.5,
-        cs[1] + start_y + icon_sz[1] + spacing + main_sz[1] + spacing * 0.5,
+        cs[1] + start_y + icon_block + main_sz[1] + spacing * 0.5,
     ]);
     ui.text_colored(hint_color, strings.empty_hint);
 }
@@ -417,22 +441,19 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
 
     // ── Apply deferred scroll-to-active (set by add/set_active/scroll_to_active) ─
     //
-    // Programmatic activation snaps the strip to the new active tab
-    // in one frame instead of letting the smooth-scroll animation
-    // ease in over many frames. The smooth interpolation is the
-    // right model for the mouse-wheel path (continuous user input)
-    // but feels sluggish for a discrete "I picked tab X" intent —
-    // see user feedback 2026-04-30: "при переключении расчитало
-    // реально требуемое расстояние и переместило". Snap by writing
-    // `scroll_offset = scroll_target` after `scroll_into_view`
-    // computes the goal.
+    // Just sets `scroll_target`; the smooth-scroll loop above
+    // (line 384–391) does the actual easing. Earlier the renderer
+    // hard-snapped (`scroll_offset = scroll_target`) on every
+    // activation to fix the "по чуть-чуть" sluggishness, but that
+    // felt too abrupt — see user feedback 2026-04-30. The compromise
+    // is a faster `SMOOTH_SCROLL_COEF` so the ease finishes in
+    // ~3 frames without snapping.
     if pc.pending_scroll_to_active {
         pc.pending_scroll_to_active = false;
         if let Some(active_id) = pc.active
             && let Some(idx) = pc.tabs.iter().position(|t| t.id == active_id)
         {
             scroll_into_view(pc, idx, scroll_area_w);
-            pc.scroll_offset = pc.scroll_target;
         }
     }
 
@@ -457,9 +478,6 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         }
         action = Some(TabAction::Activated(new_id));
         scroll_into_view(pc, new_idx, scroll_area_w);
-        // Snap: discrete activation, see comment on the
-        // `pending_scroll_to_active` block above.
-        pc.scroll_offset = pc.scroll_target;
     }
 
     // ── PRE-PASS: fill hit_scratch with geometry + hit state ────────────
@@ -612,8 +630,16 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
                 dear_imgui_rs::StyleColor::ChildBg,
                 rgba(pc.config.colors.content_bg, 1.0),
             );
+            // `dear_imgui_rs::child_window().size([0.0, 0.0])` treats
+            // both axes as "auto-size to content" rather than "fill
+            // remaining" → the child collapsed to 0×0 and the padding
+            // / ChildBg were invisible (user feedback 2026-04-30:
+            // "падинг тупо нету"). Use the explicit avail so the child
+            // fills the strip-below area; mirrors the working
+            // `app_window::gpu` pattern with a non-zero second axis.
+            let avail = ui.content_region_avail();
             ui.child_window("##tab_content")
-                .size([0.0, 0.0])
+                .size(avail)
                 .border(false)
                 .build(ui, || {
                     entry.item.render_content(ui);
@@ -934,7 +960,6 @@ fn handle_tab_events<T: TabItem>(
         // clipped at the right edge) feel more decisive when the
         // strip jumps the few remaining pixels in one frame.
         scroll_into_view(pc, idx, scroll_area_w);
-        pc.scroll_offset = pc.scroll_target;
     }
 
     if let Some((idx, x)) = drag_idx {
@@ -1211,10 +1236,6 @@ fn handle_keyboard<T: TabItem>(
 
     if let Some(idx) = nav_idx {
         scroll_into_view(pc, idx, scroll_area_w);
-        // Snap on keyboard activation (Left / Right / Ctrl+Tab /
-        // Ctrl+1..9). Same rationale as the programmatic-activation
-        // path above — discrete jumps, no smooth ease.
-        pc.scroll_offset = pc.scroll_target;
     }
 
     // Ctrl+T — request a new tab
@@ -1396,12 +1417,19 @@ fn render_overflow_popup_body<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
         return;
     };
     let mut focus_id: Option<TabId> = None;
+    let icons_available = pc.config.icons_available;
     for i in 0..pc.tabs.len() {
         let tab = &pc.tabs[i];
         let id = tab.id;
         let is_active = pc.active == Some(id);
         pc.fmt_buf.clear();
-        if let Some(icon) = tab.item.icon() {
+        // Gate on `icons_available` — without the MDI font registered,
+        // the codepoint renders as a `?` box. Layout / on-tab drawing
+        // already check this; the popup was missed (M3 from session
+        // 035 audit, visible in user screenshot).
+        if icons_available
+            && let Some(icon) = tab.item.icon()
+        {
             let _ = write!(pc.fmt_buf, "{} ", icon);
         }
         let _ = write!(pc.fmt_buf, "{}", tab.item.title());
