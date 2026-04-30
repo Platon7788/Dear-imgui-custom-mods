@@ -604,13 +604,25 @@ pub struct ColumnWidths {
 impl Default for ColumnWidths {
     fn default() -> Self {
         Self {
-            margin: 14.0,
+            // Wider gutter so the bookmark glyph (left half) and
+            // breakpoint number (right half) each get ~12 px of
+            // breathing room — the previous 14-px gutter forced
+            // the two markers flush against each other and the
+            // column edges.
+            margin: 26.0,
             arrows: 36.0,
-            address: 130.0,
+            // +20 px lifted from the comment column so the address
+            // text gets clear breathing room around it (user
+            // feedback 2026-04-30).
+            address: 150.0,
             bytes: 200.0,
             mnemonic: 80.0,
             operands: 220.0,
-            comment: 120.0,
+            // -20 px (was 120) to balance the address bump. The
+            // comment column is dynamic anyway — it stretches to
+            // fill remaining width via `frame_comment_w` — so this
+            // is only the *floor* for narrow windows.
+            comment: 100.0,
         }
     }
 }

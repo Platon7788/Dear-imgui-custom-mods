@@ -259,10 +259,19 @@ impl DisasmView {
         // gate independently so disabling one doesn't hide the
         // other.
         if cfg.show_breakpoints || cfg.show_bookmarks {
-            let half = cols.margin * 0.5;
-            // Left half — bookmark marker.
+            // Reserve a 3-px inset on each side of the gutter +
+            // a 2-px gap at the centre between the two halves so
+            // the bookmark and bp digit never touch each other or
+            // the column borders. User feedback 2026-04-30: prior
+            // layout slammed both markers flush against the edges.
+            const GUTTER_EDGE_PAD: f32 = 3.0;
+            const GUTTER_CENTRE_GAP: f32 = 2.0;
+            let usable = (cols.margin - 2.0 * GUTTER_EDGE_PAD - GUTTER_CENTRE_GAP).max(0.0);
+            let half = usable * 0.5;
+            // Left half — bookmark marker, centred between the
+            // left edge pad and the centre gap.
             if cfg.show_bookmarks && self.is_bookmarked(instr.address()) {
-                let cx = x + half * 0.5;
+                let cx = x + GUTTER_EDGE_PAD + half * 0.5;
                 let cy = y + lh * 0.5;
                 if cfg.icons_available {
                     let glyph = crate::icons::BOOKMARK_CHECK_OUTLINE;
@@ -273,7 +282,7 @@ impl DisasmView {
                         glyph,
                     );
                 } else {
-                    let radius = (lh * 0.28).min(half * 0.40);
+                    let radius = (lh * 0.28).min(half * 0.45);
                     draw_list
                         .add_circle([cx, cy], radius, col32(colors.bookmark))
                         .filled(false)
@@ -282,14 +291,17 @@ impl DisasmView {
                         .build();
                 }
             }
-            // Right half — breakpoint number (digit only, no fill).
+            // Right half — breakpoint number, centred between the
+            // centre gap and the right edge pad. Digit only, no
+            // background fill (drawn straight in `bp_color`).
             if cfg.show_breakpoints {
                 let bp_num = instr.breakpoint_number();
                 if bp_num > 0 {
                     let bp_color = colors.bp_color(bp_num);
                     let label = format!("{}", bp_num);
                     let text_w = label.len() as f32 * self.char_advance;
-                    let cx = x + half + half * 0.5;
+                    let cx =
+                        x + GUTTER_EDGE_PAD + half + GUTTER_CENTRE_GAP + half * 0.5;
                     let tx = cx - text_w * 0.5;
                     let text_h = self.line_height - 4.0;
                     let ty = y + (lh - text_h) * 0.5;
