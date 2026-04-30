@@ -22,7 +22,7 @@ Standalone disassembly viewer widget for Dear ImGui with branch arrows, breakpoi
 - **Operand highlighting**: registers (cyan), numbers (green), memory brackets (orange), strings (warm yellow)
 - **Full x86 register set**: 64/32/16/8-bit GP, SSE/AVX (xmm/ymm), x87 (st0-st7), segment registers
 - **Selection** with `Shift+Arrow` extend, `Ctrl+C` copy (address + mnemonic + operands, multi-line for multi-select)
-- **Themed context menu** — Copy Address, Copy Instruction (count-aware), Follow Branch, Toggle Breakpoint, Goto Address
+- **Themed context menu** — Copy Address, Copy Instruction (count-aware), Follow Branch, Toggle Breakpoint, Toggle Watchpoint, Add/Remove Bookmark, Goto Address. Each entry is colour-coded by action class (navigation = address blue, follow = call green, function nav = jump amber, breakpoint = red, watchpoint = orange, bookmark = accent).
 - **Themed Goto + Settings popups** — `igSetNextWindowPos` centred on the viewer, action-row layout helpers from `utils::popup`
 - **Inline editing** — dblclick to patch Bytes / Comment (assembler integration via `DisasmDataProvider::assemble` / `set_comment`)
 - **Current execution highlight** — warm-amber background for the row marked `is_current()`
@@ -232,6 +232,12 @@ pub trait Instruction {
     fn has_breakpoint(&self) -> bool   { false }
     fn breakpoint_number(&self) -> u32 { 0 }  // 1-based; 0 = no breakpoint
     fn is_current(&self) -> bool       { false }
+    /// Whether a data watchpoint (read-or-write trap) is set. Renders
+    /// as the `RW` glyph in the gutter. Hosts that distinguish
+    /// read-only vs write-only data breakpoints handle that on the
+    /// engine side and report the union back through this single
+    /// flag.
+    fn has_watchpoint(&self) -> bool   { false }
 }
 ```
 
@@ -261,6 +267,11 @@ pub trait DisasmDataProvider {
 
     // Optional (default-no-op so old impls keep working):
     fn toggle_breakpoint(&mut self, _addr: u64) -> bool { false }
+    /// Toggle the data watchpoint at `addr`. Single method (not
+    /// separate read / write) — host engine sorts read-only vs
+    /// write-only on its side and reports the union back through
+    /// `Instruction::has_watchpoint()`.
+    fn toggle_watchpoint(&mut self, _addr: u64) -> bool { false }
     fn assemble(&self, _addr: u64, _text: &str) -> Option<Vec<u8>> { None }
     fn write_bytes(&mut self, _addr: u64, _bytes: &[u8]) -> bool { false }
     fn set_comment(&mut self, _addr: u64, _text: &str) -> bool { false }

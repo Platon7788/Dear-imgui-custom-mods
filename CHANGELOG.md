@@ -2,6 +2,124 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`disasm_view` bookmarks** (session 033). Up to 64 addresses, 7
+  public methods (`is_bookmarked` / `add_bookmark` / `remove_bookmark`
+  / `toggle_bookmark` / `bookmarks` / `bookmark_count` /
+  `clear_bookmarks`), `Ctrl+B` hotkey, gutter glyph, state-aware
+  context-menu entry. Default glyph: MDI `BOOKMARK_CHECK_OUTLINE`
+  (with `\u{25CB}` ring fallback when `icons_available = false`).
+  +8 unit tests.
+- **`disasm_view` watchpoint** (session 035). `Instruction::has_watchpoint`
+  + `DisasmDataProvider::toggle_watchpoint` (default no-op false).
+  Single `RW` glyph in the gutter; one "Toggle Watchpoint"
+  context-menu entry. Hosts that distinguish read-only vs write-only
+  data breakpoints sort that on the engine side and report the union
+  back through `has_watchpoint()`.
+- **`disasm_view` colour-coded context menu** (session 035). Each
+  entry tinted by action class: navigation (address blue), follow
+  (call green), function nav (jump amber), breakpoint (red),
+  watchpoint (orange), bookmark (accent), settings (default). Same
+  pattern landed in `hex_viewer` (nav entries on `color_offset`).
+- **`disasm_view` two-pass current-line marker** (session 035).
+  Translucent `current_line_bg` fill (alpha 0.09) + 1-px
+  `current_line_border` outline (red, alpha 0.90) — replaces the
+  prior solid amber bar that was too saturated.
+- **`disasm_view` gutter split** (session 035). Margin column now
+  reserves a 3-px inset on each edge with a 2-px centre gap; left
+  half = bookmark glyph, right half = `RW` glyph or breakpoint
+  number. `cols.address` widened (130 → 150 px), `cols.comment`
+  shrunk (120 → 100 px), `cols.margin` (14 → 26 px).
+- **`disasm_view` host-toolbar helpers** (session 032). Five
+  selectors (`select_current_ip`, `select_first_breakpoint`,
+  `select_next_breakpoint`, `select_prev_breakpoint`, `cursor_address`)
+  + `can_nav_back / can_nav_forward` predicates so hosts can render
+  toolbar buttons without scanning the provider themselves.
+- **`tab_control::TabItem::text_color()`** (session 032). Per-tab
+  RGB override for the tab title text — wins over the palette;
+  defaults `None` (use palette colour).
+- **`tab_control` body-frame model** (session 035). Active tab's
+  `render_content()` now runs inside an outer + inner rectangle
+  pair: outer drawn with `colors.frame_bg` directly on the parent's
+  draw list, inner is a real borderless `child_window` filled with
+  `colors.body_bg` and clipping host widgets to the inset. New
+  config fields: `body_inset_enabled`, `body_inset` ([4.0, 4.0]
+  default), `body_inset_border` (opt-in active-pane outline,
+  default off), `body_inset_border_thickness` (1.5 px). New palette
+  fields: `frame_bg`, `frame_border`. `body_bg` default flipped to
+  slightly lighter than `strip_bg` so the inset gap registers as
+  a visible frame.
+- **`virtual_table::TableConfig::show_headers`** (between sessions
+  031 and 032). Opt-out for the header strip; default `true`.
+
+### Changed
+
+- **`hex_viewer` config gains `pub icons_available: bool`** (default
+  `true`, session 035). Settings popup uses MDI `wrench-cog`
+  glyph (`U+F1B91`) when set, falls back to `\u{2026}` ellipsis
+  otherwise. Drift with `disasm_view::DisasmViewConfig::icons_available`
+  resolved.
+- **`disasm_view::DisasmViewConfig::icons_available` default flipped
+  to `true`** (session 035, was `false`). Bookmark gutter glyph and
+  Settings popup icon now render their MDI variants by default —
+  every in-tree consumer ships the MDI atlas.
+- **`tab_control` config field rename**: `content_padding_enabled`
+  → `body_inset_enabled`, `content_padding` → `body_inset`,
+  `TabColors::content_bg` → `body_bg`. Diagram-aligned naming
+  (outer / inner / pad).
+- **`tab_control::TabColors::frame_bg` separated from `strip_bg`**
+  (session 035). Recolouring the body-frame gap no longer
+  recolours the tab strip itself.
+- **`tab_control` snap-scroll smoother on tab activation** (session
+  035). `SMOOTH_SCROLL_COEF` bumped 14.0 → 28.0 (faster ease, no
+  hard snap). Hard-snap lines on `set_active` removed.
+- **Performance**: `disasm_view` per-row layout pre-pass switched to
+  `.len()` on ASCII mnemonic / operand strings (was `chars().count()`);
+  per-row comment formatting split into two `add_text` calls (no
+  `format!` allocation); `hex_viewer` address gutter formats into a
+  thread-local scratch `String` (~3000 alloc/sec saved); `child_id` /
+  `splitter_id` cached on `HexViewer` struct.
+
+### Fixed
+
+- **`disasm_view` watchpoint glyph colour** (session 035). The label
+  was tinted with `bp_color()` regardless of label kind; now uses
+  `operand_memory` for watchpoints and `bp_color()` for breakpoint
+  digits.
+- **`disasm_view` + `hex_viewer` Settings glyph fallback** (session
+  035). The MDI `wrench-cog` (`U+F1B91`) is now gated by
+  `icons_available` with a `\u{2026}` ellipsis fallback so the entry
+  never renders as `?` on hosts without the MDI atlas.
+- **`hex_viewer` Ctrl+A select-all anchor** (session 035). Cursor
+  now moves to the end of the selection so a subsequent
+  `shift+arrow` re-anchors at the new cursor instead of silently
+  shrinking the selection.
+- **`tab_control` body-frame flash on degenerate size** (session
+  035). When the inner rectangle would degenerate (`<= 1 px`), the
+  outer `frame_bg` rect is also skipped, falling through to a plain
+  `render_content()` — eliminates the frame-coloured flash around
+  user content.
+- **`disasm_view` arrow underflow on shrinking provider** (session
+  035). `first_row` is now clamped to `provider.instruction_count()`
+  before `compute_arrows_clipped` consumes the visible window —
+  protects from underflow when the provider shrinks between frames.
+- **`hex_viewer` context-menu entries close popup on activation**
+  (session 035). `Goto`, `Search`, `Step back`, `Step forward`, and
+  `Settings` now call `close_current_popup()` on click, mirroring
+  the `disasm_view` pattern.
+
+### Tests
+
+- **670 lib tests passed** (was 631 at 0.10.0 release; +39 net
+  across sessions 032-035): bookmark suite (8), content_bg /
+  body_bg invariants, host-toolbar helpers, watchpoint round-trip
+  + breakpoint independence, body_inset_border defaults,
+  `SMOOTH_SCROLL_COEF` pin, `HexSearchMode::Hex` round-trip,
+  `icons_available` defaults, Ctrl+A cursor placement, `first_row`
+  clamp arithmetic, `format_bytes` coverage of all `CopyFormat`
+  variants. 0 clippy warnings under `-D warnings --all-targets`.
+
 ## [0.10.0] - 2026-04-30
 
 This is a **major BREAKING release** consolidating the work of 14

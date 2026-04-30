@@ -231,9 +231,24 @@ A vertical accent line tracks the cursor; a translucent ghost of the dragged tab
 
 When the regular tabs don't fit, a `…` button appears on the right and opens a popup listing all tabs. Click an entry to activate that tab; the popup auto-closes.
 
-## Content area padding
+## Body frame model
 
-By default the active tab's `render_content()` runs inside a borderless child-window with a `[1.0, 1.0]` inset on every side, so user widgets never sit flush against the strip / outer-window edges. Inside `render_content()` `ui.content_region_avail()` already reflects the inset — host widgets need no manual offset.
+The active tab's `render_content()` runs inside a two-rectangle visible frame:
+
+```text
+[Tab strip]
+|-------------------------------------|   <- outer rect (frame_bg)
+||-----------------------------------||   <- inner child_window (body_bg)
+||                                   ||      gap = frame_bg
+||      widgets clipped here         ||      inset by `body_inset`
+|-------------------------------------|
+```
+
+- **Outer rect**: filled with `colors.frame_bg` directly on the parent's draw list. Default mirrors `colors.strip_bg` so the strip + frame read as one chrome surface.
+- **Inner child_window**: borderless, filled with `colors.body_bg` via `ChildBg` push. Holds the user widgets and clips them to the inner rect (text wrap, button max width, etc. respect the frame).
+- **Inset**: `body_inset` ([horizontal, vertical] in pixels) controls the visible gap between outer and inner rect. Default `[4.0, 4.0]`.
+
+Inside `render_content()` `ui.content_region_avail()` already reflects the inset — host widgets need no manual offset.
 
 ```rust
 // More breathing room (e.g. for forms / property panels):
@@ -241,22 +256,33 @@ tc.config.body_inset = [8.0, 8.0];
 
 // Full-bleed (charts, hex dumps, anything that wants every pixel):
 tc.config.body_inset_enabled = false;
+
+// Recolour the gap independently of the strip:
+tc.config.colors.frame_bg = [0x18, 0x1c, 0x24];
 ```
+
+A defensive guard short-circuits to plain `render_content()` when the inner rectangle would degenerate (window narrower than `2 * pad`, etc.) — ImGui's `BeginChild` panics on Windows for `0`-or-negative sizes, so the fallback keeps the host alive.
 
 Stacks cleanly with `external_content: true` — disable both if your host renders content outside `tc.render(ui)` and applies its own padding.
 
-### Content background color
+### Body background color
 
-The borderless child-window's `ChildBg` is driven from `colors.body_bg`. Default `body_bg == strip_bg` (= `nav.bg` for any themed palette), so the content surface sits in the same plane as the strip and the 1-px padding inset reads as invisible breathing space — **default visual layout unchanged**.
-
-Hosts who want a contrasting content surface (e.g. a white-on-dark editor inside a dark chrome) override the single field — the padding inset is painted in the same color:
+The inner child-window's `ChildBg` is driven from `colors.body_bg`. Default is **slightly lighter** than `colors.strip_bg` so the body reads as a distinct surface and the inset gap registers as a visible frame around it (see `theme::tests::body_bg_default_differs_from_strip_bg_for_visible_frame`).
 
 ```rust
-// Distinct content surface — strip stays nav.bg, content goes white.
+// Distinct body surface — strip stays nav.bg, body goes white.
 tc.config.colors.body_bg = [0xFC, 0xFC, 0xFA];
 ```
 
-Pin the contract: `Theme::tab_colors()` keeps `body_bg == strip_bg` for every built-in theme so a theme switch never desyncs the surfaces (see `theme::tests::tab_colors_track_nav_and_statusbar`).
+### Active-pane border (opt-in)
+
+Off by default; enables an outlined rectangle drawn over the outer fill so the host gets an "active pane" highlight matching the strip's selected-tab hue (IDE-style):
+
+```rust
+tc.config.body_inset_border = true;
+tc.config.body_inset_border_thickness = 1.5;     // Default
+tc.config.colors.frame_border = [0xff, 0x80, 0x10];   // Default mirrors `accent`
+```
 
 ## Theme integration
 
@@ -287,8 +313,10 @@ TabControlConfig {
     show_add_button:     false,   // shows a "+" at the right
     context_menu:        true,    // right-click → context_tab + open_context_menu
     external_content:    false,   // skip render_content (caller draws content)
-    body_inset_enabled: true,  // wrap render_content in a borderless child with WindowPadding
-    body_inset:    [1.0, 1.0], // [horizontal, vertical] inset; default 1 px breathing strip
+    body_inset_enabled: true,  // wrap render_content in a borderless child + visible frame
+    body_inset:    [4.0, 4.0], // [horizontal, vertical] inset; default 4 px visible gap
+    body_inset_border: false,  // opt-in outlined rect over outer rect (active-pane cue)
+    body_inset_border_thickness: 1.5,
     draggable:           true,
     show_overflow_dropdown: true,
 
