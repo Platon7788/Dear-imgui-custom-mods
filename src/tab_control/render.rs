@@ -634,38 +634,57 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
             let outer_min = cur_screen;
             let outer_max = [cur_screen[0] + avail_full[0], cur_screen[1] + avail_full[1]];
 
-            let draw = ui.get_window_draw_list();
-            // Outer fill — extends the chrome / strip surface into
-            // the body so the gap reads as a frame around content.
-            draw.add_rect(outer_min, outer_max, c32(pc.config.colors.strip_bg, 255))
-                .filled(true)
-                .build();
+            // Scope the draw-list guard: `DrawListMut` is a global
+            // mutex, and `child_window().build(...)` below executes
+            // host code that itself may call `ui.get_window_draw_list()`
+            // (e.g. VirtualTable row painters / host overlays).
+            // Holding `draw` across that nested `build` panics with
+            // "A DrawListMut is already in use!" — drop it here first.
+            {
+                let draw = ui.get_window_draw_list();
+                // Outer fill — extends the chrome / strip surface into
+                // the body so the gap reads as a frame around content.
+                draw.add_rect(outer_min, outer_max, c32(pc.config.colors.strip_bg, 255))
+                    .filled(true)
+                    .build();
+            }
 
             // Shift cursor inward — the upcoming child_window picks
             // its position from the current cursor.
             let cur = ui.cursor_pos();
             ui.set_cursor_pos([cur[0] + pad[0], cur[1] + pad[1]]);
-            let inner_size = [
-                (avail_full[0] - 2.0 * pad[0]).max(0.0),
-                (avail_full[1] - 2.0 * pad[1]).max(0.0),
-            ];
+            let inner_w = avail_full[0] - 2.0 * pad[0];
+            let inner_h = avail_full[1] - 2.0 * pad[1];
 
-            // Borderless child filled with `body_bg` — clips
-            // widgets to the inner rect. Push WindowPadding(0,0)
-            // so the host's first widget sits flush against the
-            // inner rect's top-left (host can re-add its own
-            // breathing room inside `render_content` if needed).
-            let _wp = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([0.0, 0.0]));
-            let _bg = ui.push_style_color(
-                dear_imgui_rs::StyleColor::ChildBg,
-                rgba(pc.config.colors.body_bg, 1.0),
-            );
-            ui.child_window("##tab_content")
-                .size(inner_size)
-                .border(false)
-                .build(ui, || {
-                    entry.item.render_content(ui);
-                });
+            // Skip the child if the inner area would be degenerate
+            // (window narrower than `2 * pad`, etc.) — ImGui's
+            // `BeginChild` triggers a STATUS_STACK_BUFFER_OVERRUN
+            // panic on Windows when given a 0-or-negative size,
+            // which the user hit at large pad values + narrow
+            // windows. Falling back to the no-frame path keeps the
+            // host alive at the cost of momentarily losing the
+            // visible inset.
+            if inner_w <= 1.0 || inner_h <= 1.0 {
+                entry.item.render_content(ui);
+            } else {
+                let inner_size = [inner_w, inner_h];
+                // Borderless child filled with `body_bg` — clips
+                // widgets to the inner rect. Push WindowPadding(0,0)
+                // so the host's first widget sits flush against the
+                // inner rect's top-left (host can re-add its own
+                // breathing room inside `render_content` if needed).
+                let _wp = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([0.0, 0.0]));
+                let _bg = ui.push_style_color(
+                    dear_imgui_rs::StyleColor::ChildBg,
+                    rgba(pc.config.colors.body_bg, 1.0),
+                );
+                ui.child_window("##tab_content")
+                    .size(inner_size)
+                    .border(false)
+                    .build(ui, || {
+                        entry.item.render_content(ui);
+                    });
+            }
         } else {
             entry.item.render_content(ui);
         }
