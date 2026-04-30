@@ -130,6 +130,16 @@ pub struct TableConfig {
     /// scoped to the individual header call to keep row feedback
     /// intact. Default: false.
     pub flat_headers: bool,
+    /// Render the header row at all. When `false`, [`Self::freeze_rows`]
+    /// is implicitly clamped to 0 (a frozen non-existent header would
+    /// reserve dead pixels at the top of the body) and the header
+    /// captions in [`ColumnDef::name`] are used only as ImGui IDs (the
+    /// `##suffix` idiom keeps them unique without a visible caption).
+    ///
+    /// Useful for register dumps / status panes where the columns are
+    /// self-explanatory and a header strip steals vertical real estate.
+    /// Default: `true` (existing behavior).
+    pub show_headers: bool,
     pub context_menu: bool,
     pub freeze_cols: i32,
     pub freeze_rows: i32,
@@ -197,6 +207,7 @@ impl Default for TableConfig {
             scroll_y: true,
             highlight_hovered: true,
             flat_headers: false,
+            show_headers: true,
             context_menu: true,
             freeze_cols: 0,
             freeze_rows: 1,

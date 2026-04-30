@@ -496,10 +496,23 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             }
         }
 
-        ui.table_setup_scroll_freeze(self.config.freeze_cols, self.config.freeze_rows);
+        // When the host suppressed the header row entirely, also clamp
+        // freeze_rows to 0 — `table_setup_scroll_freeze` would otherwise
+        // reserve dead pixels at the top of the body for a header that
+        // never renders.
+        let freeze_rows = if self.config.show_headers {
+            self.config.freeze_rows
+        } else {
+            0
+        };
+        ui.table_setup_scroll_freeze(self.config.freeze_cols, freeze_rows);
 
-        // Header
-        self.render_header(ui);
+        // Header — opt-out via `TableConfig::show_headers = false` for
+        // register-dump / status panes where the column captions are
+        // self-explanatory and the strip just steals vertical space.
+        if self.config.show_headers {
+            self.render_header(ui);
+        }
 
         // Sort
         self.handle_sort(ui);
@@ -643,10 +656,18 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             }
         }
 
-        ui.table_setup_scroll_freeze(self.config.freeze_cols, self.config.freeze_rows);
+        // Same header-suppression opt-out as in `render()` above.
+        let freeze_rows = if self.config.show_headers {
+            self.config.freeze_rows
+        } else {
+            0
+        };
+        ui.table_setup_scroll_freeze(self.config.freeze_cols, freeze_rows);
 
-        // Header
-        self.render_header(ui);
+        // Header — opt-out via `TableConfig::show_headers = false`.
+        if self.config.show_headers {
+            self.render_header(ui);
+        }
 
         // No sorting — data order is caller-managed.
 
