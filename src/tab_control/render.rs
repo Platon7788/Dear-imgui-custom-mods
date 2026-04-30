@@ -115,7 +115,7 @@ pub(crate) fn render_tab_control<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) ->
                 entry.item.on_activated();
             }
         }
-        pc.invalidate_tab_widths();
+        pc.invalidate_tab_layout_cache();
         action = Some(TabAction::Closed(id));
     }
 
@@ -873,6 +873,15 @@ fn handle_tab_events<T: TabItem>(
             // place rendering the same content tree (e.g. an inner TabControl
             // re-rendered as a thumbnail).
             let _id = ui.push_id(tab_id as usize);
+            // `set_window_font_scale` is a per-window write; the
+            // tooltip is its own window so the scale doesn't leak
+            // outside this closure when the tooltip closes. The
+            // explicit `1.0` restore at the tail covers nested
+            // `render_preview` impls that opened sibling tooltips
+            // during the body — those would otherwise inherit the
+            // shrunk scale (M5 from session 034 audit). Real
+            // save / restore would need unsafe `igGetCurrentWindow`
+            // access; the `1.0` clamp is the practical compromise.
             ui.set_window_font_scale(preview_scale);
             ui.text(title);
             ui.separator();
@@ -1006,6 +1015,16 @@ fn handle_drag<T: TabItem>(
             pc.tabs.swap(src_idx, src_idx + 1);
             src_idx + 1
         };
+        // Release-mode guard (M3 from session 034 audit) — if a
+        // future change to the `target_idx` selection ever returns
+        // an out-of-group index, `enforce_pinned_partition` would
+        // observe corruption only on the next frame. Bail out here
+        // so the swap is reverted before the partition pass runs.
+        if pc.tabs[new_src].item.is_pinned() != src_is_pinned {
+            // Undo the offending swap.
+            pc.tabs.swap(src_idx, new_src);
+            return;
+        }
         debug_assert_eq!(
             pc.tabs[new_src].item.is_pinned(),
             src_is_pinned,

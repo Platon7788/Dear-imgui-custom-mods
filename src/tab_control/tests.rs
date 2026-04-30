@@ -427,6 +427,57 @@ fn content_padding_defaults_are_one_pixel_inset_enabled() {
 }
 
 #[test]
+fn remove_clears_pending_close_for_target_id() {
+    // M1 from session 034 audit. If a tab is mid-confirmation and
+    // the host removes it programmatically, the popup state must
+    // not survive the removal — otherwise the popup would re-open
+    // with a stale "Unknown" name and `pending_close.take()` would
+    // pop a dead id.
+    let mut pc: TabControl<Spy> = TabControl::new("##t");
+    let a = pc.add(Spy::new("a"));
+    pc.add(Spy::new("b"));
+    pc.pending_close = Some(a);
+    pc.pending_close_new = true;
+    pc.context_tab = Some(a);
+    pc.open_context_menu = true;
+
+    let _ = pc.remove(a);
+
+    assert_eq!(pc.pending_close, None, "pending_close must clear");
+    assert!(!pc.pending_close_new, "pending_close_new must clear");
+    assert_eq!(pc.context_tab, None, "context_tab must clear");
+    assert!(!pc.open_context_menu, "open_context_menu must clear");
+}
+
+#[test]
+fn remove_clears_closing_tab_for_target_id() {
+    // M2 from session 034 audit. Mid-animation removal must drop
+    // the dangling timer so it doesn't tick down against a dead id.
+    let mut pc: TabControl<Spy> = TabControl::new("##t");
+    let a = pc.add(Spy::new("a"));
+    pc.add(Spy::new("b"));
+    pc.closing_tab = Some((a, 0.5));
+
+    let _ = pc.remove(a);
+
+    assert_eq!(pc.closing_tab, None, "closing_tab must clear");
+}
+
+#[test]
+fn remove_keeps_pending_close_for_other_id() {
+    // Negative test: removing tab A must NOT touch tab B's pending
+    // close-confirmation.
+    let mut pc: TabControl<Spy> = TabControl::new("##t");
+    let a = pc.add(Spy::new("a"));
+    let b = pc.add(Spy::new("b"));
+    pc.pending_close = Some(b);
+
+    let _ = pc.remove(a);
+
+    assert_eq!(pc.pending_close, Some(b), "unrelated pending_close kept");
+}
+
+#[test]
 fn content_bg_default_mirrors_strip_bg() {
     // Pin the contract: by default the active tab's content area
     // sits on the same surface as the strip — content_bg == strip_bg

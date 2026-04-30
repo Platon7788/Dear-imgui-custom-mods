@@ -439,7 +439,12 @@ impl DisasmView {
                 // field stretches to the right edge of the host
                 // window (per the per-frame `frame_comment_w`).
                 let edit_x = comment_x + COMMENT_LEFT_PAD;
-                let edit_w = (self.frame_comment_w.get() - COMMENT_LEFT_PAD)
+                // `frame_comment_w` is `None` only on frame 0 — the
+                // edit cell can't be activated that early (requires a
+                // double-click that follows a render), so unwrapping
+                // to `cols.comment` is a safe theoretical fallback.
+                let edit_w = (self.frame_comment_w.get().unwrap_or(cols.comment)
+                    - COMMENT_LEFT_PAD)
                     .max(cols.comment.max(120.0));
                 self.edit_render_pos.set(Some([edit_x, y]));
                 self.edit_render_width.set(edit_w);

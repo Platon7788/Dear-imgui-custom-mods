@@ -210,10 +210,14 @@ pub struct DisasmView {
     /// lower address — the highlight stays on the same logical
     /// instruction even when the row index shifts.
     ///
-    /// Cleared on `Esc` and on any single-click without a
-    /// modifier (those are decisive "fresh exploration" gestures).
-    /// Auto-suppressed when navigation lands on the same address
-    /// it would set as origin (no breadcrumb-on-self).
+    /// Cleared on `Esc` (decisive "I'm done with the trail" gesture)
+    /// and overwritten by any new navigation that sets a different
+    /// origin. Single-clicks **preserve** the breadcrumb on purpose
+    /// so the user can scroll / click around without losing the
+    /// jump source — see the explicit "keep" comment in
+    /// `input.rs::handle_mouse`. Auto-suppressed when navigation
+    /// lands on the same address it would set as origin
+    /// (no breadcrumb-on-self).
     pub(super) origin_addr: Option<u64>,
     /// Cached arrows for current frame.
     cached_arrows: Vec<BranchArrow>,
@@ -237,15 +241,19 @@ pub struct DisasmView {
     /// `Cell` so `mouse_to_cell` (called via `&self`) can read the
     /// value computed on the previous frame for hit-testing — the
     /// 1-frame lag is invisible for the double-click gesture.
-    pub(super) frame_comment_x: std::cell::Cell<f32>,
+    /// Wrapped in `Option` so frame 0 (before `render()` populated the
+    /// value) is distinguishable from any legal X (including 0.0 when
+    /// the host docks the view at screen-space x = 0). M1 from the
+    /// session 034 audit replaced the prior `≤ 0.0` sentinel.
+    pub(super) frame_comment_x: std::cell::Cell<Option<f32>>,
     /// Per-frame comment-column WIDTH (screen-space pixels).
     /// Computed in `render()` as
     /// `(window_w - comment_x).max(cols.comment)` so the Comment
     /// column always stretches to fill the host window down to a
     /// `cols.comment` floor. Read by `mouse_to_cell` (so
     /// double-click hit-testing extends to the full visible width)
-    /// and by the comment edit-cell renderer.
-    pub(super) frame_comment_w: std::cell::Cell<f32>,
+    /// and by the comment edit-cell renderer. `None` only on frame 0.
+    pub(super) frame_comment_w: std::cell::Cell<Option<f32>>,
 
     /// Bookmark address set — UI navigation aid. Up to
     /// [`Self::MAX_BOOKMARKS`] addresses (BTreeSet keeps them sorted
@@ -311,8 +319,8 @@ impl DisasmView {
             edit_render_width: std::cell::Cell::new(0.0),
             component_center: [0.0, 0.0],
             popup_open_pos: [0.0, 0.0],
-            frame_comment_x: std::cell::Cell::new(0.0),
-            frame_comment_w: std::cell::Cell::new(0.0),
+            frame_comment_x: std::cell::Cell::new(None),
+            frame_comment_w: std::cell::Cell::new(None),
             bookmarks: BTreeSet::new(),
         }
     }
@@ -1082,7 +1090,7 @@ impl DisasmView {
                     }
                 }
                 let comment_x = max_instr_right;
-                self.frame_comment_x.set(comment_x);
+                self.frame_comment_x.set(Some(comment_x));
 
                 // Comment column stretches to fill remaining
                 // host-window width (per user request 2026-04-30:
@@ -1093,7 +1101,7 @@ impl DisasmView {
                 // host window is shrunk below the layout total.
                 let comment_w =
                     (origin_x + avail[0] - comment_x).max(cols.comment);
-                self.frame_comment_w.set(comment_w);
+                self.frame_comment_w.set(Some(comment_w));
 
                 // ── Column header ─────────────────────────────
                 if self.config.show_header {
@@ -1609,6 +1617,17 @@ mod tests {
         view.clear_bookmarks();
         assert_eq!(view.bookmark_count(), 0);
         assert!(view.bookmarks().is_empty());
+    }
+
+    #[test]
+    fn show_bookmarks_default_is_true_independently_of_breakpoints() {
+        // C1 from session 034 audit: bookmark visibility was once
+        // gated inside the `show_breakpoints` block, so disabling
+        // breakpoints would silently hide bookmarks too. Pin the
+        // independent default flags.
+        let cfg = super::DisasmViewConfig::default();
+        assert!(cfg.show_breakpoints);
+        assert!(cfg.show_bookmarks);
     }
 
     #[test]

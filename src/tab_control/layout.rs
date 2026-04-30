@@ -104,7 +104,10 @@ pub(crate) fn compute_tab_width<T: TabItem>(cfg: &TabControlConfig, item: &T) ->
 /// uses [`Vec::rotate_right`] passes for in-place repair (no allocations).
 ///
 /// Called automatically every frame by the renderer to absorb `is_pinned()`
-/// changes the user may have made between frames.
+/// changes the user may have made between frames. The early-exit walk is
+/// O(n) — for typical tab counts (<20) the overhead is sub-microsecond
+/// per frame, so the audit-suggested dirty-flag skip (P1, session 034)
+/// was deferred as a profile-evidence-required optimisation.
 pub(crate) fn enforce_pinned_partition<T: TabItem>(pc: &mut TabControl<T>) {
     // Quick check: walk once, ensure no regular precedes a pinned.
     let mut seen_regular = false;
@@ -142,5 +145,5 @@ pub(crate) fn enforce_pinned_partition<T: TabItem>(pc: &mut TabControl<T>) {
         }
         i += 1;
     }
-    pc.invalidate_tab_widths();
+    pc.invalidate_tab_layout_cache();
 }

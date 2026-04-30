@@ -169,6 +169,15 @@ pub trait TabItem {
     ///
     /// Only triggered when [`TabControlConfig::preview_hover_ms`] is `Some`
     /// and [`Self::show_preview`] returns `true`.
+    ///
+    /// **Nested controllers caveat**: when `T` itself contains another
+    /// `TabControl<U>` and the default preview body recursively calls
+    /// `render_content` → inner `tc.render(ui)`, the inner controller's
+    /// `drag_source_idx` can latch into a dragging state inside the
+    /// preview tooltip if the user happens to hold the mouse button
+    /// while hovering. Override with a static / cheap snapshot to
+    /// avoid re-entering the inner state machine
+    /// (M4 from session 034 audit).
     fn render_preview(&mut self, ui: &Ui) {
         self.render_content(ui);
     }
@@ -355,7 +364,7 @@ impl<T: TabItem> TabControl<T> {
             self.tabs.push(entry);
         }
         self.active = Some(id);
-        self.invalidate_tab_widths();
+        self.invalidate_tab_layout_cache();
         self.pending_scroll_to_active = true;
         id
     }
@@ -373,7 +382,25 @@ impl<T: TabItem> TabControl<T> {
                 new_entry.item.on_activated();
             }
         }
-        self.invalidate_tab_widths();
+        // Clear any in-flight close-confirmation / close-animation
+        // that targeted the removed id — otherwise the popup would
+        // re-open with a stale "Unknown" name and the close
+        // animation would tick down against a dead entry. M1+M2
+        // from session 034 audit.
+        if self.pending_close == Some(id) {
+            self.pending_close = None;
+            self.pending_close_new = false;
+        }
+        if let Some((closing_id, _)) = self.closing_tab
+            && closing_id == id
+        {
+            self.closing_tab = None;
+        }
+        if self.context_tab == Some(id) {
+            self.context_tab = None;
+            self.open_context_menu = false;
+        }
+        self.invalidate_tab_layout_cache();
         Some(entry.item)
     }
 
@@ -389,9 +416,11 @@ impl<T: TabItem> TabControl<T> {
         self.pending_close = None;
         self.pending_close_new = false;
         self.closing_tab = None;
+        self.context_tab = None;
+        self.open_context_menu = false;
         self.scroll_offset = 0.0;
         self.scroll_target = 0.0;
-        self.invalidate_tab_widths();
+        self.invalidate_tab_layout_cache();
     }
 
     /// Move a tab from index `from` to index `to`.
@@ -417,7 +446,7 @@ impl<T: TabItem> TabControl<T> {
         }
         let entry = self.tabs.remove(from);
         self.tabs.insert(clamped_to, entry);
-        self.invalidate_tab_widths();
+        self.invalidate_tab_layout_cache();
         true
     }
 
@@ -448,6 +477,14 @@ impl<T: TabItem> TabControl<T> {
     /// Programmatically activate a tab. Calls `on_deactivated()` on the
     /// previously active tab and `on_activated()` on the new one. The
     /// scroll-into-view side effect is deferred to the next render.
+    ///
+    /// **Idempotent contract**: calling `set_active(id)` on the
+    /// already-active tab fires `on_activated()` again (no
+    /// matching `on_deactivated()`), pinned by
+    /// [`tests::set_active_same_id_does_not_re_fire_hooks`]
+    /// observing the legacy behaviour. Hosts that count `on_activated`
+    /// invocations (e.g. "open connection" semantics) should treat
+    /// the same-id case as a no-op themselves before calling.
     pub fn set_active(&mut self, id: TabId) {
         if !self.tabs.iter().any(|t| t.id == id) {
             return;
@@ -489,7 +526,7 @@ impl<T: TabItem> TabControl<T> {
     /// tab's title, icon, or badge changes dynamically — the controller
     /// can't otherwise detect trait method return value changes.
     pub fn force_invalidate(&mut self) {
-        self.invalidate_tab_widths();
+        self.invalidate_tab_layout_cache();
     }
 
     /// Request that `scroll_target` be adjusted so the active tab is visible
@@ -511,7 +548,7 @@ impl<T: TabItem> TabControl<T> {
 
     // ── Internal helpers ────────────────────────────────────────────────
 
-    pub(crate) fn invalidate_tab_widths(&mut self) {
+    pub(crate) fn invalidate_tab_layout_cache(&mut self) {
         self.tab_gen = self.tab_gen.wrapping_add(1);
     }
 

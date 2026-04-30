@@ -299,6 +299,12 @@ impl DisasmView {
                 {
                     set_clipboard(&formatted);
                     self.address_flash = Some((row, ADDRESS_FLASH_FRAMES));
+                    // Drop any drag-select origin a single click below
+                    // may have set — otherwise the next mouse-drag
+                    // after the copy uses the stale origin index and
+                    // selects a phantom range (M7 from session 034
+                    // audit).
+                    self.drag_origin = None;
                     // Don't fall through into the row-edit double-click
                     // handler below — gesture was for the address gutter.
                     return;
@@ -516,14 +522,13 @@ impl DisasmView {
         // when the comment column shifted right last frame, the
         // Instruction column extends to match so the user double-
         // clicks the glyphs they actually see.
-        let comment_x = {
-            let v = self.frame_comment_x.get();
-            if v <= 0.0 {
-                mnemonic_x + cols.mnemonic + cols.operands
-            } else {
-                v
-            }
-        };
+        //
+        // `Option<f32>` cell — `None` only on frame 0 before
+        // `render()` populated the value (M1 from session 034 audit).
+        let comment_x = self
+            .frame_comment_x
+            .get()
+            .unwrap_or(mnemonic_x + cols.mnemonic + cols.operands);
         if mx >= mnemonic_x && mx < comment_x {
             Some(row)
         } else {
@@ -573,16 +578,15 @@ impl DisasmView {
         // test boundary follows so the user double-clicks the
         // glyph they actually see. 1-frame stale on the very first
         // frame after such a shift; invisible for double-click.
-        let comment_x = {
-            let v = self.frame_comment_x.get();
-            // Fallback to the static layout boundary on frame 0
-            // (before render() has had a chance to populate the cell).
-            if v <= 0.0 {
-                mnemonic_x + cols.mnemonic + cols.operands
-            } else {
-                v
-            }
-        };
+        //
+        // `Option<f32>` cell — `None` only on frame 0 before `render()`
+        // populated the value (M1 from session 034 audit; the prior
+        // `<= 0.0` sentinel could misfire when the host docked the
+        // view at screen-space x = 0).
+        let comment_x = self
+            .frame_comment_x
+            .get()
+            .unwrap_or(mnemonic_x + cols.mnemonic + cols.operands);
 
         // Bytes cell — only when bytes column is visible.
         if self.config.show_bytes && mx >= bytes_x && mx < mnemonic_x {
