@@ -262,6 +262,10 @@ pub enum EditorTheme {
     SolarizedLight,
     /// GitHub Light — matches github.com code view.
     GithubLight,
+    /// Catppuccin Mocha — soft pastel palette over a desaturated charcoal base.
+    Catppuccin,
+    /// Nord — frost-blue accents over a polar-night base.
+    Nord,
 }
 
 impl EditorTheme {
@@ -273,6 +277,8 @@ impl EditorTheme {
         EditorTheme::SolarizedDark,
         EditorTheme::SolarizedLight,
         EditorTheme::GithubLight,
+        EditorTheme::Catppuccin,
+        EditorTheme::Nord,
     ];
 
     /// Display name shown in the Theme submenu.
@@ -284,6 +290,8 @@ impl EditorTheme {
             EditorTheme::SolarizedDark => "Solarized Dark",
             EditorTheme::SolarizedLight => "Solarized Light",
             EditorTheme::GithubLight => "GitHub Light",
+            EditorTheme::Catppuccin => "Catppuccin",
+            EditorTheme::Nord => "Nord",
         }
     }
 
@@ -296,6 +304,30 @@ impl EditorTheme {
             EditorTheme::SolarizedDark => SyntaxColors::solarized_dark(),
             EditorTheme::SolarizedLight => SyntaxColors::solarized_light(),
             EditorTheme::GithubLight => SyntaxColors::github_light(),
+            EditorTheme::Catppuccin => SyntaxColors::catppuccin(),
+            EditorTheme::Nord => SyntaxColors::nord(),
+        }
+    }
+
+    /// Map a crate-wide [`crate::theme::Theme`] to the closest [`EditorTheme`]
+    /// preset. Used by [`EditorConfig::with_crate_theme`] /
+    /// [`EditorConfig::set_crate_theme`] so the editor picks the syntax
+    /// palette that visually matches whichever chrome theme the host app
+    /// is running under.
+    ///
+    /// `Midnight` maps to `OneDark` because both are dark, near-black
+    /// surfaces with cool-blue accents — a separate dedicated Midnight
+    /// preset would duplicate ~95 % of OneDark's tokens.
+    pub fn from_crate_theme(theme: crate::theme::Theme) -> Self {
+        use crate::theme::Theme;
+        match theme {
+            Theme::Dark => Self::DarkDefault,
+            Theme::Light => Self::GithubLight,
+            Theme::Midnight => Self::OneDark,
+            Theme::Solarized => Self::SolarizedDark,
+            Theme::Monokai => Self::Monokai,
+            Theme::Catppuccin => Self::Catppuccin,
+            Theme::Nord => Self::Nord,
         }
     }
 }
@@ -396,6 +428,14 @@ pub struct SyntaxColors {
     pub gutter_bg: [f32; 4],
     /// Editor text-area background (used for the child-window fill).
     pub editor_bg: [f32; 4],
+    /// Breakpoint marker fill colour drawn in the gutter.
+    pub breakpoint: [f32; 4],
+    /// Vertical separator line between the gutter and the text area.
+    pub gutter_separator: [f32; 4],
+    /// Primary cursor / caret colour.
+    pub cursor: [f32; 4],
+    /// Whitespace marker glyph (mid-dot for spaces, arrow for tabs).
+    pub whitespace_marker: [f32; 4],
 }
 
 impl Default for SyntaxColors {
@@ -409,9 +449,13 @@ impl SyntaxColors {
 
     /// Dark theme matching the RustForge IDE palette.
     pub fn dark_default() -> Self {
-        use crate::theme;
         Self {
-            keyword: theme::ACCENT,
+            // Token literals — inlined to keep the palette self-contained.
+            // The values mirror the legacy `theme::{ACCENT,TEXT_PRIMARY,
+            // TEXT_MUTED,DANGER,WARNING,SEPARATOR}` constants which were
+            // hard-pinned to the Dark theme; a per-theme palette must
+            // not reach into another theme's tokens.
+            keyword: [0.36, 0.61, 0.84, 1.0], // ACCENT
             type_name: [0.56, 0.84, 0.62, 1.0],
             lifetime: [0.85, 0.60, 0.85, 1.0],
             string: [0.80, 0.88, 0.52, 1.0],
@@ -422,23 +466,27 @@ impl SyntaxColors {
             macro_call: [0.90, 0.75, 0.35, 1.0],
             operator: [0.72, 0.88, 0.98, 1.0],
             punctuation: [0.60, 0.62, 0.68, 1.0],
-            identifier: theme::TEXT_PRIMARY,
-            user_code_marker: theme::WARNING,
-            hex_null: [0.95, 0.42, 0.47, 1.0], // red  (NxT CLR_ZERO)
-            hex_ff: [1.00, 0.78, 0.30, 1.0],   // amber (NxT CLR_FF)
-            hex_default: [0.82, 0.86, 0.93, 1.0], // silver (NxT CLR_DEFAULT)
-            hex_printable: [0.65, 0.92, 0.73, 1.0], // green (NxT CLR_ASCII)
+            identifier: [0.88, 0.90, 0.92, 1.0],       // TEXT_PRIMARY
+            user_code_marker: [0.85, 0.65, 0.25, 1.0], // WARNING
+            hex_null: [0.95, 0.42, 0.47, 1.0],         // red  (NxT CLR_ZERO)
+            hex_ff: [1.00, 0.78, 0.30, 1.0],           // amber (NxT CLR_FF)
+            hex_default: [0.82, 0.86, 0.93, 1.0],      // silver (NxT CLR_DEFAULT)
+            hex_printable: [0.65, 0.92, 0.73, 1.0],    // green (NxT CLR_ASCII)
             current_line_bg: [0.18, 0.20, 0.26, 1.0],
             selection_bg: [0.26, 0.52, 0.86, 0.55],
             search_match_bg: [0.62, 0.52, 0.10, 0.30],
             search_current_bg: [0.62, 0.52, 0.10, 0.62],
-            line_number: theme::TEXT_MUTED,
-            line_number_active: theme::TEXT_PRIMARY,
+            line_number: [0.40, 0.42, 0.48, 1.0],       // TEXT_MUTED
+            line_number_active: [0.88, 0.90, 0.92, 1.0], // TEXT_PRIMARY
             bracket_match_bg: [0.38, 0.44, 0.58, 0.45],
-            error_underline: theme::DANGER,
-            warning_underline: theme::WARNING,
+            error_underline: [0.82, 0.27, 0.27, 1.0],   // DANGER
+            warning_underline: [0.85, 0.65, 0.25, 1.0], // WARNING
             gutter_bg: [0.09, 0.10, 0.13, 1.0],
             editor_bg: [0.11, 0.12, 0.16, 1.0],
+            breakpoint: [0.82, 0.27, 0.27, 1.0],         // DANGER
+            gutter_separator: [0.22, 0.25, 0.30, 1.0],   // SEPARATOR
+            cursor: [0.88, 0.90, 0.92, 1.0],             // TEXT_PRIMARY
+            whitespace_marker: [0.40, 0.42, 0.48, 1.0],  // TEXT_MUTED
         }
     }
 
@@ -475,6 +523,10 @@ impl SyntaxColors {
             warning_underline: [0.902, 0.863, 0.455, 1.0],
             gutter_bg: [0.118, 0.122, 0.110, 1.0], // #1E1F1C
             editor_bg: [0.153, 0.157, 0.133, 1.0], // #272822
+            breakpoint: [0.976, 0.149, 0.447, 1.0], // pink-red
+            gutter_separator: [0.243, 0.239, 0.196, 1.0], // #3E3D32
+            cursor: [0.973, 0.973, 0.949, 1.0],     // near-white
+            whitespace_marker: [0.459, 0.443, 0.369, 1.0], // warm grey
         }
     }
 
@@ -511,6 +563,10 @@ impl SyntaxColors {
             warning_underline: [0.820, 0.604, 0.400, 1.0],
             gutter_bg: [0.129, 0.145, 0.169, 1.0], // #21252B
             editor_bg: [0.157, 0.173, 0.204, 1.0], // #282C34
+            breakpoint: [0.878, 0.424, 0.459, 1.0], // red/pink
+            gutter_separator: [0.220, 0.243, 0.286, 1.0],
+            cursor: [0.671, 0.698, 0.749, 1.0],     // #ABB2BF
+            whitespace_marker: [0.361, 0.388, 0.439, 1.0], // muted grey
         }
     }
 
@@ -547,6 +603,10 @@ impl SyntaxColors {
             warning_underline: [0.796, 0.294, 0.086, 1.0],
             gutter_bg: [0.027, 0.212, 0.259, 1.0], // #073642
             editor_bg: [0.000, 0.169, 0.212, 1.0], // #002B36 base03
+            breakpoint: [0.863, 0.196, 0.184, 1.0],      // red
+            gutter_separator: [0.027, 0.212, 0.259, 1.0], // base02
+            cursor: [0.514, 0.580, 0.588, 1.0],          // base0
+            whitespace_marker: [0.345, 0.431, 0.459, 1.0], // base01
         }
     }
 
@@ -583,6 +643,10 @@ impl SyntaxColors {
             warning_underline: [0.796, 0.294, 0.086, 1.0],
             gutter_bg: [0.933, 0.910, 0.835, 1.0], // #EEE8D5 base2
             editor_bg: [0.992, 0.965, 0.890, 1.0], // #FDF6E3 base3
+            breakpoint: [0.863, 0.196, 0.184, 1.0], // red
+            gutter_separator: [0.808, 0.808, 0.694, 1.0],
+            cursor: [0.396, 0.482, 0.514, 1.0],     // base00
+            whitespace_marker: [0.576, 0.631, 0.631, 1.0], // base1
         }
     }
 
@@ -619,6 +683,95 @@ impl SyntaxColors {
             warning_underline: [0.639, 0.353, 0.000, 1.0],
             gutter_bg: [0.965, 0.973, 0.980, 1.0], // #F6F8FA
             editor_bg: [1.000, 1.000, 1.000, 1.0], // #FFFFFF
+            breakpoint: [0.843, 0.227, 0.286, 1.0], // github red
+            gutter_separator: [0.882, 0.890, 0.902, 1.0],
+            cursor: [0.141, 0.161, 0.180, 1.0],     // near-black
+            whitespace_marker: [0.729, 0.733, 0.741, 1.0], // #BABBBD
+        }
+    }
+
+    // ── Catppuccin Mocha ──────────────────────────────────────────────────
+
+    /// Catppuccin Mocha — soft pastel palette over a desaturated charcoal
+    /// base. Built from the canonical Catppuccin Mocha swatches so a
+    /// `Theme::Catppuccin` editor reads as a member of the rest of the
+    /// chrome stack.
+    pub fn catppuccin() -> Self {
+        Self {
+            keyword: [0.804, 0.518, 0.812, 1.0],   // mauve
+            type_name: [0.953, 0.835, 0.553, 1.0], // yellow
+            lifetime: [0.961, 0.659, 0.376, 1.0],  // peach
+            string: [0.651, 0.890, 0.631, 1.0],    // green
+            char_lit: [0.651, 0.890, 0.631, 1.0],
+            number: [0.961, 0.659, 0.376, 1.0],   // peach
+            comment: [0.435, 0.475, 0.580, 1.0],  // overlay2
+            attribute: [0.835, 0.604, 0.961, 1.0], // pink
+            macro_call: [0.537, 0.706, 0.980, 1.0], // sapphire
+            operator: [0.537, 0.819, 0.953, 1.0],  // sky
+            punctuation: [0.706, 0.737, 0.835, 1.0], // subtext0
+            identifier: [0.804, 0.839, 0.957, 1.0], // text
+            user_code_marker: [0.953, 0.835, 0.553, 1.0],
+            hex_null: [0.953, 0.545, 0.659, 1.0],   // red/maroon
+            hex_ff: [0.980, 0.886, 0.643, 1.0],     // yellow
+            hex_default: [0.706, 0.737, 0.835, 1.0],
+            hex_printable: [0.651, 0.890, 0.631, 1.0],
+            current_line_bg: [0.196, 0.196, 0.275, 1.0], // surface0
+            selection_bg: [0.537, 0.706, 0.980, 0.40],
+            search_match_bg: [0.980, 0.886, 0.643, 0.30],
+            search_current_bg: [0.980, 0.886, 0.643, 0.55],
+            line_number: [0.486, 0.510, 0.612, 1.0],     // overlay1
+            line_number_active: [0.804, 0.839, 0.957, 1.0],
+            bracket_match_bg: [0.537, 0.819, 0.953, 0.30],
+            error_underline: [0.953, 0.545, 0.659, 1.0],
+            warning_underline: [0.980, 0.886, 0.643, 1.0],
+            gutter_bg: [0.157, 0.157, 0.227, 1.0],       // mantle
+            editor_bg: [0.118, 0.118, 0.180, 1.0],       // base
+            breakpoint: [0.953, 0.545, 0.659, 1.0],
+            gutter_separator: [0.196, 0.196, 0.275, 1.0],
+            cursor: [0.804, 0.839, 0.957, 1.0],
+            whitespace_marker: [0.486, 0.510, 0.612, 1.0],
+        }
+    }
+
+    // ── Nord ──────────────────────────────────────────────────────────────
+
+    /// Nord — frost-blue accents over a polar-night base. Matches the
+    /// `Theme::Nord` chrome family so the syntax tokens stay visually
+    /// coherent with the rest of the UI.
+    pub fn nord() -> Self {
+        Self {
+            keyword: [0.506, 0.631, 0.757, 1.0],   // nord9 frost-blue
+            type_name: [0.553, 0.749, 0.812, 1.0], // nord8 light-frost
+            lifetime: [0.706, 0.557, 0.678, 1.0],  // nord15 purple
+            string: [0.639, 0.745, 0.549, 1.0],    // nord14 aurora-green
+            char_lit: [0.639, 0.745, 0.549, 1.0],
+            number: [0.706, 0.557, 0.678, 1.0],   // nord15 purple
+            comment: [0.298, 0.337, 0.416, 1.0],  // nord3 polar-night
+            attribute: [0.922, 0.796, 0.545, 1.0], // nord13 yellow
+            macro_call: [0.553, 0.749, 0.812, 1.0],
+            operator: [0.533, 0.753, 0.816, 1.0],  // nord8 cyan
+            punctuation: [0.847, 0.871, 0.914, 1.0], // nord5 snow-storm
+            identifier: [0.925, 0.937, 0.957, 1.0], // nord4 snow-storm
+            user_code_marker: [0.922, 0.796, 0.545, 1.0],
+            hex_null: [0.749, 0.380, 0.416, 1.0],   // nord11 red
+            hex_ff: [0.922, 0.796, 0.545, 1.0],     // nord13 yellow
+            hex_default: [0.847, 0.871, 0.914, 1.0],
+            hex_printable: [0.639, 0.745, 0.549, 1.0],
+            current_line_bg: [0.231, 0.259, 0.322, 1.0], // nord1
+            selection_bg: [0.506, 0.631, 0.757, 0.40],
+            search_match_bg: [0.922, 0.796, 0.545, 0.25],
+            search_current_bg: [0.922, 0.796, 0.545, 0.55],
+            line_number: [0.392, 0.439, 0.522, 1.0],     // nord3-mid
+            line_number_active: [0.925, 0.937, 0.957, 1.0],
+            bracket_match_bg: [0.553, 0.749, 0.812, 0.30],
+            error_underline: [0.749, 0.380, 0.416, 1.0],
+            warning_underline: [0.820, 0.529, 0.439, 1.0], // nord12 orange
+            gutter_bg: [0.180, 0.204, 0.251, 1.0], // nord0
+            editor_bg: [0.231, 0.259, 0.322, 1.0], // nord1 (mute)
+            breakpoint: [0.749, 0.380, 0.416, 1.0],
+            gutter_separator: [0.298, 0.337, 0.416, 1.0],
+            cursor: [0.925, 0.937, 0.957, 1.0],
+            whitespace_marker: [0.392, 0.439, 0.522, 1.0],
         }
     }
 }
@@ -673,6 +826,10 @@ pub struct EditorConfig {
     /// Syntax language.
     pub language: Language,
     /// Active color theme (preset name — see [`EditorTheme`]).
+    ///
+    /// To track the crate-wide [`crate::theme::Theme`] instead, call
+    /// [`Self::with_crate_theme`] / [`Self::set_crate_theme`] which
+    /// dispatches to the matching [`EditorTheme`] preset.
     pub theme: EditorTheme,
     /// Syntax colors — updated automatically by [`set_theme`](Self::set_theme).
     pub colors: SyntaxColors,
@@ -730,5 +887,26 @@ impl EditorConfig {
     pub fn set_theme(&mut self, theme: EditorTheme) {
         self.colors = theme.colors();
         self.theme = theme;
+    }
+
+    /// Apply the [`EditorTheme`] preset that matches the supplied crate-wide
+    /// [`crate::theme::Theme`] via [`EditorTheme::from_crate_theme`]. Use this
+    /// when the editor lives inside an app whose chrome already tracks
+    /// `Theme::Dark` / `Theme::Light` / etc., so the syntax palette flips
+    /// in sync without the host having to know about [`EditorTheme`].
+    pub fn set_crate_theme(&mut self, theme: crate::theme::Theme) {
+        self.set_theme(EditorTheme::from_crate_theme(theme));
+    }
+
+    /// Builder shortcut — equivalent to a `default()` followed by
+    /// [`Self::set_crate_theme`]. Useful at editor construction time:
+    ///
+    /// ```rust,ignore
+    /// let cfg = EditorConfig::default().with_crate_theme(crate::theme::Theme::Nord);
+    /// ```
+    #[must_use]
+    pub fn with_crate_theme(mut self, theme: crate::theme::Theme) -> Self {
+        self.set_crate_theme(theme);
+        self
     }
 }

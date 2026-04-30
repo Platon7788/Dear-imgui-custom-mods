@@ -59,3 +59,41 @@ impl Default for InspectorConfig {
         }
     }
 }
+
+impl InspectorConfig {
+    /// Replace every `color_*` field from the supplied crate-wide
+    /// [`crate::theme::Theme`]. Mapping:
+    ///
+    /// - `bg`             ← `theme.window_bg()`
+    /// - `bg_alt`         ← `nav.bg` (alternating row stripe)
+    /// - `key`            ← `nav.icon_default` (label / muted)
+    /// - `value`          ← `nav.icon_active` (primary text)
+    /// - `readonly`       ← `nav.icon_default` at low alpha
+    /// - `category_bg`    ← `nav.btn_hover` (collapsible header strip)
+    /// - `category_text`  ← `statusbar.text_dim`
+    /// - `changed`        ← `theme.warning()` at low alpha (diff highlight)
+    /// - `separator`      ← `nav.separator`
+    pub fn apply_theme(&mut self, theme: crate::theme::Theme) {
+        let nav = theme.nav();
+        let sb = theme.statusbar_colors();
+        let with_a = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+
+        self.color_bg = theme.window_bg();
+        self.color_bg_alt = nav.bg;
+        self.color_key = nav.icon_default;
+        self.color_value = nav.icon_active;
+        self.color_readonly = with_a(nav.icon_default, 0.80);
+        self.color_category_bg = nav.btn_hover;
+        self.color_category_text = sb.text_dim;
+        self.color_changed = with_a(theme.warning(), 0.60);
+        self.color_separator = with_a(nav.separator, 0.50);
+    }
+
+    /// Builder shortcut — equivalent to a `default()` followed by
+    /// [`Self::apply_theme`].
+    #[must_use]
+    pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
+        self.apply_theme(theme);
+        self
+    }
+}

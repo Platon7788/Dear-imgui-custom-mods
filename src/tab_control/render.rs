@@ -7,10 +7,11 @@
 
 use std::fmt::Write;
 
-use dear_imgui_rs::{Key, MouseButton, StyleColor, Ui, WindowFlags};
+use dear_imgui_rs::{Key, MouseButton, Ui, WindowFlags};
 
 use crate::icons;
 use crate::utils::color::rgb_arr as c32;
+use crate::utils::popup::danger_button;
 use crate::utils::text::calc_text_size;
 
 use super::config::*;
@@ -18,8 +19,17 @@ use super::{TabControl, TabItem};
 
 // ─── Tunable constants ──────────────────────────────────────────────────────
 
-/// Color of small section labels (placeholders, etc.).
-const LABEL_COLOR: [f32; 4] = [0.54, 0.57, 0.63, 1.0];
+/// Convert a `TabColors` `[u8; 3]` token to an RGBA `[f32; 4]` for
+/// `Ui::text_colored` (which wants linear floats).
+#[inline]
+fn rgba(c: [u8; 3], a: f32) -> [f32; 4] {
+    [
+        c[0] as f32 / 255.0,
+        c[1] as f32 / 255.0,
+        c[2] as f32 / 255.0,
+        a,
+    ]
+}
 
 /// Duration of the tab close animation, seconds.
 const TAB_CLOSE_ANIMATION_SECS: f32 = 0.15;
@@ -159,20 +169,23 @@ fn render_empty_placeholder(ui: &Ui, cfg: &TabControlConfig) {
     let start_y = (avail[1] - total_h) * 0.5;
     let cs = ui.cursor_pos();
 
+    let label_color = rgba(cfg.colors.text_muted, 1.0);
+    let hint_color = rgba(cfg.colors.text_muted, 0.7);
+
     ui.set_cursor_pos([cs[0] + (avail[0] - icon_sz[0]) * 0.5, cs[1] + start_y]);
-    ui.text_colored(LABEL_COLOR, icon);
+    ui.text_colored(label_color, icon);
 
     ui.set_cursor_pos([
         cs[0] + (avail[0] - main_sz[0]) * 0.5,
         cs[1] + start_y + icon_sz[1] + spacing,
     ]);
-    ui.text_colored(LABEL_COLOR, strings.no_tabs);
+    ui.text_colored(label_color, strings.no_tabs);
 
     ui.set_cursor_pos([
         cs[0] + (avail[0] - hint_sz[0]) * 0.5,
         cs[1] + start_y + icon_sz[1] + spacing + main_sz[1] + spacing * 0.5,
     ]);
-    ui.text_colored([0.40, 0.42, 0.48, 1.0], strings.empty_hint);
+    ui.text_colored(hint_color, strings.empty_hint);
 }
 
 // ─── Tab strip + content ────────────────────────────────────────────────────
@@ -1810,14 +1823,14 @@ fn render_close_popup<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
         let _ = write!(pc.fmt_buf, "{} {}", icons::ALERT, strings.close);
         ui.text(&pc.fmt_buf);
         ui.spacing();
-        ui.text_colored([0.88, 0.90, 0.92, 1.0], name);
+        ui.text_colored(rgba(pc.config.colors.text, 1.0), name);
         ui.spacing();
         let confirm_text = if is_dirty {
             strings.close_confirm_dirty
         } else {
             strings.close_confirm
         };
-        ui.text_colored(LABEL_COLOR, confirm_text);
+        ui.text_colored(rgba(pc.config.colors.text_muted, 1.0), confirm_text);
         ui.spacing();
         ui.separator();
         ui.spacing();
@@ -1829,12 +1842,7 @@ fn render_close_popup<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
         let offset = ((avail_w - total_w) * 0.5).max(0.0);
         ui.set_cursor_pos([ui.cursor_pos()[0] + offset, ui.cursor_pos()[1]]);
 
-        let _r = [
-            ui.push_style_color(StyleColor::Button, [0.70, 0.22, 0.22, 1.0]),
-            ui.push_style_color(StyleColor::ButtonHovered, [0.82, 0.30, 0.30, 1.0]),
-            ui.push_style_color(StyleColor::ButtonActive, [0.60, 0.18, 0.18, 1.0]),
-        ];
-        if ui.button_with_size(strings.close, [btn_w, 0.0]) {
+        if danger_button(ui, strings.close, [btn_w, 0.0]) {
             if let Some(id) = pc.pending_close.take() {
                 if pc.config.animate_close {
                     pc.closing_tab = Some((id, 1.0));
@@ -1844,7 +1852,6 @@ fn render_close_popup<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
             }
             ui.close_current_popup();
         }
-        drop(_r);
 
         ui.same_line();
 

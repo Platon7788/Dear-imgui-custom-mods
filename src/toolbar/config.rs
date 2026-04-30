@@ -62,3 +62,44 @@ impl Default for ToolbarConfig {
         }
     }
 }
+
+impl ToolbarConfig {
+    /// Replace every `color_*` field from the supplied crate-wide
+    /// [`crate::theme::Theme`]. Mapping mirrors `nav_panel`'s palette so
+    /// a horizontal toolbar reads as the same chrome surface as a
+    /// vertical nav panel:
+    ///
+    /// - `bg`              ← `nav.bg`
+    /// - `text`            ← `nav.icon_active`
+    /// - `disabled`        ← `nav.icon_default` at half alpha
+    /// - `hover`           ← `nav.btn_hover`
+    /// - `active`          ← `nav.btn_active`
+    /// - `toggled`         ← `theme.accent()` at low alpha
+    /// - `separator`       ← `nav.separator`
+    /// - `border`          ← `nav.separator` at lower alpha
+    /// - `hover_underline` ← `theme.accent()` at higher alpha
+    ///
+    /// Layout fields (`height`, `padding`, `*_thickness`) untouched.
+    pub fn apply_theme(&mut self, theme: crate::theme::Theme) {
+        let nav = theme.nav();
+        let with_a = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+
+        self.color_bg = nav.bg;
+        self.color_text = nav.icon_active;
+        self.color_disabled = with_a(nav.icon_default, 0.50);
+        self.color_hover = nav.btn_hover;
+        self.color_active = nav.btn_active;
+        self.color_toggled = with_a(theme.accent(), 0.70);
+        self.color_separator = with_a(nav.separator, 0.60);
+        self.color_border = with_a(nav.separator, 0.50);
+        self.color_hover_underline = with_a(theme.accent(), 0.80);
+    }
+
+    /// Builder shortcut — equivalent to a `default()` followed by
+    /// [`Self::apply_theme`].
+    #[must_use]
+    pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
+        self.apply_theme(theme);
+        self
+    }
+}

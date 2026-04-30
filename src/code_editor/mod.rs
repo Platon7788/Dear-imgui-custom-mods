@@ -771,7 +771,7 @@ impl CodeEditor {
                                     [origin_x + gutter_width * 0.2, y + self.line_height * 0.5];
                                 let radius = self.line_height * 0.3;
                                 draw_list
-                                    .add_circle(center, radius, col32(crate::theme::DANGER))
+                                    .add_circle(center, radius, col32(self.config.colors.breakpoint))
                                     .filled(true)
                                     .build();
                             }
@@ -855,7 +855,7 @@ impl CodeEditor {
                                     origin_x + gutter_width - self.char_advance * 0.5,
                                     y + self.line_height,
                                 ],
-                                col32(crate::theme::SEPARATOR),
+                                col32(self.config.colors.gutter_separator),
                             )
                             .build();
 
@@ -973,7 +973,7 @@ impl CodeEditor {
                         .add_line(
                             [cx, cy],
                             [cx, cy + self.line_height],
-                            col32(crate::theme::TEXT_PRIMARY),
+                            col32(self.config.colors.cursor),
                         )
                         .thickness(1.5)
                         .build();
@@ -1806,7 +1806,7 @@ impl CodeEditor {
                             let cx = x + ch_w * 0.5;
                             let cy = y + self.line_height * 0.5;
                             draw_list
-                                .add_circle([cx, cy], 1.0, col32(crate::theme::TEXT_MUTED))
+                                .add_circle([cx, cy], 1.0, col32(self.config.colors.whitespace_marker))
                                 .filled(true)
                                 .build();
                         } else if ch == '\t' {
@@ -1815,7 +1815,7 @@ impl CodeEditor {
                                 .add_line(
                                     [x + 2.0, arrow_y],
                                     [x + ch_w - 2.0, arrow_y],
-                                    col32(crate::theme::TEXT_MUTED),
+                                    col32(self.config.colors.whitespace_marker),
                                 )
                                 .build();
                         }

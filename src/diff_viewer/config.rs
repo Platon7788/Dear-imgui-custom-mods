@@ -84,3 +84,51 @@ impl Default for DiffViewerConfig {
         }
     }
 }
+
+impl DiffViewerConfig {
+    /// Overwrite every `color_*` field from the supplied crate-wide
+    /// [`crate::theme::Theme`]. The semantic mapping is:
+    ///
+    /// - `bg`            ← `theme.window_bg()` (matches host backdrop)
+    /// - `gutter_bg`     ← `nav.bg` (line-number strip = nav surface)
+    /// - `line_number`   ← `nav.icon_default`, `text` ← `nav.icon_active`
+    /// - `added_*`       ← `success` family
+    /// - `removed_*`     ← `danger` family
+    /// - `modified_*`    ← `warning` family
+    /// - `inline_change` ← `warning` at low alpha
+    /// - `fold`          ← muted `nav.separator`
+    /// - `header`        ← `statusbar.text_dim`
+    /// - `separator`     ← `nav.separator`
+    /// - `current_hunk`  ← `accent` at low alpha
+    ///
+    /// All non-colour fields are left untouched so callers can mix
+    /// `with_theme(...)` with custom layout overrides.
+    pub fn apply_theme(&mut self, theme: crate::theme::Theme) {
+        let nav = theme.nav();
+        let sb = theme.statusbar_colors();
+        let with_a = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+
+        self.color_bg = theme.window_bg();
+        self.color_gutter_bg = nav.bg;
+        self.color_line_number = nav.icon_default;
+        self.color_text = nav.icon_active;
+        self.color_added_bg = with_a(theme.success(), 0.30);
+        self.color_added_text = theme.success();
+        self.color_removed_bg = with_a(theme.danger(), 0.30);
+        self.color_removed_text = theme.danger();
+        self.color_modified_bg = with_a(theme.warning(), 0.28);
+        self.color_inline_change = with_a(theme.warning(), 0.35);
+        self.color_fold = with_a(nav.separator, 0.70);
+        self.color_header = sb.text_dim;
+        self.color_separator = with_a(nav.separator, 0.80);
+        self.color_current_hunk = with_a(theme.accent(), 0.30);
+    }
+
+    /// Builder shortcut — equivalent to a `default()` followed by
+    /// [`Self::apply_theme`].
+    #[must_use]
+    pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
+        self.apply_theme(theme);
+        self
+    }
+}

@@ -111,11 +111,17 @@ pub(crate) fn render(
     let mut events: Vec<GraphEvent> = Vec::with_capacity(8);
 
     // 1. Resolve color palette.
+    //
+    // `colors_override` wins, then the active theme drives a synthesized
+    // `GraphColors::from_theme(...)` palette. The historic
+    // `GraphColors::default()` fallback now lives only inside
+    // `from_theme(Theme::Dark)` — calling `default()` directly would lock
+    // the graph to the dark palette regardless of the host theme.
     let colors: GraphColors = config
         .colors_override
         .as_deref()
         .cloned()
-        .unwrap_or_else(GraphColors::default);
+        .unwrap_or_else(|| GraphColors::from_theme(config.theme));
 
     // 2. Canvas geometry.
     let canvas_min = ui.cursor_screen_pos();

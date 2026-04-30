@@ -411,6 +411,99 @@ impl Theme {
         crate::tab_control::TabColors::from_palettes(&self.nav(), &self.statusbar_colors())
     }
 
+    /// Code-editor syntax palette for this theme. Maps the crate-wide
+    /// [`Theme`] selector onto the closest [`crate::code_editor::EditorTheme`]
+    /// preset (e.g. `Theme::Light → EditorTheme::GithubLight`,
+    /// `Theme::Midnight → EditorTheme::OneDark`) so the editor reads
+    /// in the same visual family as the rest of the chrome stack.
+    ///
+    /// Apply via [`crate::code_editor::EditorConfig::with_crate_theme`]
+    /// or [`crate::code_editor::EditorConfig::set_crate_theme`].
+    #[cfg(feature = "code_editor")]
+    pub fn code_editor_colors(self) -> crate::code_editor::SyntaxColors {
+        crate::code_editor::EditorTheme::from_crate_theme(self).colors()
+    }
+
+    /// Diff-viewer config for this theme — a [`crate::diff_viewer::DiffViewerConfig`]
+    /// with every `color_*` field synthesized from the same `nav` /
+    /// `statusbar` / semantic-token palette the rest of the chrome stack
+    /// uses, so an added line reads as `theme.success()`, removed as
+    /// `theme.danger()`, etc.
+    ///
+    /// Apply via [`crate::diff_viewer::DiffViewerConfig::with_theme`] or
+    /// [`crate::diff_viewer::DiffViewerConfig::apply_theme`] if you need
+    /// to keep custom layout overrides.
+    #[cfg(feature = "diff_viewer")]
+    pub fn diff_viewer_config(self) -> crate::diff_viewer::DiffViewerConfig {
+        crate::diff_viewer::DiffViewerConfig::default().with_theme(self)
+    }
+
+    /// Force-graph palette for this theme — synthesized via
+    /// [`crate::force_graph::style::GraphColors::from_theme`]. The graph
+    /// canvas, node fills, edge default + highlight, label text and
+    /// box-selection surfaces all stay in the same visual family as the
+    /// rest of the chrome stack (background = `window_bg()`, accents
+    /// derived from `theme.accent()`).
+    ///
+    /// Apply via [`crate::force_graph::ViewerConfig::with_theme`].
+    #[cfg(feature = "force_graph")]
+    pub fn force_graph_colors(self) -> crate::force_graph::style::GraphColors {
+        crate::force_graph::style::GraphColors::from_theme(self)
+    }
+
+    /// Node-graph palette for this theme — synthesized via
+    /// [`crate::node_graph::NgColors::from_theme`]. Canvas, node body /
+    /// header / border, pins, wires, selection rect and minimap surfaces
+    /// derive from `nav` + `accent` so the editor stays in the same visual
+    /// family as the rest of the chrome stack.
+    ///
+    /// Apply via [`crate::node_graph::NodeGraphConfig::with_theme`] or
+    /// [`crate::node_graph::NodeGraphConfig::apply_theme`].
+    #[cfg(feature = "node_graph")]
+    pub fn node_graph_colors(self) -> crate::node_graph::NgColors {
+        crate::node_graph::NgColors::from_theme(self)
+    }
+
+    /// Timeline config for this theme — a [`crate::timeline::TimelineConfig`]
+    /// with every `color_*` field synthesized from the same `nav` /
+    /// `statusbar` / semantic-token palette the rest of the chrome stack
+    /// uses. The per-span hue rotation (`span_palette`) stays constant so
+    /// flame-chart hues read identically across themes; surfaces,
+    /// rulers, labels and tooltips track the theme.
+    ///
+    /// Apply via [`crate::timeline::TimelineConfig::with_theme`] or
+    /// [`crate::timeline::TimelineConfig::apply_theme`] when you need
+    /// to keep custom layout overrides.
+    #[cfg(feature = "timeline")]
+    pub fn timeline_config(self) -> crate::timeline::TimelineConfig {
+        crate::timeline::TimelineConfig::default().with_theme(self)
+    }
+
+    /// Toolbar config for this theme — a [`crate::toolbar::ToolbarConfig`]
+    /// with every `color_*` field synthesized from `nav` so the
+    /// horizontal toolbar reads as the same chrome surface as the
+    /// vertical [`crate::nav_panel`].
+    ///
+    /// Apply via [`crate::toolbar::ToolbarConfig::with_theme`] or
+    /// [`crate::toolbar::ToolbarConfig::apply_theme`].
+    #[cfg(feature = "toolbar")]
+    pub fn toolbar_config(self) -> crate::toolbar::ToolbarConfig {
+        crate::toolbar::ToolbarConfig::default().with_theme(self)
+    }
+
+    /// Property-inspector config for this theme — a
+    /// [`crate::property_inspector::InspectorConfig`] with every
+    /// `color_*` field synthesized from `nav` + `statusbar` + semantic
+    /// tokens, so the key / value / category-header surfaces match the
+    /// rest of the chrome stack.
+    ///
+    /// Apply via [`crate::property_inspector::InspectorConfig::with_theme`]
+    /// or [`crate::property_inspector::InspectorConfig::apply_theme`].
+    #[cfg(feature = "property_inspector")]
+    pub fn inspector_config(self) -> crate::property_inspector::InspectorConfig {
+        crate::property_inspector::InspectorConfig::default().with_theme(self)
+    }
+
     /// Apply this theme's Dear ImGui style (rounding + sizing + colours)
     /// to the supplied style object. Call once at startup and any time
     /// after a theme change.
@@ -839,6 +932,119 @@ mod tests {
         assert_eq!(default.separator, dark.separator, "separator drift");
         assert_eq!(default.hover, dark.hover, "hover drift");
         assert_eq!(default.active, dark.active, "active drift");
+    }
+
+    #[cfg(feature = "code_editor")]
+    #[test]
+    fn code_editor_colors_resolve_for_every_theme() {
+        // Maps each crate Theme to an EditorTheme preset; pin that the
+        // cycle is total (no panic) and the resulting palette has
+        // non-zero alpha on the foundational tokens. Catches a future
+        // missing match arm in `EditorTheme::from_crate_theme`.
+        for &theme in Theme::ALL {
+            let p = theme.code_editor_colors();
+            assert!(p.editor_bg[3] > 0.0, "{theme:?}: editor_bg alpha = 0");
+            assert!(p.identifier[3] > 0.0, "{theme:?}: identifier alpha = 0");
+            assert!(p.cursor[3] > 0.0, "{theme:?}: cursor alpha = 0");
+        }
+    }
+
+    #[cfg(feature = "diff_viewer")]
+    #[test]
+    fn diff_viewer_config_resolves_for_every_theme() {
+        // `Theme::diff_viewer_config()` must produce a non-zero
+        // palette for every theme; added/removed text tokens must
+        // share the hue family with `theme.success()` / `theme.danger()`
+        // so visual semantics stay consistent.
+        for &theme in Theme::ALL {
+            let cfg = theme.diff_viewer_config();
+            assert_eq!(
+                cfg.color_added_text,
+                theme.success(),
+                "{theme:?}: added_text drift",
+            );
+            assert_eq!(
+                cfg.color_removed_text,
+                theme.danger(),
+                "{theme:?}: removed_text drift",
+            );
+            assert!(cfg.color_text[3] > 0.0, "{theme:?}: text alpha = 0");
+        }
+    }
+
+    #[cfg(feature = "force_graph")]
+    #[test]
+    fn force_graph_colors_resolve_for_every_theme() {
+        // Background must be the same surface as `window_bg()` so the
+        // graph canvas paints on the host window without a visible
+        // edge seam.
+        for &theme in Theme::ALL {
+            let p = theme.force_graph_colors();
+            assert_eq!(p.background, theme.window_bg(), "{theme:?}: bg drift");
+            assert!(p.label_text[3] > 0.0, "{theme:?}: label_text alpha = 0");
+            assert!(p.edge_default[3] > 0.0, "{theme:?}: edge_default alpha = 0");
+        }
+    }
+
+    #[cfg(feature = "node_graph")]
+    #[test]
+    fn node_graph_colors_resolve_for_every_theme() {
+        // Pin per-theme distinctness: `pin_default` (the connector
+        // accent) must not collapse to `text_muted` — they need to
+        // read as separate visual elements regardless of theme.
+        for &theme in Theme::ALL {
+            let p = theme.node_graph_colors();
+            assert_ne!(
+                p.pin_default, p.text_muted,
+                "{theme:?}: pin_default == text_muted (would hide pins)",
+            );
+            assert_ne!(
+                p.canvas_bg, p.node_bg,
+                "{theme:?}: canvas == node (no node panel contrast)",
+            );
+        }
+    }
+
+    #[cfg(feature = "timeline")]
+    #[test]
+    fn timeline_config_resolves_for_every_theme() {
+        for &theme in Theme::ALL {
+            let cfg = theme.timeline_config();
+            assert!(cfg.color_bg[3] > 0.0, "{theme:?}: bg alpha = 0");
+            assert!(cfg.color_span_text[3] > 0.0, "{theme:?}: span_text alpha = 0");
+            // `span_palette` is theme-independent; pin that
+            // `apply_theme` doesn't accidentally clear it.
+            assert!(
+                !cfg.span_palette.is_empty(),
+                "{theme:?}: span_palette empty",
+            );
+        }
+    }
+
+    #[cfg(feature = "toolbar")]
+    #[test]
+    fn toolbar_config_resolves_for_every_theme() {
+        // Toolbar `bg` must share the nav surface so a horizontal
+        // toolbar reads as the same chrome strip as the vertical
+        // nav panel of the same theme.
+        for &theme in Theme::ALL {
+            let cfg = theme.toolbar_config();
+            assert_eq!(cfg.color_bg, theme.nav().bg, "{theme:?}: bg drift");
+            assert!(cfg.color_text[3] > 0.0, "{theme:?}: text alpha = 0");
+        }
+    }
+
+    #[cfg(feature = "property_inspector")]
+    #[test]
+    fn inspector_config_resolves_for_every_theme() {
+        for &theme in Theme::ALL {
+            let cfg = theme.inspector_config();
+            assert!(cfg.color_value[3] > 0.0, "{theme:?}: value alpha = 0");
+            assert_ne!(
+                cfg.color_key, cfg.color_value,
+                "{theme:?}: key and value share a hue",
+            );
+        }
     }
 
     #[cfg(feature = "status_bar")]

@@ -361,6 +361,20 @@ pub struct ViewerConfig {
     pub search_highlight_mode: bool,
 }
 
+impl ViewerConfig {
+    /// Builder shortcut — sets [`Self::theme`] and clears
+    /// [`Self::colors_override`] so the renderer derives the palette from
+    /// the new theme via [`super::style::GraphColors::from_theme`]. To
+    /// keep a custom palette across theme changes, set
+    /// `colors_override` after calling this method.
+    #[must_use]
+    pub fn with_theme(mut self, theme: Theme) -> Self {
+        self.theme = theme;
+        self.colors_override = None;
+        self
+    }
+}
+
 impl Default for ViewerConfig {
     fn default() -> Self {
         Self {

@@ -90,6 +90,77 @@ impl Default for NgColors {
     }
 }
 
+impl NgColors {
+    /// Synthesize an [`NgColors`] palette from the supplied crate-wide
+    /// [`crate::theme::Theme`]. Maps the theme's `nav` / `accent` tokens
+    /// onto the canvas + node + pin + wire fills so the graph editor
+    /// reads as a member of the rest of the chrome stack:
+    ///
+    /// - `canvas_bg`            ← `theme.window_bg()`
+    /// - `grid_line` / `_thick` ← `nav.separator` lifted / lowered
+    /// - `node_bg`              ← `nav.bg` lifted (panel-on-canvas)
+    /// - `node_header_bg`       ← `nav.btn_hover` (slightly above body)
+    /// - `node_border_selected` ← `theme.accent()`
+    /// - `text` / `text_muted`  ← `nav.icon_active` / `_default`
+    /// - `pin_*`                ← `theme.accent()` + brighter hover
+    /// - `wire_*`               ← `nav.icon_default` (default),
+    ///   `nav.icon_active` (hover), accent (drag)
+    /// - `selection_rect_*`     ← `theme.accent()`
+    /// - `minimap_*`            ← `nav.bg` darker + accent for nodes
+    pub fn from_theme(theme: crate::theme::Theme) -> Self {
+        let nav = theme.nav();
+        let accent = theme.accent();
+        let to_u8 = |c: [f32; 4]| {
+            [
+                (c[0] * 255.0).round().clamp(0.0, 255.0) as u8,
+                (c[1] * 255.0).round().clamp(0.0, 255.0) as u8,
+                (c[2] * 255.0).round().clamp(0.0, 255.0) as u8,
+            ]
+        };
+        let lift = |c: [f32; 4], d: f32| {
+            [
+                (c[0] + d).clamp(0.0, 1.0),
+                (c[1] + d).clamp(0.0, 1.0),
+                (c[2] + d).clamp(0.0, 1.0),
+                c[3],
+            ]
+        };
+        Self {
+            canvas_bg: to_u8(theme.window_bg()),
+            grid_line: to_u8(lift(nav.separator, -0.04)),
+            grid_line_thick: to_u8(lift(nav.separator, 0.04)),
+
+            node_bg: to_u8(lift(nav.bg, 0.04)),
+            node_bg_hovered: to_u8(nav.btn_hover),
+            node_bg_selected: to_u8(nav.btn_active),
+            node_header_bg: to_u8(lift(nav.btn_hover, 0.02)),
+            node_border: to_u8(nav.separator),
+            node_border_selected: to_u8(accent),
+
+            text: to_u8(nav.icon_active),
+            text_muted: to_u8(nav.icon_default),
+
+            pin_default: to_u8(accent),
+            pin_hovered: to_u8(lift(accent, 0.12)),
+
+            wire_default: to_u8(nav.icon_default),
+            wire_hovered: to_u8(nav.icon_active),
+            wire_dragging: to_u8(accent),
+
+            selection_rect: to_u8(accent),
+            selection_rect_fill: to_u8(accent),
+
+            minimap_bg: to_u8(lift(nav.bg, -0.04)),
+            minimap_outline: to_u8(nav.separator),
+            minimap_node: to_u8(accent),
+            minimap_viewport: to_u8(nav.icon_active),
+
+            collapse_btn: to_u8(nav.icon_default),
+            collapse_btn_hovered: to_u8(nav.icon_active),
+        }
+    }
+}
+
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 /// Full configuration for [`NodeGraph`](super::NodeGraph).
@@ -330,6 +401,21 @@ impl Default for NodeGraphConfig {
 }
 
 impl NodeGraphConfig {
+    /// Replace [`Self::colors`] with a [`NgColors`] palette synthesized from
+    /// the supplied crate-wide [`crate::theme::Theme`] via
+    /// [`NgColors::from_theme`]. All non-colour fields are left untouched.
+    pub fn apply_theme(&mut self, theme: crate::theme::Theme) {
+        self.colors = NgColors::from_theme(theme);
+    }
+
+    /// Builder shortcut — equivalent to a `default()` followed by
+    /// [`Self::apply_theme`].
+    #[must_use]
+    pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
+        self.apply_theme(theme);
+        self
+    }
+
     /// Compute node height in graph space.
     ///
     /// `body_height_override`: per-node body height from `NodeGraphViewer::body_height()`.

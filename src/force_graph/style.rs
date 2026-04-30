@@ -337,3 +337,48 @@ impl Default for GraphColors {
         }
     }
 }
+
+impl GraphColors {
+    /// Synthesize a [`GraphColors`] palette from the supplied crate-wide
+    /// [`crate::theme::Theme`]. Maps the theme's surface / accent /
+    /// muted-text tokens onto the canvas + node + edge fills so the graph
+    /// reads as a member of the rest of the chrome stack:
+    ///
+    /// - `background`         ← `theme.window_bg()`
+    /// - `grid_line`          ← `nav.separator` at half alpha
+    /// - `node_default`       ← `theme.accent()` darkened
+    /// - `node_hover`         ← `theme.accent()`
+    /// - `node_selected`      ← `theme.accent()` brightened
+    /// - `node_outline`       ← `nav.bg`
+    /// - `edge_default`       ← `nav.icon_default`
+    /// - `edge_highlight`     ← `theme.accent()` desaturated
+    /// - `label_text`         ← `nav.icon_active`
+    /// - `selection_fill`     ← `theme.accent()` at low alpha
+    /// - `selection_outline`  ← `theme.accent()` at higher alpha
+    pub fn from_theme(theme: crate::theme::Theme) -> Self {
+        let nav = theme.nav();
+        let accent = theme.accent();
+        let with_a = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+        let lift = |c: [f32; 4], d: f32| {
+            [
+                (c[0] + d).clamp(0.0, 1.0),
+                (c[1] + d).clamp(0.0, 1.0),
+                (c[2] + d).clamp(0.0, 1.0),
+                c[3],
+            ]
+        };
+        Self {
+            background: theme.window_bg(),
+            grid_line: with_a(nav.separator, 0.50),
+            node_default: lift(accent, -0.10),
+            node_hover: accent,
+            node_selected: lift(accent, 0.18),
+            node_outline: nav.bg,
+            edge_default: with_a(nav.icon_default, 0.80),
+            edge_highlight: with_a(lift(accent, 0.10), 1.00),
+            label_text: nav.icon_active,
+            selection_fill: with_a(accent, 0.15),
+            selection_outline: with_a(accent, 0.70),
+        }
+    }
+}

@@ -180,3 +180,59 @@ impl Default for TimelineConfig {
         }
     }
 }
+
+impl TimelineConfig {
+    /// Replace every `color_*` field from the supplied crate-wide
+    /// [`crate::theme::Theme`]. Mapping:
+    ///
+    /// - `bg`              ← `theme.window_bg()`
+    /// - `bg_alt`          ← `nav.bg` (track stripe surface)
+    /// - `ruler_bg`        ← `nav.btn_hover` (chrome strip above tracks)
+    /// - `ruler_text`      ← `statusbar.text_dim`
+    /// - `track_label`     ← `nav.icon_active`
+    /// - `track_separator` ← `nav.separator`
+    /// - `span_text`       ← `nav.icon_active`
+    /// - `selection`       ← `theme.warning()` (amber outline)
+    /// - `hover`           ← `theme.accent()` lighter tint
+    /// - `marker`          ← `theme.danger()` muted
+    /// - `tooltip_bg`      ← darker `nav.bg`
+    /// - `tooltip_text`    ← `nav.icon_active`
+    ///
+    /// `span_palette` is left untouched — it's the per-span hue rotation
+    /// used by [`crate::timeline::ColorMode::ByName`] / `ByDepth`, which
+    /// stays consistent across themes. Override directly if needed.
+    pub fn apply_theme(&mut self, theme: crate::theme::Theme) {
+        let nav = theme.nav();
+        let sb = theme.statusbar_colors();
+        let with_a = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
+        let lift = |c: [f32; 4], d: f32| {
+            [
+                (c[0] + d).clamp(0.0, 1.0),
+                (c[1] + d).clamp(0.0, 1.0),
+                (c[2] + d).clamp(0.0, 1.0),
+                c[3],
+            ]
+        };
+
+        self.color_bg = theme.window_bg();
+        self.color_bg_alt = nav.bg;
+        self.color_ruler_bg = nav.btn_hover;
+        self.color_ruler_text = sb.text_dim;
+        self.color_track_label = nav.icon_active;
+        self.color_track_separator = with_a(nav.separator, 0.80);
+        self.color_span_text = nav.icon_active;
+        self.color_selection = theme.warning();
+        self.color_hover = with_a(lift(theme.accent(), 0.10), 0.80);
+        self.color_marker = with_a(theme.danger(), 0.70);
+        self.color_tooltip_bg = with_a(lift(nav.bg, -0.04), 0.95);
+        self.color_tooltip_text = nav.icon_active;
+    }
+
+    /// Builder shortcut — equivalent to a `default()` followed by
+    /// [`Self::apply_theme`].
+    #[must_use]
+    pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
+        self.apply_theme(theme);
+        self
+    }
+}

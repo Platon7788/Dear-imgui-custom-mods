@@ -2,6 +2,294 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-30
+
+This is a **major BREAKING release** consolidating the work of 14
+sessions (017–031). The crate is now a single host framework
+(`app_window`, was 3), with a unified theme system that every built-in
+widget participates in, and a quality bar of 0 clippy warnings + 631
+green library tests + 0 unsafe blocks added in this cycle.
+
+### Highlights
+
+- **Single host framework.** `app_window` v1, `borderless_window` and
+  `app_window_v2` collapsed to one (session 026 — net −4 464 LoC).
+- **Unified theme system.** All 16 colour-bearing widgets expose
+  `Theme::*_colors()` / `*_config()` accessors and / or `with_theme()`
+  builders (sessions 022, 023, 027, 031). No widget reads
+  `crate::theme::*` legacy constants in its render path anymore.
+- **Major audit waves.** 8 critical bugs closed (sparse-provider
+  `binary_search`, fn-start clamp, swap-chain `Suboptimal`, click
+  bleed-through, u64-wrap collision, span_color O(N²), code_editor
+  multibyte fold-badge, Myers 40 GB cap) + ~25 mediums fixed in
+  sessions 029–030.
+- **`disasm_view` feature blast.** 8 user-driven feature batches
+  (byte search, function nav, follow-at-cursor, origin breadcrumb,
+  address copy, dynamic columns, settings popup, branch arrows
+  clipped) — session 029.
+- **`tab_control` widget added** as a polished replacement for
+  `page_control` (32 unit-tests, drag-and-drop, hover-preview,
+  pinned-prefix invariant) — session 024.
+- **`force_graph` Phase D shipped** (time-travel, minimap, SVG/DOT/
+  Mermaid export) — session 018.
+- **`proc_mon` widget removed** — process enumeration moved to a
+  separate user-owned crate, this lib is now exclusively UI mods
+  (session 028 — net −1 744 LoC).
+
+### BREAKING changes
+
+(Aggregated across 017–031.)
+
+- **`app_window` v1 + `borderless_window` removed** (session 026).
+  Migration: `crate::borderless_window::*` → `crate::app_window::*`,
+  `BorderlessConfig` → `AppConfig`, `BorderlessApp` → `AppHandler`.
+- **`app_window_v2` renamed to `app_window`**, `*V2` suffixes dropped
+  on 26 types (session 026).
+- **`AppConfig.render_mode: RenderMode`** replaces 4 historical fields
+  (`fps_mode`, `unfocused_fps`, `event_driven`, `idle_pulse`) — session
+  019.
+- **`PowerMode::Auto` removed** — was a duplicate alias for
+  `HighPerformance`; migrate to `PowerMode::HighPerformance` or
+  `PowerMode::default()` (session 023).
+- **`HexViewerConfig.config` privatised** — use `config()` /
+  `config_mut()` accessors (session 025).
+- **`nav_panel` Cow migration** — string fields now `Cow<'static, str>`
+  for zero-copy default labels (session 018).
+- **`knowledge_graph` legacy alias removed** — use `force_graph`
+  directly (session 019).
+- **`DisasmDataProvider::refresh()` removed** — orphan trait method
+  with no callers (session 028).
+- **`proc_mon` widget removed entirely** — `proc_mon` Cargo feature
+  is gone, `dep:proc_enum` and `dep:serde` no longer pulled
+  transitively (session 028).
+- **`app_window::chrome::whole_window_resize`** now returns
+  `TitlebarResult` (was `(Option<ResizeEdge>, TitlebarAction)` tuple)
+  — session 030.
+- **`TitlebarColors` orphan fields removed** (`bg_erase`, `drag_hint`,
+  `bg_inactive`, `title_inactive`) — defined in all 7 themes for years
+  with zero in-tree consumers; matching `TITLE_INACTIVE_BG` constants
+  in 5 theme modules also removed (session 030).
+- **`SyntaxColors` gained four new fields** (`breakpoint`,
+  `gutter_separator`, `cursor`, `whitespace_marker`) — session 031.
+  Manual constructors must be updated; `SyntaxColors::dark_default()`
+  / Monokai / OneDark / SolarizedDark / SolarizedLight / GithubLight
+  factories all add the new fields. Two new presets added:
+  `SyntaxColors::catppuccin()` / `nord()`. `EditorTheme::ALL` extended
+  to 8 variants (added `Catppuccin` + `Nord`).
+- **`tab_control::LABEL_COLOR` const removed** (was internal but
+  some consumers grepped for it) — replaced with
+  `cfg.colors.text_muted` lookups.
+
+### Theme integration ecosystem
+
+The unified theme contract now covers every built-in widget that
+paints colour surfaces. New accessors (session 031):
+
+| Accessor | Returns | Pattern |
+|---|---|---|
+| `Theme::code_editor_colors()` | `SyntaxColors` | crate-theme → `EditorTheme` map |
+| `Theme::diff_viewer_config()` | `DiffViewerConfig` | tokens → `with_theme()` |
+| `Theme::force_graph_colors()` | `GraphColors` | tokens → `from_theme()` |
+| `Theme::node_graph_colors()` | `NgColors` | tokens → `from_theme()` |
+| `Theme::timeline_config()` | `TimelineConfig` | tokens → `with_theme()` |
+| `Theme::toolbar_config()` | `ToolbarConfig` | tokens → `with_theme()` |
+| `Theme::inspector_config()` | `InspectorConfig` | tokens → `with_theme()` |
+
+(Joining the existing `titlebar()` / `nav()` / `dialog()` /
+`notifications()` / `statusbar_colors()` / `statusbar()` /
+`hex_viewer_colors()` / `disasm_view_colors()` / `tab_colors()` from
+sessions 022–028.)
+
+Each colour-bearing widget gains a matching builder
+(`XxxConfig::with_theme(theme)` or `XxxColors::from_theme(theme)`),
+so a host that switches `Theme::Dark → Theme::Nord` propagates the
+change across every chrome surface in one pass.
+
+### Performance + safety wins (sessions 029–031)
+
+- `disasm_view::do_search` sparse-provider correctness — `partition_point`
+  on `(byte_offset, global_idx)` pairs (session 029).
+- `disasm_view::find_function_start` bogus clamp removed (session 029).
+- `app_window` `Suboptimal` swap chain reconfigures (was painting
+  stale frame, session 029).
+- `notifications` click bleed-through latch + `next_id` u64-wrap
+  collision fix (session 029).
+- `timeline::span_color` hoisted `data_time_range` (was O(spans²) in
+  `ColorMode::ByDuration`, session 030).
+- `force_graph` search-highlight allocation eliminated (saves N allocs
+  per frame, session 030).
+- `code_editor` fold-badge multibyte fix — `chars().count()` instead
+  of `len()` (session 030).
+- `diff_viewer` Myers memory hard cap `MAX_DIFF_INPUT_LINES = 20_000`
+  — historic `max_d = 50_000` could allocate ~40 GB on 100k-line files
+  (session 030).
+- `diff_viewer` unsafe `from_raw_parts` replaced with safe split
+  borrows (session 030).
+
+### Misc
+
+- `SyntaxColors::catppuccin()` + `nord()` factories added — Mocha
+  pastels and Polar-Night frost-blues for the editor.
+- `NotificationColors::catppuccin()` + `nord()` factories added —
+  no longer fall back to Monokai/Midnight (whose hue families clashed
+  visually).
+
+[0.10.0]: https://github.com/Platon7788/Dear-imgui-custom-mods/releases/tag/v0.10.0
+
+## [0.9.0] — earlier
+
+(Earlier sessions: see commit history for detail. The crate has
+been on master only since session 016; pre-master tags are not
+maintained.)
+
+### Session 031 — theme integration pass for 8 widgets (2026-04-30)
+
+The largest deferred items from session 030 — eight widgets carrying
+widget-local color state with no `Theme` accessor — are now wired into
+the unified theme system. Every built-in widget that paints colour
+surfaces can now flip palettes in lockstep with `Theme::Dark` / `Light`
+/ `Midnight` / `Solarized` / `Monokai` / `Catppuccin` / `Nord`.
+
+**Library tests: 624 → 631 (+7). Clippy: 0 warnings under `-D warnings`.**
+
+#### `code_editor`
+
+- **Removed the last legacy `theme::*` constants from the render path.**
+  Previously `mod.rs` reached into `crate::theme::{DANGER, SEPARATOR,
+  TEXT_PRIMARY, TEXT_MUTED}` for the breakpoint marker, gutter divider,
+  primary cursor, and whitespace markers — these read as hard-pinned
+  `Theme::Dark` colours regardless of the active theme. All five sites
+  now use new typed `SyntaxColors` fields.
+- New `SyntaxColors` fields: `breakpoint`, `gutter_separator`, `cursor`,
+  `whitespace_marker`. Filled in for all six existing presets
+  (DarkDefault / Monokai / OneDark / SolarizedDark / SolarizedLight /
+  GithubLight) and two new ones — `SyntaxColors::catppuccin()` /
+  `nord()`. `EditorTheme::ALL` extended to 8 variants; `display_name` /
+  `colors()` updated.
+- New `EditorTheme::from_crate_theme(crate::theme::Theme) -> EditorTheme`
+  maps the host theme to the closest editor preset (`Dark→DarkDefault`,
+  `Light→GithubLight`, `Midnight→OneDark`, `Solarized→SolarizedDark`,
+  `Monokai→Monokai`, `Catppuccin→Catppuccin`, `Nord→Nord`).
+- New `EditorConfig::set_crate_theme(theme)` /
+  `EditorConfig::with_crate_theme(theme)` — the editor now switches
+  syntax palettes with one call from a host that only knows about the
+  crate-wide `Theme`.
+- New `Theme::code_editor_colors() -> SyntaxColors` accessor.
+
+#### `diff_viewer`
+
+- New `DiffViewerConfig::apply_theme(crate::theme::Theme)` /
+  `with_theme(theme)` — the 14 `color_*` fields are derived from
+  `nav.bg` / `nav.icon_*` / `theme.success()` / `danger()` / `warning()`
+  / `accent()`, so an added line reads as `theme.success()` and removed
+  as `theme.danger()` on every theme. Layout fields untouched.
+- New `Theme::diff_viewer_config()` accessor — returns a
+  fully-themed `DiffViewerConfig`.
+
+#### `tab_control`
+
+- Removed `LABEL_COLOR` module-level const (used by 3 sites) — replaced
+  with `cfg.colors.text_muted` so empty placeholder, no-tabs strip and
+  close-confirm popup track the active theme.
+- Hardcoded RGBA in close-confirm popup
+  (`[0.88, 0.90, 0.92, 1.0]` text, `[0.70, 0.22, 0.22, 1.0]` /
+  `[0.82, 0.30, 0.30, 1.0]` / `[0.60, 0.18, 0.18, 1.0]` button stack)
+  replaced with `cfg.colors.text` / `text_muted` references and the
+  graduated `crate::utils::popup::danger_button` helper. The 3-call
+  `push_style_color(StyleColor::Button{,Hovered,Active})` boilerplate
+  is gone — a future tweak to the destructive-button hue family
+  propagates to the popup automatically.
+- Empty-placeholder hint text uses `cfg.colors.text_muted` at α 0.7
+  (was hardcoded grey).
+
+#### `force_graph`
+
+- New `GraphColors::from_theme(crate::theme::Theme) -> GraphColors`
+  factory — synthesizes the 11-field palette from `nav` + `accent` +
+  `window_bg()` so the canvas, node fills, edges, label text and box
+  selection all sit in the same visual family as the rest of the
+  chrome. `node_default` darkens the accent, `node_hover` is the
+  accent itself, `node_selected` lifts it brighter, edges read as
+  `nav.icon_default` (default) / `accent` (drag).
+- `ViewerConfig::with_theme(theme)` builder — sets `theme` and clears
+  `colors_override` so the renderer derives the palette via
+  `from_theme` automatically.
+- **`render::main` palette resolution rewired.** Was falling back to
+  `GraphColors::default()` (Dark-pinned) when `colors_override` was
+  `None`; now uses `GraphColors::from_theme(config.theme)` so the
+  graph respects the active theme by default. Hosts still get
+  full override via `colors_override`.
+- New `Theme::force_graph_colors()` accessor.
+
+#### `node_graph`
+
+- New `NgColors::from_theme(crate::theme::Theme) -> NgColors` factory
+  — synthesizes the 22-field palette (canvas + grid + node body /
+  header / border, pin default + hover, wires default / hover / drag,
+  selection rect, minimap surfaces, collapse button) from the crate
+  theme. The historic `NgColors` type uses `[u8; 3]` — the factory
+  rounds + clamps the float palette tokens for that on-the-wire
+  format.
+- New `NodeGraphConfig::apply_theme(theme)` / `with_theme(theme)`
+  builders.
+- New `Theme::node_graph_colors()` accessor.
+
+#### `timeline`
+
+- New `TimelineConfig::apply_theme(theme)` / `with_theme(theme)` —
+  the 12 `color_*` fields (bg, alt-stripe, ruler bg+text, track
+  label / separator, span text, selection / hover, marker, tooltip
+  bg + text) sync with the theme. The per-span hue rotation
+  (`span_palette`) stays theme-independent so flame-chart hues read
+  identically across themes.
+- New `Theme::timeline_config()` accessor.
+
+#### `toolbar`
+
+- New `ToolbarConfig::apply_theme(theme)` / `with_theme(theme)` —
+  every `color_*` field maps to `nav.{bg,icon_*,btn_hover,btn_active,
+  separator}` + `theme.accent()`. A horizontal toolbar now reads as
+  the same chrome surface as the vertical [`crate::nav_panel`].
+- New `Theme::toolbar_config()` accessor.
+
+#### `property_inspector`
+
+- New `InspectorConfig::apply_theme(theme)` / `with_theme(theme)` —
+  bg / alt-row / key / value / readonly / category-header surfaces
+  derive from `nav` + `statusbar` + semantic tokens.
+- New `Theme::inspector_config()` accessor.
+
+#### Theme accessor API (overall)
+
+The set of `Theme::*_colors()` / `*_config()` accessors is now:
+
+| Accessor | Type | Source module | Pattern |
+|---|---|---|---|
+| `titlebar()` | `TitlebarColors` | `palettes` | per-theme factory |
+| `nav()` | `NavColors` | `palettes` | per-theme factory |
+| `dialog()` | `DialogColors` | `palettes` | per-theme factory |
+| `notifications()` | `NotificationColors` | `palettes` | named-preset constructor |
+| `statusbar_colors()` | `StatusBarColors` | `palettes` | per-theme factory |
+| `statusbar()` | `StatusBarConfig` | `status_bar` | per-theme factory |
+| `hex_viewer_colors()` | `HexViewerColors` | `palettes` | tokens factory |
+| `disasm_view_colors()` | `DisasmViewColors` | `palettes` | tokens factory |
+| `tab_colors()` | `TabColors` | `tab_control` | derived from `nav + statusbar` |
+| `code_editor_colors()` | `SyntaxColors` | `code_editor` | crate-theme→preset map |
+| `diff_viewer_config()` | `DiffViewerConfig` | `diff_viewer` | `with_theme()` builder |
+| `force_graph_colors()` | `GraphColors` | `force_graph::style` | `from_theme()` factory |
+| `node_graph_colors()` | `NgColors` | `node_graph::config` | `from_theme()` factory |
+| `timeline_config()` | `TimelineConfig` | `timeline` | `with_theme()` builder |
+| `toolbar_config()` | `ToolbarConfig` | `toolbar` | `with_theme()` builder |
+| `inspector_config()` | `InspectorConfig` | `property_inspector` | `with_theme()` builder |
+
+#### Tests
+
+- 7 new `theme::tests::{code_editor,diff_viewer,force_graph,
+  node_graph,timeline,toolbar,inspector}_*_resolves_for_every_theme`
+  pin per-theme invariants (non-zero alphas, key/value distinctness,
+  `bg == window_bg` for force_graph canvas, `bg == nav.bg` for
+  toolbar surface, etc.).
+
 ### Session 030 — full-codebase audit, deferred fixes, 7 more criticals (2026-04-30)
 
 Autonomous overnight session. Six parallel `code-analyzer` agents
