@@ -154,7 +154,7 @@ impl TabItem for InboxTab {
     }
 }
 
-/// Diagnostics tab — error status + tooltip.
+/// Diagnostics tab — error status + tooltip + colored title text.
 struct DiagnosticsTab;
 
 impl TabItem for DiagnosticsTab {
@@ -169,6 +169,13 @@ impl TabItem for DiagnosticsTab {
     }
     fn tooltip(&self) -> Option<&str> {
         Some("3 errors detected — click for details")
+    }
+    /// Demo of `text_color()`: paint the title in the same red family as
+    /// the error indicator so the tab reads as "danger" at a glance.
+    /// Honoured by the strip, the drag ghost, and the pinned compact
+    /// glyph fallback in identical hue.
+    fn text_color(&self) -> Option<[u8; 3]> {
+        Some([220, 110, 110])
     }
     // Demo of per-tab preview opt-out — the tooltip carries the summary.
     fn show_preview(&self) -> bool {

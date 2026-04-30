@@ -4,7 +4,7 @@ Modern tab controller for `dear-imgui-rs`. Pure tab strip + content area, inspir
 
 ```toml
 [dependencies]
-dear-imgui-custom-mod = { version = "0.9", features = ["tab_control"] }
+dear-imgui-custom-mod = { version = "0.10", features = ["tab_control"] }
 ```
 
 ## Quick start
@@ -47,7 +47,7 @@ src/tab_control/
 │                  TabStrings, CloseGlyph, Badge, TabAction, TabId
 ├── layout.rs    — pixel-width math, layout constants, pinned-partition repair
 ├── render.rs    — single-file renderer (strip / styles / events / popups)
-└── tests.rs     — 32 unit tests (logic only — no ImGui FFI)
+└── tests.rs     — 33+ unit tests (logic only — no ImGui FFI)
 ```
 
 ## `TabItem` trait
@@ -63,6 +63,7 @@ Implement on your data type to define each tab. Two methods are required (`title
 | `tooltip(&self) -> Option<&str>` | `None` | classic tooltip on hover |
 | `tab_color(&self) -> Option<[u8; 3]>` | `None` | accent override (active tab border / drag ghost) |
 | `dot_color(&self) -> Option<[u8; 3]>` | `None` | per-tab status dot override (wins over status palette) |
+| `text_color(&self) -> Option<[u8; 3]>` | `None` | per-tab title text override — applies in both active and inactive states; honoured by drag ghost, regular tabs, and pinned compact glyph/letter |
 | `is_closable(&self) -> bool` | `true` | enable close button |
 | `is_pinned(&self) -> bool` | `false` | pin to compact, non-scrolling left strip |
 | `show_preview(&self) -> bool` | `true` | per-tab opt-out for hover preview |
@@ -230,6 +231,36 @@ A vertical accent line tracks the cursor; a translucent ghost of the dragged tab
 
 When the regular tabs don't fit, a `…` button appears on the right and opens a popup listing all tabs. Click an entry to activate that tab; the popup auto-closes.
 
+## Content area padding
+
+By default the active tab's `render_content()` runs inside a borderless child-window with a `[1.0, 1.0]` inset on every side, so user widgets never sit flush against the strip / outer-window edges. Inside `render_content()` `ui.content_region_avail()` already reflects the inset — host widgets need no manual offset.
+
+```rust
+// More breathing room (e.g. for forms / property panels):
+tc.config.content_padding = [8.0, 8.0];
+
+// Full-bleed (charts, hex dumps, anything that wants every pixel):
+tc.config.content_padding_enabled = false;
+```
+
+Stacks cleanly with `external_content: true` — disable both if your host renders content outside `tc.render(ui)` and applies its own padding.
+
+## Theme integration
+
+`TabControl` plugs into the crate-wide `Theme` system via the
+`Theme::tab_colors()` accessor — the tab strip stays in the same
+visual ecosystem as `nav_panel` / `status_bar` (same surfaces,
+hover/active lifts, status indicator hues):
+
+```rust
+use dear_imgui_custom_mod::theme::Theme;
+
+let theme = Theme::Nord;
+tc.config.colors = theme.tab_colors();   // synthesised from theme.nav() + statusbar_colors()
+```
+
+Per-tab overrides (`tab_color`, `dot_color`, `text_color`) win over the palette, so colored-by-domain tabs keep their hue across theme changes.
+
 ## Configuration cheat sheet
 
 ```rust
@@ -243,6 +274,8 @@ TabControlConfig {
     show_add_button:     false,   // shows a "+" at the right
     context_menu:        true,    // right-click → context_tab + open_context_menu
     external_content:    false,   // skip render_content (caller draws content)
+    content_padding_enabled: true,  // wrap render_content in a borderless child with WindowPadding
+    content_padding:    [1.0, 1.0], // [horizontal, vertical] inset; default 1 px breathing strip
     draggable:           true,
     show_overflow_dropdown: true,
 
@@ -322,4 +355,4 @@ Showcases: pinned tabs (Home, Settings — compact left strip), nested TabContro
 cargo test --lib --features tab_control tab_control::tests
 ```
 
-32 unit tests cover deterministic state (add/remove/clear/move_tab/set_active/pinned-partition/popup-IDs/dot-color/show-preview/etc.). Rendering itself is verified manually via the demo — it requires an initialized ImGui context that's hard to mock without spinning up a window.
+33+ unit tests cover deterministic state (add/remove/clear/move_tab/set_active/pinned-partition/popup-IDs/dot-color/text-color/content-padding/show-preview/etc.). Rendering itself is verified manually via the demo — it requires an initialized ImGui context that's hard to mock without spinning up a window.

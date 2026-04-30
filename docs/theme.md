@@ -35,6 +35,8 @@ for theme in Theme::ALL {
 | `Theme::Midnight` | Near-black, OLED-friendly (Tokyo Night accent). |
 | `Theme::Solarized` | Solarized Dark (Ethan Schoonover), warm teal surfaces. |
 | `Theme::Monokai` | Monokai Pro, warm charcoal + neon accents. |
+| `Theme::Catppuccin` | Catppuccin Mocha — soft pastel palette, low-contrast. |
+| `Theme::Nord` | Nord — cool, desaturated arctic minimalism. |
 
 ## Methods
 
@@ -58,11 +60,50 @@ let stbar = t.statusbar();  // StatusBarConfig (palette + default geometry)
 | `.titlebar()` | `TitlebarColors` | Palette for `app_window` chrome |
 | `.nav()` | `NavColors` | Palette for `nav_panel` |
 | `.dialog()` | `DialogColors` | Palette for `confirm_dialog` |
+| `.notifications()` | `NotificationColors` | Palette for `notifications` (toasts) |
+| `.statusbar_colors()` | `StatusBarColors` | Palette-only access (no layout) |
 | `.statusbar()` | `StatusBarConfig` | Colours + default geometry for `status_bar` |
+| `.hex_viewer_colors()` | `HexViewerColors` | 18-token palette for `hex_viewer` |
+| `.disasm_view_colors()` | `DisasmViewColors` | 26-token palette for `disasm_view` |
+| `.tab_colors()` | `TabColors` | Strip palette synthesised from `nav` + `statusbar` |
+| `.code_editor_colors()` | `SyntaxColors` | Maps to closest `EditorTheme` preset |
+| `.diff_viewer_config()` | `DiffViewerConfig` | Fully-themed diff config |
+| `.force_graph_colors()` | `GraphColors` | 11-field palette for `force_graph` |
+| `.node_graph_colors()` | `NgColors` | 22-field palette for `node_graph` |
+| `.timeline_config()` | `TimelineConfig` | Themed timeline config (preserves `span_palette`) |
+| `.toolbar_config()` | `ToolbarConfig` | Themed toolbar (`bg = nav.bg` invariant) |
+| `.inspector_config()` | `InspectorConfig` | Themed property-inspector config |
+| `.window_bg()` | `[f32; 4]` | Primary window-bg (matches `StyleColor::WindowBg`) |
+| `.accent()` / `.danger()` / `.success()` / `.warning()` | `[f32; 4]` | Semantic tokens for tinting custom widgets |
 | `.apply_imgui_style(&mut Style)` | — | Writes rounding/sizing + full widget colours |
-| `.next()` | `Theme` | Cycle to the next theme in `Theme::ALL` |
-| `.display_name()` | `&'static str` | Human-readable name for menus |
+| `.next()` / `.prev()` | `Theme` | Cycle through `Theme::ALL` |
+| `.display_name()` / `.description()` | `&'static str` | Menu strings |
 | `Theme::ALL` | `&'static [Theme]` | Ordered array for Settings combo boxes |
+
+### Per-widget application
+
+Most consumer modules expose a `with_theme()` builder + `apply_theme()` setter. Pick whichever fits your construction style:
+
+```rust
+// One-shot apply at construction:
+let cfg = DiffViewerConfig::default().with_theme(Theme::Nord);
+let cfg = TimelineConfig::default().with_theme(Theme::Catppuccin);
+let cfg = ToolbarConfig::default().with_theme(Theme::Solarized);
+let cfg = InspectorConfig::default().with_theme(Theme::Dark);
+let cfg = NodeGraphConfig::default().with_theme(Theme::Light);
+
+// Hex/disasm — same pattern, palette tokens go through the config:
+let cfg = HexViewerConfig::default().with_theme(Theme::Midnight);
+let cfg = DisasmViewConfig::default().with_theme(Theme::Monokai);
+
+// Code editor — bridges crate Theme to the editor's own EditorTheme presets:
+let cfg = EditorConfig::default().with_crate_theme(Theme::Nord);
+
+// Force graph — ViewerConfig.theme is itself a crate::theme::Theme:
+let cfg = ViewerConfig::default().with_theme(Theme::Catppuccin);
+```
+
+When the host swaps themes at runtime, call the matching `apply_theme(...)` setter on the live config instead of replacing it (preserves any custom layout overrides).
 
 ## Per-instance palette override
 
@@ -93,16 +134,16 @@ let colors = TitlebarColors {
     btn_hover_bg:       [0.22, 0.22, 0.32, 0.85],
     btn_close_hover_bg: [0.50, 0.10, 0.10, 0.90],
     icon:               [0.90, 0.90, 0.90, 1.0],
-    bg_erase:           [0.10, 0.10, 0.14, 1.0],
-    drag_hint:          [0.18, 0.18, 0.26, 0.30],
-    bg_inactive:        [0.08, 0.08, 0.10, 1.0],
-    title_inactive:     [0.45, 0.45, 0.50, 1.0],
 };
 
-let _cfg = BorderlessConfig::new("My App")
+let _cfg = AppConfig::new("My App")
     .with_theme(Theme::Dark)        // baseline
     .with_colors(colors);           // override — bypasses Theme::Dark
 ```
+
+> **0.10.0 BREAKING:** four orphan `TitlebarColors` fields (`bg_erase`,
+> `drag_hint`, `bg_inactive`, `title_inactive`) were removed. They were
+> defined for years in every theme but had zero in-tree consumers.
 
 ## Legacy colour tokens
 
@@ -162,14 +203,27 @@ A parallel `LIGHT_*` set mirrors the same tokens tuned for the Light theme.
 
 ```
 theme/
-  mod.rs       Theme enum, ALL, sub-palette resolvers, legacy color tokens
-  dark.rs      NxT native dark stack (titlebar/nav/dialog/statusbar/style)
-  light.rs     Readable light stack
-  midnight.rs  Near-black OLED stack
-  solarized.rs Solarized Dark stack
-  monokai.rs   Monokai Pro stack
+  mod.rs        Theme enum, ALL, all *_colors() / *_config() accessors,
+                semantic helpers (accent/danger/success/warning), legacy tokens
+  palettes.rs   Cross-module palette types (TitlebarColors, NavColors,
+                DialogColors, NotificationColors, StatusBarColors,
+                HexViewerColors + tokens factory, DisasmViewColors + tokens)
+  dark.rs       NxT native dark stack
+  light.rs      Readable light stack
+  midnight.rs   Near-black OLED stack
+  solarized.rs  Solarized Dark stack
+  monokai.rs    Monokai Pro stack
+  catppuccin.rs Catppuccin Mocha stack
+  nord.rs       Nord stack
 ```
 
 One theme = one file. Each per-theme module owns the full stack
 (`titlebar_colors`, `nav_colors`, `dialog_colors`, `statusbar_config`,
-`apply_imgui_style`) so visual changes for a palette stay contained.
+`hex_viewer_colors`, `disasm_view_colors`, `apply_imgui_style`) so
+visual changes for a palette stay contained.
+
+Widget-local palettes that aren't in `palettes.rs` (`TabColors`,
+`GraphColors`, `NgColors`, `SyntaxColors`, `DiffViewerConfig`,
+`TimelineConfig`, `ToolbarConfig`, `InspectorConfig`) are reached via
+their consumer modules — `Theme::*` accessors call into them, so the
+contract stays one-stop from the host's perspective.

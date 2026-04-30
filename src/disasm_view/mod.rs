@@ -473,6 +473,132 @@ impl DisasmView {
         self.sel_anchor = None;
     }
 
+    // ── Convenience selectors (host toolbar helpers) ─────────────────
+    //
+    // The five methods below let a host implement a "Top / Bottom /
+    // Current IP / Breakpoint / cycle BPs" toolbar in pure
+    // `if button { view.method() }` style — no manual scan-loop over
+    // the provider. They are pure view-domain operations and don't
+    // cross into the host's debugger backend (stepping, run/pause,
+    // register/memory reads stay on the backend side; the view only
+    // reflects whatever provider state `is_current()` /
+    // `has_breakpoint()` reports).
+
+    /// Find and select the instruction the provider marks as
+    /// [`Instruction::is_current`] (typically the debugger's IP /
+    /// program counter). Returns `true` when an IP row was found
+    /// and selection moved, `false` otherwise (host can disable
+    /// the corresponding toolbar button on `false`).
+    pub fn select_current_ip(&mut self, provider: &dyn DisasmDataProvider) -> bool {
+        let count = provider.instruction_count();
+        for i in 0..count {
+            if let Some(instr) = provider.instruction(i)
+                && instr.is_current()
+            {
+                self.select(i);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Find and select the *first* instruction with a breakpoint
+    /// (lowest index → lowest address in a sorted provider).
+    /// Returns `true` when one was found.
+    pub fn select_first_breakpoint(&mut self, provider: &dyn DisasmDataProvider) -> bool {
+        let count = provider.instruction_count();
+        for i in 0..count {
+            if let Some(instr) = provider.instruction(i)
+                && instr.has_breakpoint()
+            {
+                self.select(i);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Cycle to the next breakpoint **strictly after** the current
+    /// cursor (or, if the cursor is past the last breakpoint, wraps
+    /// to the first). Returns `true` when a breakpoint exists at
+    /// all. Standard disassembler UX — the IDE-style "next BP" button.
+    pub fn select_next_breakpoint(&mut self, provider: &dyn DisasmDataProvider) -> bool {
+        let count = provider.instruction_count();
+        if count == 0 {
+            return false;
+        }
+        let start = self.cursor_idx.map(|c| c + 1).unwrap_or(0);
+        // Search forward from start, then wrap around to 0..start.
+        for i in start..count {
+            if let Some(instr) = provider.instruction(i)
+                && instr.has_breakpoint()
+            {
+                self.select(i);
+                return true;
+            }
+        }
+        for i in 0..start.min(count) {
+            if let Some(instr) = provider.instruction(i)
+                && instr.has_breakpoint()
+            {
+                self.select(i);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Cycle to the previous breakpoint **strictly before** the
+    /// current cursor (wraps to the last). Symmetric to
+    /// [`Self::select_next_breakpoint`].
+    pub fn select_prev_breakpoint(&mut self, provider: &dyn DisasmDataProvider) -> bool {
+        let count = provider.instruction_count();
+        if count == 0 {
+            return false;
+        }
+        let start = self.cursor_idx.unwrap_or(count);
+        // Search backward from cursor-1, then wrap around from end.
+        for i in (0..start).rev() {
+            if let Some(instr) = provider.instruction(i)
+                && instr.has_breakpoint()
+            {
+                self.select(i);
+                return true;
+            }
+        }
+        for i in (start..count).rev() {
+            if let Some(instr) = provider.instruction(i)
+                && instr.has_breakpoint()
+            {
+                self.select(i);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Whether the back / forward address-history stack has anything
+    /// to consume. Use these to render `<< Back` / `Fwd >>` toolbar
+    /// buttons as disabled when there's nothing to walk to. Mirrors
+    /// the corresponding `Alt+Left` / `Alt+Right` shortcut state.
+    pub fn can_nav_back(&self) -> bool {
+        self.nav.can_go_back()
+    }
+
+    /// See [`Self::can_nav_back`].
+    pub fn can_nav_forward(&self) -> bool {
+        self.nav.can_go_forward()
+    }
+
+    /// Address of the row under the cursor, or `None` when the view
+    /// has no cursor / the cursor index doesn't resolve through the
+    /// provider. Useful for status-bar `Addr: 0x…` displays and as
+    /// the prefill value for a host-rendered "Goto address" input.
+    pub fn cursor_address(&self, provider: &dyn DisasmDataProvider) -> Option<u64> {
+        let i = self.cursor_idx?;
+        provider.instruction(i).map(|instr| instr.address())
+    }
+
     /// Scroll to and select the instruction at `addr`.
     ///
     /// Side effects on jump (when `addr != current cursor address`):
@@ -1207,6 +1333,110 @@ mod tests {
         assert!(p.instruction(0).unwrap().has_breakpoint());
         p.toggle_breakpoint(0x401000);
         assert!(!p.instruction(0).unwrap().has_breakpoint());
+    }
+
+    // ── Convenience selectors (host toolbar API, session 032) ──────────
+
+    #[test]
+    fn select_current_ip_finds_marked_row() {
+        let mut p = sample_provider();
+        // Mark idx 3 (the `call`) as the current IP.
+        p.instructions_mut()[3].current = true;
+
+        let mut view = DisasmView::new("t");
+        assert!(view.select_current_ip(&p));
+        assert_eq!(view.selected_index(), Some(3));
+    }
+
+    #[test]
+    fn select_current_ip_returns_false_when_no_ip() {
+        let p = sample_provider(); // no `current` flag set
+        let mut view = DisasmView::new("t");
+        assert!(!view.select_current_ip(&p));
+        assert_eq!(view.selected_index(), None);
+    }
+
+    #[test]
+    fn select_first_breakpoint_finds_lowest_index() {
+        let mut p = sample_provider();
+        p.toggle_breakpoint(0x40100D); // idx 4
+        p.toggle_breakpoint(0x401004); // idx 2
+
+        let mut view = DisasmView::new("t");
+        assert!(view.select_first_breakpoint(&p));
+        assert_eq!(view.selected_index(), Some(2), "lowest-index BP wins");
+    }
+
+    #[test]
+    fn select_first_breakpoint_returns_false_when_none() {
+        let p = sample_provider();
+        let mut view = DisasmView::new("t");
+        assert!(!view.select_first_breakpoint(&p));
+    }
+
+    #[test]
+    fn select_next_breakpoint_cycles_forward_with_wraparound() {
+        let mut p = sample_provider();
+        p.toggle_breakpoint(0x401001); // idx 1
+        p.toggle_breakpoint(0x401010); // idx 5
+
+        let mut view = DisasmView::new("t");
+        view.select(3); // cursor between the two BPs
+
+        // Next from idx 3 → idx 5.
+        assert!(view.select_next_breakpoint(&p));
+        assert_eq!(view.selected_index(), Some(5));
+        // Next from idx 5 → wraps to idx 1.
+        assert!(view.select_next_breakpoint(&p));
+        assert_eq!(view.selected_index(), Some(1));
+    }
+
+    #[test]
+    fn select_prev_breakpoint_cycles_backward_with_wraparound() {
+        let mut p = sample_provider();
+        p.toggle_breakpoint(0x401001); // idx 1
+        p.toggle_breakpoint(0x401010); // idx 5
+
+        let mut view = DisasmView::new("t");
+        view.select(3);
+        // Prev from idx 3 → idx 1.
+        assert!(view.select_prev_breakpoint(&p));
+        assert_eq!(view.selected_index(), Some(1));
+        // Prev from idx 1 → wraps to idx 5.
+        assert!(view.select_prev_breakpoint(&p));
+        assert_eq!(view.selected_index(), Some(5));
+    }
+
+    #[test]
+    fn can_nav_back_forward_track_history_state() {
+        let p = sample_provider();
+        let mut view = DisasmView::new("t");
+        // Empty history at construction.
+        assert!(!view.can_nav_back());
+        assert!(!view.can_nav_forward());
+
+        // First goto seeds the back stack (origin → push).
+        view.goto_address(0x401000, &p);
+        // Still nothing on the back stack — first selection has no
+        // prior cursor to push.
+        assert!(!view.can_nav_back());
+
+        view.goto_address(0x40100D, &p);
+        assert!(view.can_nav_back(), "second goto must populate back");
+        assert!(!view.can_nav_forward());
+
+        view.nav_back(&p);
+        assert!(view.can_nav_forward(), "back must populate forward");
+    }
+
+    #[test]
+    fn cursor_address_matches_selected_instruction() {
+        let p = sample_provider();
+        let mut view = DisasmView::new("t");
+        assert_eq!(view.cursor_address(&p), None);
+
+        view.select(3);
+        assert_eq!(view.cursor_address(&p), Some(0x401008));
     }
 
     #[test]

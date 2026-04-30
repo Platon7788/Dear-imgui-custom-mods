@@ -109,6 +109,22 @@ pub trait TabItem {
         None
     }
 
+    /// Optional override for the **title text** color — `[R, G, B]`.
+    ///
+    /// `None` (default) → text uses [`TabColors::text`] when the tab is
+    /// active and [`TabColors::text_muted`] when inactive. When `Some`,
+    /// the override is applied in *both* states (inactive tabs still
+    /// fade slightly via the open-animation alpha, but the hue is
+    /// preserved).
+    ///
+    /// Use this to color tabs by domain — e.g. project files green,
+    /// system files amber, error tabs red — without inventing new
+    /// [`TabStatus`] variants. Stacks cleanly with [`Self::tab_color`]
+    /// (accent override) and [`Self::dot_color`] (status indicator).
+    fn text_color(&self) -> Option<[u8; 3]> {
+        None
+    }
+
     /// Whether this tab can be closed. Cooperatively gated by
     /// [`TabControlConfig::closable`].
     fn is_closable(&self) -> bool {

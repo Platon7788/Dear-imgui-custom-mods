@@ -286,6 +286,21 @@ pub struct TabControlConfig {
     /// called on the active tab. The caller renders content after
     /// [`TabControl::render`](super::TabControl::render) returns.
     pub external_content: bool,
+    /// When `true` (default), the active tab's `render_content()` runs
+    /// inside a borderless child-window with `[content_padding]` worth
+    /// of inset on every side, so user widgets never sit flush against
+    /// the strip / outer window edges. Set `false` for full-bleed
+    /// content (legacy behaviour) — useful for charts, hex dumps, or
+    /// any widget that wants to use every available pixel.
+    pub content_padding_enabled: bool,
+    /// Inset in pixels — `[horizontal, vertical]` — applied on each side
+    /// of the active tab's content area when [`Self::content_padding_enabled`]
+    /// is `true`. The renderer pushes this as
+    /// `StyleVar::WindowPadding(...)` on a borderless child-window, so
+    /// `content_region_avail()` inside `render_content()` already
+    /// reflects the inset (host's widgets need no manual offset).
+    /// Default `[1.0, 1.0]`.
+    pub content_padding: [f32; 2],
     /// Allow drag-and-drop reordering of tabs.
     pub draggable: bool,
     /// Show overflow `…` dropdown when tabs don't fit.
@@ -369,6 +384,8 @@ impl Default for TabControlConfig {
             show_add_button: false,
             context_menu: true,
             external_content: false,
+            content_padding_enabled: true,
+            content_padding: [1.0, 1.0],
             draggable: true,
             show_overflow_dropdown: true,
             icons_available: false,

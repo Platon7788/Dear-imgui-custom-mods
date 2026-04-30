@@ -574,7 +574,27 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         && let Some(active_id) = pc.active
         && let Some(entry) = pc.tabs.iter_mut().find(|t| t.id == active_id)
     {
-        entry.item.render_content(ui);
+        if pc.config.content_padding_enabled {
+            // Borderless child-window with `WindowPadding` set to the
+            // user-configured inset. Inside `render_content`,
+            // `content_region_avail()` already accounts for the
+            // padding — host widgets need no manual offset. Default
+            // `[1.0, 1.0]` is a 1-pixel breathing strip that prevents
+            // user widgets from sitting flush against the strip /
+            // outer-window edges, while staying invisible enough not
+            // to read as a margin.
+            let _wp = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding(
+                pc.config.content_padding,
+            ));
+            ui.child_window("##tab_content")
+                .size([0.0, 0.0])
+                .border(false)
+                .build(ui, || {
+                    entry.item.render_content(ui);
+                });
+        } else {
+            entry.item.render_content(ui);
+        }
     }
 
     action
@@ -1022,7 +1042,11 @@ fn handle_drag<T: TabItem>(
         let ts = calc_text_size(title);
         let tx = ghost_x0 + (tw - ts[0]) * 0.5;
         let ty = ghost_y0 + (cfg.tab_height - ts[1]) * 0.5;
-        let fg = c32(cfg.colors.text, (240.0 * alpha_mul) as u8);
+        // Drag ghost is a shadow of the dragged tab — honour the
+        // per-tab `text_color()` override so a colored tab keeps its
+        // hue while being dragged.
+        let ghost_text = tab.item.text_color().unwrap_or(cfg.colors.text);
+        let fg = c32(ghost_text, (240.0 * alpha_mul) as u8);
         draw.add_text([tx, ty], fg, title);
     }
 }
@@ -1527,11 +1551,14 @@ fn draw_tab_content<T: TabItem>(ctx: &TabDraw<'_, T>) {
 
     // ── Pinned variant: compact, centered glyph or single letter ────────
     if item.is_pinned() {
-        let label_color = if is_active {
+        // Per-tab override wins for both glyph and letter fallback;
+        // pinned tabs only show one of them, so a single resolution
+        // covers the visible label whatever the host chose.
+        let label_color = item.text_color().unwrap_or(if is_active {
             colors.text
         } else {
             colors.text_muted
-        };
+        });
         let alpha = if is_active { 255 } else { 220 };
         let cx_center = (x0 + x1) * 0.5;
         let cy_center = y0 + tab_h * 0.5;
@@ -1632,12 +1659,12 @@ fn draw_tab_content<T: TabItem>(ctx: &TabDraw<'_, T>) {
         text_x += icon_sz[0] + ICON_TITLE_GAP;
     }
 
-    // Title
-    let text_color = if is_active {
+    // Title — per-tab override wins, then active/inactive default.
+    let text_color = item.text_color().unwrap_or(if is_active {
         colors.text
     } else {
         colors.text_muted
-    };
+    });
     let text_sz = calc_text_size(item.title());
     let text_y = y0 + (tab_h - text_sz[1]) * 0.5;
     draw.add_text([text_x, text_y], c32(text_color, a(255)), item.title());

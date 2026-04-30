@@ -8,26 +8,29 @@ Standalone disassembly viewer widget for Dear ImGui with branch arrows, breakpoi
 
 ## Features
 
-- **5-column layout**: margin | arrows | address | hex bytes | mnemonic operands ; comment
-- **Branch arrows** with 6-level nesting, collision avoidance, and flow-kind coloring (jump/call/return)
-- **Breakpoint markers** — red circles in left gutter (F9 to toggle)
-- **Block tinting** — 6 alternating background colors for logical code blocks
+- **5-column layout**: margin │ arrows │ address │ hex bytes │ instruction (mnemonic + operands) │ comment, with optional vertical column dividers
+- **Branch arrows** with 6-level nesting, collision avoidance, flow-kind coloring, and **off-window clipping** so long jumps stay visible (`compute_arrows_clipped`, default cap 256)
+- **Breakpoint markers** — coloured circles in left gutter (F9 to toggle) with 8-slot numbered palette
+- **Per-byte category tint** in the Bytes column — same 5-tier `ByteCategory` split (`hex_viewer` parity)
+- **Byte search** — wildcard hex pattern (e.g. `4D 5A ?? 00 89`) via `Ctrl+F`, step with `F3` / `Shift+F3`, cross-instruction matches supported
+- **Function navigation** — `Ctrl+Up` / `Ctrl+Down` (start/end) + `Ctrl+L` (select fn body), RET-based heuristic
+- **Follow-at-cursor** — `Enter` / `Space` / dblclick on Instruction. Tries `branch_target()` first, then scans operand `Number` tokens; lazy `decode_range` for streaming providers
+- **Address-column dblclick copy** — Hand cursor + tooltip + flash-pill animation
+- **Origin breadcrumb** — soft "you came from here" highlight on the previous cursor row after Goto / Follow / function-jump / nav-back / search; survives scroll/click
 - **8 FlowKind types** — Normal, Jump, Call, Return, Nop, Stack, System, Invalid
 - **Syntax coloring**: mnemonics by instruction type, operands by token type
 - **Operand highlighting**: registers (cyan), numbers (green), memory brackets (orange), strings (warm yellow)
 - **Full x86 register set**: 64/32/16/8-bit GP, SSE/AVX (xmm/ymm), x87 (st0-st7), segment registers
-- **Keyboard navigation** — arrows, PgUp/Dn, Home/End, Enter → follow branch
-- **Navigation history** — Alt+Left/Right (back/forward address stack)
-- **Selection** with Ctrl+C copy (address + mnemonic + operands)
-- **Context menu** — Copy Address, Copy Instruction, Follow Branch, Toggle Breakpoint, Goto Address
-- **Inline editing** — double-click bytes to patch (hex input, assembler integration)
-- **Current execution highlight** — yellow background for stopped-at instruction
-- **Auto-scroll** — follow execution point option
+- **Selection** with `Shift+Arrow` extend, `Ctrl+C` copy (address + mnemonic + operands, multi-line for multi-select)
+- **Themed context menu** — Copy Address, Copy Instruction (count-aware), Follow Branch, Toggle Breakpoint, Goto Address
+- **Themed Goto + Settings popups** — `igSetNextWindowPos` centred on the viewer, action-row layout helpers from `utils::popup`
+- **Inline editing** — dblclick to patch Bytes / Comment (assembler integration via `DisasmDataProvider::assemble` / `set_comment`)
+- **Current execution highlight** — warm-amber background for the row marked `is_current()`
+- **Auto-scroll** — `follow_execution` flag for live-debugging hosts
 - **Virtualized rendering** — only visible rows drawn (handles 100K+ instructions)
-- **DisasmDataProvider trait** — pluggable backend for any decoder (iced-x86, capstone, etc.)
-- **Goto address popup** (G key)
-- **Configurable column widths**
-- **32-bit and 64-bit address formats**
+- **DisasmDataProvider trait** — pluggable backend for any decoder (iced-x86, capstone, zydis…)
+- **32-bit and 64-bit address formats** — `address_width_64` flag
+- **Theme integration** — `DisasmViewConfig::with_theme(Theme)`, palette via `Theme::disasm_view_colors()`
 
 ## Quick Start
 
@@ -93,15 +96,47 @@ impl DisasmDataProvider for IcedDecoder {
 |--------|-------------|
 | `new(id)` | Create a new disassembly view |
 
+### Selection
+
+| Method | Description |
+|--------|-------------|
+| `selected_index() -> Option<usize>` | Cursor / single-select index |
+| `selected_indices() -> &BTreeSet<usize>` | Multi-select set (Shift / Ctrl) |
+| `selected_count() -> usize` | Selection size |
+| `is_selected(idx) -> bool` | Whether `idx` is selected |
+| `select(idx)` | Single-select + set cursor + auto-scroll |
+| `clear_selection()` | Drop selection (cursor stays) |
+
 ### Navigation
 
 | Method | Description |
 |--------|-------------|
-| `selected_index() -> Option<usize>` | Currently selected instruction index |
-| `select(idx)` | Set selected instruction (auto-scrolls) |
-| `goto_address(addr, provider)` | Jump to address (records history) |
-| `nav_back(provider)` | Navigate back in history (Alt+Left) |
-| `nav_forward(provider)` | Navigate forward in history (Alt+Right) |
+| `goto_address(addr, provider)` | Jump to address (records nav history + breadcrumb) |
+| `nav_back(provider)` | Navigate back in address history (`Alt+Left`) |
+| `nav_forward(provider)` | Navigate forward (`Alt+Right`) |
+| `can_nav_back() -> bool` | Back stack non-empty (host-toolbar disabled-state) |
+| `can_nav_forward() -> bool` | Forward stack non-empty |
+| `cursor_address(provider) -> Option<u64>` | Address under cursor — for status bar / Goto pre-fill |
+| `jump_to_function_start(provider)` | Walk back to function entry (`Ctrl+Up`) |
+| `jump_to_function_end(provider)` | Walk forward to function `ret` (`Ctrl+Down`) |
+| `select_function(provider)` | Select cursor-row → function-end inclusive (`Ctrl+L`) |
+| `follow_at_cursor(provider) -> bool` | Follow `branch_target()` (call/jmp/jcc), or scan operand for resolvable address. Lazy-decodes through `provider.decode_range`. Returns `false` when nothing followable — host can fall through to a different action. (`Enter` / `Space` / dblclick on Instruction column.) |
+
+### Host-toolbar convenience helpers
+
+These let a host implement a Top / Bottom / Current IP / Breakpoint
+toolbar in pure `if button { view.method() }` style — no manual scan
+loop over the provider. Pure view-domain operations; do **not** cross
+into the host's debugger backend (stepping, run/pause, register/memory
+reads stay on the backend side; the view only reflects whatever
+provider state `is_current()` / `has_breakpoint()` reports).
+
+| Method | Description |
+|--------|-------------|
+| `select_current_ip(provider) -> bool` | Find + select the row marked `is_current()` (debugger IP). Returns `false` when there's no current IP — host can fade the button. |
+| `select_first_breakpoint(provider) -> bool` | Select lowest-index BP. |
+| `select_next_breakpoint(provider) -> bool` | Cycle forward (wraps). |
+| `select_prev_breakpoint(provider) -> bool` | Cycle backward (wraps). |
 
 ### State
 
@@ -120,18 +155,24 @@ impl DisasmDataProvider for IcedDecoder {
 
 | Key | Action |
 |-----|--------|
-| Up/Down | Move selection |
-| Page Up/Down | Jump by visible line count |
-| Home/End | First/last instruction |
-| Enter | Follow branch target |
-| G | Open goto address popup |
-| F9 | Toggle breakpoint |
-| Ctrl+C | Copy selected instruction |
-| Alt+Left | Navigate back |
-| Alt+Right | Navigate forward |
-| Double-click | Enter inline edit (when editable) |
-| Escape | Cancel inline edit |
-| Right-click | Context menu |
+| `Up` / `Down` | Move cursor |
+| `Shift+Arrow` | Extend selection (anchor stays put) |
+| `Page Up` / `Page Down` | Jump by visible line count |
+| `Home` / `End` | First / last instruction |
+| `Enter` / `Space` | Follow branch target / resolvable operand at cursor |
+| `G` | Open Goto-address popup |
+| `Ctrl+F` | Open byte-search popup (wildcard hex pattern, e.g. `4D 5A ?? 00 89`) |
+| `F3` / `Shift+F3` | Step to next / previous byte-search match |
+| `F9` | Toggle breakpoint at cursor |
+| `Ctrl+Up` / `Ctrl+Down` | Jump to function start / end |
+| `Ctrl+L` | Select cursor → function end |
+| `Ctrl+C` | Copy selected instruction(s) |
+| `Alt+Left` / `Alt+Right` | Navigate address history back / forward |
+| `Esc` | Clear origin breadcrumb / cancel inline edit |
+| Double-click on Address | Copy address (flash-pill animation) |
+| Double-click on Instruction | Follow branch (mirrors `Enter`) |
+| Double-click on Bytes / Comment | Enter inline edit (when `editable = true`) |
+| Right-click | Themed context menu |
 
 ## Traits
 
@@ -158,19 +199,40 @@ pub trait Instruction {
 
 ### DisasmDataProvider Trait
 
+The trait is the boundary between the view and the host's decoder /
+debugger backend. View knows nothing about ptrace / Win32 Debug API /
+lldb-server — it only consults instruction state through these methods
+and lets the host's impl propagate mutations downstream (e.g. a host
+provider can override `toggle_breakpoint` to also call
+`backend.add_breakpoint(addr)`).
+
 ```rust
 pub trait DisasmDataProvider {
+    // Required:
     fn instruction_count(&self) -> usize;
     fn instruction(&self, idx: usize) -> Option<&dyn Instruction>;
+
+    /// Streaming hook: decode a window starting at `start_addr`. Called
+    /// by `follow_at_cursor` when the target isn't yet decoded. The
+    /// built-in `VecDisasmProvider` is a no-op (assumes pre-loaded data).
     fn decode_range(&mut self, start_addr: u64, max_count: usize);
-    fn index_of_address(&self, addr: u64) -> Option<usize>;
-    fn toggle_breakpoint(&mut self, addr: u64) -> bool;
-    fn assemble(&self, addr: u64, text: &str) -> Option<Vec<u8>>;
-    fn write_bytes(&mut self, addr: u64, bytes: &[u8]) -> bool;
-    fn symbol_name(&self, addr: u64) -> Option<String>;
-    fn refresh(&mut self);
+
+    /// Address → index lookup. Default impl scans linearly; override
+    /// with a sorted-binary-search or hashmap for large providers.
+    fn index_of_address(&self, addr: u64) -> Option<usize> { /* default */ unimplemented!() }
+
+    // Optional (default-no-op so old impls keep working):
+    fn toggle_breakpoint(&mut self, _addr: u64) -> bool { false }
+    fn assemble(&self, _addr: u64, _text: &str) -> Option<Vec<u8>> { None }
+    fn write_bytes(&mut self, _addr: u64, _bytes: &[u8]) -> bool { false }
+    fn set_comment(&mut self, _addr: u64, _text: &str) -> bool { false }
+    fn symbol_name(&self, _addr: u64) -> Option<String> { None }
 }
 ```
+
+**Note**: `refresh()` was removed in 0.10.0 — orphan trait method with
+no in-tree callers. Hosts implementing `refresh` should drop the
+override.
 
 ### InstructionEntry (Builder Pattern)
 
@@ -223,17 +285,38 @@ cfg.show_bytes = true;
 cfg.show_comments = true;
 cfg.show_arrows = true;
 cfg.show_breakpoints = true;
-cfg.show_block_tints = true;
+cfg.show_block_tints = false;        // disabled by default — use theme tints sparingly
+cfg.show_column_dividers = true;     // vertical lines between Address / Bytes / Instruction / Comment
 cfg.show_header = true;
 cfg.uppercase = true;
-cfg.address_width_64 = true;    // 16-char addresses (vs 8)
+cfg.address_width_64 = true;         // 16-char addresses (vs 8)
+cfg.byte_category_colors = true;     // per-byte tint in Bytes column (mirrors hex_viewer)
 
 // Behavior
 cfg.editable = false;
-cfg.follow_execution = false;   // auto-scroll to current
+cfg.follow_execution = false;        // auto-scroll to current
 cfg.base_address = 0;
-cfg.max_arrows = 64;            // max arrows per frame
+cfg.max_arrows = 256;                // max arrows per frame (heavy fns no longer hit cap)
 ```
+
+### Theme integration
+
+`DisasmViewConfig` plugs into the crate-wide `Theme` system — every
+built-in theme exposes a fully-themed `DisasmViewColors` palette:
+
+```rust
+use dear_imgui_custom_mod::theme::Theme;
+
+// One-shot apply at construction:
+let cfg = DisasmViewConfig::default().with_theme(Theme::Nord);
+
+// Or update an existing config when the host swaps themes:
+view.config.apply_theme_colors(&Theme::Catppuccin.disasm_view_colors());
+```
+
+Available accessor on `Theme`: `Theme::disasm_view_colors() ->
+DisasmViewColors`. Built-in themes: `Dark`, `Light`, `Midnight`,
+`Solarized`, `Monokai`, `Catppuccin`, `Nord`.
 
 ### Column Widths
 
@@ -328,19 +411,22 @@ disasm_view/
 
 ## Tests
 
-27 unit tests covering:
+96+ unit tests covering:
 - InstructionEntry builder pattern
 - VecDisasmProvider (count, lookup, index_of_address)
 - Breakpoint toggle
 - FlowKind color mapping
-- Arrow color mapping
+- Arrow color mapping (default, per-flow, branch-arrow clipping for off-window endpoints, x32/x64 PE32 addresses)
 - Block tint wrapping
-- Branch arrow computation
-- Arrow depth assignment (non-overlapping)
-- Operand tokenizer (registers, numbers, memory, strings)
+- Branch arrow computation, depth assignment (non-overlapping), priority sort
+- Operand tokenizer (registers, numbers, memory, strings, hex suffixes)
 - Token classification (register names, hex/dec numbers, size keywords)
-- Column width defaults
-- Config defaults
-- Select and goto_address
-- Navigation history (back/forward)
-- Address parsing
+- Column width defaults + dynamic comment-column reflow
+- Config defaults + theme-derived palette equivalence
+- Select / goto_address / nav back/forward + can_nav_back/forward
+- `do_search` sparse-provider correctness (`partition_point` over `(byte_offset, global_idx)` pairs)
+- `find_function_start` / `_end` (no off-by-one on last instruction)
+- `follow_at_cursor` — branch-target priority + operand-pointer fallback + lazy decode for streaming providers
+- Per-byte category coloring round-trip vs hex_viewer
+- Comment editing (round-trip, trim-on-write, clear-on-empty, default-impl no-op)
+- Convenience helpers: `select_current_ip`, `select_first_breakpoint`, `select_next/prev_breakpoint` (cycle + wraparound), `cursor_address` matches selection

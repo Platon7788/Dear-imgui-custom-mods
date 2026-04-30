@@ -423,7 +423,10 @@ impl DemoState {
         ui.same_line_with_pos(avail_right(ui, 80.0));
         ui.checkbox("Config", &mut self.show_config);
 
-        // Quick-nav buttons.
+        // Quick-nav buttons. Demonstrates the host-toolbar convenience
+        // helpers — `select_current_ip`, `select_first_breakpoint`,
+        // `can_nav_back`, etc — so a host can reproduce this row
+        // without any provider scan-loops.
         if ui.button("Top") {
             self.view.select(0);
         }
@@ -433,30 +436,18 @@ impl DemoState {
         }
         ui.same_line();
         if ui.button("Current (IP)") {
-            for i in 0..count {
-                if let Some(instr) = self.provider.instruction(i)
-                    && instr.is_current()
-                {
-                    self.view.select(i);
-                    break;
-                }
-            }
+            self.view.select_current_ip(&self.provider);
         }
         ui.same_line();
         if ui.button("Breakpoint") {
-            for i in 0..count {
-                if let Some(instr) = self.provider.instruction(i)
-                    && instr.has_breakpoint()
-                {
-                    self.view.select(i);
-                    break;
-                }
-            }
+            self.view.select_first_breakpoint(&self.provider);
         }
         ui.same_line();
         ui.text_disabled("|");
         ui.same_line();
         // Address-history nav (Alt+←/→ does the same via keyboard).
+        // `can_nav_*` lets a host fade these out when the stack is
+        // empty; demo just calls the methods unconditionally.
         if ui.button("<< Back") {
             self.view.nav_back(&self.provider);
         }

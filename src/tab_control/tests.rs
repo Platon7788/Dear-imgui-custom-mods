@@ -19,6 +19,7 @@ struct Spy {
     preview: bool,
     status: TabStatus,
     dot_color: Option<[u8; 3]>,
+    text_color: Option<[u8; 3]>,
     activated: u32,
     deactivated: u32,
 }
@@ -32,6 +33,7 @@ impl Spy {
             preview: true,
             status: TabStatus::Active,
             dot_color: None,
+            text_color: None,
             activated: 0,
             deactivated: 0,
         }
@@ -56,6 +58,10 @@ impl Spy {
         self.dot_color = Some(c);
         self
     }
+    fn with_text_color(mut self, c: [u8; 3]) -> Self {
+        self.text_color = Some(c);
+        self
+    }
 }
 
 impl TabItem for Spy {
@@ -76,6 +82,9 @@ impl TabItem for Spy {
     }
     fn dot_color(&self) -> Option<[u8; 3]> {
         self.dot_color
+    }
+    fn text_color(&self) -> Option<[u8; 3]> {
+        self.text_color
     }
     fn on_activated(&mut self) {
         self.activated += 1;
@@ -389,9 +398,32 @@ fn dot_color_default_is_none_and_overridable() {
 }
 
 #[test]
+fn text_color_default_is_none_and_overridable() {
+    // Pin the contract: by default `text_color()` returns `None` so
+    // the renderer falls through to the palette's `text` /
+    // `text_muted` defaults. A per-tab override surfaces verbatim.
+    let mut pc: TabControl<Spy> = TabControl::new("##t");
+    let plain = pc.add(Spy::new("plain"));
+    let warm = pc.add(Spy::new("warm").with_text_color([220, 140, 60]));
+    assert_eq!(pc.get(plain).unwrap().text_color(), None);
+    assert_eq!(pc.get(warm).unwrap().text_color(), Some([220, 140, 60]));
+}
+
+#[test]
 fn show_status_dot_config_default_is_true() {
     let cfg = TabControlConfig::default();
     assert!(cfg.show_status_dot);
+}
+
+#[test]
+fn content_padding_defaults_are_one_pixel_inset_enabled() {
+    // Pin the contract: 1-pixel content inset is on by default so
+    // user widgets never sit flush against the strip / outer-window
+    // edges. `[1.0, 1.0]` keeps the strip invisible-enough not to
+    // read as a margin while still preventing edge-collisions.
+    let cfg = TabControlConfig::default();
+    assert!(cfg.content_padding_enabled);
+    assert_eq!(cfg.content_padding, [1.0, 1.0]);
 }
 
 // ─── enforce_pinned_partition stability ────────────────────────────────────
