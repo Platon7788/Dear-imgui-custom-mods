@@ -193,16 +193,16 @@ impl TabItem for DiagnosticsTab {
 /// Settings tab — controls the parent style live.
 struct SettingsTab {
     style_idx: usize,
-    /// Mirror of `outer_tabs.config.content_padding` — slider writes
+    /// Mirror of `outer_tabs.config.body_inset` — slider writes
     /// here, the outer `DemoApp::render` reads + applies before
     /// rendering the strip.
-    content_pad: f32,
-    /// Mirror of `outer_tabs.config.content_padding_enabled`.
-    content_pad_enabled: bool,
-    /// Mirror of `tabs.config.colors.content_bg` — `color_edit3`
+    body_inset_state: f32,
+    /// Mirror of `outer_tabs.config.body_inset_enabled`.
+    body_inset_enabled_state: bool,
+    /// Mirror of `tabs.config.colors.body_bg` — `color_edit3`
     /// works in `[f32; 3]` 0..1 land; the host converts back to
     /// `[u8; 3]` when applying.
-    content_bg_rgb: [f32; 3],
+    body_bg_rgb: [f32; 3],
     /// Mirror of `tabs.config.colors.strip_bg` — same conversion.
     strip_bg_rgb: [f32; 3],
 }
@@ -239,13 +239,13 @@ impl TabItem for SettingsTab {
         // Content frame controls — toggle + thickness slider for the
         // outer-edge padding around the active tab's content area,
         // plus colour pickers for the gap (strip_bg) and the inner
-        // surface (content_bg).
+        // surface (body_bg).
         ui.text("Content frame:");
         ui.spacing();
-        ui.checkbox("Enable inset frame", &mut self.content_pad_enabled);
-        ui.slider("Padding (px)", 0.0, 16.0, &mut self.content_pad);
+        ui.checkbox("Enable inset frame", &mut self.body_inset_enabled_state);
+        ui.slider("Padding (px)", 0.0, 16.0, &mut self.body_inset_state);
         ui.color_edit3("Outer (gap)", &mut self.strip_bg_rgb);
-        ui.color_edit3("Inner (body)", &mut self.content_bg_rgb);
+        ui.color_edit3("Inner (body)", &mut self.body_bg_rgb);
         ui.spacing();
         ui.separator();
         ui.spacing();
@@ -412,7 +412,7 @@ impl Default for DemoApp {
         // Initial mirrors — match `TabControlConfig::default()` so
         // the sliders / pickers don't snap-jump on the first frame.
         let init_strip = tc.config.colors.strip_bg;
-        let init_content = tc.config.colors.content_bg;
+        let init_content = tc.config.colors.body_bg;
         let to_f32 = |c: [u8; 3]| {
             [
                 c[0] as f32 / 255.0,
@@ -422,10 +422,10 @@ impl Default for DemoApp {
         };
         tc.add(OuterTab::Settings(SettingsTab {
             style_idx: 0,
-            content_pad: 4.0,
-            content_pad_enabled: true,
+            body_inset_state: 4.0,
+            body_inset_enabled_state: true,
             strip_bg_rgb: to_f32(init_strip),
-            content_bg_rgb: to_f32(init_content),
+            body_bg_rgb: to_f32(init_content),
         }));
         // Activate Home tab first so the first thing the user sees is the welcome
         let first_id = tc.iter().next().map(|(id, _)| id);
@@ -445,8 +445,8 @@ impl AppHandler for DemoApp {
 
         // Apply the content-frame thickness + colours chosen in SettingsTab.
         let (pad, pad_enabled, strip_rgb, content_rgb) = current_content_frame(&self.tc);
-        self.tc.config.content_padding = [pad, pad];
-        self.tc.config.content_padding_enabled = pad_enabled;
+        self.tc.config.body_inset = [pad, pad];
+        self.tc.config.body_inset_enabled = pad_enabled;
         let to_u8 = |c: [f32; 3]| {
             [
                 (c[0] * 255.0).round().clamp(0.0, 255.0) as u8,
@@ -455,7 +455,7 @@ impl AppHandler for DemoApp {
             ]
         };
         self.tc.config.colors.strip_bg = to_u8(strip_rgb);
-        self.tc.config.colors.content_bg = to_u8(content_rgb);
+        self.tc.config.colors.body_bg = to_u8(content_rgb);
 
         ui.spacing();
         if let Some(TabAction::AddRequested) = self.tc.render(ui) {
@@ -487,10 +487,10 @@ fn current_content_frame(tc: &TabControl<OuterTab>) -> (f32, bool, [f32; 3], [f3
     for (_, item) in tc.iter() {
         if let OuterTab::Settings(s) = item {
             return (
-                s.content_pad,
-                s.content_pad_enabled,
+                s.body_inset_state,
+                s.body_inset_enabled_state,
                 s.strip_bg_rgb,
-                s.content_bg_rgb,
+                s.body_bg_rgb,
             );
         }
     }

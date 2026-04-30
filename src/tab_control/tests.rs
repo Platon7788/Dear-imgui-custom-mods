@@ -416,15 +416,15 @@ fn show_status_dot_config_default_is_true() {
 }
 
 #[test]
-fn content_padding_defaults_are_four_pixel_inset_enabled() {
+fn body_inset_defaults_are_four_pixel_inset_enabled() {
     // Pin the contract: 4-pixel outer-edge inset on by default so
     // a visible gap sits between the outer window edges and the
     // content child-rect. The `[2.0, 2.0]` default was too subtle
     // for the framed-content visual to register; bumped to `[4.0,
     // 4.0]` per user feedback 2026-04-30.
     let cfg = TabControlConfig::default();
-    assert!(cfg.content_padding_enabled);
-    assert_eq!(cfg.content_padding, [4.0, 4.0]);
+    assert!(cfg.body_inset_enabled);
+    assert_eq!(cfg.body_inset, [4.0, 4.0]);
 }
 
 #[test]
@@ -479,14 +479,14 @@ fn remove_keeps_pending_close_for_other_id() {
 }
 
 #[test]
-fn content_bg_default_differs_from_strip_bg_for_visible_frame() {
-    // Pin the contract: content_bg is intentionally darker than
+fn body_bg_default_differs_from_strip_bg_for_visible_frame() {
+    // Pin the contract: body_bg is intentionally darker than
     // strip_bg so the framed-content visual works (outer rect =
-    // strip_bg fills the gap, inner rect = content_bg fills the
+    // strip_bg fills the gap, inner rect = body_bg fills the
     // body). User feedback 2026-04-30 — visible inset is what
     // distinguishes a "tab body" from "strip extends downward".
     let palette = TabColors::default();
-    assert_ne!(palette.content_bg, palette.strip_bg);
+    assert_ne!(palette.body_bg, palette.strip_bg);
 }
 
 // ─── enforce_pinned_partition stability ────────────────────────────────────

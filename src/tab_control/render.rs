@@ -607,13 +607,13 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         && let Some(active_id) = pc.active
         && let Some(entry) = pc.tabs.iter_mut().find(|t| t.id == active_id)
     {
-        if pc.config.content_padding_enabled {
+        if pc.config.body_inset_enabled {
             // Visible-frame layout (ASCII model from user feedback
             // 2026-04-30):
             //
             //   [Tab strip]
             //   |-------------------------------------|   <- outer (strip_bg)
-            //   ||-----------------------------------||   <- inner (content_bg child window)
+            //   ||-----------------------------------||   <- inner (body_bg child window)
             //   ||                                   ||      gap = strip_bg
             //   ||      widgets clipped here         ||      inset by `pad`
             //   |-------------------------------------|
@@ -628,7 +628,7 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
             // + cursor offset) made widgets bleed past the right
             // edge because cursor offset doesn't reduce the line
             // width.
-            let pad = pc.config.content_padding;
+            let pad = pc.config.body_inset;
             let cur_screen = ui.cursor_screen_pos();
             let avail_full = ui.content_region_avail();
             let outer_min = cur_screen;
@@ -650,7 +650,7 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
                 (avail_full[1] - 2.0 * pad[1]).max(0.0),
             ];
 
-            // Borderless child filled with `content_bg` — clips
+            // Borderless child filled with `body_bg` — clips
             // widgets to the inner rect. Push WindowPadding(0,0)
             // so the host's first widget sits flush against the
             // inner rect's top-left (host can re-add its own
@@ -658,7 +658,7 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
             let _wp = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([0.0, 0.0]));
             let _bg = ui.push_style_color(
                 dear_imgui_rs::StyleColor::ChildBg,
-                rgba(pc.config.colors.content_bg, 1.0),
+                rgba(pc.config.colors.body_bg, 1.0),
             );
             ui.child_window("##tab_content")
                 .size(inner_size)

@@ -176,13 +176,13 @@ pub struct TabColors {
     pub strip_bg: [u8; 3],
     /// Background of the active tab's content area — the borderless
     /// child-window the strip's `render_content()` runs inside when
-    /// [`TabControlConfig::content_padding_enabled`] is `true`.
+    /// [`TabControlConfig::body_inset_enabled`] is `true`.
     /// Default mirrors [`Self::strip_bg`] so the content surface sits
     /// in the same plane as the strip and the 1-px padding inset
     /// reads as invisible breathing space. Set to a contrasting hue
     /// when the host wants the content area to read as a distinct
     /// surface (e.g. white-on-dark editor on a dark chrome).
-    pub content_bg: [u8; 3],
+    pub body_bg: [u8; 3],
     /// Color of the bottom-of-strip separator line and other thin dividers.
     pub separator: [u8; 3],
     pub status_active: [u8; 3],
@@ -206,10 +206,10 @@ impl Default for TabColors {
             strip_bg: [0x2a, 0x2e, 0x37],
             // Visibly darker than strip_bg so the framed-content
             // visual works on every theme out of the box (gap =
-            // strip_bg, inner = content_bg). Earlier defaults of
+            // strip_bg, inner = body_bg). Earlier defaults of
             // ~`-0.04` lift were too subtle on dark themes — the
             // frame got lost in the surrounding chrome.
-            content_bg: [0x18, 0x1c, 0x24],
+            body_bg: [0x18, 0x1c, 0x24],
             separator: [0x3f, 0x46, 0x54],
             status_active: [0x5f, 0xb8, 0x70],
             status_inactive: [0x8a, 0x92, 0xa1],
@@ -269,7 +269,7 @@ impl TabColors {
             // u8 step on dark themes; light themes still get a
             // visible tonal step because the clamp keeps it
             // monotonic.
-            content_bg: {
+            body_bg: {
                 let lift = -0.10_f32;
                 to_u8([
                     (nav.bg[0] + lift).clamp(0.0, 1.0),
@@ -317,20 +317,20 @@ pub struct TabControlConfig {
     /// [`TabControl::render`](super::TabControl::render) returns.
     pub external_content: bool,
     /// When `true` (default), the active tab's `render_content()` runs
-    /// inside a borderless child-window inset by [`Self::content_padding`]
+    /// inside a borderless child-window inset by [`Self::body_inset`]
     /// pixels from the outer window — a visible gap sits between the
     /// outer edges and the child rectangle so user widgets never touch
     /// the chrome. Set `false` for full-bleed content (legacy
     /// behaviour) — useful for charts, hex dumps, or any widget that
     /// wants to use every available pixel.
-    pub content_padding_enabled: bool,
+    pub body_inset_enabled: bool,
     /// Outer inset in pixels — `[horizontal, vertical]` — applied to
     /// the active tab's content child-window when
-    /// [`Self::content_padding_enabled`] is `true`. The renderer
+    /// [`Self::body_inset_enabled`] is `true`. The renderer
     /// shifts the cursor inwards by this amount and shrinks the child
     /// by `2 ×` the same on both axes, producing a visible gap around
     /// the child rectangle. Default `[2.0, 2.0]`.
-    pub content_padding: [f32; 2],
+    pub body_inset: [f32; 2],
     /// Allow drag-and-drop reordering of tabs.
     pub draggable: bool,
     /// Show overflow `…` dropdown when tabs don't fit.
@@ -414,8 +414,8 @@ impl Default for TabControlConfig {
             show_add_button: false,
             context_menu: true,
             external_content: false,
-            content_padding_enabled: true,
-            content_padding: [4.0, 4.0],
+            body_inset_enabled: true,
+            body_inset: [4.0, 4.0],
             draggable: true,
             show_overflow_dropdown: true,
             icons_available: false,

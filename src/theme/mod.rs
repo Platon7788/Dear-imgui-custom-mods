@@ -797,12 +797,12 @@ mod tests {
                 ]
             };
             assert_eq!(tabs.strip_bg, to_u8(nav.bg), "{theme:?}: strip_bg");
-            // content_bg lifts strip_bg darker so the framed-content
-            // visual works (gap = strip_bg, inner = content_bg).
+            // body_bg lifts strip_bg darker so the framed-content
+            // visual works (gap = strip_bg, inner = body_bg).
             // Pin distinctness, not equality.
             assert_ne!(
-                tabs.content_bg, tabs.strip_bg,
-                "{theme:?}: content_bg must differ from strip_bg for visible frame",
+                tabs.body_bg, tabs.strip_bg,
+                "{theme:?}: body_bg must differ from strip_bg for visible frame",
             );
             assert_eq!(tabs.tab_hover, to_u8(nav.btn_hover), "{theme:?}: tab_hover");
             assert_eq!(tabs.text, to_u8(nav.icon_active), "{theme:?}: text");

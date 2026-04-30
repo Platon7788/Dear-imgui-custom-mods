@@ -237,26 +237,26 @@ By default the active tab's `render_content()` runs inside a borderless child-wi
 
 ```rust
 // More breathing room (e.g. for forms / property panels):
-tc.config.content_padding = [8.0, 8.0];
+tc.config.body_inset = [8.0, 8.0];
 
 // Full-bleed (charts, hex dumps, anything that wants every pixel):
-tc.config.content_padding_enabled = false;
+tc.config.body_inset_enabled = false;
 ```
 
 Stacks cleanly with `external_content: true` — disable both if your host renders content outside `tc.render(ui)` and applies its own padding.
 
 ### Content background color
 
-The borderless child-window's `ChildBg` is driven from `colors.content_bg`. Default `content_bg == strip_bg` (= `nav.bg` for any themed palette), so the content surface sits in the same plane as the strip and the 1-px padding inset reads as invisible breathing space — **default visual layout unchanged**.
+The borderless child-window's `ChildBg` is driven from `colors.body_bg`. Default `body_bg == strip_bg` (= `nav.bg` for any themed palette), so the content surface sits in the same plane as the strip and the 1-px padding inset reads as invisible breathing space — **default visual layout unchanged**.
 
 Hosts who want a contrasting content surface (e.g. a white-on-dark editor inside a dark chrome) override the single field — the padding inset is painted in the same color:
 
 ```rust
 // Distinct content surface — strip stays nav.bg, content goes white.
-tc.config.colors.content_bg = [0xFC, 0xFC, 0xFA];
+tc.config.colors.body_bg = [0xFC, 0xFC, 0xFA];
 ```
 
-Pin the contract: `Theme::tab_colors()` keeps `content_bg == strip_bg` for every built-in theme so a theme switch never desyncs the surfaces (see `theme::tests::tab_colors_track_nav_and_statusbar`).
+Pin the contract: `Theme::tab_colors()` keeps `body_bg == strip_bg` for every built-in theme so a theme switch never desyncs the surfaces (see `theme::tests::tab_colors_track_nav_and_statusbar`).
 
 ## Theme integration
 
@@ -287,8 +287,8 @@ TabControlConfig {
     show_add_button:     false,   // shows a "+" at the right
     context_menu:        true,    // right-click → context_tab + open_context_menu
     external_content:    false,   // skip render_content (caller draws content)
-    content_padding_enabled: true,  // wrap render_content in a borderless child with WindowPadding
-    content_padding:    [1.0, 1.0], // [horizontal, vertical] inset; default 1 px breathing strip
+    body_inset_enabled: true,  // wrap render_content in a borderless child with WindowPadding
+    body_inset:    [1.0, 1.0], // [horizontal, vertical] inset; default 1 px breathing strip
     draggable:           true,
     show_overflow_dropdown: true,
 
