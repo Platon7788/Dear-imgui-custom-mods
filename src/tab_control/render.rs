@@ -608,49 +608,67 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         && let Some(entry) = pc.tabs.iter_mut().find(|t| t.id == active_id)
     {
         if pc.config.content_padding_enabled {
-            // True visible frame: paint two rectangles directly via
-            // the draw list, then offset the cursor inside the inner
-            // rect for `render_content`. ASCII model from user
-            // feedback 2026-04-30:
+            // Visible-frame layout (ASCII model from user feedback
+            // 2026-04-30):
             //
             //   [Tab strip]
             //   |-------------------------------------|   <- outer (strip_bg)
-            //   ||-----------------------------------||   <- inner (content_bg)
+            //   ||-----------------------------------||   <- inner (content_bg child window)
             //   ||                                   ||      gap = strip_bg
-            //   ||                                   ||      inset by `pad`
+            //   ||      widgets clipped here         ||      inset by `pad`
             //   |-------------------------------------|
             //
-            // The previous attempts wrapped the host content in a
-            // child_window which collapsed to 0×0 or only padded
-            // inner widgets — neither produced the visible frame.
-            // Drawing rectangles by hand and shifting the cursor is
-            // the path that actually works.
+            // Outer rect is painted directly on the parent's draw
+            // list, then the cursor is offset by `pad` and the host's
+            // `render_content` runs inside a *real* child window
+            // sized to fit between the outer rect and `pad` on all
+            // four sides. The child gives us proper clipping so
+            // text wrap, button max width, etc. respect the inner
+            // bounds — a draw-list-only approach (paint inner rect
+            // + cursor offset) made widgets bleed past the right
+            // edge because cursor offset doesn't reduce the line
+            // width.
             let pad = pc.config.content_padding;
             let cur_screen = ui.cursor_screen_pos();
-            let avail = ui.content_region_avail();
+            let avail_full = ui.content_region_avail();
             let outer_min = cur_screen;
-            let outer_max = [cur_screen[0] + avail[0], cur_screen[1] + avail[1]];
-            let inner_min = [outer_min[0] + pad[0], outer_min[1] + pad[1]];
-            let inner_max = [outer_max[0] - pad[0], outer_max[1] - pad[1]];
+            let outer_max = [cur_screen[0] + avail_full[0], cur_screen[1] + avail_full[1]];
 
             let draw = ui.get_window_draw_list();
             // Outer fill — extends the chrome / strip surface into
-            // the body so the gap reads as "frame around content".
+            // the body so the gap reads as a frame around content.
             draw.add_rect(outer_min, outer_max, c32(pc.config.colors.strip_bg, 255))
                 .filled(true)
                 .build();
-            // Inner fill — the content surface. When `content_bg !=
-            // strip_bg` the gap becomes visibly distinct.
-            draw.add_rect(inner_min, inner_max, c32(pc.config.colors.content_bg, 255))
-                .filled(true)
-                .build();
 
-            // Offset cursor so widgets inside `render_content` start
-            // at the inner rect's top-left.
+            // Shift cursor inward — the upcoming child_window picks
+            // its position from the current cursor.
             let cur = ui.cursor_pos();
             ui.set_cursor_pos([cur[0] + pad[0], cur[1] + pad[1]]);
+            let inner_size = [
+                (avail_full[0] - 2.0 * pad[0]).max(0.0),
+                (avail_full[1] - 2.0 * pad[1]).max(0.0),
+            ];
+
+            // Borderless child filled with `content_bg` — clips
+            // widgets to the inner rect. Push WindowPadding(0,0)
+            // so the host's first widget sits flush against the
+            // inner rect's top-left (host can re-add its own
+            // breathing room inside `render_content` if needed).
+            let _wp = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([0.0, 0.0]));
+            let _bg = ui.push_style_color(
+                dear_imgui_rs::StyleColor::ChildBg,
+                rgba(pc.config.colors.content_bg, 1.0),
+            );
+            ui.child_window("##tab_content")
+                .size(inner_size)
+                .border(false)
+                .build(ui, || {
+                    entry.item.render_content(ui);
+                });
+        } else {
+            entry.item.render_content(ui);
         }
-        entry.item.render_content(ui);
     }
 
     action
