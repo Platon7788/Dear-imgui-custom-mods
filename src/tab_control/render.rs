@@ -416,12 +416,23 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
     }
 
     // ── Apply deferred scroll-to-active (set by add/set_active/scroll_to_active) ─
+    //
+    // Programmatic activation snaps the strip to the new active tab
+    // in one frame instead of letting the smooth-scroll animation
+    // ease in over many frames. The smooth interpolation is the
+    // right model for the mouse-wheel path (continuous user input)
+    // but feels sluggish for a discrete "I picked tab X" intent —
+    // see user feedback 2026-04-30: "при переключении расчитало
+    // реально требуемое расстояние и переместило". Snap by writing
+    // `scroll_offset = scroll_target` after `scroll_into_view`
+    // computes the goal.
     if pc.pending_scroll_to_active {
         pc.pending_scroll_to_active = false;
         if let Some(active_id) = pc.active
             && let Some(idx) = pc.tabs.iter().position(|t| t.id == active_id)
         {
             scroll_into_view(pc, idx, scroll_area_w);
+            pc.scroll_offset = pc.scroll_target;
         }
     }
 
@@ -446,6 +457,9 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         }
         action = Some(TabAction::Activated(new_id));
         scroll_into_view(pc, new_idx, scroll_area_w);
+        // Snap: discrete activation, see comment on the
+        // `pending_scroll_to_active` block above.
+        pc.scroll_offset = pc.scroll_target;
     }
 
     // ── PRE-PASS: fill hit_scratch with geometry + hit state ────────────
@@ -552,6 +566,7 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         right_clicked,
         hover_activate_ms,
         preview_hover_ms,
+        scroll_area_w,
     );
 
     // ── Drag-and-drop (within own group: pinned ↔ pinned, regular ↔ regular) ─
@@ -733,6 +748,7 @@ fn handle_tab_events<T: TabItem>(
     right_clicked: bool,
     hover_activate_ms: Option<u32>,
     preview_hover_ms: Option<u32>,
+    scroll_area_w: f32,
 ) {
     let cfg_closable = pc.config.closable;
     let cfg_middle_close = pc.config.middle_click_close;
@@ -902,7 +918,7 @@ fn handle_tab_events<T: TabItem>(
         }
     }
 
-    if let (Some(new_id), Some(_idx)) = (activate_target, activate_idx) {
+    if let (Some(new_id), Some(idx)) = (activate_target, activate_idx) {
         if let Some(old_id) = pc.active
             && let Some(old) = pc.tabs.iter_mut().find(|t| t.id == old_id)
         {
@@ -913,6 +929,12 @@ fn handle_tab_events<T: TabItem>(
             entry.item.on_activated();
         }
         *action = Some(TabAction::Activated(new_id));
+        // Snap scroll to the clicked tab — the tab was probably
+        // visible already, but partial-overlap clicks (tab half-
+        // clipped at the right edge) feel more decisive when the
+        // strip jumps the few remaining pixels in one frame.
+        scroll_into_view(pc, idx, scroll_area_w);
+        pc.scroll_offset = pc.scroll_target;
     }
 
     if let Some((idx, x)) = drag_idx {
@@ -1189,6 +1211,10 @@ fn handle_keyboard<T: TabItem>(
 
     if let Some(idx) = nav_idx {
         scroll_into_view(pc, idx, scroll_area_w);
+        // Snap on keyboard activation (Left / Right / Ctrl+Tab /
+        // Ctrl+1..9). Same rationale as the programmatic-activation
+        // path above — discrete jumps, no smooth ease.
+        pc.scroll_offset = pc.scroll_target;
     }
 
     // Ctrl+T — request a new tab
