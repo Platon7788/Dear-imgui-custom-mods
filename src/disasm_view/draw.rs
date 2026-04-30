@@ -270,22 +270,33 @@ impl DisasmView {
                 let ty = y + (lh - text_h) * 0.5;
                 draw_list.add_text([tx, ty], col32(bp_color), &label);
             }
-            // ── Bookmark ring marker (overlay; coexists with BP) ──
-            // Outline-only circle in the same gutter cell so the row
-            // visually carries both states when applicable. Centered
-            // horizontally inside `cols.margin`, sized off the line
-            // height (matches the breakpoint dot scale used in
-            // `code_editor`).
+            // ── Bookmark marker (overlay; coexists with BP) ─────
+            // When the host registered the MDI font
+            // (`icons_available = true`), draw the
+            // `BOOKMARK_CHECK_OUTLINE` glyph centred in the gutter
+            // cell — the user-recognisable bookmark icon. When the
+            // font isn't available, fall back to a ring outline so
+            // the marker still reads.
             if cfg.show_bookmarks && self.is_bookmarked(instr.address()) {
                 let cx = x + cols.margin * 0.5;
                 let cy = y + lh * 0.5;
-                let radius = (lh * 0.30).min(cols.margin * 0.40);
-                draw_list
-                    .add_circle([cx, cy], radius, col32(colors.bookmark))
-                    .filled(false)
-                    .thickness(1.4)
-                    .num_segments(20)
-                    .build();
+                if cfg.icons_available {
+                    let glyph = crate::icons::BOOKMARK_CHECK_OUTLINE;
+                    let sz = crate::utils::text::calc_text_size(glyph);
+                    draw_list.add_text(
+                        [cx - sz[0] * 0.5, cy - sz[1] * 0.5],
+                        col32(colors.bookmark),
+                        glyph,
+                    );
+                } else {
+                    let radius = (lh * 0.30).min(cols.margin * 0.40);
+                    draw_list
+                        .add_circle([cx, cy], radius, col32(colors.bookmark))
+                        .filled(false)
+                        .thickness(1.4)
+                        .num_segments(20)
+                        .build();
+                }
             }
             x += cols.margin;
         }

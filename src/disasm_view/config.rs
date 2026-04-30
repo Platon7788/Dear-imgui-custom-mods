@@ -647,11 +647,19 @@ pub struct DisasmViewConfig {
     pub show_arrows: bool,
     /// Show breakpoint markers in margin.
     pub show_breakpoints: bool,
-    /// Show bookmark ring markers in the margin gutter for any row whose
+    /// Show bookmark markers in the margin gutter for any row whose
     /// address is in [`crate::disasm_view::DisasmView::bookmarks`].
     /// Default `true`. Bookmarks coexist with breakpoints — both can be
-    /// drawn on the same row (filled BP dot + outline ring overlay).
+    /// drawn on the same row (filled BP dot + bookmark glyph overlay).
     pub show_bookmarks: bool,
+    /// Whether the active ImGui font carries the MDI glyph range
+    /// (U+F0000–U+FFFFF) used by [`crate::icons`]. When `true` the
+    /// bookmark marker draws as the proper
+    /// [`crate::icons::BOOKMARK_CHECK_OUTLINE`] glyph; when `false`
+    /// (default) it falls back to a ring outline so the marker
+    /// still reads on hosts that haven't registered the icon font.
+    /// Mirrors `tab_control::TabControlConfig::icons_available`.
+    pub icons_available: bool,
     /// Show alternating per-block background tinting (semantic hues
     /// at low alpha, rotated by `block_index`). Default **`false`**
     /// — the tint reads as visual noise during normal browsing /
@@ -702,6 +710,7 @@ impl Default for DisasmViewConfig {
             show_arrows: true,
             show_breakpoints: true,
             show_bookmarks: true,
+            icons_available: false,
             show_block_tints: false,
             show_header: true,
             show_column_dividers: true,
