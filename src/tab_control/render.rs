@@ -650,6 +650,21 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
                 draw.add_rect(outer_min, outer_max, c32(pc.config.colors.frame_bg, 255))
                     .filled(true)
                     .build();
+                // Optional active-frame border — outlined rect drawn
+                // OVER the frame fill so the host gets an "active
+                // pane" cue matching the strip's selected-tab hue
+                // (IDE-style highlight). Off by default; toggled via
+                // `TabControlConfig::body_inset_border`.
+                if pc.config.body_inset_border {
+                    draw.add_rect(
+                        outer_min,
+                        outer_max,
+                        c32(pc.config.colors.frame_border, 255),
+                    )
+                    .filled(false)
+                    .thickness(pc.config.body_inset_border_thickness)
+                    .build();
+                }
             }
 
             // Shift cursor inward — the upcoming child_window picks

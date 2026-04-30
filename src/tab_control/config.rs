@@ -183,6 +183,12 @@ pub struct TabColors {
     /// the frame independently — changing this field DOES NOT
     /// affect the tab strip itself.
     pub frame_bg: [u8; 3],
+    /// Outline colour of the active-tab body frame, drawn around the
+    /// outer rectangle when
+    /// [`TabControlConfig::body_inset_border`] is `true`. Default
+    /// mirrors [`Self::accent`] so the border reads as the same
+    /// "this is selected" cue the strip uses for the active tab.
+    pub frame_border: [u8; 3],
     /// Background of the active tab's content area — the borderless
     /// child-window the strip's `render_content()` runs inside when
     /// [`TabControlConfig::body_inset_enabled`] is `true`.
@@ -217,6 +223,10 @@ impl Default for TabColors {
             // one chrome surface; hosts override `frame_bg` to
             // distinguish them.
             frame_bg: [0x2a, 0x2e, 0x37],
+            // Default mirrors `accent` so the active-tab border
+            // (when enabled) reads as the same "selected" hue the
+            // strip uses to highlight the active tab.
+            frame_border: [0x5b, 0x9b, 0xd5],
             // Slightly *lighter* than strip_bg so the body reads as
             // a "raised inset surface" rather than a dark hole.
             // User feedback 2026-04-30: prior darker defaults read
@@ -280,6 +290,10 @@ impl TabColors {
             // Mirrors strip_bg by default — same chrome surface;
             // hosts override for independent colouring.
             frame_bg: to_u8(nav.bg),
+            // Borrow the nav indicator hue for the active-tab
+            // frame border, so it reads as the same "selected"
+            // accent the strip uses internally.
+            frame_border: to_u8(nav.indicator),
             // Slightly *lighter* than strip_bg (= nav.bg) so the
             // body reads as a raised inset surface. Earlier
             // attempts went darker which read as a "dark hole" on
@@ -348,6 +362,15 @@ pub struct TabControlConfig {
     /// by `2 ×` the same on both axes, producing a visible gap around
     /// the child rectangle. Default `[2.0, 2.0]`.
     pub body_inset: [f32; 2],
+    /// When `true`, draw an outlined rectangle around the active
+    /// tab's body frame in [`TabColors::frame_border`]. Off by
+    /// default — opt-in cue for IDE-style hosts that want a
+    /// "selected pane" highlight matching the active tab. Has no
+    /// effect when [`Self::body_inset_enabled`] is `false`.
+    pub body_inset_border: bool,
+    /// Stroke thickness of the [`Self::body_inset_border`] outline,
+    /// in pixels. Default `1.5`.
+    pub body_inset_border_thickness: f32,
     /// Allow drag-and-drop reordering of tabs.
     pub draggable: bool,
     /// Show overflow `…` dropdown when tabs don't fit.
@@ -433,6 +456,8 @@ impl Default for TabControlConfig {
             external_content: false,
             body_inset_enabled: true,
             body_inset: [4.0, 4.0],
+            body_inset_border: false,
+            body_inset_border_thickness: 1.5,
             draggable: true,
             show_overflow_dropdown: true,
             icons_available: false,

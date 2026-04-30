@@ -203,8 +203,15 @@ struct SettingsTab {
     /// works in `[f32; 3]` 0..1 land; the host converts back to
     /// `[u8; 3]` when applying.
     body_bg_rgb: [f32; 3],
-    /// Mirror of `tabs.config.colors.strip_bg` — same conversion.
+    /// Mirror of `tabs.config.colors.frame_bg` — same conversion.
     frame_bg_rgb: [f32; 3],
+    /// Mirror of `tabs.config.body_inset_border` — toggle for the
+    /// active-pane outline.
+    border_enabled: bool,
+    /// Mirror of `tabs.config.body_inset_border_thickness`.
+    border_thickness: f32,
+    /// Mirror of `tabs.config.colors.frame_border` — outline colour.
+    border_rgb: [f32; 3],
 }
 
 impl TabItem for SettingsTab {
@@ -246,6 +253,10 @@ impl TabItem for SettingsTab {
         ui.slider("Padding (px)", 0.0, 16.0, &mut self.body_inset_state);
         ui.color_edit3("Outer (gap)", &mut self.frame_bg_rgb);
         ui.color_edit3("Inner (body)", &mut self.body_bg_rgb);
+        ui.spacing();
+        ui.checkbox("Active-pane border", &mut self.border_enabled);
+        ui.slider("Border thickness", 0.5, 6.0, &mut self.border_thickness);
+        ui.color_edit3("Border colour", &mut self.border_rgb);
         ui.spacing();
         ui.separator();
         ui.spacing();
@@ -412,6 +423,7 @@ impl Default for DemoApp {
         // Initial mirrors — match `TabControlConfig::default()` so
         // the sliders / pickers don't snap-jump on the first frame.
         let init_frame = tc.config.colors.frame_bg;
+        let init_border = tc.config.colors.frame_border;
         let init_content = tc.config.colors.body_bg;
         let to_f32 = |c: [u8; 3]| {
             [
@@ -426,6 +438,9 @@ impl Default for DemoApp {
             body_inset_enabled_state: true,
             frame_bg_rgb: to_f32(init_frame),
             body_bg_rgb: to_f32(init_content),
+            border_enabled: false,
+            border_thickness: 1.5,
+            border_rgb: to_f32(init_border),
         }));
         // Activate Home tab first so the first thing the user sees is the welcome
         let first_id = tc.iter().next().map(|(id, _)| id);
@@ -444,9 +459,11 @@ impl AppHandler for DemoApp {
         propagate_style_to_nested(&mut self.tc, outer_style);
 
         // Apply the content-frame thickness + colours chosen in SettingsTab.
-        let (pad, pad_enabled, frame_rgb, content_rgb) = current_content_frame(&self.tc);
-        self.tc.config.body_inset = [pad, pad];
-        self.tc.config.body_inset_enabled = pad_enabled;
+        let frame = current_content_frame(&self.tc);
+        self.tc.config.body_inset = [frame.pad, frame.pad];
+        self.tc.config.body_inset_enabled = frame.pad_enabled;
+        self.tc.config.body_inset_border = frame.border_enabled;
+        self.tc.config.body_inset_border_thickness = frame.border_thickness;
         let to_u8 = |c: [f32; 3]| {
             [
                 (c[0] * 255.0).round().clamp(0.0, 255.0) as u8,
@@ -454,8 +471,9 @@ impl AppHandler for DemoApp {
                 (c[2] * 255.0).round().clamp(0.0, 255.0) as u8,
             ]
         };
-        self.tc.config.colors.frame_bg = to_u8(frame_rgb);
-        self.tc.config.colors.body_bg = to_u8(content_rgb);
+        self.tc.config.colors.frame_bg = to_u8(frame.frame_rgb);
+        self.tc.config.colors.body_bg = to_u8(frame.content_rgb);
+        self.tc.config.colors.frame_border = to_u8(frame.border_rgb);
 
         ui.spacing();
         if let Some(TabAction::AddRequested) = self.tc.render(ui) {
@@ -479,22 +497,43 @@ fn current_style(tc: &TabControl<OuterTab>) -> TabStyle {
     TabStyle::Pill
 }
 
-/// Read the `(pad, enabled, frame_rgb, content_rgb)` tuple from the
-/// SettingsTab so the host can apply them to the outer config each
-/// frame. Colours are normalized `[f32; 3]` (0..1) — the host
-/// converts to `[u8; 3]` before writing into `TabColors`.
-fn current_content_frame(tc: &TabControl<OuterTab>) -> (f32, bool, [f32; 3], [f32; 3]) {
+/// Snapshot of the SettingsTab's frame controls so the host can
+/// apply them to the outer config each frame. Colours are
+/// normalized `[f32; 3]` (0..1) — the host converts to `[u8; 3]`
+/// before writing into `TabColors`.
+struct FrameSettings {
+    pad: f32,
+    pad_enabled: bool,
+    frame_rgb: [f32; 3],
+    content_rgb: [f32; 3],
+    border_enabled: bool,
+    border_thickness: f32,
+    border_rgb: [f32; 3],
+}
+
+fn current_content_frame(tc: &TabControl<OuterTab>) -> FrameSettings {
     for (_, item) in tc.iter() {
         if let OuterTab::Settings(s) = item {
-            return (
-                s.body_inset_state,
-                s.body_inset_enabled_state,
-                s.frame_bg_rgb,
-                s.body_bg_rgb,
-            );
+            return FrameSettings {
+                pad: s.body_inset_state,
+                pad_enabled: s.body_inset_enabled_state,
+                frame_rgb: s.frame_bg_rgb,
+                content_rgb: s.body_bg_rgb,
+                border_enabled: s.border_enabled,
+                border_thickness: s.border_thickness,
+                border_rgb: s.border_rgb,
+            };
         }
     }
-    (4.0, true, [0.165, 0.180, 0.216], [0.094, 0.110, 0.141])
+    FrameSettings {
+        pad: 4.0,
+        pad_enabled: true,
+        frame_rgb: [0.165, 0.180, 0.216],
+        content_rgb: [0.196, 0.212, 0.251],
+        border_enabled: false,
+        border_thickness: 1.5,
+        border_rgb: [0.357, 0.608, 0.835],
+    }
 }
 
 fn propagate_style_to_nested(tc: &mut TabControl<OuterTab>, style: TabStyle) {
