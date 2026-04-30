@@ -358,6 +358,12 @@ impl DemoState {
         let mut view = DisasmView::new("##disasm_demo");
         view.select(0);
 
+        // The demo doesn't register the MDI font, so opt out of the
+        // glyph-based bookmark marker — fall back to the ring
+        // outline. Real hosts (e.g. vex0r) leave `icons_available`
+        // at its default `true` to get the proper bookmark glyph.
+        view.config.icons_available = false;
+
         // Pre-populate two bookmarks so the gutter ring marker is
         // visible at startup. Showcases `add_bookmark()` plus the
         // ring/dot coexistence on row 16 (which also has BP #2).

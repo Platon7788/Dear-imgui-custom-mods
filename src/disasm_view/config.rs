@@ -653,12 +653,12 @@ pub struct DisasmViewConfig {
     /// drawn on the same row (filled BP dot + bookmark glyph overlay).
     pub show_bookmarks: bool,
     /// Whether the active ImGui font carries the MDI glyph range
-    /// (U+F0000–U+FFFFF) used by [`crate::icons`]. When `true` the
-    /// bookmark marker draws as the proper
+    /// (U+F0000–U+FFFFF) used by [`crate::icons`]. When `true`
+    /// (default) the bookmark marker draws as the proper
     /// [`crate::icons::BOOKMARK_CHECK_OUTLINE`] glyph; when `false`
-    /// (default) it falls back to a ring outline so the marker
-    /// still reads on hosts that haven't registered the icon font.
-    /// Mirrors `tab_control::TabControlConfig::icons_available`.
+    /// it falls back to a ring outline so the marker still reads on
+    /// hosts that haven't registered the icon font (`?`-box would
+    /// appear otherwise).
     pub icons_available: bool,
     /// Show alternating per-block background tinting (semantic hues
     /// at low alpha, rotated by `block_index`). Default **`false`**
@@ -710,7 +710,7 @@ impl Default for DisasmViewConfig {
             show_arrows: true,
             show_breakpoints: true,
             show_bookmarks: true,
-            icons_available: false,
+            icons_available: true,
             show_block_tints: false,
             show_header: true,
             show_column_dividers: true,
