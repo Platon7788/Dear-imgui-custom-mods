@@ -202,6 +202,12 @@ impl HexViewer {
         }
         if ctrl && ui.is_key_pressed(Key::A) {
             self.selection = Selection { start: 0, end: len };
+            // Move cursor to the end of the selection so a
+            // subsequent shift+arrow re-anchors at `len-1` (the
+            // current cursor) rather than re-anchoring at the
+            // OLD cursor position and silently shrinking the
+            // select-all to `[old_cursor..new]`.
+            self.cursor = len.saturating_sub(1);
         }
         if ctrl && !shift && ui.is_key_pressed(Key::Z) {
             self.undo();

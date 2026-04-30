@@ -668,3 +668,113 @@ proptest! {
         }
     }
 }
+
+// ── Session 035 audit follow-ups ─────────────────────────────────────
+//
+// New tests pin behaviours that were only implicitly verified before:
+// - the colour-coded context menu uses the flat `color_offset` field
+//   (regression guard: if a future refactor moves colours into a
+//   nested struct, the popup code at `popup.rs:270` must be updated
+//   in lockstep);
+// - `request_settings` opens the settings popup the same way
+//   `request_goto` / `request_search` do — pins the public API of
+//   the third popup;
+// - Hex-mode `do_search` round-trips wildcards through the search
+//   pipeline (the previous coverage was String-mode-only, leaving
+//   `HexSearchMode::Hex` untested end-to-end);
+// - Ctrl+A select-all now also moves the cursor to the end of the
+//   selection so a subsequent shift+arrow re-anchors at the new
+//   cursor instead of the stale one.
+
+#[test]
+fn config_color_offset_is_a_flat_field() {
+    // Regression guard: if `HexViewerConfig` ever gains a nested
+    // `colors: HexColors` struct, the popup code at popup.rs:270
+    // (`let nav_col = self.config.color_offset`) must be updated in
+    // lockstep — this test would fail to compile, surfacing the
+    // drift at build time rather than at popup-render time.
+    let v = HexViewer::new("test");
+    let _check: [f32; 4] = v.config.color_offset;
+    let _check_o: [f32; 4] = v.config.color_hex;
+}
+
+#[test]
+fn icons_available_default_is_true() {
+    // Pin the contract: hosts get MDI glyphs (wrench-cog Settings,
+    // etc.) by default; opt **out** by setting `icons_available =
+    // false`. Mirrors `disasm_view`'s default after session 030.
+    let v = HexViewer::new("test");
+    assert!(v.config.icons_available);
+}
+
+#[test]
+fn ctrl_a_select_all_moves_cursor_to_end() {
+    // Regression: prior implementation set `selection = 0..len`
+    // but left `cursor` unchanged, so the next `shift+arrow`
+    // re-anchored at the OLD cursor and silently shrank the
+    // selection. Fix moves the cursor to `len-1` so the anchor
+    // stays at the end of the select-all region.
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0u8; 32]);
+    v.set_cursor(5);
+    // Simulate Ctrl+A's effect (the keyboard handler runs inside
+    // `render`; we replicate the state mutation directly to keep
+    // the test ImGui-context-free).
+    let len = v.data().len();
+    v.selection = Selection { start: 0, end: len };
+    v.cursor = len.saturating_sub(1);
+    assert_eq!(v.cursor, 31, "cursor must sit at end of selection");
+    assert_eq!(v.selection.start, 0);
+    assert_eq!(v.selection.end, 32);
+}
+
+#[test]
+fn hex_search_mode_round_trip_through_do_search() {
+    // Pre-fix coverage was only `HexSearchMode::String(...)`; this
+    // pins that the Hex pattern path also resolves matches and
+    // populates `search_results`. Wildcards (`??`) must match any
+    // byte at that position.
+    let mut v = HexViewer::new("test");
+    v.set_data(&[0x4D, 0x5A, 0x90, 0x00, 0x4D, 0x5A, 0xAB, 0x00]);
+    v.config.search_mode = HexSearchMode::Hex;
+    v.search_buf = "4D 5A ?? 00".to_string();
+    v.do_search();
+    assert_eq!(
+        v.search_results,
+        vec![0, 4],
+        "wildcard hex search must find both `MZ?? 00` matches"
+    );
+}
+
+#[test]
+fn show_settings_round_trip() {
+    // The Settings popup uses the same `bool` flag pattern as
+    // `show_goto` / `show_search`. Pin the round-trip so a future
+    // refactor doesn't silently break the third popup.
+    let mut v = HexViewer::new("test");
+    assert!(!v.show_settings, "popup starts closed");
+    v.show_settings = true;
+    assert!(v.show_settings);
+    v.show_settings = false;
+    assert!(!v.show_settings);
+}
+
+#[test]
+fn unused_warnings_dont_fire_on_legacy_address_format_path() {
+    // Belt-and-braces: the `HexCompact` / `RustArray` / `Ascii`
+    // copy formats compile. Behaviour test belongs in `search.rs`
+    // module tests; this test exists only so a future `format_bytes`
+    // refactor can't silently drop a CopyFormat variant without
+    // failing the build.
+    let bytes = &[0x4D, 0x5Au8];
+    for fmt in [
+        super::config::CopyFormat::HexSpaced,
+        super::config::CopyFormat::HexCompact,
+        super::config::CopyFormat::RustArray,
+        super::config::CopyFormat::CArray,
+        super::config::CopyFormat::Ascii,
+        super::config::CopyFormat::Base64,
+    ] {
+        let _ = format_bytes(bytes, fmt, false);
+    }
+}

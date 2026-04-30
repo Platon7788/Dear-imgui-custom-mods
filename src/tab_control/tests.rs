@@ -419,8 +419,8 @@ fn show_status_dot_config_default_is_true() {
 fn body_inset_defaults_are_four_pixel_inset_enabled() {
     // Pin the contract: 4-pixel outer-edge inset on by default so
     // a visible gap sits between the outer window edges and the
-    // content child-rect. The `[2.0, 2.0]` default was too subtle
-    // for the framed-content visual to register; bumped to `[4.0,
+    // body child-rect. The `[2.0, 2.0]` default was too subtle
+    // for the body-frame visual to register; bumped to `[4.0,
     // 4.0]` per user feedback 2026-04-30.
     let cfg = TabControlConfig::default();
     assert!(cfg.body_inset_enabled);
@@ -481,7 +481,7 @@ fn remove_keeps_pending_close_for_other_id() {
 #[test]
 fn body_bg_default_differs_from_strip_bg_for_visible_frame() {
     // Pin the contract: body_bg is intentionally darker than
-    // strip_bg so the framed-content visual works (outer rect =
+    // strip_bg so the body-frame visual works (outer rect =
     // strip_bg fills the gap, inner rect = body_bg fills the
     // body). User feedback 2026-04-30 — visible inset is what
     // distinguishes a "tab body" from "strip extends downward".
@@ -589,4 +589,72 @@ fn tab_with_status_dirty_reports_dirty() {
     let mut pc: TabControl<Spy> = TabControl::new("##t");
     let a = pc.add(Spy::new("a").with_status(TabStatus::Dirty));
     assert_eq!(pc.get(a).unwrap().status(), TabStatus::Dirty);
+}
+
+// ─── Session 035 audit follow-ups ───────────────────────────────────
+//
+// Pin defaults of `body_inset_border` (off) +
+// `body_inset_border_thickness` (1.5) and the `frame_bg` /
+// `frame_border` palette so a future refactor can't silently flip
+// the active-pane outline from opt-in to opt-out, or change the
+// 1.5-px thickness without an explicit decision.
+//
+// Also pin `SMOOTH_SCROLL_COEF = 28.0` so the bumped (session 033)
+// snap-scroll easing constant doesn't regress to the original
+// `14.0` in a future merge.
+
+#[test]
+fn body_inset_border_defaults_off() {
+    // Active-pane outline is opt-in by design. Hosts that want the
+    // IDE-style "selected pane" highlight set
+    // `body_inset_border = true`; the default keeps the chrome
+    // minimal so the strip + body read as one surface.
+    let cfg = TabControlConfig::default();
+    assert!(!cfg.body_inset_border);
+}
+
+#[test]
+fn body_inset_border_thickness_default_is_one_and_a_half() {
+    // 1.5 px reads as a clean single-pixel rule on standard DPI
+    // and a soft 2-px line on 200%+ scaling — both prior 1.0 and
+    // 2.0 attempts looked wrong on at least one of those screens.
+    let cfg = TabControlConfig::default();
+    assert_eq!(cfg.body_inset_border_thickness, 1.5);
+}
+
+#[test]
+fn frame_bg_default_mirrors_strip_bg() {
+    // Body-inset gap fills with `frame_bg`. The default mirror to
+    // `strip_bg` keeps the strip + frame chrome visually unified;
+    // hosts that want a contrasting frame override the field
+    // directly. (`body_bg` is the inner surface and is *not*
+    // mirrored — see `body_bg_default_differs_from_strip_bg_for_visible_frame`.)
+    let palette = TabColors::default();
+    assert_eq!(palette.frame_bg, palette.strip_bg);
+}
+
+#[test]
+fn frame_border_default_matches_accent() {
+    // Active-pane border defaults to the `accent` hue so when the
+    // host opts in via `body_inset_border = true` the outline reads
+    // as the same "this is selected" cue the strip uses for the
+    // active tab.
+    let palette = TabColors::default();
+    assert_eq!(palette.frame_border, palette.accent);
+}
+
+#[test]
+fn smooth_scroll_coef_pinned_at_28() {
+    // The smooth-scroll coefficient was bumped from the legacy
+    // `14.0` to `28.0` in session 033 after the user found the
+    // original easing too slow on tab activation. The constant
+    // lives in `render.rs` private scope; this test imports the
+    // public re-export to keep the value pinned at module
+    // boundary. If a future refactor moves the constant or
+    // changes its value, this test must be updated deliberately.
+    use super::render::SMOOTH_SCROLL_COEF;
+    assert!(
+        (SMOOTH_SCROLL_COEF - 28.0).abs() < f32::EPSILON,
+        "SMOOTH_SCROLL_COEF must stay at 28.0; got {SMOOTH_SCROLL_COEF}"
+    );
 }

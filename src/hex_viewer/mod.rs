@@ -59,6 +59,12 @@ use crate::utils::clipboard;
 /// touch state without going through getters — keeps the hot render
 /// path allocation-free and the input handler ergonomic.
 pub struct HexViewer {
+    /// Host-supplied widget identifier — kept on the struct for
+    /// debugging / future feature gating even though every
+    /// per-frame ImGui-ID lookup goes through the cached
+    /// `goto_popup_id` / `search_popup_id` / `child_id` /
+    /// `splitter_id` / etc. strings below.
+    #[allow(dead_code)]
     pub(super) id: String,
     pub(super) data: Vec<u8>,
     pub(super) reference: Vec<u8>,
@@ -68,6 +74,12 @@ pub struct HexViewer {
     // ── Cached ImGui IDs (built once at construction) ─────────
     pub(super) goto_popup_id: String,
     pub(super) search_popup_id: String,
+    /// Cached child-window ID (`##hv_child_<id>`) used by `draw.rs`.
+    /// Pre-built so the per-frame draw path doesn't `format!` it.
+    pub(super) child_id: String,
+    /// Cached invisible-button ID (`##hv_splitter_<id>`) used by
+    /// `render_splitter`. Same reason as `child_id`.
+    pub(super) splitter_id: String,
 
     pub(super) nav: NavHistory,
     pub(super) undo: UndoStack,
@@ -164,6 +176,8 @@ impl HexViewer {
         let search_popup_id = format!("##search_{id}");
         let context_popup_id = format!("##ctx_{id}");
         let settings_popup_id = format!("##settings_{id}");
+        let child_id = format!("##hv_child_{id}");
+        let splitter_id = format!("##hv_splitter_{id}");
         Self {
             id,
             data: Vec::new(),
@@ -172,6 +186,8 @@ impl HexViewer {
             config: HexViewerConfig::default(),
             goto_popup_id,
             search_popup_id,
+            child_id,
+            splitter_id,
             context_popup_id,
             settings_popup_id,
             // Hard-coded `64` per-direction back/forward stack depth.

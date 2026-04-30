@@ -248,6 +248,27 @@ impl HexViewer {
 
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.context_popup_id) {
+                // Colour-code entries by action class — mirrors the
+                // `disasm_view` context-menu pattern. Each
+                // `menu_item` runs inside a
+                // `push_style_color(StyleColor::Text, ...)` block
+                // so the icon + label + shortcut all carry the
+                // same hue. dear_imgui_rs paints `menu_item` as a
+                // single colour, so this is the lightest path to
+                // per-entry tinting (no manual `selectable +
+                // text_colored` layout).
+                //
+                // Palette:
+                //   Goto / Search / Step back / Step forward
+                //                       -> `offset` (address-gutter accent)
+                //   Settings            -> default text colour
+                //
+                // The shared accent for navigation entries makes
+                // them read as one visual class (every "go
+                // somewhere" verb), while Settings stays neutral
+                // as the catch-all "more options" entry.
+                let nav_col = self.config.color_offset;
+
                 // ── Go to Address (mirrors Ctrl+G) ─────────────
                 // Icon glyphs limited to ranges the default ImGui
                 // font atlas reliably ships:
@@ -255,74 +276,78 @@ impl HexViewer {
                 //  - U+2190 / U+2192 `←` / `→`  (Arrows block, verified
                 //    rendering in this project's atlas)
                 //  - U+2026 `…`                  (General Punctuation)
-                // Earlier we used U+2316 (target) and U+2699 (gear);
-                // both showed up as `?` because those code-points
-                // are not present in the default font atlas. The
-                // replacements pick semantically-close glyphs that
-                // do render.
-                //
-                // `»` doubles as a "navigate forward to" hint for
-                // Go to Address — visually distinct from the
-                // single `→` used by Step forward so the two don't
-                // collide.
-                if ui.menu_item("\u{00BB}  Go to Address\tCtrl+G") {
-                    self.show_goto = true;
-                    self.goto_buf.clear();
-                }
-
-                // ── Search (Ctrl+F) ──────────────────────────
-                // Same `»` family glyph as Go to Address — both
-                // are "find / navigate to" actions; the magnifier
-                // (U+1F50D) lives in supplementary plane and would
-                // render as `?` in the default atlas. Use search
-                // shortcut hint so the user discovers Ctrl+F
-                // without leaving the menu.
-                if ui.menu_item("\u{00BB}  Search\tCtrl+F") {
-                    self.show_search = true;
-                    // search_focus_pending is also raised by the popup
-                    // body itself when `show_search` is true on the
-                    // open-trigger frame — kept here as belt-and-suspenders
-                    // so the context-menu path doesn't depend on the popup
-                    // body's flag-set order.
-                    self.search_focus_pending = true;
+                {
+                    let _c = ui
+                        .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    if ui.menu_item("\u{00BB}  Go to Address\tCtrl+G") {
+                        self.show_goto = true;
+                        self.goto_buf.clear();
+                        self.goto_focus_pending = true;
+                        ui.close_current_popup();
+                    }
+                    if ui.menu_item("\u{00BB}  Search\tCtrl+F") {
+                        self.show_search = true;
+                        // search_focus_pending is also raised by the popup
+                        // body itself when `show_search` is true on the
+                        // open-trigger frame — kept here as belt-and-suspenders
+                        // so the context-menu path doesn't depend on the popup
+                        // body's flag-set order.
+                        self.search_focus_pending = true;
+                        ui.close_current_popup();
+                    }
                 }
 
                 ui.separator();
 
                 // ── Step back (Alt+Left) ─────────────────────
                 let can_back = self.nav.can_go_back();
-                let _back_dim = if !can_back {
-                    Some(ui.push_style_var(dear_imgui_rs::StyleVar::Alpha(0.40)))
-                } else {
-                    None
-                };
-                if ui.menu_item("\u{2190}  Step back\tAlt+Left") && can_back {
-                    self.nav_back();
+                {
+                    let _back_dim = if !can_back {
+                        Some(ui.push_style_var(dear_imgui_rs::StyleVar::Alpha(0.40)))
+                    } else {
+                        None
+                    };
+                    let _c = ui
+                        .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    if ui.menu_item("\u{2190}  Step back\tAlt+Left") && can_back {
+                        self.nav_back();
+                        ui.close_current_popup();
+                    }
+                    drop(_back_dim);
                 }
-                drop(_back_dim);
 
                 // ── Step forward (Alt+Right) ─────────────────
                 let can_fwd = self.nav.can_go_forward();
-                let _fwd_dim = if !can_fwd {
-                    Some(ui.push_style_var(dear_imgui_rs::StyleVar::Alpha(0.40)))
-                } else {
-                    None
-                };
-                if ui.menu_item("\u{2192}  Step forward\tAlt+Right") && can_fwd {
-                    self.nav_forward();
+                {
+                    let _fwd_dim = if !can_fwd {
+                        Some(ui.push_style_var(dear_imgui_rs::StyleVar::Alpha(0.40)))
+                    } else {
+                        None
+                    };
+                    let _c = ui
+                        .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    if ui.menu_item("\u{2192}  Step forward\tAlt+Right") && can_fwd {
+                        self.nav_forward();
+                        ui.close_current_popup();
+                    }
+                    drop(_fwd_dim);
                 }
-                drop(_fwd_dim);
 
                 ui.separator();
 
-                // ── Settings ─────────────────────────────────
-                // `…` (ellipsis) reads as "more / detailed
-                // configuration" and is a single Unicode code
-                // point that's universally present in fonts. The
-                // gear icon (U+2699) we used originally rendered
-                // as `?` in the default atlas.
-                if ui.menu_item("\u{2026}  Settings...") {
+                // ── Settings — default text colour ───────────
+                // MDI `wrench-cog` (U+F1B91) when the host has the
+                // MDI atlas loaded; ellipsis (`\u{2026}`) fallback
+                // otherwise — gated by `config.icons_available` so
+                // the entry never renders as a `?` placeholder.
+                let settings_label = if self.config.icons_available {
+                    "\u{F1B91}  Settings..."
+                } else {
+                    "\u{2026}  Settings..."
+                };
+                if ui.menu_item(settings_label) {
                     self.show_settings = true;
+                    ui.close_current_popup();
                 }
             }
         });
@@ -354,9 +379,17 @@ impl HexViewer {
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.settings_popup_id) {
                 compact_popup_body(ui, || {
-                    // Same `…` icon as the menu entry that opens this
-                    // popup — keeps the visual breadcrumb consistent.
-                    ui.text("\u{2026}  Hex Viewer Settings");
+                    // Same icon as the menu entry that opens this
+                    // popup — keeps the visual breadcrumb consistent
+                    // and respects `icons_available` for the same
+                    // reason (no `?` placeholder on hosts without
+                    // MDI atlas).
+                    let header = if self.config.icons_available {
+                        "\u{F1B91}  Hex Viewer Settings"
+                    } else {
+                        "\u{2026}  Hex Viewer Settings"
+                    };
+                    ui.text(header);
                     ui.separator();
 
                     // ── Bytes per row ────────────────────────────

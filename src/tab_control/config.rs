@@ -189,14 +189,17 @@ pub struct TabColors {
     /// mirrors [`Self::accent`] so the border reads as the same
     /// "this is selected" cue the strip uses for the active tab.
     pub frame_border: [u8; 3],
-    /// Background of the active tab's content area — the borderless
+    /// Background of the active tab's body — the borderless
     /// child-window the strip's `render_content()` runs inside when
     /// [`TabControlConfig::body_inset_enabled`] is `true`.
-    /// Default mirrors [`Self::strip_bg`] so the content surface sits
-    /// in the same plane as the strip and the 1-px padding inset
-    /// reads as invisible breathing space. Set to a contrasting hue
-    /// when the host wants the content area to read as a distinct
-    /// surface (e.g. white-on-dark editor on a dark chrome).
+    /// Default is **slightly lighter** than [`Self::strip_bg`] so
+    /// the body reads as a distinct surface against the chrome and
+    /// the body-inset gap registers as a visible frame around it
+    /// (an earlier "mirror strip_bg" default made the inset
+    /// invisible — pinned by the
+    /// `body_bg_default_differs_from_strip_bg_for_visible_frame`
+    /// test). Set to a contrasting hue when the host wants stronger
+    /// separation (e.g. white-on-dark editor on a dark chrome).
     pub body_bg: [u8; 3],
     /// Color of the bottom-of-strip separator line and other thin dividers.
     pub separator: [u8; 3],
@@ -351,12 +354,12 @@ pub struct TabControlConfig {
     /// inside a borderless child-window inset by [`Self::body_inset`]
     /// pixels from the outer window — a visible gap sits between the
     /// outer edges and the child rectangle so user widgets never touch
-    /// the chrome. Set `false` for full-bleed content (legacy
+    /// the chrome. Set `false` for a full-bleed body (legacy
     /// behaviour) — useful for charts, hex dumps, or any widget that
     /// wants to use every available pixel.
     pub body_inset_enabled: bool,
     /// Outer inset in pixels — `[horizontal, vertical]` — applied to
-    /// the active tab's content child-window when
+    /// the active tab's body child-window when
     /// [`Self::body_inset_enabled`] is `true`. The renderer
     /// shifts the cursor inwards by this amount and shrinks the child
     /// by `2 ×` the same on both axes, producing a visible gap around

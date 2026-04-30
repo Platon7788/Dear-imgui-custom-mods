@@ -291,33 +291,24 @@ impl DisasmView {
                         .build();
                 }
             }
-            // Right half — breakpoint / watchpoint label. Priority:
-            //   - read AND write set    -> "RW"
-            //   - write set only        -> "W"
-            //   - read set only         -> "R"
+            // Right half — watchpoint / breakpoint label. Priority:
+            //   - watchpoint set        -> "RW"
             //   - execution breakpoint  -> "<bp_number>"
             //
-            // Watchpoints are rendered in the breakpoint colour
-            // family so all three live in the same visual class
-            // ("things that pause the running process") while the
-            // letter / digit content distinguishes the kind. Digit
-            // / letter only — no background fill.
+            // The viewer surfaces a single watchpoint kind; hosts
+            // that distinguish read-only vs write-only data
+            // breakpoints handle that on the engine side and report
+            // the union back through `Instruction::has_watchpoint`.
+            // Watchpoints share the breakpoint visual class
+            // ("things that pause the running process") — the `RW`
+            // glyph differentiates from the numeric bp tag. Digit
+            // / letters only — no background fill.
             if cfg.show_breakpoints {
-                let has_r = instr.has_read_watchpoint();
-                let has_w = instr.has_write_watchpoint();
+                let has_wp = instr.has_watchpoint();
                 let bp_num = instr.breakpoint_number();
-                let label_str: Option<&str> = if has_r && has_w {
-                    Some("RW")
-                } else if has_w {
-                    Some("W")
-                } else if has_r {
-                    Some("R")
-                } else {
-                    None
-                };
                 let label_owned: String;
-                let label: Option<&str> = if let Some(s) = label_str {
-                    Some(s)
+                let label: Option<&str> = if has_wp {
+                    Some("RW")
                 } else if bp_num > 0 {
                     label_owned = format!("{}", bp_num);
                     Some(label_owned.as_str())
@@ -325,7 +316,16 @@ impl DisasmView {
                     None
                 };
                 if let Some(label) = label {
-                    let label_color = colors.bp_color(bp_num.max(1));
+                    // Watchpoint glyph tinted with `operand_memory`
+                    // (orange) to match the popup colour-coding —
+                    // the same hue the menu's "Toggle Watchpoint"
+                    // entry uses. Execution breakpoints keep the
+                    // per-bp_number hue from `bp_color`.
+                    let label_color = if has_wp {
+                        colors.operand_memory
+                    } else {
+                        colors.bp_color(bp_num.max(1))
+                    };
                     let text_w = label.len() as f32 * self.char_advance;
                     let cx =
                         x + GUTTER_EDGE_PAD + half + GUTTER_CENTRE_GAP + half * 0.5;
@@ -531,11 +531,21 @@ impl DisasmView {
                     )
                     .build();
             } else if let Some(comment) = instr.comment() {
-                let comment_str = format!("; {}", comment);
+                // Two `add_text` calls instead of `format!("; {}", ..)`
+                // — saves a per-row per-frame `String` allocation
+                // that the renderer was paying for on every visible
+                // commented instruction. The "; " prefix advances
+                // the cursor by `2 * char_advance` (monospace).
+                let prefix_x = comment_x + COMMENT_LEFT_PAD;
                 draw_list.add_text(
-                    [comment_x + COMMENT_LEFT_PAD, y],
+                    [prefix_x, y],
                     col32(colors.comment),
-                    &comment_str,
+                    "; ",
+                );
+                draw_list.add_text(
+                    [prefix_x + 2.0 * self.char_advance, y],
+                    col32(colors.comment),
+                    comment,
                 );
             }
         }

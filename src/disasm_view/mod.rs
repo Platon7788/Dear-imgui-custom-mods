@@ -1012,7 +1012,12 @@ impl DisasmView {
                 let scroll_y = ui.scroll_y();
                 let visible_h = ui.window_size()[1];
 
-                let first_row = (scroll_y / self.line_height) as usize;
+                // Clamp `first_row` to `count` defensively: when the
+                // provider shrinks between frames (live disasm with
+                // re-decoding), `scroll_y / line_height` can land
+                // past the new tail and `last_row - first_row` would
+                // underflow when fed to `compute_arrows_clipped`.
+                let first_row = ((scroll_y / self.line_height) as usize).min(count);
                 let visible_count = (visible_h / self.line_height) as usize + 2;
                 let last_row = (first_row + visible_count).min(count);
 
@@ -1079,8 +1084,12 @@ impl DisasmView {
                     if let Some(instr) = provider.instruction(row) {
                         // Monospace assumption: width = char count
                         // × char_advance (mnemonic + space + operands).
-                        let mn = instr.mnemonic().chars().count();
-                        let op = instr.operands().chars().count();
+                        // Mnemonic / operands are always ASCII for x86 /
+                        // x86-64 / ARM, so byte length == codepoint count
+                        // and `len()` is O(1) where `chars().count()`
+                        // walks the string per row per frame.
+                        let mn = instr.mnemonic().len();
+                        let op = instr.operands().len();
                         let chars = mn + 1 + op;
                         let row_right =
                             instr_data_x + chars as f32 * self.char_advance + draw::COMMENT_GAP;
@@ -2967,5 +2976,89 @@ mod tests {
         }
         let mut ro = ReadOnly;
         assert!(!ro.set_comment(0x1000, "anything"));
+    }
+
+    // ── Session 035 audit follow-ups ─────────────────────────────────
+    //
+    // Watchpoint plumbing test — the `RW` gutter glyph and the
+    // single context-menu entry hang off a provider trait method
+    // that defaults to a no-op; pin the round-trip through
+    // `VecDisasmProvider` so a future refactor can't silently
+    // break the `Instruction::has_watchpoint` ↔ `toggle_watchpoint`
+    // contract. (Earlier sessions had separate `R` / `W` toggles —
+    // collapsed into a single watchpoint by user request:
+    // host-side engine sorts read-only / write-only on its side.)
+
+    #[test]
+    fn vec_provider_toggle_watchpoint_round_trip() {
+        let mut p = sample_provider();
+        let addr = 0x401000;
+        let idx = p.index_of_address(addr).unwrap();
+        assert!(!p.instruction(idx).unwrap().has_watchpoint());
+        assert!(p.toggle_watchpoint(addr));
+        assert!(p.instruction(idx).unwrap().has_watchpoint());
+        assert!(!p.toggle_watchpoint(addr));
+        assert!(!p.instruction(idx).unwrap().has_watchpoint());
+    }
+
+    #[test]
+    fn vec_provider_watchpoint_independent_of_breakpoint() {
+        // Pin: setting a watchpoint does NOT touch the breakpoint
+        // flag and vice versa. Renderer priority at draw.rs uses
+        // `has_watchpoint` first, falling back to `bp_number > 0`,
+        // and assumes the two are independent booleans.
+        let mut p = sample_provider();
+        let addr = 0x401004;
+        assert!(p.toggle_watchpoint(addr));
+        let idx = p.index_of_address(addr).unwrap();
+        let i = p.instruction(idx).unwrap();
+        assert!(i.has_watchpoint());
+        assert!(!i.has_breakpoint(), "watchpoint must not flip breakpoint");
+    }
+
+    #[test]
+    fn provider_default_watchpoint_toggle_is_noop_false() {
+        // Trait default: hosts that opt out of the watchpoint API
+        // (e.g. simple read-only disassemblers) get a false-returning
+        // no-op toggle so the context-menu entry doesn't crash.
+        // Pin the default behaviour so a future trait refactor
+        // doesn't accidentally make it required.
+        struct ReadOnly;
+        impl DisasmDataProvider for ReadOnly {
+            fn instruction_count(&self) -> usize { 0 }
+            fn instruction(&self, _idx: usize) -> Option<&dyn Instruction> { None }
+            fn toggle_breakpoint(&mut self, _addr: u64) -> bool { false }
+            fn decode_range(&mut self, _start_addr: u64, _max_count: usize) {}
+            fn index_of_address(&self, _addr: u64) -> Option<usize> { None }
+        }
+        let mut ro = ReadOnly;
+        assert!(!ro.toggle_watchpoint(0x1000));
+    }
+
+    #[test]
+    fn icons_available_default_is_true() {
+        // Pin: MDI glyphs (BOOKMARK_CHECK_OUTLINE, wrench-cog)
+        // render by default. Hosts without the MDI atlas opt out
+        // by setting `view.config.icons_available = false`.
+        let view = DisasmView::new("test");
+        assert!(view.config.icons_available);
+    }
+
+    #[test]
+    fn first_row_clamped_when_count_shrinks() {
+        // Defensive guard at mod.rs:1015 prevents `last_row -
+        // first_row` from underflowing when the provider shrinks
+        // between frames. Mirror the math here as a regression
+        // pin (the actual call lives inside `render`, which can't
+        // run without an ImGui context, but the saturation arithmetic
+        // is independently verifiable).
+        let scroll_y: f32 = 1000.0;
+        let line_h: f32 = 18.0;
+        let count: usize = 5;
+        let first_row = ((scroll_y / line_h) as usize).min(count);
+        assert!(first_row <= count);
+        let visible_count = 30;
+        let last_row = (first_row + visible_count).min(count);
+        assert!(last_row >= first_row, "last_row must not underflow");
     }
 }

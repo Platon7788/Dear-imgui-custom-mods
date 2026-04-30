@@ -98,24 +98,29 @@ impl DisasmView {
     }
 
     /// Right-click context menu — Goto / Copy / Follow / Toggle bp /
-    /// Settings actions. Icons follow the same atlas-safe glyph rules
-    /// as `hex_viewer` (Latin-1 + Arrows + General Punctuation): no
-    /// gear, no target, no magnifier — those code points render as
-    /// `?` in the default ImGui font atlas.
+    /// Watchpoints / Bookmark / Settings actions. Most icons follow
+    /// atlas-safe glyph rules (Latin-1 + Arrows + General
+    /// Punctuation); Settings + bookmark use MDI glyphs gated by
+    /// `config.icons_available` (fallback to ASCII / Latin-1 when
+    /// the host hasn't loaded the MDI atlas).
     ///
     /// Order (per user requests, last revised 2026-04-30):
-    /// 1. Goto Address
-    /// 2. Search bytes
-    /// 3. Copy Address
-    /// 4. Copy Instruction
-    /// 5. — separator —
-    /// 6. Follow (Enter / Space) — branch target or operand pointer
-    /// 7. Jump to function start (Ctrl+Up)
-    /// 8. Jump to function end (Ctrl+Down)
-    /// 9. Select function (Ctrl+L)
-    /// 10. Toggle Breakpoint
-    /// 11. — separator —
-    /// 12. Settings
+    ///  1. Goto Address
+    ///  2. Search bytes
+    ///  3. Copy Address
+    ///  4. Copy Instruction
+    ///  5. — separator —
+    ///  6. Follow (Enter / Space) — branch target or operand pointer
+    ///  7. Jump to function start (Ctrl+Up)
+    ///  8. Jump to function end (Ctrl+Down)
+    ///  9. Select function (Ctrl+L)
+    /// 10. Toggle Breakpoint (F9)
+    /// 11. Toggle Watchpoint — single entry; host engine sorts
+    ///     read-only / write-only on its side and reports the
+    ///     union back via `Instruction::has_watchpoint`
+    /// 12. Add / Remove Bookmark (Ctrl+B)
+    /// 13. — separator —
+    /// 14. Settings
     pub(super) fn render_context_menu(
         &mut self,
         ui: &dear_imgui_rs::Ui,
@@ -145,8 +150,7 @@ impl DisasmView {
                 //   - follow / call   → `mnemonic_call` (green)
                 //   - function nav    → `mnemonic_jump` (amber)
                 //   - breakpoint      → `breakpoint` (red)
-                //   - R-watchpoint    → `operand_register` (cyan)
-                //   - W-watchpoint    → `operand_memory` (orange)
+                //   - watchpoint      → `operand_memory` (orange)
                 //   - bookmark        → `bookmark` (accent)
                 //   - settings        → default text
                 // dear_imgui_rs's `menu_item` paints the entire row
@@ -158,8 +162,7 @@ impl DisasmView {
                 let call_col = palette.mnemonic_call;
                 let jump_col = palette.mnemonic_jump;
                 let bp_col = palette.breakpoint;
-                let read_col = palette.operand_register;
-                let write_col = palette.operand_memory;
+                let watch_col = palette.operand_memory;
                 let bookmark_col = palette.bookmark;
 
                 {
@@ -250,42 +253,48 @@ impl DisasmView {
                         ui.close_current_popup();
                     }
                 }
-                // Read watchpoint — cyan.
+                // Watchpoint — orange. Same `\u{25CF}` filled
+                // circle as Toggle Breakpoint so both "things
+                // that pause the running process" (BP / RW) read
+                // as one visual class — colour carries the kind.
+                // Single entry instead of separate R / W rows;
+                // hosts that distinguish read-only vs write-only
+                // data breakpoints sort that out on the engine
+                // side and report the union via
+                // `Instruction::has_watchpoint`.
                 {
                     let _c = ui
-                        .push_style_color(dear_imgui_rs::StyleColor::Text, read_col);
-                    if ui.menu_item("R  Toggle Read Watchpoint") {
+                        .push_style_color(dear_imgui_rs::StyleColor::Text, watch_col);
+                    if ui.menu_item("\u{25CF}  Toggle Watchpoint") {
                         if let Some(addr) = instr_addr {
-                            provider.toggle_read_watchpoint(addr);
-                        }
-                        ui.close_current_popup();
-                    }
-                }
-                // Write watchpoint — orange.
-                {
-                    let _c = ui
-                        .push_style_color(dear_imgui_rs::StyleColor::Text, write_col);
-                    if ui.menu_item("W  Toggle Write Watchpoint") {
-                        if let Some(addr) = instr_addr {
-                            provider.toggle_write_watchpoint(addr);
+                            provider.toggle_watchpoint(addr);
                         }
                         ui.close_current_popup();
                     }
                 }
 
-                // Bookmark — accent. State-aware label.
+                // Bookmark — accent. State-aware label. Glyph
+                // matches the gutter renderer: MDI
+                // `BOOKMARK_CHECK_OUTLINE` when `icons_available`,
+                // `\u{25CB}` ring fallback otherwise. Keeps the
+                // popup ↔ gutter visual breadcrumb consistent.
                 {
                     let _c = ui.push_style_color(
                         dear_imgui_rs::StyleColor::Text,
                         bookmark_col,
                     );
                     let bookmarked = instr_addr.is_some_and(|a| self.is_bookmarked(a));
-                    let bookmark_label = if bookmarked {
-                        "\u{25CB}  Remove from bookmarks\tCtrl+B"
+                    let glyph = if self.config.icons_available {
+                        crate::icons::BOOKMARK_CHECK_OUTLINE
                     } else {
-                        "\u{25CB}  Add to bookmarks\tCtrl+B"
+                        "\u{25CB}"
                     };
-                    if ui.menu_item(bookmark_label) {
+                    let bookmark_label = if bookmarked {
+                        format!("{glyph}  Remove from bookmarks\tCtrl+B")
+                    } else {
+                        format!("{glyph}  Add to bookmarks\tCtrl+B")
+                    };
+                    if ui.menu_item(&bookmark_label) {
                         if let Some(addr) = instr_addr {
                             self.toggle_bookmark(addr);
                         }
@@ -295,8 +304,16 @@ impl DisasmView {
 
                 ui.separator();
 
-                // Settings — default text colour.
-                if ui.menu_item("\u{2026}  Settings...") {
+                // Settings — default text colour. MDI `wrench-cog`
+                // (U+F1B91) when `icons_available`, ellipsis
+                // fallback otherwise so the entry reads sanely on
+                // hosts without the MDI atlas.
+                let settings_label = if self.config.icons_available {
+                    "\u{F1B91}  Settings..."
+                } else {
+                    "\u{2026}  Settings..."
+                };
+                if ui.menu_item(settings_label) {
                     self.show_settings = true;
                     ui.close_current_popup();
                 }
@@ -320,7 +337,12 @@ impl DisasmView {
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.settings_popup_id) {
                 compact_popup_body(ui, || {
-                    ui.text("\u{2026}  Disassembly Settings");
+                    let header = if self.config.icons_available {
+                        "\u{F1B91}  Disassembly Settings"
+                    } else {
+                        "\u{2026}  Disassembly Settings"
+                    };
+                    ui.text(header);
                     ui.separator();
 
                     ui.text("Display:");

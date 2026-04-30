@@ -54,19 +54,15 @@ pub trait Instruction {
     fn is_current(&self) -> bool {
         false
     }
-    /// Whether a **read watchpoint** is set on this address — fires
-    /// when the running process reads the byte at the address.
-    /// Distinct from execution breakpoints
-    /// ([`Self::has_breakpoint`]); the gutter shows the letter `R`
-    /// instead of a numbered tag.
-    fn has_read_watchpoint(&self) -> bool {
-        false
-    }
-    /// Whether a **write watchpoint** is set on this address — fires
-    /// when the running process writes the byte at the address.
-    /// Renders as `W` in the gutter; combined read+write reads as
-    /// `RW`.
-    fn has_write_watchpoint(&self) -> bool {
+    /// Whether a **watchpoint** is set on this address — fires when
+    /// the running process reads or writes the byte at the address.
+    /// The viewer renders this as the `RW` glyph in the gutter and
+    /// owns no notion of "read-only" vs "write-only" watchpoints —
+    /// hosts that need finer-grained access (e.g. read-only data
+    /// breakpoints) sort that out on the engine side and report
+    /// the union back through this single flag. Distinct from
+    /// execution breakpoints ([`Self::has_breakpoint`]).
+    fn has_watchpoint(&self) -> bool {
         false
     }
 }
@@ -98,21 +94,17 @@ pub trait DisasmDataProvider {
         false
     }
 
-    /// Toggle a **read watchpoint** at `addr` — host-side this
-    /// wires through to the debugger backend's `set_read_watch` /
-    /// `clear_read_watch` so the running process traps on the
-    /// next read of the byte at `addr`. Default impl is a no-op
-    /// returning `false` so existing providers stay
-    /// non-breaking; implement when the host wants the
-    /// `R` / `RW` gutter glyph + the matching context-menu
-    /// entries to actually flip backend state.
-    fn toggle_read_watchpoint(&mut self, _addr: u64) -> bool {
-        false
-    }
-
-    /// Toggle a **write watchpoint** at `addr` — same contract
-    /// as [`Self::toggle_read_watchpoint`] for write traps.
-    fn toggle_write_watchpoint(&mut self, _addr: u64) -> bool {
+    /// Toggle the **watchpoint** at `addr` — host-side this wires
+    /// through to the debugger backend's data-breakpoint API so the
+    /// running process traps on the next read **or** write of the
+    /// byte at `addr`. The viewer keeps the surface area minimal
+    /// (single `RW` glyph, single context-menu entry); hosts that
+    /// distinguish read-only vs write-only watchpoints handle that
+    /// on the engine side and report the union back through
+    /// [`Instruction::has_watchpoint`]. Returns the new state
+    /// (`true` = watchpoint now set). Default impl is a no-op
+    /// returning `false` so existing providers stay non-breaking.
+    fn toggle_watchpoint(&mut self, _addr: u64) -> bool {
         false
     }
 
@@ -148,6 +140,15 @@ pub trait DisasmDataProvider {
 // ── Default Instruction ─────────────────────────────────────────────────────
 
 /// Concrete instruction entry for use with the built-in `VecDisasmProvider`.
+///
+/// Field-stability note: this struct is intentionally **not**
+/// `#[non_exhaustive]` — the sibling `IMGUI_NXT` consumer constructs
+/// it directly via record syntax (`InstructionEntry { ... }`) and
+/// breaking that pattern would force every host to switch to a
+/// builder. New fields are additive and must come with sane defaults
+/// inside the crate's own constructors / builders. If you are
+/// extending this struct, mirror the new field in `Instruction`'s
+/// trait defaults so external `Instruction` impls keep working.
 #[derive(Debug, Clone)]
 pub struct InstructionEntry {
     pub address: u64,
@@ -162,12 +163,12 @@ pub struct InstructionEntry {
     /// Breakpoint number (1-based, 0 = none). Assigned automatically by provider.
     pub bp_number: u32,
     pub current: bool,
-    /// Read watchpoint set on this address. Renders as `R` in the
-    /// gutter; combines with `write_watchpoint = true` to render as
-    /// `RW`.
-    pub read_watchpoint: bool,
-    /// Write watchpoint set on this address. Renders as `W`.
-    pub write_watchpoint: bool,
+    /// Watchpoint set on this address — fires on read **or** write
+    /// of the byte at `address`. Renders as the `RW` glyph in the
+    /// gutter. Hosts that distinguish read-only vs write-only
+    /// data breakpoints sort that out on the engine side and
+    /// report the union back through this single flag.
+    pub watchpoint: bool,
 }
 
 impl InstructionEntry {
@@ -189,8 +190,7 @@ impl InstructionEntry {
             breakpoint: false,
             bp_number: 0,
             current: false,
-            read_watchpoint: false,
-            write_watchpoint: false,
+            watchpoint: false,
         }
     }
 
@@ -259,11 +259,8 @@ impl Instruction for InstructionEntry {
     fn is_current(&self) -> bool {
         self.current
     }
-    fn has_read_watchpoint(&self) -> bool {
-        self.read_watchpoint
-    }
-    fn has_write_watchpoint(&self) -> bool {
-        self.write_watchpoint
+    fn has_watchpoint(&self) -> bool {
+        self.watchpoint
     }
 }
 
@@ -335,18 +332,10 @@ impl DisasmDataProvider for VecDisasmProvider {
         false
     }
 
-    fn toggle_read_watchpoint(&mut self, addr: u64) -> bool {
+    fn toggle_watchpoint(&mut self, addr: u64) -> bool {
         if let Some(instr) = self.instructions.iter_mut().find(|i| i.address == addr) {
-            instr.read_watchpoint = !instr.read_watchpoint;
-            return instr.read_watchpoint;
-        }
-        false
-    }
-
-    fn toggle_write_watchpoint(&mut self, addr: u64) -> bool {
-        if let Some(instr) = self.instructions.iter_mut().find(|i| i.address == addr) {
-            instr.write_watchpoint = !instr.write_watchpoint;
-            return instr.write_watchpoint;
+            instr.watchpoint = !instr.watchpoint;
+            return instr.watchpoint;
         }
         false
     }

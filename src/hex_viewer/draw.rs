@@ -93,8 +93,13 @@ impl HexViewer {
         };
         let child_h = avail[1] - inspector_h - splitter_h;
 
-        let child_id = format!("##hv_child_{}", self.id);
-
+        // `child_id` pre-built in `HexViewer::new` — clone-once
+        // here unblocks the closure's `&mut self` borrow while
+        // still saving the formatter overhead that the previous
+        // `format!("##hv_child_{}", self.id)` per-frame call paid.
+        // The clone is a small byte-copy; `format!` was alloc +
+        // Display trait dispatch + write_str dance.
+        let child_id = self.child_id.clone();
         ui.child_window(&child_id)
             .size([avail[0], child_h])
             .build(ui, || {
@@ -256,8 +261,9 @@ impl HexViewer {
         max_h: f32,
     ) {
         let [start_x, start_y] = ui.cursor_screen_pos();
-        let id = format!("##hv_splitter_{}", self.id);
-        ui.invisible_button(&id, [width, SPLITTER_THICKNESS]);
+        // `splitter_id` pre-built in `HexViewer::new` — same
+        // motivation as `child_id`: zero per-frame allocation.
+        ui.invisible_button(&self.splitter_id, [width, SPLITTER_THICKNESS]);
         let hovered = ui.is_item_hovered();
         let active = ui.is_item_active();
         if hovered || active {
@@ -548,13 +554,31 @@ impl HexViewer {
             // 2026-04-30). The single trailing space keeps a 1-ca
             // gap before the divider so the address text never
             // grazes the line.
-            let txt = match (cfg.uppercase, digits) {
-                (true, 16) => format!("{:016X} ", addr),
-                (false, 16) => format!("{:016x} ", addr),
-                (true, _) => format!("{:08X} ", addr),
-                (false, _) => format!("{:08x} ", addr),
-            };
-            draw_list.add_text([origin_x, y], col32(cfg.color_offset), &txt);
+            //
+            // Per-row formatting reuses a thread-local scratch
+            // `String` so the address gutter pays zero allocations
+            // per frame (the previous `format!("{:016X} ", addr)`
+            // built a fresh `String` ~50 rows × 60 fps = ~3000
+            // alloc/sec). `draw_row` runs on `&self`, so the
+            // mutable scratch buffer can't live on the struct —
+            // thread-local is the right scope: each render thread
+            // gets its own reused buffer.
+            use std::cell::RefCell;
+            use std::fmt::Write as _;
+            thread_local! {
+                static ADDR_BUF: RefCell<String> = RefCell::new(String::with_capacity(18));
+            }
+            ADDR_BUF.with(|cell| {
+                let mut buf = cell.borrow_mut();
+                buf.clear();
+                let _ = match (cfg.uppercase, digits) {
+                    (true, 16) => write!(&mut *buf, "{:016X} ", addr),
+                    (false, 16) => write!(&mut *buf, "{:016x} ", addr),
+                    (true, _) => write!(&mut *buf, "{:08X} ", addr),
+                    (false, _) => write!(&mut *buf, "{:08x} ", addr),
+                };
+                draw_list.add_text([origin_x, y], col32(cfg.color_offset), buf.as_str());
+            });
         }
 
         let hex_x = origin_x + self.offset_col_width();

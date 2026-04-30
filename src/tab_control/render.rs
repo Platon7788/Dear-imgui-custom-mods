@@ -47,7 +47,7 @@ const DRAG_START_THRESHOLD_PX: f32 = 5.0;
 /// feedback 2026-04-30 ("уменьшить анимацию"). Earlier `14.0` felt
 /// sluggish on long jumps; the temporary hard-snap (commit `feea46f`)
 /// felt too abrupt — this is the middle ground.
-const SMOOTH_SCROLL_COEF: f32 = 28.0;
+pub(super) const SMOOTH_SCROLL_COEF: f32 = 28.0;
 /// Per-side hit-area padding for close buttons (matches the visual hover bg).
 const CLOSE_HIT_PAD: f32 = 2.0;
 
@@ -602,7 +602,7 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
     ui.set_cursor_pos([ui.cursor_start_pos()[0], content_start_y]);
     ui.dummy([0.0, 0.0]);
 
-    // ── Render active tab content ───────────────────────────────────────
+    // ── Render active tab body ──────────────────────────────────────────
     if !external_content
         && let Some(active_id) = pc.active
         && let Some(entry) = pc.tabs.iter_mut().find(|t| t.id == active_id)
@@ -634,57 +634,62 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
             let outer_min = cur_screen;
             let outer_max = [cur_screen[0] + avail_full[0], cur_screen[1] + avail_full[1]];
 
-            // Scope the draw-list guard: `DrawListMut` is a global
-            // mutex, and `child_window().build(...)` below executes
-            // host code that itself may call `ui.get_window_draw_list()`
-            // (e.g. VirtualTable row painters / host overlays).
-            // Holding `draw` across that nested `build` panics with
-            // "A DrawListMut is already in use!" — drop it here first.
-            {
-                let draw = ui.get_window_draw_list();
-                // Outer fill — `frame_bg` paints the gap around the
-                // inner body. Default mirrors `strip_bg` so the
-                // strip + frame read as one chrome surface; hosts
-                // can recolour `frame_bg` independently without
-                // touching the tab strip itself.
-                draw.add_rect(outer_min, outer_max, c32(pc.config.colors.frame_bg, 255))
-                    .filled(true)
-                    .build();
-                // Optional active-frame border — outlined rect drawn
-                // OVER the frame fill so the host gets an "active
-                // pane" cue matching the strip's selected-tab hue
-                // (IDE-style highlight). Off by default; toggled via
-                // `TabControlConfig::body_inset_border`.
-                if pc.config.body_inset_border {
-                    draw.add_rect(
-                        outer_min,
-                        outer_max,
-                        c32(pc.config.colors.frame_border, 255),
-                    )
-                    .filled(false)
-                    .thickness(pc.config.body_inset_border_thickness)
-                    .build();
-                }
-            }
-
-            // Shift cursor inward — the upcoming child_window picks
-            // its position from the current cursor.
-            let cur = ui.cursor_pos();
-            ui.set_cursor_pos([cur[0] + pad[0], cur[1] + pad[1]]);
             let inner_w = avail_full[0] - 2.0 * pad[0];
             let inner_h = avail_full[1] - 2.0 * pad[1];
 
-            // Skip the child if the inner area would be degenerate
-            // (window narrower than `2 * pad`, etc.) — ImGui's
-            // `BeginChild` triggers a STATUS_STACK_BUFFER_OVERRUN
-            // panic on Windows when given a 0-or-negative size,
-            // which the user hit at large pad values + narrow
-            // windows. Falling back to the no-frame path keeps the
-            // host alive at the cost of momentarily losing the
-            // visible inset.
+            // Degenerate-size short-circuit (window narrower than
+            // `2 * pad`, etc.). ImGui's `BeginChild` triggers a
+            // STATUS_STACK_BUFFER_OVERRUN panic on Windows when
+            // given a 0-or-negative size — and painting the outer
+            // `frame_bg` rectangle on its own (without the inner
+            // child to overlay) would leave a `frame_bg` flash
+            // around `render_content`. Falling back to the
+            // no-frame path keeps the host alive AND avoids the
+            // visual glitch the analyst flagged.
             if inner_w <= 1.0 || inner_h <= 1.0 {
                 entry.item.render_content(ui);
             } else {
+                // Scope the draw-list guard: `DrawListMut` is a
+                // global mutex, and `child_window().build(...)`
+                // below executes host code that itself may call
+                // `ui.get_window_draw_list()` (e.g. VirtualTable
+                // row painters / host overlays). Holding `draw`
+                // across that nested `build` panics with "A
+                // DrawListMut is already in use!" — drop it here
+                // first.
+                {
+                    let draw = ui.get_window_draw_list();
+                    // Outer fill — `frame_bg` paints the gap
+                    // around the inner body. Default mirrors
+                    // `strip_bg` so the strip + frame read as one
+                    // chrome surface; hosts can recolour
+                    // `frame_bg` independently without touching
+                    // the tab strip itself.
+                    draw.add_rect(outer_min, outer_max, c32(pc.config.colors.frame_bg, 255))
+                        .filled(true)
+                        .build();
+                    // Optional active-frame border — outlined rect
+                    // drawn OVER the frame fill so the host gets an
+                    // "active pane" cue matching the strip's
+                    // selected-tab hue (IDE-style highlight). Off
+                    // by default; toggled via
+                    // `TabControlConfig::body_inset_border`.
+                    if pc.config.body_inset_border {
+                        draw.add_rect(
+                            outer_min,
+                            outer_max,
+                            c32(pc.config.colors.frame_border, 255),
+                        )
+                        .filled(false)
+                        .thickness(pc.config.body_inset_border_thickness)
+                        .build();
+                    }
+                }
+
+                // Shift cursor inward — the upcoming child_window
+                // picks its position from the current cursor.
+                let cur = ui.cursor_pos();
+                ui.set_cursor_pos([cur[0] + pad[0], cur[1] + pad[1]]);
                 let inner_size = [inner_w, inner_h];
                 // Borderless child filled with `body_bg` — clips
                 // widgets to the inner rect. Push WindowPadding(0,0)

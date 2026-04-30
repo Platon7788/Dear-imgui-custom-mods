@@ -603,6 +603,14 @@ pub struct HexViewerConfig {
     pub copy_format: CopyFormat,
     /// Maximum undo stack depth (0 = unlimited).
     pub max_undo: usize,
+    /// Whether the host has loaded the Material Design Icons (MDI)
+    /// atlas (`U+F0000`..`U+F1FFF` range). When `true` the popup /
+    /// settings UI uses MDI glyphs (`wrench-cog` for Settings, etc.)
+    /// for stronger visual cues; when `false` it falls back to
+    /// atlas-safe characters (`\u{2026}` ellipsis, etc.) so nothing
+    /// renders as a `?` placeholder. Default: `true` — every
+    /// in-tree consumer (`IMGUI_NXT`, the demo) ships the MDI atlas.
+    pub icons_available: bool,
 
     // ── Colors: semantic byte categories ────────────────────
     /// Color for null bytes (0x00).
@@ -675,6 +683,7 @@ impl Default for HexViewerConfig {
             search_mode: HexSearchMode::Hex,
             copy_format: CopyFormat::HexSpaced,
             max_undo: 256,
+            icons_available: true,
 
             color_cat_zero: p.cat_zero,
             color_cat_control: p.cat_control,
