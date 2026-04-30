@@ -204,11 +204,13 @@ impl Default for TabColors {
             text_muted: [0x90, 0x98, 0xa6],
             close_hover: [0xe0, 0x60, 0x60],
             strip_bg: [0x2a, 0x2e, 0x37],
-            // Subtly darker than strip_bg — enough to hint at a
-            // body inset without going near-black. User feedback
-            // 2026-04-30: the prior `[0x18, 0x1c, 0x24]` read as
-            // "чёрное" against light tabs.
-            body_bg: [0x24, 0x28, 0x30],
+            // Slightly *lighter* than strip_bg so the body reads as
+            // a "raised inset surface" rather than a dark hole.
+            // User feedback 2026-04-30: prior darker defaults read
+            // as "чёрное". Hosts that want a different look can
+            // override `colors.body_bg` directly or via the demo's
+            // colour picker.
+            body_bg: [0x32, 0x36, 0x40],
             separator: [0x3f, 0x46, 0x54],
             status_active: [0x5f, 0xb8, 0x70],
             status_inactive: [0x8a, 0x92, 0xa1],
@@ -262,13 +264,14 @@ impl TabColors {
             text_muted: to_u8(nav.icon_default),
             close_hover: to_u8(sb.error),
             strip_bg: to_u8(nav.bg),
-            // Subtly darker than strip_bg (= nav.bg) so the
-            // framed-content visual hints at a body inset without
-            // dropping to near-black. `-0.04` matches the original
-            // contract; `-0.10` was too aggressive on already-dark
-            // chrome and read as "чёрное".
+            // Slightly *lighter* than strip_bg (= nav.bg) so the
+            // body reads as a raised inset surface. Earlier
+            // attempts went darker which read as a "dark hole" on
+            // already-dark chrome. `+0.03` keeps the step subtle
+            // (light themes still get a tonal lift, dark themes
+            // get a soft pop without fluorescing).
             body_bg: {
-                let lift = -0.04_f32;
+                let lift = 0.03_f32;
                 to_u8([
                     (nav.bg[0] + lift).clamp(0.0, 1.0),
                     (nav.bg[1] + lift).clamp(0.0, 1.0),
