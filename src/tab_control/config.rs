@@ -204,11 +204,12 @@ impl Default for TabColors {
             text_muted: [0x90, 0x98, 0xa6],
             close_hover: [0xe0, 0x60, 0x60],
             strip_bg: [0x2a, 0x2e, 0x37],
-            // Slightly darker than strip_bg so the visible frame
-            // (2-px gap = strip_bg, inner = content_bg) reads as a
-            // genuine "tab body". Match `from_palettes` default
-            // semantics — close to nav.bg lifted -0.04.
-            content_bg: [0x22, 0x26, 0x2e],
+            // Visibly darker than strip_bg so the framed-content
+            // visual works on every theme out of the box (gap =
+            // strip_bg, inner = content_bg). Earlier defaults of
+            // ~`-0.04` lift were too subtle on dark themes — the
+            // frame got lost in the surrounding chrome.
+            content_bg: [0x18, 0x1c, 0x24],
             separator: [0x3f, 0x46, 0x54],
             status_active: [0x5f, 0xb8, 0x70],
             status_inactive: [0x8a, 0x92, 0xa1],
@@ -262,11 +263,14 @@ impl TabColors {
             text_muted: to_u8(nav.icon_default),
             close_hover: to_u8(sb.error),
             strip_bg: to_u8(nav.bg),
-            // Slightly darker than strip_bg so the visible frame
-            // (gap = strip_bg, inner = content_bg) reads as a
-            // genuine "tab body" inset.
+            // Visibly darker than strip_bg so the framed-content
+            // visual reads as a genuine "tab body" inset on every
+            // theme out of the box. `-0.10` lift gives a clear ~25
+            // u8 step on dark themes; light themes still get a
+            // visible tonal step because the clamp keeps it
+            // monotonic.
             content_bg: {
-                let lift = -0.04_f32;
+                let lift = -0.10_f32;
                 to_u8([
                     (nav.bg[0] + lift).clamp(0.0, 1.0),
                     (nav.bg[1] + lift).clamp(0.0, 1.0),
@@ -411,7 +415,7 @@ impl Default for TabControlConfig {
             context_menu: true,
             external_content: false,
             content_padding_enabled: true,
-            content_padding: [2.0, 2.0],
+            content_padding: [4.0, 4.0],
             draggable: true,
             show_overflow_dropdown: true,
             icons_available: false,

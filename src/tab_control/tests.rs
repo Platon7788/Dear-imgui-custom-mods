@@ -416,14 +416,15 @@ fn show_status_dot_config_default_is_true() {
 }
 
 #[test]
-fn content_padding_defaults_are_two_pixel_inset_enabled() {
-    // Pin the contract: 2-pixel outer-edge inset on by default so
+fn content_padding_defaults_are_four_pixel_inset_enabled() {
+    // Pin the contract: 4-pixel outer-edge inset on by default so
     // a visible gap sits between the outer window edges and the
-    // content child-window. User feedback 2026-04-30:
-    // "внутри программы должен быть зазор в 2 пикселя".
+    // content child-rect. The `[2.0, 2.0]` default was too subtle
+    // for the framed-content visual to register; bumped to `[4.0,
+    // 4.0]` per user feedback 2026-04-30.
     let cfg = TabControlConfig::default();
     assert!(cfg.content_padding_enabled);
-    assert_eq!(cfg.content_padding, [2.0, 2.0]);
+    assert_eq!(cfg.content_padding, [4.0, 4.0]);
 }
 
 #[test]
