@@ -519,8 +519,14 @@ pub struct DisasmViewColors {
     pub breakpoint_bg: [f32; 4],
     /// Numbered breakpoint colors (cycle through these).
     pub breakpoint_colors: Vec<[f32; 4]>,
-    /// Current execution point (stopped-at) background.
+    /// Current execution point (stopped-at) background fill.
     pub current_line_bg: [f32; 4],
+    /// Outline drawn around the current-execution row on top of the
+    /// translucent fill. Default `danger` family at near-full alpha
+    /// — gives the IP marker a crisp 1-px border while keeping the
+    /// fill subtle, so the row reads as "stopped here" without
+    /// drowning the underlying mnemonic colours.
+    pub current_line_border: [f32; 4],
     /// Selected row background.
     pub selection_bg: [f32; 4],
     /// Row hover highlight.
@@ -680,7 +686,15 @@ impl DisasmViewColors {
                 t.accent,
                 with_a(t.danger, 0.85),
             ],
-            current_line_bg: with_a(t.warning, 0.35),
+            // Translucent fill — halved from the historical 0.35 to
+            // 0.18 so the per-row mnemonic / operand colours read
+            // through. Paired with `current_line_border` for the
+            // crisp marker outline.
+            current_line_bg: with_a(t.warning, 0.18),
+            // Thin red border traced around the current-execution
+            // row. `danger` family @ 0.90 alpha gives the IP marker
+            // a clear 1-px frame on top of the translucent fill.
+            current_line_border: with_a(t.danger, 0.90),
             selection_bg: with_a(t.accent, 0.45),
             hover_bg: with_a(t.fg, 0.04),
             // Search-match row background — semantic-green (success)

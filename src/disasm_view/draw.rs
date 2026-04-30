@@ -116,6 +116,12 @@ impl DisasmView {
         }
 
         // ── Current execution highlight ───────────────────────
+        // Two-pass: translucent fill (warning hue, alpha 0.18) so
+        // the per-token mnemonic / operand colours still read
+        // through, plus a crisp 1-px outline (danger hue, alpha
+        // 0.90) for the unmistakable "stopped here" marker. User
+        // feedback 2026-04-30: solid amber fill drowned the row;
+        // halve the fill, add the red border.
         if instr.is_current() {
             draw_list
                 .add_rect(
@@ -124,6 +130,15 @@ impl DisasmView {
                     col32(colors.current_line_bg),
                 )
                 .filled(true)
+                .build();
+            draw_list
+                .add_rect(
+                    [origin_x, y],
+                    [origin_x + win_w, y + lh],
+                    col32(colors.current_line_border),
+                )
+                .filled(false)
+                .thickness(1.0)
                 .build();
         }
 
