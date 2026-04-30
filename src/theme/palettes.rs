@@ -686,11 +686,12 @@ impl DisasmViewColors {
                 t.accent,
                 with_a(t.danger, 0.85),
             ],
-            // Translucent fill — halved from the historical 0.35 to
-            // 0.18 so the per-row mnemonic / operand colours read
-            // through. Paired with `current_line_border` for the
-            // crisp marker outline.
-            current_line_bg: with_a(t.warning, 0.18),
+            // Translucent fill — halved twice from the historical
+            // 0.35 (0.35 → 0.18 → 0.09) so the per-row mnemonic /
+            // operand colours read through almost untouched.
+            // Paired with `current_line_border` for the crisp
+            // marker outline.
+            current_line_bg: with_a(t.warning, 0.09),
             // Thin red border traced around the current-execution
             // row. `danger` family @ 0.90 alpha gives the IP marker
             // a clear 1-px frame on top of the translucent fill.
