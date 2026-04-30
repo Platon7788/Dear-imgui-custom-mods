@@ -135,132 +135,167 @@ impl DisasmView {
                     .instruction(idx)
                     .and_then(|i| i.branch_target())
                     .is_some();
+                let palette = &self.config.colors;
 
-                // ── Goto Address (`»`, mirrors G key) — first per
-                //    user-preferred order: navigate is the most-used
-                //    action in this menu by frequency.
-                if ui.menu_item("\u{00BB}  Goto Address...\tG") {
-                    self.show_goto = true;
-                    self.goto_buf.clear();
-                    self.goto_focus_pending = true;
-                    ui.close_current_popup();
-                }
+                // Colour-coded entries — each `menu_item` runs inside
+                // a `push_style_color(StyleColor::Text, ...)` block so
+                // the icon + label + shortcut all carry the same
+                // semantic hue:
+                //   - navigation/copy → `address` (accent blue)
+                //   - follow / call   → `mnemonic_call` (green)
+                //   - function nav    → `mnemonic_jump` (amber)
+                //   - breakpoint      → `breakpoint` (red)
+                //   - R-watchpoint    → `operand_register` (cyan)
+                //   - W-watchpoint    → `operand_memory` (orange)
+                //   - bookmark        → `bookmark` (accent)
+                //   - settings        → default text
+                // dear_imgui_rs's `menu_item` paints the entire row
+                // a single colour, so this gives us per-action
+                // colour coding without dropping to manual
+                // `selectable + text_colored` layout.
 
-                // ── Search bytes (`»`, mirrors Ctrl+F) — sits
-                //    immediately under Goto Address per user request
-                //    (2026-04-30) so the two "navigate to a place"
-                //    actions group together at the top of the menu.
-                if ui.menu_item("\u{00BB}  Search bytes...\tCtrl+F") {
-                    self.show_search = true;
-                    self.search_focus_pending = true;
-                    ui.close_current_popup();
-                }
+                let nav_col = palette.address;
+                let call_col = palette.mnemonic_call;
+                let jump_col = palette.mnemonic_jump;
+                let bp_col = palette.breakpoint;
+                let read_col = palette.operand_register;
+                let write_col = palette.operand_memory;
+                let bookmark_col = palette.bookmark;
 
-                // ── Copy Address (`»` like hex_viewer's "navigate to" verb) ──
-                if ui.menu_item("\u{00BB}  Copy Address") {
-                    if let Some(addr) = instr_addr {
-                        set_clipboard(&self.format_address_literal(addr));
+                {
+                    let _c =
+                        ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    if ui.menu_item("\u{00BB}  Goto Address...\tG") {
+                        self.show_goto = true;
+                        self.goto_buf.clear();
+                        self.goto_focus_pending = true;
+                        ui.close_current_popup();
                     }
-                    ui.close_current_popup();
+                    if ui.menu_item("\u{00BB}  Search bytes...\tCtrl+F") {
+                        self.show_search = true;
+                        self.search_focus_pending = true;
+                        ui.close_current_popup();
+                    }
                 }
 
-                let sel_count = self.selection.len();
-                let copy_label = if sel_count > 1 {
-                    format!("\u{00BB}  Copy {} Instructions\tCtrl+C", sel_count)
-                } else {
-                    "\u{00BB}  Copy Instruction\tCtrl+C".to_string()
-                };
-                if ui.menu_item(&copy_label) {
-                    self.copy_selected(provider);
-                    ui.close_current_popup();
+                {
+                    let _c =
+                        ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    if ui.menu_item("\u{00BB}  Copy Address") {
+                        if let Some(addr) = instr_addr {
+                            set_clipboard(&self.format_address_literal(addr));
+                        }
+                        ui.close_current_popup();
+                    }
+                    let sel_count = self.selection.len();
+                    let copy_label = if sel_count > 1 {
+                        format!("\u{00BB}  Copy {} Instructions\tCtrl+C", sel_count)
+                    } else {
+                        "\u{00BB}  Copy Instruction\tCtrl+C".to_string()
+                    };
+                    if ui.menu_item(&copy_label) {
+                        self.copy_selected(provider);
+                        ui.close_current_popup();
+                    }
                 }
 
                 ui.separator();
 
-                // ── Follow (`→` arrow — visible action) ──
-                // Greyed-out when the row has no branch target on it
-                // (operand-pointer fallback isn't pre-checked to
-                // keep menu-open cost O(1); the actual click still
-                // tries [`DisasmView::follow_at_cursor`] which does
-                // the full smart resolution). Same Enter / Space
-                // gesture lives in `handle_keyboard`.
-                let _follow_dim = if !has_target {
-                    Some(ui.push_style_var(dear_imgui_rs::StyleVar::Alpha(0.40)))
-                } else {
-                    None
-                };
-                if ui.menu_item("\u{2192}  Follow\tEnter / Space") {
-                    self.cursor_idx = Some(idx);
-                    self.follow_at_cursor(provider);
-                    ui.close_current_popup();
-                }
-                drop(_follow_dim);
-
-                // ── Function navigation (Ctrl+Up / Ctrl+Down / Ctrl+L) ──
-                // Heuristic: previous / next `Return` is the
-                // function boundary. Tail-call jumps not detected;
-                // padding (`Nop` / INT3) folds into either neighbour.
-                if ui.menu_item("\u{2191}  Jump to function start\tCtrl+Up") {
-                    self.cursor_idx = Some(idx);
-                    self.jump_to_function_start(provider);
-                    ui.close_current_popup();
-                }
-                if ui.menu_item("\u{2193}  Jump to function end\tCtrl+Down") {
-                    self.cursor_idx = Some(idx);
-                    self.jump_to_function_end(provider);
-                    ui.close_current_popup();
-                }
-                if ui.menu_item("\u{00BB}  Select function\tCtrl+L") {
-                    self.cursor_idx = Some(idx);
-                    self.select_function(provider);
-                    ui.close_current_popup();
+                // Follow — green, dimmed when no branch target.
+                {
+                    let _follow_dim = if !has_target {
+                        Some(ui.push_style_var(dear_imgui_rs::StyleVar::Alpha(0.40)))
+                    } else {
+                        None
+                    };
+                    let _c = ui
+                        .push_style_color(dear_imgui_rs::StyleColor::Text, call_col);
+                    if ui.menu_item("\u{2192}  Follow\tEnter / Space") {
+                        self.cursor_idx = Some(idx);
+                        self.follow_at_cursor(provider);
+                        ui.close_current_popup();
+                    }
+                    drop(_follow_dim);
                 }
 
-                // ── Toggle Breakpoint (`●` filled circle — bp visual) ──
-                if ui.menu_item("\u{25CF}  Toggle Breakpoint\tF9") {
-                    if let Some(addr) = instr_addr {
-                        provider.toggle_breakpoint(addr);
+                // Function navigation — amber.
+                {
+                    let _c = ui
+                        .push_style_color(dear_imgui_rs::StyleColor::Text, jump_col);
+                    if ui.menu_item("\u{2191}  Jump to function start\tCtrl+Up") {
+                        self.cursor_idx = Some(idx);
+                        self.jump_to_function_start(provider);
+                        ui.close_current_popup();
                     }
-                    ui.close_current_popup();
-                }
-                // ── Toggle Read Watchpoint (`R` glyph in gutter) ──
-                if ui.menu_item("R  Toggle Read Watchpoint") {
-                    if let Some(addr) = instr_addr {
-                        provider.toggle_read_watchpoint(addr);
+                    if ui.menu_item("\u{2193}  Jump to function end\tCtrl+Down") {
+                        self.cursor_idx = Some(idx);
+                        self.jump_to_function_end(provider);
+                        ui.close_current_popup();
                     }
-                    ui.close_current_popup();
-                }
-                // ── Toggle Write Watchpoint (`W` glyph in gutter) ──
-                if ui.menu_item("W  Toggle Write Watchpoint") {
-                    if let Some(addr) = instr_addr {
-                        provider.toggle_write_watchpoint(addr);
+                    if ui.menu_item("\u{00BB}  Select function\tCtrl+L") {
+                        self.cursor_idx = Some(idx);
+                        self.select_function(provider);
+                        ui.close_current_popup();
                     }
-                    ui.close_current_popup();
                 }
 
-                // ── Toggle Bookmark (`\u{25CB}` outline ring —
-                //    bookmark visual). State-aware label: "Add to
-                //    bookmarks" when not yet marked, "Remove from
-                //    bookmarks" otherwise. Shortcut Ctrl+B.
-                let bookmarked = instr_addr.is_some_and(|a| self.is_bookmarked(a));
-                let bookmark_label = if bookmarked {
-                    "\u{25CB}  Remove from bookmarks\tCtrl+B"
-                } else {
-                    "\u{25CB}  Add to bookmarks\tCtrl+B"
-                };
-                if ui.menu_item(bookmark_label) {
-                    if let Some(addr) = instr_addr {
-                        self.toggle_bookmark(addr);
+                // Breakpoint — red.
+                {
+                    let _c =
+                        ui.push_style_color(dear_imgui_rs::StyleColor::Text, bp_col);
+                    if ui.menu_item("\u{25CF}  Toggle Breakpoint\tF9") {
+                        if let Some(addr) = instr_addr {
+                            provider.toggle_breakpoint(addr);
+                        }
+                        ui.close_current_popup();
                     }
-                    ui.close_current_popup();
+                }
+                // Read watchpoint — cyan.
+                {
+                    let _c = ui
+                        .push_style_color(dear_imgui_rs::StyleColor::Text, read_col);
+                    if ui.menu_item("R  Toggle Read Watchpoint") {
+                        if let Some(addr) = instr_addr {
+                            provider.toggle_read_watchpoint(addr);
+                        }
+                        ui.close_current_popup();
+                    }
+                }
+                // Write watchpoint — orange.
+                {
+                    let _c = ui
+                        .push_style_color(dear_imgui_rs::StyleColor::Text, write_col);
+                    if ui.menu_item("W  Toggle Write Watchpoint") {
+                        if let Some(addr) = instr_addr {
+                            provider.toggle_write_watchpoint(addr);
+                        }
+                        ui.close_current_popup();
+                    }
+                }
+
+                // Bookmark — accent. State-aware label.
+                {
+                    let _c = ui.push_style_color(
+                        dear_imgui_rs::StyleColor::Text,
+                        bookmark_col,
+                    );
+                    let bookmarked = instr_addr.is_some_and(|a| self.is_bookmarked(a));
+                    let bookmark_label = if bookmarked {
+                        "\u{25CB}  Remove from bookmarks\tCtrl+B"
+                    } else {
+                        "\u{25CB}  Add to bookmarks\tCtrl+B"
+                    };
+                    if ui.menu_item(bookmark_label) {
+                        if let Some(addr) = instr_addr {
+                            self.toggle_bookmark(addr);
+                        }
+                        ui.close_current_popup();
+                    }
                 }
 
                 ui.separator();
 
-                // ── Settings (`…` ellipsis — universal "more")
-                //    Same atlas-safe glyph that `hex_viewer` uses for
-                //    its Settings entry — keeps the visual breadcrumb
-                //    consistent across both widgets.
+                // Settings — default text colour.
                 if ui.menu_item("\u{2026}  Settings...") {
                     self.show_settings = true;
                     ui.close_current_popup();
