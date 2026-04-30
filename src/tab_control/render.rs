@@ -608,38 +608,41 @@ fn render_strip<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) -> Option<TabAction
         && let Some(entry) = pc.tabs.iter_mut().find(|t| t.id == active_id)
     {
         if pc.config.content_padding_enabled {
-            // Borderless child-window with `WindowPadding` set to the
-            // user-configured inset. Inside `render_content`,
-            // `content_region_avail()` already accounts for the
-            // padding — host widgets need no manual offset. Default
-            // `[1.0, 1.0]` is a 1-pixel breathing strip that prevents
-            // user widgets from sitting flush against the strip /
-            // outer-window edges, while staying invisible enough not
-            // to read as a margin.
+            // True outer-edge inset: shift the cursor inwards by
+            // `content_padding`, then shrink the child by the same
+            // amount on both sides so a visible gap sits between
+            // the outer window edges and the child rectangle.
+            //
+            // Earlier the code pushed `StyleVar::WindowPadding(...)`
+            // as an INNER padding — that only moved widgets within
+            // the child while the child itself stayed flush against
+            // the outer window. User feedback 2026-04-30:
+            // "внутри программы должен быть зазор в 2 пикселя —
+            // точнее внутри таба" / "падинг тупо нету" — they wanted
+            // the child rect itself inset from the outer window, not
+            // padding inside the child.
             //
             // The child's `ChildBg` is driven from `colors.content_bg`
-            // (default = `strip_bg`), so the padding inherits the
-            // configured background hue. Hosts that want a contrasting
+            // (default = `strip_bg`), so the gap reads as the same
+            // surface as the strip. Hosts that want a contrasting
             // content surface (e.g. white-on-dark editor on a dark
             // chrome) just set `tabs.config.colors.content_bg = [...]`
-            // — the padding inset is painted in the same colour.
-            let _wp = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding(
-                pc.config.content_padding,
-            ));
+            // — the gap stays the parent / strip surface and the
+            // contrasting hue paints the inner rect.
+            let pad = pc.config.content_padding;
+            let cur = ui.cursor_pos();
+            ui.set_cursor_pos([cur[0] + pad[0], cur[1] + pad[1]]);
+            let avail_full = ui.content_region_avail();
+            let inner = [
+                (avail_full[0] - 2.0 * pad[0]).max(0.0),
+                (avail_full[1] - 2.0 * pad[1]).max(0.0),
+            ];
             let _bg = ui.push_style_color(
                 dear_imgui_rs::StyleColor::ChildBg,
                 rgba(pc.config.colors.content_bg, 1.0),
             );
-            // `dear_imgui_rs::child_window().size([0.0, 0.0])` treats
-            // both axes as "auto-size to content" rather than "fill
-            // remaining" → the child collapsed to 0×0 and the padding
-            // / ChildBg were invisible (user feedback 2026-04-30:
-            // "падинг тупо нету"). Use the explicit avail so the child
-            // fills the strip-below area; mirrors the working
-            // `app_window::gpu` pattern with a non-zero second axis.
-            let avail = ui.content_region_avail();
             ui.child_window("##tab_content")
-                .size(avail)
+                .size(inner)
                 .border(false)
                 .build(ui, || {
                     entry.item.render_content(ui);

@@ -416,14 +416,14 @@ fn show_status_dot_config_default_is_true() {
 }
 
 #[test]
-fn content_padding_defaults_are_one_pixel_inset_enabled() {
-    // Pin the contract: 1-pixel content inset is on by default so
-    // user widgets never sit flush against the strip / outer-window
-    // edges. `[1.0, 1.0]` keeps the strip invisible-enough not to
-    // read as a margin while still preventing edge-collisions.
+fn content_padding_defaults_are_two_pixel_inset_enabled() {
+    // Pin the contract: 2-pixel outer-edge inset on by default so
+    // a visible gap sits between the outer window edges and the
+    // content child-window. User feedback 2026-04-30:
+    // "внутри программы должен быть зазор в 2 пикселя".
     let cfg = TabControlConfig::default();
     assert!(cfg.content_padding_enabled);
-    assert_eq!(cfg.content_padding, [1.0, 1.0]);
+    assert_eq!(cfg.content_padding, [2.0, 2.0]);
 }
 
 #[test]
