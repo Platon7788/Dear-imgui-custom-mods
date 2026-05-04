@@ -1,3 +1,13 @@
+// Default values for `DisasmViewConfig`.
+//
+// `colors` is `#[serde(skip)]` (theme-derived), so it is absent here.
+//
+// `locale` is `#[serde(default)]` and stays English for the shipped
+// defaults. Hosts that want Russian set it through
+// `DisasmView::with_locale(Locale::Ru)` or override the field in their
+// own ron file. Required: bake `GlyphRanges::Cyrillic` into the active
+// font atlas — without that Cyrillic characters render as `?`.
+
 (
     columns: (
         margin: 26.0,
@@ -24,4 +34,5 @@
     follow_execution: false,
     base_address: 0,
     max_arrows: 256,
+    locale: En,
 )

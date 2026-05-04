@@ -41,7 +41,7 @@ pub use theme::DialogColors;
 use dear_imgui_rs::{Condition, DrawListMut, Key, StyleColor, StyleVar, Ui, WindowFlags};
 
 use crate::utils::color::rgba_f32;
-use crate::utils::text::calc_text_size;
+use crate::utils::text::{calc_text_size, line_height};
 
 /// Result of rendering the confirm dialog for one frame.
 ///
@@ -346,7 +346,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
                 if has_icon {
                     let icon_cx = win_pos[0] + cfg.padding + icon_size;
                     let [_, cy_pos] = ui.cursor_pos();
-                    let text_h = calc_text_size("Mg")[1];
+                    let text_h = line_height(ui);
                     let icon_cy = win_pos[1] + cy_pos + text_h * 0.5;
                     let icon_col = match cfg.icon {
                         DialogIcon::Warning => colors.icon_warning,

@@ -205,6 +205,10 @@ pub(super) fn handle_window_event<H: AppHandler + 'static>(
         }
 
         WindowEvent::RedrawRequested => {
+            // Frame pacing is handled by `PresentMode::Fifo` —
+            // `Surface::get_current_texture` inside `render_frame`
+            // blocks until the next vblank. No software throttle is
+            // needed here.
             gpu::render_frame(g, &mut app.config, handler, event_loop);
         }
 
@@ -227,8 +231,17 @@ pub(super) fn schedule<H: AppHandler + 'static>(
     }
 
     // ── 2. Continuous-render mode ────────────────────────────────
-    // Game-style: every loop iteration repaints, gated by `fps_mode`
-    // and `unfocused_fps`.
+    // Game-style: every loop iteration repaints.
+    //
+    // For `FpsMode::Auto` (`fps_interval == 0`) the cadence comes from
+    // `PresentMode::Fifo` blocking inside `Surface::get_current_texture`
+    // until the next vblank — vsync IS the cap and matches the real
+    // monitor refresh rate. We just yield with `Poll`.
+    //
+    // For `FpsMode::Fixed(n)` (`fps_interval > 0`) we apply a software
+    // cap anchored to the previous redraw, so spurious wake-ups don't
+    // reset the timer. `unfocused_fps_interval` overrides both when the
+    // window is in the background.
     if !g.event_driven {
         g.window.request_redraw();
         let interval = if !g.focused && g.unfocused_fps_interval > Duration::ZERO {
@@ -237,7 +250,7 @@ pub(super) fn schedule<H: AppHandler + 'static>(
             g.fps_interval
         };
         if interval > Duration::ZERO {
-            event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + interval));
+            event_loop.set_control_flow(ControlFlow::WaitUntil(g.last_redraw + interval));
         } else {
             event_loop.set_control_flow(ControlFlow::Poll);
         }
@@ -250,7 +263,8 @@ pub(super) fn schedule<H: AppHandler + 'static>(
     // buffers a single paint event per call to `request_redraw`, so
     // any `pending_frames > 1` budget needs to be reissued each loop
     // iteration. The next iteration's `RedrawRequested` decrements
-    // it by exactly one.
+    // it by exactly one. Vsync inside `render_frame` keeps the rate
+    // bounded; we don't need a software gate here.
     if g.pending_frames > 0 {
         g.window.request_redraw();
         event_loop.set_control_flow(ControlFlow::Wait);

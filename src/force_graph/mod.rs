@@ -138,6 +138,29 @@ impl GraphViewer {
         self
     }
 
+    /// Override the user-visible language. Default English; pass
+    /// [`crate::i18n::Locale::Ru`] for Russian. The host must bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas — without
+    /// that, Cyrillic characters render as `?`.
+    ///
+    /// The locale is stored on [`ViewerConfig::locale`] so it
+    /// round-trips through `ron::to_string` / `ron::from_str`.
+    #[must_use]
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.config.locale = locale;
+        self
+    }
+
+    /// Mid-flight language switch.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.config.locale = locale;
+    }
+
+    /// Currently-active locale.
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.config.locale
+    }
+
     /// Override the force / physics configuration (builder pattern).
     #[must_use]
     pub fn with_force_config(mut self, f: ForceConfig) -> Self {

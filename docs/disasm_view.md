@@ -480,3 +480,17 @@ disasm_view/
 - Per-byte category coloring round-trip vs hex_viewer
 - Comment editing (round-trip, trim-on-write, clear-on-empty, default-impl no-op)
 - Convenience helpers: `select_current_ip`, `select_first_breakpoint`, `select_next/prev_breakpoint` (cycle + wraparound), `cursor_address` matches selection
+
+## Configuration & localisation
+
+`DisasmViewConfig` follows the project-wide DDD config pattern: schema
+in `src/disasm_view/config.rs`, default values in
+`src/disasm_view/config.ron` plus `column_widths.ron` for the column
+geometry sub-struct. See [`docs/config_pattern.md`](./config_pattern.md).
+
+The goto/search popups, context menu, settings popup, instruction
+hover tooltip, and copy-address tooltip are all localised through
+`crate::i18n::disasm_view`. Switch with `DisasmView::new(...).with_locale(Locale::Ru)`.
+The instruction hover tooltip honours both `cfg.address_width_64` and
+`cfg.uppercase` for the address line, the 32-bit shadow, branch
+targets, and the bytes block. See [`docs/i18n.md`](./i18n.md).

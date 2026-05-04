@@ -292,7 +292,14 @@ impl<T: TabItem> TabControl<T> {
     }
 
     /// Create a new `TabControl` with custom configuration.
-    pub fn with_config(id: impl Into<String>, config: TabControlConfig) -> Self {
+    pub fn with_config(id: impl Into<String>, mut config: TabControlConfig) -> Self {
+        // Sync `strings` to the resolved locale so a config loaded
+        // from ron with `locale: Ru` already comes up Russian without
+        // the host having to call `set_locale` first. Hosts that
+        // pre-populated `config.strings` with a custom catalogue
+        // should also set `locale` accordingly (or call `set_strings`
+        // / `set_locale` after construction).
+        config.strings = TabStrings::for_locale(config.locale);
         let imgui_id: String = id.into();
         let close_popup_id = format!("##tc_close_{}", imgui_id);
         let overflow_popup_id = format!("##tc_overflow_{}", imgui_id);
@@ -323,6 +330,34 @@ impl<T: TabItem> TabControl<T> {
             hover_target: None,
             hit_scratch: Vec::with_capacity(16),
         }
+    }
+
+    // ── Localisation ────────────────────────────────────────────────────
+
+    /// Override the user-visible language on construction. Default
+    /// is English; pass [`crate::i18n::Locale::Ru`] for Russian. The
+    /// host must bake `GlyphRanges::Cyrillic` (or a superset) into
+    /// the active font atlas — without that, Cyrillic characters
+    /// render as `?`.
+    ///
+    /// The locale is stored on [`TabControlConfig::locale`], so it
+    /// round-trips through `ron::to_string` / `ron::from_str`.
+    #[must_use]
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.set_locale(locale);
+        self
+    }
+
+    /// Mid-flight language switch — refreshes both `config.locale`
+    /// and `config.strings`.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.config.locale = locale;
+        self.config.strings = TabStrings::for_locale(locale);
+    }
+
+    /// Currently-active locale.
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.config.locale
     }
 
     // ── Tab management ──────────────────────────────────────────────────

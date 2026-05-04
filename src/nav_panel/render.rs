@@ -517,7 +517,8 @@ fn render_hidden_tab(
     }
 
     if tab_hov {
-        crate::utils::themed_tooltip(ui, || ui.text("Show panel"));
+        let s = crate::i18n::nav_panel::strings(cfg.locale);
+        crate::utils::themed_tooltip(ui, || ui.text(s.show_panel));
         if clicked {
             state.visible = true;
             events.push(NavEvent::ToggleClicked(true));
@@ -574,7 +575,8 @@ fn draw_toggle_button(
         .filled(true)
         .rounding(cfg.button_rounding)
         .build();
-        crate::utils::themed_tooltip(ui, || ui.text("Toggle panel"));
+        let s = crate::i18n::nav_panel::strings(cfg.locale);
+        crate::utils::themed_tooltip(ui, || ui.text(s.toggle_panel));
         if clicked {
             state.toggle();
             events.push(NavEvent::ToggleClicked(state.visible));

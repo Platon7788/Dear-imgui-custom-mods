@@ -358,6 +358,15 @@ pub struct ViewerConfig {
     /// When `true`, an active `search_query` *dims* non-matching nodes
     /// (alpha × 0.15) rather than hiding them. Default `true`.
     pub search_highlight_mode: bool,
+
+    /// User-visible language for the sidebar sections, sliders, and
+    /// the right-click context menu. Default
+    /// [`crate::i18n::Locale::En`]. Switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas.
+    /// `#[serde(default)]` so older `config.ron` files still parse.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 impl ViewerConfig {

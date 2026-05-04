@@ -237,7 +237,10 @@ fn assign_arrow_depths(arrows: &mut [BranchArrow]) {
 /// would exceed `MAX_ARROW_DEPTH - 1` get clamped to the
 /// outermost lane.
 fn assign_arrow_depths_in_order(arrows: &mut [BranchArrow]) {
-    let mut depth_slots: Vec<Vec<(usize, usize)>> = vec![Vec::new(); MAX_ARROW_DEPTH];
+    // Fixed-size array of Vecs — avoids the 6 heap allocations that
+    // `vec![Vec::new(); MAX_ARROW_DEPTH]` paid every call.
+    let mut depth_slots: [Vec<(usize, usize)>; MAX_ARROW_DEPTH] =
+        std::array::from_fn(|_| Vec::new());
     for arrow in arrows {
         let lo = arrow.from_idx.min(arrow.to_idx);
         let hi = arrow.from_idx.max(arrow.to_idx);

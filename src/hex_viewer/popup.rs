@@ -8,8 +8,10 @@
 use super::HexViewer;
 use super::config::{BytesPerRow, HexSearchMode, StringEncoding};
 use super::search::parse_address;
+use crate::i18n;
 use crate::utils::popup::{
-    action_row, compact_popup_body, selected_button, themed_popup_style,
+    action_row_labeled, anchor_next_popup_centred, anchor_next_popup_topleft,
+    compact_popup_body, selected_button, themed_popup_style,
 };
 
 // Approximate body width used for centring / right-anchoring the
@@ -25,53 +27,9 @@ use crate::utils::popup::{
 // queries more horizontal breathing room.
 const POPUP_INPUT_WIDTH: f32 = 360.0;
 
-/// Anchor the next ImGui window (a popup) at `pos` in screen space
-/// using the given `pivot` (where `(0, 0)` = top-left of the popup
-/// snaps to `pos`, `(0.5, 0.5)` = popup centre snaps to `pos`,
-/// `(1, 1)` = bottom-right snaps to `pos`).
-///
-/// `dear-imgui-rs` 0.11 exposes `set_window_pos` (operates on the
-/// current window) but no `set_next_window_pos` builder. The
-/// equivalent functionality lives in `igSetNextWindowPos` in the
-/// raw bindings — call it directly with `ImGuiCond_Always` so the
-/// anchor re-applies every frame (matters because ImGui caches
-/// popup positions and the user might trigger the same popup from
-/// a different click location during a session).
-fn anchor_next_popup_at(pos: [f32; 2], pivot: [f32; 2]) {
-    // SAFETY: `igSetNextWindowPos` is a side-effect-only ImGui
-    // function that just stores the requested position in the
-    // shared context — safe to call from any thread that owns
-    // the active ImGui context (i.e. the main render thread, which
-    // is where the hex viewer always runs).
-    unsafe {
-        #[allow(clippy::unnecessary_cast)]
-        // `ImGuiCond_Always` is `u32` on Linux, `i32` on Windows.
-        dear_imgui_rs::sys::igSetNextWindowPos(
-            dear_imgui_rs::sys::ImVec2 {
-                x: pos[0],
-                y: pos[1],
-            },
-            dear_imgui_rs::sys::ImGuiCond_Always as i32,
-            dear_imgui_rs::sys::ImVec2 {
-                x: pivot[0],
-                y: pivot[1],
-            },
-        );
-    }
-}
-
-/// Anchor the next popup with its top-left at `pos`. Use for
-/// click-position-aware popups (right-click context menu).
-fn anchor_next_popup(pos: [f32; 2]) {
-    anchor_next_popup_at(pos, [0.0, 0.0]);
-}
-
-/// Anchor the next popup with its **centre** at `pos`. Use for
-/// modal-style popups (Goto / Search / Settings) that should sit
-/// at the visual middle of the host viewer.
-fn anchor_next_popup_centred(pos: [f32; 2]) {
-    anchor_next_popup_at(pos, [0.5, 0.5]);
-}
+// `anchor_next_popup_centred` / `anchor_next_popup_topleft` moved to
+// `crate::utils::popup` on 2026-05-04 so both `hex_viewer` and
+// `disasm_view` share the same implementation. Imported above.
 
 /// Pseudo-radio mode pill — auto-fit-width wrapper around the
 /// crate-wide [`crate::utils::popup::selected_button`] helper. Kept
@@ -109,10 +67,11 @@ impl HexViewer {
             self.goto_focus_pending = true;
         }
 
+        let s = self.strings();
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.goto_popup_id) {
                 compact_popup_body(ui, || {
-                    ui.text("Goto address (hex or decimal):");
+                    ui.text(s.goto_title);
 
                     if self.goto_focus_pending {
                         ui.set_keyboard_focus_here();
@@ -122,7 +81,7 @@ impl HexViewer {
                     ui.input_text("##goto_input", &mut self.goto_buf).build();
 
                     let (go_clicked, cancel_clicked) =
-                        action_row(ui, POPUP_INPUT_WIDTH, "Go");
+                        action_row_labeled(ui, POPUP_INPUT_WIDTH, s.action_go, s.action_cancel);
                     if cancel_clicked {
                         ui.close_current_popup();
                     }
@@ -146,27 +105,19 @@ impl HexViewer {
             self.search_focus_pending = true;
         }
 
+        let s = self.strings();
+        let locale = self.config.locale;
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.search_popup_id) {
                 compact_popup_body(ui, || {
-                    // ── Mode row: Hex | String [+ encoding pills] ──
-                    // Two pseudo-radio buttons (highlighted-on-active).
-                    // When `String` is the active mode, the encoding
-                    // pills (ASCII / UTF-8 / UTF-16LE) appear inline
-                    // on the SAME row, right after the `String` button.
-                    // No separate "Encoding:" label / row — the pills
-                    // are themselves self-explanatory by label, and the
-                    // inline layout keeps the popup ~1 row shorter.
                     let is_hex = matches!(self.config.search_mode, HexSearchMode::Hex);
                     let is_string = self.config.search_mode.is_string();
 
-                    if mode_pill(ui, "Hex", is_hex) {
+                    if mode_pill(ui, s.mode_hex, is_hex) {
                         self.config.search_mode = HexSearchMode::Hex;
                     }
                     ui.same_line();
-                    if mode_pill(ui, "String", is_string) {
-                        // Keep prior encoding choice if we were already
-                        // in String mode; otherwise default to ASCII.
+                    if mode_pill(ui, s.mode_string, is_string) {
                         let encoding = match self.config.search_mode {
                             HexSearchMode::String(e) => e,
                             HexSearchMode::Hex => StringEncoding::Ascii,
@@ -174,18 +125,14 @@ impl HexViewer {
                         self.config.search_mode = HexSearchMode::String(encoding);
                     }
 
-                    // Encoding pills inline — visible only in String
-                    // mode. A small horizontal gap (`ui.dummy` +
-                    // `same_line`) sets the encoding group visually
-                    // apart from the mode group; otherwise the
-                    // ASCII pill grazes the String pill and the
-                    // two read as a single 5-element row instead of
-                    // "mode + sub-encoding".
                     if let HexSearchMode::String(current) = self.config.search_mode {
                         ui.same_line();
-                        ui.dummy([12.0, 0.0]); // ~1 char-wide gap
+                        ui.dummy([12.0, 0.0]);
                         for &enc in StringEncoding::ALL.iter() {
                             ui.same_line();
+                            // Encoding labels (`ASCII` / `UTF-8` /
+                            // `UTF-16LE`) are technical abbreviations
+                            // — kept untranslated.
                             if mode_pill(ui, enc.display_name(), enc == current) {
                                 self.config.search_mode = HexSearchMode::String(enc);
                             }
@@ -193,12 +140,10 @@ impl HexViewer {
                     }
 
                     let hint = match self.config.search_mode {
-                        HexSearchMode::Hex => "Hex pattern (e.g. 4D 5A ?? 00):",
-                        HexSearchMode::String(StringEncoding::Ascii) => "ASCII string:",
-                        HexSearchMode::String(StringEncoding::Utf8) => "UTF-8 string:",
-                        HexSearchMode::String(StringEncoding::Utf16Le) => {
-                            "UTF-16LE string (e.g. Windows wchar_t):"
-                        }
+                        HexSearchMode::Hex => s.hint_hex,
+                        HexSearchMode::String(StringEncoding::Ascii) => s.hint_ascii,
+                        HexSearchMode::String(StringEncoding::Utf8) => s.hint_utf8,
+                        HexSearchMode::String(StringEncoding::Utf16Le) => s.hint_utf16le,
                     };
                     ui.text(hint);
 
@@ -211,15 +156,15 @@ impl HexViewer {
                         .build();
 
                     if !self.search_results.is_empty() {
-                        ui.text(format!(
-                            "Result {}/{}",
+                        ui.text(i18n::hex_viewer::result_n_of_m(
+                            locale,
                             self.search_idx + 1,
-                            self.search_results.len()
+                            self.search_results.len(),
                         ));
                     }
 
                     let (find_clicked, cancel_clicked) =
-                        action_row(ui, POPUP_INPUT_WIDTH, "Find");
+                        action_row_labeled(ui, POPUP_INPUT_WIDTH, s.action_find, s.action_cancel);
                     if cancel_clicked {
                         ui.close_current_popup();
                     }
@@ -241,7 +186,7 @@ impl HexViewer {
     /// menu re-laying-out.
     pub(super) fn render_context_menu(&mut self, ui: &dear_imgui_rs::Ui) {
         if self.show_context_menu {
-            anchor_next_popup(self.popup_open_pos);
+            anchor_next_popup_topleft(self.popup_open_pos);
             ui.open_popup(&self.context_popup_id);
             self.show_context_menu = false;
         }
@@ -276,16 +221,17 @@ impl HexViewer {
                 //  - U+2190 / U+2192 `←` / `→`  (Arrows block, verified
                 //    rendering in this project's atlas)
                 //  - U+2026 `…`                  (General Punctuation)
+                let s = self.strings();
                 {
                     let _c = ui
                         .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
-                    if ui.menu_item("\u{00BB}  Go to Address\tCtrl+G") {
+                    if ui.menu_item(s.menu_goto) {
                         self.show_goto = true;
                         self.goto_buf.clear();
                         self.goto_focus_pending = true;
                         ui.close_current_popup();
                     }
-                    if ui.menu_item("\u{00BB}  Search\tCtrl+F") {
+                    if ui.menu_item(s.menu_search) {
                         self.show_search = true;
                         // search_focus_pending is also raised by the popup
                         // body itself when `show_search` is true on the
@@ -309,7 +255,7 @@ impl HexViewer {
                     };
                     let _c = ui
                         .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
-                    if ui.menu_item("\u{2190}  Step back\tAlt+Left") && can_back {
+                    if ui.menu_item(s.menu_step_back) && can_back {
                         self.nav_back();
                         ui.close_current_popup();
                     }
@@ -326,7 +272,7 @@ impl HexViewer {
                     };
                     let _c = ui
                         .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
-                    if ui.menu_item("\u{2192}  Step forward\tAlt+Right") && can_fwd {
+                    if ui.menu_item(s.menu_step_forward) && can_fwd {
                         self.nav_forward();
                         ui.close_current_popup();
                     }
@@ -340,12 +286,17 @@ impl HexViewer {
                 // MDI atlas loaded; ellipsis (`\u{2026}`) fallback
                 // otherwise — gated by `config.icons_available` so
                 // the entry never renders as a `?` placeholder.
-                let settings_label = if self.config.icons_available {
-                    "\u{F1B91}  Settings..."
+                // Icon glyph + localised "Settings..." label.
+                // The icon prefix isn't translatable (it's an icon),
+                // so we synthesise the label per-frame instead of
+                // baking the prefix into the catalogue.
+                let icon = if self.config.icons_available {
+                    "\u{F1B91}  "
                 } else {
-                    "\u{2026}  Settings..."
+                    "\u{2026}  "
                 };
-                if ui.menu_item(settings_label) {
+                let settings_label = format!("{icon}{}", s.menu_settings);
+                if ui.menu_item(&settings_label) {
                     self.show_settings = true;
                     ui.close_current_popup();
                 }
@@ -376,26 +327,20 @@ impl HexViewer {
             self.show_settings = false;
         }
 
+        let s = self.strings();
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.settings_popup_id) {
                 compact_popup_body(ui, || {
-                    // Same icon as the menu entry that opens this
-                    // popup — keeps the visual breadcrumb consistent
-                    // and respects `icons_available` for the same
-                    // reason (no `?` placeholder on hosts without
-                    // MDI atlas).
-                    let header = if self.config.icons_available {
-                        "\u{F1B91}  Hex Viewer Settings"
+                    let icon = if self.config.icons_available {
+                        "\u{F1B91}  "
                     } else {
-                        "\u{2026}  Hex Viewer Settings"
+                        "\u{2026}  "
                     };
-                    ui.text(header);
+                    let header = format!("{icon}{}", s.settings_title);
+                    ui.text(&header);
                     ui.separator();
 
-                    // ── Bytes per row ────────────────────────────
-                    ui.text("Bytes per row:");
-                    // Fixed 32 px square-ish buttons keep the row from
-                    // taking the full popup width and add visual rhythm.
+                    ui.text(s.settings_bytes_per_row);
                     let bpr_btn_size = [32.0_f32, 0.0];
                     let current_bpr = self.config.bytes_per_row.value();
                     for (i, preset) in BytesPerRow::ALL.iter().enumerate() {
@@ -403,10 +348,6 @@ impl HexViewer {
                             ui.same_line();
                         }
                         let is_current = preset.value() == current_bpr;
-                        // Same `selected_button` helper the search-popup
-                        // mode pills use — keeps the active-option BLUE
-                        // accent identical across hex_viewer popups
-                        // (single source of truth in `utils::popup`).
                         if selected_button(ui, preset.display_name(), bpr_btn_size, is_current)
                             && !is_current
                         {
@@ -415,32 +356,33 @@ impl HexViewer {
                     }
 
                     ui.separator();
-                    ui.text("Display:");
-                    ui.checkbox("Show ASCII", &mut self.config.show_ascii);
-                    ui.checkbox("Show inspector", &mut self.config.show_inspector);
-                    ui.checkbox("Show offsets", &mut self.config.show_offsets);
-                    ui.checkbox("Show column headers", &mut self.config.show_column_headers);
+                    ui.text(s.settings_display);
+                    ui.checkbox(s.settings_show_ascii, &mut self.config.show_ascii);
+                    ui.checkbox(s.settings_show_inspector, &mut self.config.show_inspector);
+                    ui.checkbox(s.settings_show_offsets, &mut self.config.show_offsets);
                     ui.checkbox(
-                        "Show column dividers",
+                        s.settings_show_column_headers,
+                        &mut self.config.show_column_headers,
+                    );
+                    ui.checkbox(
+                        s.settings_show_column_dividers,
                         &mut self.config.show_column_dividers,
                     );
-                    ui.checkbox("Show splitter", &mut self.config.show_splitter);
+                    ui.checkbox(s.settings_show_splitter, &mut self.config.show_splitter);
 
                     ui.separator();
-                    ui.text("Format:");
-                    ui.checkbox("Uppercase hex", &mut self.config.uppercase);
-                    ui.checkbox("Category colors", &mut self.config.category_colors);
-                    ui.checkbox("Dim zero bytes", &mut self.config.dim_zeros);
+                    ui.text(s.settings_format);
+                    ui.checkbox(s.settings_uppercase, &mut self.config.uppercase);
+                    ui.checkbox(s.settings_category_colors, &mut self.config.category_colors);
+                    ui.checkbox(s.settings_dim_zeros, &mut self.config.dim_zeros);
 
                     ui.separator();
 
-                    // Close button — compact, right-anchored with the
-                    // same 2-px edge gap as goto / search popups.
                     let total_w = ui.content_region_avail()[0];
                     let close_w = 64.0_f32;
                     let close_x = ui.cursor_pos()[0] + (total_w - close_w - 2.0).max(0.0);
                     ui.set_cursor_pos_x(close_x);
-                    if ui.button_with_size("Close", [close_w, 0.0])
+                    if ui.button_with_size(s.action_close, [close_w, 0.0])
                         || ui.is_key_pressed(dear_imgui_rs::Key::Escape)
                     {
                         ui.close_current_popup();

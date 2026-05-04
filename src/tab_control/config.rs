@@ -132,6 +132,19 @@ pub struct TabControlConfig {
     // ── Appearance ──
     pub colors: TabColors,
     pub strings: TabStrings,
+
+    /// User-visible language for the popup confirmations and the
+    /// empty-state placeholder. Default [`crate::i18n::Locale::En`].
+    /// Switching to [`crate::i18n::Locale::Ru`] requires the host to
+    /// bake `GlyphRanges::Cyrillic` (or a superset) into the active
+    /// font atlas — without that, non-ASCII characters render as `?`.
+    ///
+    /// `strings` is automatically refreshed when `locale` changes
+    /// through [`crate::tab_control::TabControl::set_locale`]. Hosts
+    /// that want a custom (third-language) catalogue can still
+    /// assign `strings` directly — that bypasses the locale match.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 impl Default for TabControlConfig {
@@ -146,5 +159,41 @@ impl TabControlConfig {
     #[inline]
     pub fn strip_height(&self) -> f32 {
         self.tab_height + self.strip_padding_v * 2.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::Locale;
+
+    #[test]
+    fn config_default_locale_is_english() {
+        let cfg = TabControlConfig::default();
+        assert_eq!(cfg.locale, Locale::En);
+    }
+
+    #[test]
+    fn config_locale_round_trips_through_ron() {
+        let cfg = TabControlConfig {
+            locale: Locale::Ru,
+            ..TabControlConfig::default()
+        };
+        let text = ron::ser::to_string(&cfg).unwrap();
+        let back: TabControlConfig = ron::from_str(&text).unwrap();
+        assert_eq!(back.locale, Locale::Ru);
+    }
+
+    #[test]
+    fn config_locale_field_optional_in_ron() {
+        // Older configs without `locale:` must fall back to English.
+        // Use the canonical default but strip the locale line so
+        // forward-compat behaviour is exercised.
+        let canonical = ron::ser::to_string(&TabControlConfig::default()).unwrap();
+        // Crude but sufficient: strip the trailing `,locale:En`.
+        let stripped = canonical.replace(",locale:En", "");
+        let cfg: TabControlConfig = ron::from_str(&stripped)
+            .expect("tab_control config without `locale:` field must still parse");
+        assert_eq!(cfg.locale, Locale::En);
     }
 }

@@ -1,0 +1,38 @@
+// Default values for `HexViewerConfig`.
+//
+// All colour fields (`color_*`) are `#[serde(skip)]` and are populated at
+// runtime from `crate::theme::HexViewerColors`, so they are intentionally
+// absent here — the schema in `config.rs` is the single source of truth
+// for non-theme defaults.
+//
+// `locale` is `#[serde(default)]` and stays English for the shipped
+// defaults. Hosts that want Russian set it through
+// `HexViewer::with_locale(Locale::Ru)` or override the field in their
+// own ron file. Required: bake `GlyphRanges::Cyrillic` into the active
+// font atlas — without that Cyrillic characters render as `?`.
+
+(
+    bytes_per_row: (16),
+    grouping: DWord,
+    show_ascii: true,
+    show_inspector: true,
+    show_offsets: true,
+    show_column_headers: true,
+    show_column_dividers: true,
+    show_splitter: false,
+    address_width: Auto,
+    uppercase: true,
+    endianness: Little,
+
+    editable: false,
+    base_address: 0,
+    highlight_changes: false,
+    category_colors: true,
+    dim_zeros: true,
+    auto_refresh_frames: 0,
+    search_mode: Hex,
+    copy_format: HexSpaced,
+    max_undo: 256,
+    icons_available: true,
+    locale: En,
+)

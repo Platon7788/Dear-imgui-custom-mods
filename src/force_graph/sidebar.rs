@@ -38,6 +38,8 @@ pub(crate) fn render_sidebar(
 
     ui.same_line();
 
+    let s = crate::i18n::force_graph::strings(config.locale);
+
     let mut hovered = false;
     ui.child_window("##sidebar")
         .size([SIDEBAR_W, 0.0])
@@ -46,11 +48,11 @@ pub(crate) fn render_sidebar(
 
             let _w = ui.push_item_width(-1.0);
 
-            render_filters(ui, filter, events);
-            render_color_groups(ui, config, events);
-            render_display(ui, config, events);
-            render_physics(ui, force_config, events);
-            render_export(ui, graph);
+            render_filters(ui, filter, events, s);
+            render_color_groups(ui, config, events, s);
+            render_display(ui, config, events, s);
+            render_physics(ui, force_config, events, s);
+            render_export(ui, graph, s);
         });
 
     hovered
@@ -59,38 +61,43 @@ pub(crate) fn render_sidebar(
 // ─── Section: Filters ─────────────────────────────────────────────────────
 
 /// Render the "Filters" collapsing section.
-fn render_filters(ui: &Ui, filter: &mut FilterState, events: &mut Vec<GraphEvent>) {
-    if !ui.collapsing_header("Filters", TreeNodeFlags::DEFAULT_OPEN) {
+fn render_filters(
+    ui: &Ui,
+    filter: &mut FilterState,
+    events: &mut Vec<GraphEvent>,
+    s: &crate::i18n::force_graph::Strings,
+) {
+    if !ui.collapsing_header(s.section_filters, TreeNodeFlags::DEFAULT_OPEN) {
         return;
     }
 
     // --- visibility toggles --------------------------------------------------
-    if ui.checkbox("Show orphan nodes", &mut filter.show_orphans) {
+    if ui.checkbox(s.show_orphan_nodes, &mut filter.show_orphans) {
         events.push(GraphEvent::FilterChanged);
     }
 
     let mut hide_unresolved = filter.hide_unresolved;
-    if ui.checkbox("Hide unresolved links", &mut hide_unresolved) {
+    if ui.checkbox(s.hide_unresolved_links, &mut hide_unresolved) {
         filter.hide_unresolved = hide_unresolved;
         events.push(GraphEvent::FilterChanged);
     }
 
     let mut hide_tags = filter.hide_tags;
-    if ui.checkbox("Hide tag nodes", &mut hide_tags) {
+    if ui.checkbox(s.hide_tag_nodes, &mut hide_tags) {
         filter.hide_tags = hide_tags;
         events.push(GraphEvent::FilterChanged);
     }
 
     // --- search query --------------------------------------------------------
     ui.separator();
-    ui.text("Search:");
+    ui.text(s.search_label);
     if ui.input_text("##search", &mut filter.search_query).build() {
         events.push(GraphEvent::SearchChanged(filter.search_query.clone()));
         events.push(GraphEvent::FilterChanged);
     }
 
     // --- depth slider (0 = all, 1-6 = hop limit) ----------------------------
-    ui.text("Depth (0=all):");
+    ui.text(s.depth_label);
     let mut depth_val: i32 = filter.depth.map_or(0, |d| d as i32);
     if ui.slider("##depth", 0_i32, 6_i32, &mut depth_val) {
         filter.depth = if depth_val == 0 {
@@ -103,7 +110,7 @@ fn render_filters(ui: &Ui, filter: &mut FilterState, events: &mut Vec<GraphEvent
 
     // --- time-travel slider -------------------------------------------------
     ui.separator();
-    ui.text("Time travel:");
+    ui.text(s.time_travel_label);
     let is_inf = filter.time_threshold.is_infinite();
     let mut t_val = if is_inf {
         1000.0_f32
@@ -115,7 +122,7 @@ fn render_filters(ui: &Ui, filter: &mut FilterState, events: &mut Vec<GraphEvent
         events.push(GraphEvent::FilterChanged);
     }
     ui.same_line();
-    if ui.small_button("All") {
+    if ui.small_button(s.btn_all) {
         filter.time_threshold = f32::INFINITY;
         events.push(GraphEvent::FilterChanged);
     }
@@ -126,13 +133,18 @@ fn render_filters(ui: &Ui, filter: &mut FilterState, events: &mut Vec<GraphEvent
 // ─── Section: Color Groups ─────────────────────────────────────────────────
 
 /// Render the "Color Groups" collapsing section.
-fn render_color_groups(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<GraphEvent>) {
-    if !ui.collapsing_header("Color Groups", TreeNodeFlags::DEFAULT_OPEN) {
+fn render_color_groups(
+    ui: &Ui,
+    config: &mut ViewerConfig,
+    events: &mut Vec<GraphEvent>,
+    s: &crate::i18n::force_graph::Strings,
+) {
+    if !ui.collapsing_header(s.section_color_groups, TreeNodeFlags::DEFAULT_OPEN) {
         return;
     }
 
     if config.color_groups.is_empty() {
-        ui.text_disabled("No groups defined");
+        ui.text_disabled(s.no_groups_defined);
     } else {
         // We process mutations (delete, color change) after the display loop to
         // avoid conflicting borrows during iteration.
@@ -177,7 +189,7 @@ fn render_color_groups(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<Grap
 
             // --- query hint (indented second line) --------------------------
             ui.indent();
-            ui.text_disabled(query_hint(&group.query));
+            ui.text_disabled(query_hint(&group.query, s));
             ui.unindent();
         }
 
@@ -192,9 +204,9 @@ fn render_color_groups(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<Grap
 
     // --- Add Group button ---------------------------------------------------
     ui.spacing();
-    if ui.button("+ Add Group") {
+    if ui.button(s.add_group) {
         config.color_groups.push(ColorGroup::new(
-            "New group",
+            s.new_group_default_name,
             ColorGroupQuery::All,
             [0.4, 0.7, 1.0, 1.0],
         ));
@@ -205,28 +217,36 @@ fn render_color_groups(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<Grap
 }
 
 /// Return a short static hint describing a [`ColorGroupQuery`] variant.
-fn query_hint(query: &ColorGroupQuery) -> &'static str {
+fn query_hint(
+    query: &ColorGroupQuery,
+    s: &crate::i18n::force_graph::Strings,
+) -> &'static str {
     match query {
-        ColorGroupQuery::Label(_) => "Query: label",
-        ColorGroupQuery::Tag(_) => "Query: tag",
-        ColorGroupQuery::Kind(_) => "Query: kind",
-        ColorGroupQuery::Regex(_) => "Query: regex",
-        ColorGroupQuery::All => "Query: all",
+        ColorGroupQuery::Label(_) => s.query_label,
+        ColorGroupQuery::Tag(_) => s.query_tag,
+        ColorGroupQuery::Kind(_) => s.query_kind,
+        ColorGroupQuery::Regex(_) => s.query_regex,
+        ColorGroupQuery::All => s.query_all,
     }
 }
 
 // ─── Section: Display ─────────────────────────────────────────────────────
 
 /// Render the "Display" collapsing section.
-fn render_display(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<GraphEvent>) {
-    if !ui.collapsing_header("Display", TreeNodeFlags::DEFAULT_OPEN) {
+fn render_display(
+    ui: &Ui,
+    config: &mut ViewerConfig,
+    events: &mut Vec<GraphEvent>,
+    s: &crate::i18n::force_graph::Strings,
+) {
+    if !ui.collapsing_header(s.section_display, TreeNodeFlags::DEFAULT_OPEN) {
         return;
     }
 
     let mut changed = false;
 
     // -- node size -----------------------------------------------------------
-    ui.text("Node size:");
+    ui.text(s.node_size);
     changed |= ui.slider(
         "##node_size",
         0.5_f32,
@@ -235,7 +255,7 @@ fn render_display(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<GraphEven
     );
 
     // -- edge width ----------------------------------------------------------
-    ui.text("Edge width:");
+    ui.text(s.edge_width);
     changed |= ui.slider(
         "##edge_w",
         0.5_f32,
@@ -244,7 +264,7 @@ fn render_display(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<GraphEven
     );
 
     // -- text fade threshold -------------------------------------------------
-    ui.text("Text fade:");
+    ui.text(s.text_fade);
     changed |= ui.slider(
         "##text_fade",
         -3.0_f32,
@@ -253,7 +273,7 @@ fn render_display(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<GraphEven
     );
 
     // -- hover fade ----------------------------------------------------------
-    ui.text("Hover fade:");
+    ui.text(s.hover_fade);
     changed |= ui.slider(
         "##hover_fade",
         0.0_f32,
@@ -262,16 +282,16 @@ fn render_display(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<GraphEven
     );
 
     // -- edge curve ----------------------------------------------------------
-    ui.text("Edge curve:");
+    ui.text(s.edge_curve);
     changed |= ui.slider("##edge_curve", 0.0_f32, 1.0_f32, &mut config.edge_curve);
 
     ui.separator();
 
     // -- boolean toggles -----------------------------------------------------
-    changed |= ui.checkbox("Arrows", &mut config.edge_arrow);
-    changed |= ui.checkbox("Edge labels", &mut config.show_edge_labels);
-    changed |= ui.checkbox("Background grid", &mut config.background_grid);
-    changed |= ui.checkbox("Glow on hover", &mut config.glow_on_hover);
+    changed |= ui.checkbox(s.toggle_arrows, &mut config.edge_arrow);
+    changed |= ui.checkbox(s.toggle_edge_labels, &mut config.show_edge_labels);
+    changed |= ui.checkbox(s.toggle_background_grid, &mut config.background_grid);
+    changed |= ui.checkbox(s.toggle_glow_on_hover, &mut config.glow_on_hover);
 
     if changed {
         events.push(GraphEvent::FilterChanged);
@@ -283,20 +303,20 @@ fn render_display(ui: &Ui, config: &mut ViewerConfig, events: &mut Vec<GraphEven
 // ─── Section: Export ──────────────────────────────────────────────────────
 
 /// Render the "Export" collapsing section.
-fn render_export(ui: &Ui, graph: &GraphData) {
-    if !ui.collapsing_header("Export", TreeNodeFlags::empty()) {
+fn render_export(ui: &Ui, graph: &GraphData, s: &crate::i18n::force_graph::Strings) {
+    if !ui.collapsing_header(s.section_export, TreeNodeFlags::empty()) {
         return;
     }
 
-    if ui.button("Copy SVG") {
+    if ui.button(s.copy_svg) {
         set_clipboard(&super::render::export::export_svg(graph));
     }
     ui.same_line();
-    if ui.button("Copy DOT") {
+    if ui.button(s.copy_dot) {
         set_clipboard(&super::render::export::export_dot(graph));
     }
     ui.same_line();
-    if ui.button("Copy Mermaid") {
+    if ui.button(s.copy_mermaid) {
         set_clipboard(&super::render::export::export_mermaid(graph));
     }
 
@@ -306,12 +326,17 @@ fn render_export(ui: &Ui, graph: &GraphData) {
 // ─── Section: Physics ─────────────────────────────────────────────────────
 
 /// Render the "Physics" collapsing section.
-fn render_physics(ui: &Ui, force_config: &mut ForceConfig, events: &mut Vec<GraphEvent>) {
-    if !ui.collapsing_header("Physics", TreeNodeFlags::DEFAULT_OPEN) {
+fn render_physics(
+    ui: &Ui,
+    force_config: &mut ForceConfig,
+    events: &mut Vec<GraphEvent>,
+    s: &crate::i18n::force_graph::Strings,
+) {
+    if !ui.collapsing_header(s.section_physics, TreeNodeFlags::DEFAULT_OPEN) {
         return;
     }
 
-    ui.text("Link dist:");
+    ui.text(s.link_dist);
     ui.slider(
         "##link_dist",
         20.0_f32,
@@ -319,7 +344,7 @@ fn render_physics(ui: &Ui, force_config: &mut ForceConfig, events: &mut Vec<Grap
         &mut force_config.link_distance,
     );
 
-    ui.text("Repulsion:");
+    ui.text(s.repulsion);
     ui.slider(
         "##repulsion",
         0.0_f32,
@@ -327,7 +352,7 @@ fn render_physics(ui: &Ui, force_config: &mut ForceConfig, events: &mut Vec<Grap
         &mut force_config.repulsion,
     );
 
-    ui.text("Attraction:");
+    ui.text(s.attraction);
     ui.slider(
         "##attraction",
         0.0_f32,
@@ -335,7 +360,7 @@ fn render_physics(ui: &Ui, force_config: &mut ForceConfig, events: &mut Vec<Grap
         &mut force_config.attraction,
     );
 
-    ui.text("Center pull:");
+    ui.text(s.center_pull);
     ui.slider(
         "##center_pull",
         0.0_f32,
@@ -343,7 +368,7 @@ fn render_physics(ui: &Ui, force_config: &mut ForceConfig, events: &mut Vec<Grap
         &mut force_config.center_pull,
     );
 
-    ui.text("Decay:");
+    ui.text(s.decay);
     ui.slider(
         "##decay",
         0.0_f32,
@@ -351,7 +376,7 @@ fn render_physics(ui: &Ui, force_config: &mut ForceConfig, events: &mut Vec<Grap
         &mut force_config.velocity_decay,
     );
 
-    ui.text("Gravity:");
+    ui.text(s.gravity);
     ui.slider(
         "##gravity",
         0.0_f32,
@@ -363,12 +388,12 @@ fn render_physics(ui: &Ui, force_config: &mut ForceConfig, events: &mut Vec<Grap
     ui.spacing();
 
     // -- simulation controls -------------------------------------------------
-    if ui.button("Pause/Resume") {
+    if ui.button(s.btn_pause_resume) {
         // GraphViewer::render intercepts this and corrects the bool to actual sim state.
         events.push(GraphEvent::SimulationToggled(false));
     }
     ui.same_line();
-    if ui.button("Reset Layout") {
+    if ui.button(s.btn_reset_layout) {
         events.push(GraphEvent::ResetLayout);
     }
 

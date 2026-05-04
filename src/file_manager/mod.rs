@@ -90,7 +90,10 @@ mod history;
 mod render;
 mod util;
 
-pub use config::{DialogMode, FileFilter, FileManagerConfig, FmStrings, STRINGS_EN};
+pub use config::{
+    DialogMode, FileFilter, FileManagerConfig, FmStrings, STRINGS_EN, STRINGS_RU,
+    strings_for_locale,
+};
 
 use std::path::PathBuf;
 
@@ -251,9 +254,17 @@ impl FileManager {
     }
 
     /// Create with custom configuration.
-    pub fn new_with_config(config: FileManagerConfig) -> Self {
+    pub fn new_with_config(mut config: FileManagerConfig) -> Self {
         let show_hidden_default = config.show_hidden_files;
         let max_history = config.max_history;
+        // Sync `strings` to the resolved locale catalogue so a config
+        // loaded from ron with `locale: Ru` already comes up Russian
+        // without the host having to call `set_locale` first. Hosts
+        // that pre-set `config.strings` to a custom catalogue lose
+        // that override here only if `locale` was also explicitly
+        // changed — which is the right precedence: explicit locale
+        // wins over the implicit STRINGS_EN serde-default.
+        config.strings = crate::file_manager::config::strings_for_locale(config.locale);
         Self {
             config,
             mode: DialogMode::SelectFolder,
@@ -295,6 +306,36 @@ impl FileManager {
             loaded: false,
             fmt_buf: String::with_capacity(256),
         }
+    }
+
+    // ─── Localisation ────────────────────────────────────────────────
+
+    /// Override the user-visible language on construction. Default
+    /// is English; pass [`crate::i18n::Locale::Ru`] for Russian. The
+    /// host must bake `GlyphRanges::Cyrillic` (or a superset) into
+    /// the active font atlas — without that, Cyrillic characters
+    /// render as `?`.
+    ///
+    /// The locale is stored on [`FileManagerConfig::locale`] so it
+    /// round-trips through `ron::to_string` / `ron::from_str` along
+    /// with every other setting.
+    #[must_use]
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.set_locale(locale);
+        self
+    }
+
+    /// Mid-flight language switch — refreshes both `config.locale`
+    /// and `config.strings`. Same caveat as [`Self::with_locale`]
+    /// regarding font atlas glyph ranges.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.config.locale = locale;
+        self.config.strings = crate::file_manager::config::strings_for_locale(locale);
+    }
+
+    /// Currently-active locale (mirror of `self.config.locale`).
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.config.locale
     }
 
     // ─── Public open methods ─────────────────────────────────────────

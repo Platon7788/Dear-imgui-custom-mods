@@ -356,3 +356,16 @@ hex_viewer/
 - Region overlay coloring
 - Diff highlighting
 - Config defaults
+
+## Configuration & localisation
+
+`HexViewerConfig` follows the project-wide DDD config pattern: schema
+in `src/hex_viewer/config.rs`, default values in
+`src/hex_viewer/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
+
+The viewer's column headers, goto/search popups, settings popup,
+context menu, per-byte hover tooltip, and inspector footer are all
+localised through `crate::i18n::hex_viewer`. Switch with
+`HexViewer::new(...).with_locale(Locale::Ru)` — the locale is stored
+on `HexViewerConfig::locale` and round-trips through ron. See
+[`docs/i18n.md`](./i18n.md).

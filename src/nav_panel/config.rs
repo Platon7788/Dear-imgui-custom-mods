@@ -133,6 +133,17 @@ pub struct NavPanelConfig {
 
     /// Panel items (buttons and separators).
     pub items: Vec<NavItem>,
+
+    /// User-visible language for the panel-toggle tooltips
+    /// ("Show panel" / "Toggle panel"). The nav buttons themselves
+    /// keep host-supplied labels via [`NavItem::label`] — those stay
+    /// host-driven (the host owns the user's mental model). Default
+    /// [`crate::i18n::Locale::En`]; switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas.
+    /// `#[serde(default)]` so older `config.ron` files still parse.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 impl Default for NavPanelConfig {

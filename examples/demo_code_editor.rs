@@ -275,6 +275,16 @@ struct DemoState {
 
 impl DemoState {
     fn new(fonts: Vec<LoadedFont>, font_idx: usize) -> Self {
+        // The right-click context menu, find/replace bar, and the
+        // cursor-info footer follow `EditorConfig::locale`. Default
+        // English; switch to Russian with:
+        //
+        //     CodeEditor::new("rust_editor")
+        //         .with_locale(dear_imgui_custom_mod::i18n::Locale::Ru)
+        //
+        // The host must bake `GlyphRanges::Cyrillic` (or a superset)
+        // into the active font atlas for Cyrillic to render.
+
         // Rust editor
         let mut rust_editor = CodeEditor::new("rust_editor");
         rust_editor.set_language(Language::Rust);

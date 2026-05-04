@@ -113,6 +113,15 @@ impl DemoState {
         let data = sample_pe_header();
         let reference = data.clone();
 
+        // Locale defaults to English. To switch the goto/search popups,
+        // context menu, and per-byte tooltip to Russian:
+        //
+        //     let viewer = HexViewer::new("##hex_demo")
+        //         .with_locale(dear_imgui_custom_mod::i18n::Locale::Ru);
+        //
+        // The host must bake `GlyphRanges::Cyrillic` (or a superset)
+        // into the active font atlas — otherwise non-ASCII characters
+        // render as `?` placeholders.
         let mut viewer = HexViewer::new("##hex_demo");
         viewer.set_data(&data);
         viewer.set_regions(pe_color_regions());

@@ -7,6 +7,7 @@
 
 use super::HexViewer;
 use super::config::{CopyFormat, HexSearchMode, StringEncoding};
+use std::fmt::Write as _;
 
 // ── Selection ────────────────────────────────────────────────────────────────
 
@@ -148,54 +149,40 @@ pub(crate) fn find_pattern_masked(data: &[u8], pattern: &[PatternByte]) -> Vec<u
 
 pub(super) fn format_bytes(bytes: &[u8], format: CopyFormat, uppercase: bool) -> String {
     match format {
-        CopyFormat::HexSpaced => bytes
-            .iter()
-            .map(|b| {
-                if uppercase {
-                    format!("{:02X}", b)
-                } else {
-                    format!("{:02x}", b)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        CopyFormat::HexCompact => bytes
-            .iter()
-            .map(|b| {
-                if uppercase {
-                    format!("{:02X}", b)
-                } else {
-                    format!("{:02x}", b)
-                }
-            })
-            .collect::<String>(),
+        CopyFormat::HexSpaced => {
+            let mut s = String::with_capacity(bytes.len().saturating_mul(3));
+            for (i, b) in bytes.iter().enumerate() {
+                if i > 0 { s.push(' '); }
+                if uppercase { write!(s, "{b:02X}").unwrap(); } else { write!(s, "{b:02x}").unwrap(); }
+            }
+            s
+        }
+        CopyFormat::HexCompact => {
+            let mut s = String::with_capacity(bytes.len().saturating_mul(2));
+            for b in bytes {
+                if uppercase { write!(s, "{b:02X}").unwrap(); } else { write!(s, "{b:02x}").unwrap(); }
+            }
+            s
+        }
         CopyFormat::CArray => {
-            let inner: String = bytes
-                .iter()
-                .map(|b| {
-                    if uppercase {
-                        format!("0x{:02X}", b)
-                    } else {
-                        format!("0x{:02x}", b)
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{{ {} }}", inner)
+            let mut s = String::with_capacity(bytes.len().saturating_mul(6).saturating_add(4));
+            s.push_str("{ ");
+            for (i, b) in bytes.iter().enumerate() {
+                if i > 0 { s.push_str(", "); }
+                if uppercase { write!(s, "0x{b:02X}").unwrap(); } else { write!(s, "0x{b:02x}").unwrap(); }
+            }
+            s.push_str(" }");
+            s
         }
         CopyFormat::RustArray => {
-            let inner: String = bytes
-                .iter()
-                .map(|b| {
-                    if uppercase {
-                        format!("0x{:02X}", b)
-                    } else {
-                        format!("0x{:02x}", b)
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("[{}]", inner)
+            let mut s = String::with_capacity(bytes.len().saturating_mul(6).saturating_add(2));
+            s.push('[');
+            for (i, b) in bytes.iter().enumerate() {
+                if i > 0 { s.push_str(", "); }
+                if uppercase { write!(s, "0x{b:02X}").unwrap(); } else { write!(s, "0x{b:02x}").unwrap(); }
+            }
+            s.push(']');
+            s
         }
         CopyFormat::Base64 => base64_encode(bytes),
         CopyFormat::Ascii => bytes

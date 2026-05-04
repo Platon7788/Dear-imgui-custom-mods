@@ -56,6 +56,13 @@ pub fn with_alpha(c: [f32; 4], a: f32) -> [f32; 4] {
     [c[0], c[1], c[2], c[3] * a]
 }
 
+/// Convenience alias for [`pack_color_f32`] — matches the `col32`
+/// shorthand used across the draw paths throughout the crate.
+#[inline]
+pub(crate) fn col32(c: [f32; 4]) -> u32 {
+    rgba_f32(c[0], c[1], c[2], c[3])
+}
+
 // ── sRGB ↔ linear gamma conversions ──────────────────────────────────────────
 //
 // `Theme::window_bg()` and the rest of our palette constants are

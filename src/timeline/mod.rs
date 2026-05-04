@@ -31,7 +31,7 @@ pub use track::Track;
 use dear_imgui_rs::{MouseButton, Ui};
 
 use crate::utils::color::rgba_f32;
-use crate::utils::text::calc_text_size;
+use crate::utils::text::{calc_text_size, line_height};
 
 /// Convert `[r, g, b, a]` to packed u32 color.
 fn col32(c: [f32; 4]) -> u32 {
@@ -128,6 +128,26 @@ impl Timeline {
             pan_start_x: 0.0,
             pan_start_time: 0.0,
         }
+    }
+
+    /// Override the user-visible language. Default English; pass
+    /// [`crate::i18n::Locale::Ru`] for Russian. The host must bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas — without
+    /// that, Cyrillic characters render as `?`.
+    #[must_use]
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.config.locale = locale;
+        self
+    }
+
+    /// Mid-flight language switch.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.config.locale = locale;
+    }
+
+    /// Currently-active locale.
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.config.locale
     }
 
     // ── Data API ────────────────────────────────────────────────────────────
@@ -472,12 +492,18 @@ impl Timeline {
                         } else {
                             "\u{25BE}"
                         };
-                        let label_text = format!("{} {}", arrow, track.name);
+                        // Two draw calls — avoids the `format!` heap alloc
+                        // that the historic single-string path triggered
+                        // every frame for every track.
                         let text_y = y + (cfg.track_header_height - 14.0) * 0.5;
+                        let arrow_x = win_pos[0] + 4.0;
+                        let track_col = col32(cfg.color_track_label);
+                        draw.add_text([arrow_x, text_y], track_col, arrow);
+                        let arrow_w = calc_text_size(arrow)[0] + 4.0;
                         draw.add_text(
-                            [win_pos[0] + 4.0, text_y],
-                            col32(cfg.color_track_label),
-                            &label_text,
+                            [arrow_x + arrow_w, text_y],
+                            track_col,
+                            track.name.as_str(),
                         );
                     }
 
@@ -527,7 +553,7 @@ impl Timeline {
                                         &span.label,
                                     );
                                 } else if span_w > 6.0 {
-                                    let ty = sy + (cfg.row_height - calc_text_size("A")[1]) * 0.5;
+                                    let ty = sy + (cfg.row_height - line_height(ui)) * 0.5;
                                     draw.add_text(
                                         [sx + 2.0, ty],
                                         col32(cfg.color_span_text),
@@ -560,6 +586,8 @@ impl Timeline {
 
                                 // Tooltip
                                 if cfg.show_tooltip {
+                                    let s = crate::i18n::timeline::strings(cfg.locale);
+                                    let locale = cfg.locale;
                                     crate::utils::themed_tooltip(ui, || {
                                         let dur = span.duration();
                                         let (val, suffix) = format_duration(dur);
@@ -569,17 +597,17 @@ impl Timeline {
                                         ));
                                         if !span.category.is_empty() && span.category != span.label
                                         {
-                                            ui.text(format!("Category: {}", span.category));
+                                            ui.text(format!("{}{}", s.category_label, span.category));
                                         }
                                         if let Some(ref src) = span.source {
-                                            ui.text(format!("Source: {}", src));
+                                            ui.text(format!("{}{}", s.source_label, src));
                                         }
-                                        ui.text(format!(
-                                            "Start: {:.4}ms  End: {:.4}ms",
+                                        ui.text(crate::i18n::timeline::start_end(
+                                            locale,
                                             span.start * 1000.0,
                                             span.end * 1000.0,
                                         ));
-                                        ui.text(format!("Depth: {}", span.depth));
+                                        ui.text(format!("{}{}", s.depth_label, span.depth));
                                     });
                                 }
                             }

@@ -4,6 +4,210 @@
 
 ### Added
 
+- **`crate::i18n` extended to `code_editor` — final batch** (session
+  042, batch 4/4 — i18n now covers **9/9 standalone widgets**).
+  ~58 keys: full right-click context menu (Cut/Copy/Paste/Select All
+  + Undo/Redo + Toggle Comment/Duplicate Line/Delete Line + Transform
+  submenu with UPPERCASE/lowercase/Title Case/Trim Whitespace + Find
+  + View submenu with 7 toggles + Language submenu header + Theme
+  submenu header + Font scale label & ± tooltips + cursor-info row).
+  Find/replace bar fully localised (placeholders, "No matches" badge,
+  6 button tooltips, Replace/All buttons).
+  Format-template helper `i18n::code_editor::cursor_info(locale, line,
+  col, total)` localises `"Ln 12, Col 5  /  100 lines"`.
+  `EditorConfig::locale` field + `CodeEditor::with_locale` /
+  `set_locale` / `locale()`. Programming-language identifiers
+  (`Rust`/`RON`/`JSON`/…) and theme names stay untranslated as proper
+  nouns; keyboard shortcuts (`Ctrl+X`, `F3`, `Esc`) likewise stay in
+  cross-locale technical form.
+- **`crate::i18n` extended to `force_graph`** (session 042, batch 3).
+  ~36 keys across the sidebar (Filters / Color Groups / Display /
+  Export / Physics sections, all sliders, all toggles) and the
+  right-click context menu (Pin/Unpin, Select neighbours, Focus/Clear
+  focus, Activate). `ViewerConfig::locale` field
+  (`#[serde(default)]`); `GraphViewer::with_locale` / `set_locale` /
+  `locale()` builder. `query_hint` (Color Groups secondary line) now
+  takes the locale catalogue too — keeps the visible "Query: …"
+  hints in sync with the active language. `ColorGroupQuery::All` /
+  newly-added groups reuse the localised default name from the
+  catalogue (`new_group_default_name`).
+- **`crate::i18n` extended to `timeline`, `diff_viewer`, `nav_panel`**
+  (session 042, batch 2/N). Three small-surface widgets:
+  - `timeline`: 4 tooltip labels (Category / Source / Start-End /
+    Depth) localised. `TimelineConfig::locale` field +
+    `Timeline::with_locale` / `set_locale` builder. Format-template
+    helper `i18n::timeline::start_end(locale, f64, f64)` for the
+    Start/End line. Tests: `timeline_strings_resolve`,
+    `timeline_start_end_helper_localises`.
+  - `diff_viewer`: 2 toolbar buttons ("Prev (Shift+F7)" / "Next (F7)").
+    `DiffViewerConfig::locale` + `DiffViewer::with_locale` / `set_locale`.
+    Test: `diff_viewer_strings_resolve`.
+  - `nav_panel`: 2 panel-toggle tooltips ("Show panel" / "Toggle panel").
+    `NavPanelConfig::locale` (functional API — no struct builder; hosts
+    set the field directly). Test: `nav_panel_strings_resolve`.
+  - Per-widget user labels (`NavItem::label`, `Track::name`,
+    `Span::label`, etc.) remain host-driven by design.
+- **`crate::i18n` extended to `file_manager` and `tab_control`** (session
+  042, batch 1/N). Both widgets had pre-existing English string tables
+  (`FmStrings::STRINGS_EN`, `TabStrings` default impl) but no Russian
+  catalogue or `Locale` integration — hosts had to wire localisation by
+  hand. Now:
+  - `file_manager`: `STRINGS_RU` static added; `strings_for_locale(Locale)`
+    resolves either catalogue. `FileManagerConfig::locale` field
+    (`#[serde(default)]`) carries the choice through ron.
+    `FileManager::with_locale` / `set_locale` builders auto-refresh
+    `config.strings` when the locale changes, so a config loaded from
+    ron with `locale: Ru` already comes up Russian.
+  - `tab_control`: `TabStrings::en()` / `TabStrings::ru()` /
+    `for_locale(Locale)` constructors. `TabControlConfig::locale` field.
+    `TabControl::with_locale` / `set_locale` mirror the file_manager
+    API. Existing `TabStrings::default()` still returns English.
+  - Forward-compat: both modules' configs accept ron files saved
+    before the locale field landed (parsed back as English). Pinned
+    by `locale_field_optional_in_ron` tests.
+- **DDD-pure structural defaults — composite sub-structs in their own
+  ron files** (session 041). Three remaining composite sub-structs
+  whose `Default` was hand-coded in Rust now load from sibling ron
+  files, mirroring the `TitlebarConfig` ↔ `titlebar_*.ron` pattern
+  introduced in session 039:
+  - `Buttons` → `app_window/config/buttons.ron`. The three titlebar
+    presets (`titlebar_main/tool/dialog.ron`) inline the same field
+    set with their own `minimize`/`maximize` overrides; drift is
+    guarded by `buttons_inline_in_titlebar_{main,tool,dialog}_matches_canonical`.
+  - `ColumnWidths` → `disasm_view/column_widths.ron`. Inlined under
+    `columns:` in `disasm_view/config.ron`; drift guarded by
+    `columns_inline_in_config_ron_matches_canonical`.
+  - `ContextMenuConfig` → `code_editor/context_menu.ron`. Inlined
+    under `context_menu:` in `code_editor/config.ron`; drift guarded by
+    `context_menu_inline_in_config_ron_matches_canonical`.
+  After this pass every composite sub-struct that holds a value-set
+  (as opposed to an identity element) lives in ron. Atomic
+  enum invariants (`#[default]` on `WindowKind`, `Locale`, …) stay
+  in Rust because they're schema, not values; theme palettes
+  (`HexViewerColors`, `DisasmViewColors`, etc.) stay in Rust because
+  they're derived state through `Theme::*_colors()`; `NodeStyle` /
+  `EdgeStyle` stay in Rust because their `Default` is just a thin
+  wrapper around `Self::new()` (identity element / alternative
+  constructor, no real value-set to externalise).
+- **`crate::i18n` — English / Russian localisation for `hex_viewer` and
+  `disasm_view`** (session 040). New `i18n::Locale` enum (defaults to
+  `En`, `Ru` second variant) carried per-widget. Static `Strings`
+  catalogues for both widgets cover every user-visible label, tooltip,
+  popup, context-menu entry, settings switch, and search hint —
+  ~75 keys total. Format-template helpers
+  (`result_n_of_m`, `pattern_too_short`, `copy_n_instructions`)
+  cover counts and parameterised messages.
+  - Builder API: `HexViewer::new(...).with_locale(Locale::Ru)` /
+    `DisasmView::new(...).with_locale(Locale::Ru)`. Mid-flight switch
+    via `set_locale(...)`. Default stays English so existing hosts
+    are unaffected.
+  - Russian deployment requires the host to bake
+    `GlyphRanges::Cyrillic` (or a superset) into the active font
+    atlas — without it Cyrillic characters render as `?` placeholders.
+    Documented on `Locale::Ru`.
+  - **Locale lives on the config struct** (`HexViewerConfig::locale`
+    and `DisasmViewConfig::locale`), not on the widget itself, so
+    `ron::to_string(&cfg)` round-trips the user's choice along with
+    every other display setting. The shipped `config.ron` files now
+    carry `locale: En`. The field is `#[serde(default)]` — older
+    saved configs that pre-date the locale field still parse cleanly
+    (forward-compat tests pin this).
+- **`crate::utils::popup::action_row_labeled`** — variant of
+  `action_row` letting the caller supply the cancel-button label
+  alongside the primary label. Used by `hex_viewer` / `disasm_view`
+  to feed both buttons from their `i18n` catalogue. The original
+  `action_row` keeps its English-default `"Cancel"` for callers
+  that don't drive localisation.
+
+### Fixed
+
+- **`Cargo.toml` `[[example]]` declarations restored** (session 042b).
+  An earlier refactor in this release dropped the 15 `[[example]]`
+  blocks that wire `examples/demo_*.rs` files into `cargo build
+  --examples`. Files were untouched on disk but
+  `cargo build --examples --all-features` silently no-op'd. Restored
+  with the original `required-features` gating so each demo compiles
+  only when its widget feature is enabled.
+  Also added per-demo locale-switch hints (commented snippets, no
+  behavioural change) in `demo_hex_viewer`, `demo_disasm_view`,
+  `demo_code_editor`, `demo_file_manager`, `demo_force_graph`, and
+  `demo_timeline` so users see the i18n API at a glance.
+
+- **`disasm_view` hover tooltip x64 / x32 consistency** (session 040).
+  The instruction-row tooltip historically formatted the address as
+  `{:016X}` regardless of `cfg.address_width_64`, and emitted the
+  32-bit shadow line whenever `addr <= 0xFFFFFFFF` — including when
+  the widget was already in 32-bit mode (where the primary line is
+  already 8 digits, so the shadow is redundant). Now the tooltip
+  honours both `address_width_64` and `uppercase`:
+  - 32-bit mode → 8-digit primary address, no 32-bit shadow line.
+  - 64-bit mode → 16-digit primary, plus the 8-digit shadow line
+    only when the address fits in `u32::MAX`.
+  - Branch target / byte block / hex byte payload all follow the
+    same `uppercase` flag instead of hard-coding uppercase.
+- **`disasm_view` clipboard payload x32 / case consistency** (session
+  040). `Ctrl+C` (multi-instruction copy) used to hard-code uppercase
+  byte / address rendering even when `cfg.uppercase = false`. Now
+  every field of the clipboard line — address, bytes, comment —
+  matches the widget's display configuration.
+- **`hex_viewer` per-byte tooltip** now honours `cfg.uppercase` for
+  the Hex / Dec / Oct triple (the gutter respected the flag, the
+  tooltip didn't).
+
+### Performance
+
+- **Hot-path render audit + cross-module micro-optimisations** (session 039).
+  After the Vex0r profiler-FPS investigation surfaced unrelated waste in
+  the per-frame chrome, swept every module for the same patterns:
+  - **`TitlebarColorsU32` packed-colour cache** (`app_window/chrome`):
+    `TitlebarColors` (9 × `[f32;4]`) is now also stored in pre-packed `u32`
+    form on the `GpuState`, refreshed alongside `cached_titlebar` on theme
+    change. The chrome render previously called `pack_color_f32` 8-12
+    times per frame for the same palette — now reads `u32` words
+    directly.
+  - **`utils::text::line_height(ui)` helper** replaces 9 occurrences of
+    `calc_text_size("Mg" | "M" | "A")[1]` across 7 modules
+    (`app_window`, `confirm_dialog`, `nav_panel::submenu`, `timeline`,
+    `status_bar`, `notifications`, `property_inspector`). Maps to
+    `igGetTextLineHeight()` — a direct `ImGuiContext::FontSize` read
+    instead of a glyph-walk.
+  - **`code_editor` gutter scratch buffer**: `format!("{}", line_idx + 1)`
+    fired once per visible row, every frame. Replaced with a pre-allocated
+    `String` buffer (`gutter_buf`, capacity 12) reused via `clear()` +
+    `write!()` — zero allocations after the first repaint, regardless of
+    how many lines are in view.
+  - **`code_editor` child-window id cached as `Arc<str>`**: the historic
+    `format!("##ce_{}", self.id)` inside `render` allocated a fresh
+    `String` every frame. Now built once in `new()`, render does an
+    atomic refcount bump.
+  - **`timeline` + `property_inspector`**: track / category headers used
+    `format!("{} {}", arrow, name)` for every visible row, every frame.
+    Replaced with two separate `draw.add_text` calls offset by the
+    measured arrow glyph width — no joined string, no heap alloc.
+
+### Added
+
+- **`config.rs` schema / `config.ron` values pattern completed for the last
+  two modules** (session 038). `app_window` and `hex_viewer` were the only
+  modules still hard-coding default values inside `Default::default()`.
+  Both now load defaults from a shipped ron file:
+  - `hex_viewer/config.ron` carries the 22 non-color fields; the 18
+    theme-driven `color_*` fields stay `#[serde(skip)]` and are populated
+    from `HexViewerColors::default()` after ron parse.
+  - `app_window/config/default.ron` carries the full `AppConfig` schema;
+    `font` and `window_icon` (which hold `Arc<[u8]>` / RGBA pixel buffers)
+    are `#[serde(skip)]` and fall back to type-default. The `chrome` block
+    is inlined because ron 0.8 has no `include`.
+  - `app_window/config/titlebar_main.ron`, `titlebar_tool.ron`,
+    `titlebar_dialog.ron` carry the three titlebar presets.
+  - `TitlebarConfig::default/tool/dialog` and `AppConfig::default` now do
+    `ron::from_str(include_str!(...))`; `splash/tool/dialog/main` window
+    presets remain Rust-side methods because they're combinations, not
+    values. Round-trip + drift-detection tests added in
+    `app_window/config/mod.rs::tests`.
+  - `ExtraButton` is excluded from ron (it holds `&'static str` for
+    zero-allocation dispatch); `TitlebarConfig::extras` is
+    `#[serde(skip, default)]`. Hosts add extras through the builder API.
 - **`serde` + `ron` config serialization across all modules** (session
   036). Every config struct now derives `serde::Serialize, serde::Deserialize`.
   Each module ships a `config.ron` file (embedded via `include_str!`) that
@@ -43,6 +247,42 @@
 - **`frame_latency` dead parameter removed** (session 037). `gpu/setup.rs`
   internal helper always returned `2` regardless of the `PowerMode` argument.
   Removed the parameter; call site updated. Comment explains the rationale.
+
+- **Zero-allocation hot-path in `disasm_view::tokens`** (session 038).
+  `classify_operand_token` no longer calls `to_ascii_lowercase()` (which heap-
+  allocates a `String` per token on every render frame). Size keywords now
+  tested via `eq_ignore_ascii_case`; the register check uses a 16-byte stack
+  buffer for the case-fold instead of a heap-allocated `String`.
+
+- **`format_bytes` in `hex_viewer::search` rewritten** (session 038).
+  `HexSpaced`, `HexCompact`, `CArray`, and `RustArray` arms replaced the
+  `map → collect::<Vec<_>>() → join` chain with direct `write!` into a
+  pre-allocated `String`, eliminating the intermediate `Vec<String>`.
+
+- **`disasm_view` ImGui IDs fully cached** (session 038). The child-window
+  ID (`##dv_child_*`) is now built once in `DisasmView::new` and stored as
+  `child_id` alongside the other cached IDs, removing the last per-frame
+  `format!` call in `render()`. The now-redundant private `id: String` field
+  is removed from the struct.
+
+- **`col32` centralised in `crate::utils::color`** (session 038). Three
+  independent copies of the helper (one in each draw module) collapsed into
+  a single `pub(crate) fn col32` re-export of `rgba_f32`.
+
+- **Popup-anchor helpers moved to `crate::utils::popup`** (session 038).
+  `anchor_next_popup_at / _topleft / _centred` were duplicated verbatim in
+  both `hex_viewer::popup` and `disasm_view::popup`; both modules now import
+  from the shared location.
+
+- **`disasm_view::popup` search hint is a `const`** (session 038). The label
+  `"Search bytes (min 5 bytes; ?? wildcard):"` is stored as `SEARCH_HINT:
+  &str` instead of being formatted anew on every frame while the popup is
+  open.
+
+- **`arrows.rs` lane array uses `std::array::from_fn`** (session 038).
+  `vec![Vec::new(); MAX_ARROW_DEPTH]` → `std::array::from_fn(|_| Vec::new())`
+  for the fixed-size 6-slot depth-lane array, replacing `N` heap allocations
+  for the `Vec` wrapper with a single stack allocation.
 
 - **`app_window` module split** (session 036). `mod.rs` (679 → 227 lines)
   and `config/mod.rs` (748 → 313 lines) extracted into dedicated submodules

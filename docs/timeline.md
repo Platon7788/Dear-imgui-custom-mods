@@ -224,3 +224,15 @@ timeline/
   span.rs     Span and Marker data types with builders
   track.rs    Track — named row of sorted spans
 ```
+
+## Configuration & localisation
+
+`TimelineConfig` follows the project-wide DDD config pattern: schema
+in `src/timeline/config.rs`, default values in
+`src/timeline/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
+
+Span hover tooltip labels (Category, Source, Start/End, Depth) are
+localised through `crate::i18n::timeline`. Switch with
+`Timeline::new(...).with_locale(Locale::Ru)`. Track names and span
+labels themselves come from the host and stay host-driven. See
+[`docs/i18n.md`](./i18n.md).

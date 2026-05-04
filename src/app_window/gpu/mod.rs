@@ -17,8 +17,8 @@ use dear_imgui_winit::WinitPlatform;
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
 use super::chrome::{
-    ResizeEdge, TitlebarAction, TitlebarResult, cursor_for_edge, render_titlebar, resize_direction,
-    whole_window_resize,
+    ResizeEdge, TitlebarAction, TitlebarColorsU32, TitlebarResult, cursor_for_edge,
+    render_titlebar, resize_direction, whole_window_resize,
 };
 use super::config::{AppConfig, Chrome};
 use super::handler::AppHandler;
@@ -75,6 +75,13 @@ pub(super) struct GpuState {
     /// would re-execute the theme constructor (and any `with_a`
     /// helper) on every frame. Refreshed via [`Self::refresh_clear_color`].
     pub cached_titlebar: crate::theme::TitlebarColors,
+    /// Pre-packed `u32` form of [`Self::cached_titlebar`]. The hot-path
+    /// chrome render does 8-12 colour-tinted draw calls per frame and
+    /// previously called `pack_color_f32` on each one; building this
+    /// once on theme change saves the equivalent of those packs every
+    /// redraw. Refreshed alongside `cached_titlebar` in
+    /// [`Self::refresh_clear_color`].
+    pub cached_titlebar_u32: TitlebarColorsU32,
 }
 
 impl GpuState {
@@ -98,6 +105,7 @@ impl GpuState {
         self.clear_color =
             crate::utils::color::wgpu_clear_color(cfg.theme.window_bg(), self.surface_cfg.format);
         self.cached_titlebar = cfg.theme.titlebar();
+        self.cached_titlebar_u32 = TitlebarColorsU32::from_palette(&self.cached_titlebar);
     }
 }
 
@@ -204,15 +212,15 @@ pub(super) fn render_frame<H: AppHandler>(
                         );
                     }
                     Chrome::Custom(t) => {
-                        // Cached palette — `cached_titlebar` is
+                        // Cached palette + pre-packed u32 colors —
                         // refreshed on theme change, so the per-frame
-                        // hot path reads it directly instead of
-                        // rebuilding from `cfg.theme.titlebar()`.
+                        // hot path reads u32 words directly instead of
+                        // packing 8-12 `[f32;4]` fields every redraw.
                         tb_result = render_titlebar(
                             ui,
                             t,
                             &cfg.title,
-                            &gpu.cached_titlebar,
+                            &gpu.cached_titlebar_u32,
                             &gpu.app_state.titlebar,
                             cfg.resize_zone,
                             cfg.os_resizable(),

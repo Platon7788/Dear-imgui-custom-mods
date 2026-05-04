@@ -18,7 +18,43 @@ use super::config::{CloseMode, TitleAlign, TitlebarConfig};
 use super::state::TitlebarState;
 use crate::theme::TitlebarColors;
 use crate::utils::color::rgba_f32;
-use crate::utils::text::calc_text_size;
+use crate::utils::text::{calc_text_size, line_height};
+
+// ── Pre-packed titlebar palette ──────────────────────────────────────────────
+
+/// `TitlebarColors` with each `[f32; 4]` already packed into a `u32` ABGR
+/// word. The render hot-path issues 8-12 colour-tinted draw calls per
+/// frame; building this struct once on theme change saves the equivalent
+/// number of `f32`→`u32` packs every redraw.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct TitlebarColorsU32 {
+    pub bg: u32,
+    pub separator: u32,
+    pub title: u32,
+    pub icon: u32,
+    pub btn_minimize: u32,
+    pub btn_maximize: u32,
+    pub btn_close: u32,
+    pub btn_hover_bg: u32,
+    pub btn_close_hover_bg: u32,
+}
+
+impl TitlebarColorsU32 {
+    /// Pack a [`TitlebarColors`] palette into the per-field `u32` form.
+    pub(super) fn from_palette(p: &TitlebarColors) -> Self {
+        Self {
+            bg: c32(p.bg),
+            separator: c32(p.separator),
+            title: c32(p.title),
+            icon: c32(p.icon),
+            btn_minimize: c32(p.btn_minimize),
+            btn_maximize: c32(p.btn_maximize),
+            btn_close: c32(p.btn_close),
+            btn_hover_bg: c32(p.btn_hover_bg),
+            btn_close_hover_bg: c32(p.btn_close_hover_bg),
+        }
+    }
+}
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -59,11 +95,11 @@ impl TitlebarResult {
 /// Call as the first thing inside a full-screen, zero-padding ImGui window;
 /// the caller is responsible for advancing the cursor below `cfg.height`
 /// for any further content.
-pub fn render_titlebar(
+pub(super) fn render_titlebar(
     ui: &Ui,
     cfg: &TitlebarConfig,
     title: &str,
-    colors: &TitlebarColors,
+    colors: &TitlebarColorsU32,
     state: &TitlebarState,
     resize_zone: f32,
     os_resizable: bool,
@@ -85,7 +121,7 @@ pub fn render_titlebar(
     draw.add_rect(
         [cursor[0], cursor[1]],
         [cursor[0] + ww, cursor[1] + h],
-        c32(colors.bg),
+        colors.bg,
     )
     .filled(true)
     .build();
@@ -95,7 +131,7 @@ pub fn render_titlebar(
         draw.add_rect(
             [cursor[0], cursor[1] + h - sep_h],
             [cursor[0] + ww, cursor[1] + h],
-            c32(colors.separator),
+            colors.separator,
         )
         .filled(true)
         .build();
@@ -106,7 +142,9 @@ pub fn render_titlebar(
         cfg.buttons.minimize as usize + cfg.buttons.maximize as usize + cfg.buttons.close as usize;
     let btn_total_w = (std_count + cfg.extras.len()) as f32 * btn_w;
     let btn_area_x = cursor[0] + ww - btn_total_w;
-    let [_, text_h] = calc_text_size("Mg");
+    // `line_height(ui)` reads `ImGuiContext::FontSize` directly — no
+    // `igCalcTextSize("Mg")` glyph walk per frame.
+    let text_h = line_height(ui);
     let text_y = cursor[1] + (h - text_h) * 0.5;
     let cy_btn = cursor[1] + h * 0.5;
 
@@ -117,7 +155,7 @@ pub fn render_titlebar(
     // Icon + title.
     let mut title_x = cursor[0] + cfg.title_padding_left;
     if let Some(ref icon) = cfg.icon {
-        draw.add_text([title_x, text_y], c32(colors.icon), icon.as_str());
+        draw.add_text([title_x, text_y], colors.icon, icon.as_str());
         title_x += calc_text_size(icon.as_str())[0] + 6.0;
     }
     let icon_end_x = title_x;
@@ -125,12 +163,12 @@ pub fn render_titlebar(
     if cfg.title_visible {
         match cfg.title_align {
             TitleAlign::Left => {
-                draw.add_text([title_x, text_y], c32(colors.title), title);
+                draw.add_text([title_x, text_y], colors.title, title);
             }
             TitleAlign::Center => {
                 let tw = calc_text_size(title)[0];
                 let cx = cursor[0] + (ww - btn_total_w - tw) * 0.5;
-                draw.add_text([cx.max(title_x), text_y], c32(colors.title), title);
+                draw.add_text([cx.max(title_x), text_y], colors.title, title);
             }
         }
     }
@@ -154,7 +192,7 @@ pub fn render_titlebar(
             ir,
             ipad,
             cy_btn,
-            c32(colors.btn_close_hover_bg),
+            colors.btn_close_hover_bg,
             in_row,
             mx,
             cfg.buttons.show_hover_bg,
@@ -166,7 +204,7 @@ pub fn render_titlebar(
             };
         }
         let r = if hov { ir * zoom } else { ir };
-        glyph::draw_close(&draw, cx_btn, cy_btn, r, c32(colors.btn_close));
+        glyph::draw_close(&draw, cx_btn, cy_btn, r, colors.btn_close);
     }
 
     if cfg.buttons.maximize {
@@ -179,7 +217,7 @@ pub fn render_titlebar(
             ir,
             ipad,
             cy_btn,
-            c32(colors.btn_hover_bg),
+            colors.btn_hover_bg,
             in_row,
             mx,
             cfg.buttons.show_hover_bg,
@@ -189,9 +227,9 @@ pub fn render_titlebar(
         }
         let r = if hov { ir * zoom } else { ir };
         if state.maximized {
-            glyph::draw_restore(&draw, cx_btn, cy_btn, r, c32(colors.btn_maximize));
+            glyph::draw_restore(&draw, cx_btn, cy_btn, r, colors.btn_maximize);
         } else {
-            glyph::draw_maximize(&draw, cx_btn, cy_btn, r, c32(colors.btn_maximize));
+            glyph::draw_maximize(&draw, cx_btn, cy_btn, r, colors.btn_maximize);
         }
     }
 
@@ -205,7 +243,7 @@ pub fn render_titlebar(
             ir,
             ipad,
             cy_btn,
-            c32(colors.btn_hover_bg),
+            colors.btn_hover_bg,
             in_row,
             mx,
             cfg.buttons.show_hover_bg,
@@ -214,7 +252,7 @@ pub fn render_titlebar(
             action = TitlebarAction::Minimize;
         }
         let r = if hov { ir * zoom } else { ir };
-        glyph::draw_minimize(&draw, cx_btn, cy_btn, r, c32(colors.btn_minimize));
+        glyph::draw_minimize(&draw, cx_btn, cy_btn, r, colors.btn_minimize);
     }
 
     // Extra buttons (right-to-left). Same zoom + hover-bg-skip rules.
@@ -227,7 +265,7 @@ pub fn render_titlebar(
                 draw.add_rect(
                     [cx_btn - ir - ipad, cy_btn - ir - ipad],
                     [cx_btn + ir + ipad, cy_btn + ir + ipad],
-                    c32(colors.btn_hover_bg),
+                    colors.btn_hover_bg,
                 )
                 .filled(true)
                 .rounding(3.0)

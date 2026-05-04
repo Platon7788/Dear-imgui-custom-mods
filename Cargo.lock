@@ -549,6 +549,7 @@ dependencies = [
  "ron",
  "serde",
  "slotmap",
+ "tracing",
  "wgpu",
  "windows-sys 0.61.2",
  "winit",

@@ -167,6 +167,12 @@ impl DemoState {
     fn new() -> Self {
         let (tracks, markers) = build_sample_data();
 
+        // The span hover tooltip ("Category:", "Source:", "Start/End:",
+        // "Depth:") follows `TimelineConfig::locale`. Switch via
+        //     Timeline::new(...).with_locale(
+        //         dear_imgui_custom_mod::i18n::Locale::Ru)
+        // The host must bake `GlyphRanges::Cyrillic` into the active
+        // font atlas for Cyrillic to render.
         let mut timeline = Timeline::new("##profiler_demo");
         for t in tracks {
             timeline.add_track(t);

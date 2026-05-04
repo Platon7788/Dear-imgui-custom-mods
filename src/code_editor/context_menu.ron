@@ -1,0 +1,23 @@
+// `ContextMenuConfig::default()` — every section visible.
+//
+// `enabled = false` is the embedded-read-only-viewer pattern (host
+// owns right-click); the per-section `show_*` flags let callers pick
+// a subset without writing `..Default::default()` boilerplate.
+//
+// Inlined into `code_editor/config.ron` (under `context_menu:`); drift
+// is guarded by `tests::context_menu_inline_in_config_ron_matches_canonical`.
+
+(
+    enabled: true,
+    show_clipboard: true,
+    show_select_all: true,
+    show_undo_redo: true,
+    show_code_actions: true,
+    show_transform: true,
+    show_find: true,
+    show_view_toggles: true,
+    show_language_selector: true,
+    show_theme_selector: true,
+    show_font_size: true,
+    show_cursor_info: true,
+)

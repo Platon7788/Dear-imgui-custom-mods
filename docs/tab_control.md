@@ -397,3 +397,16 @@ cargo test --lib --features tab_control tab_control::tests
 ```
 
 33+ unit tests cover deterministic state (add/remove/clear/move_tab/set_active/pinned-partition/popup-IDs/dot-color/text-color/content-padding/show-preview/etc.). Rendering itself is verified manually via the demo — it requires an initialized ImGui context that's hard to mock without spinning up a window.
+
+## Configuration & localisation
+
+`TabControlConfig` follows the project-wide DDD config pattern:
+schema in `src/tab_control/config.rs`, default values in
+`src/tab_control/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
+
+`TabStrings::en()` / `TabStrings::ru()` / `for_locale(Locale)` cover
+the close-tab confirmation, dirty-tab confirmation, no-tabs / empty
+hint placeholders, overflow tooltip, and add-tab button. Switch with
+`TabControl::new(...).with_locale(Locale::Ru)` — the builder
+auto-refreshes `config.strings`. Tab labels themselves come from the
+host via `TabItem` and stay host-driven. See [`docs/i18n.md`](./i18n.md).

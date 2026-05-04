@@ -31,7 +31,7 @@ use crate::theme::Theme;
 // ── AppConfig ────────────────────────────────────────────────────────────────
 
 /// Top-level window configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AppConfig {
     pub title: String,
     pub kind: WindowKind,
@@ -54,6 +54,10 @@ pub struct AppConfig {
     pub render_mode: RenderMode,
     pub power_mode: PowerMode,
     pub font_size: f32,
+    /// Font selection. `FontChoice::Bytes` / `FontChoice::Stack` carry
+    /// `Arc<[u8]>` TTF buffers — runtime data, not config — so the field
+    /// is skipped from ron. Hosts supply fonts via the builder API.
+    #[serde(skip, default)]
     pub font: FontChoice,
     pub merge_mdi_icons: bool,
     /// Show the window on creation. Set `false` to start hidden; call `state.show()` later.
@@ -61,6 +65,9 @@ pub struct AppConfig {
     /// Initial window opacity (0.0 = fully transparent, 1.0 = opaque).
     pub opacity: f32,
     /// Optional taskbar / Alt-Tab icon. Applied at window creation.
+    /// Holds raw RGBA pixel data — runtime payload, not config — so the
+    /// field is skipped from ron. Hosts supply icons via the builder API.
+    #[serde(skip, default)]
     pub window_icon: Option<WindowIcon>,
     /// **Full-bleed content mode.** When `true`, the framework runs
     /// `handler.render(ui, state)` *directly* inside the root
@@ -88,31 +95,12 @@ pub struct AppConfig {
 // ── Default ──────────────────────────────────────────────────────────────────
 
 impl Default for AppConfig {
+    /// Loads `default.ron` — the schema's value-side. `font` and
+    /// `window_icon` are populated from their type-side defaults
+    /// (skipped from ron because they hold runtime byte buffers).
     fn default() -> Self {
-        Self {
-            title: "Application".into(),
-            kind: WindowKind::Main,
-            border: BorderStyle::Sizeable,
-            form_style: FormStyle::Normal,
-            size: [1100.0, 680.0],
-            min_size: Some([640.0, 400.0]),
-            max_size: None,
-            position: Position::ScreenCenter,
-            chrome: Chrome::default(),
-            theme: Theme::Dark,
-            corner_radius: 8,
-            auto_close_after: None,
-            render_mode: RenderMode::default(),
-            power_mode: PowerMode::default(),
-            font_size: 15.0,
-            font: FontChoice::default(),
-            merge_mdi_icons: false,
-            visible: true,
-            opacity: 1.0,
-            window_icon: None,
-            raw_content: false,
-            resize_zone: 6.0,
-        }
+        ron::from_str(include_str!("default.ron"))
+            .expect("built-in app_window/config/default.ron is valid")
     }
 }
 
@@ -319,5 +307,115 @@ mod tests {
         assert_eq!(cfg.title, "My App");
         assert_eq!(cfg.size, [800.0, 600.0]);
         assert!(matches!(cfg.theme, crate::theme::Theme::Light));
+    }
+
+    // ── config.ron round-trip & schema-vs-values guard ───────────────────
+    //
+    // Locks the new convention (`config.rs` = schema, `*.ron` = values)
+    // for `app_window`. If a non-skip field is added to `AppConfig` /
+    // `TitlebarConfig` / `Buttons` and ron is not updated, these tests
+    // fail at compile/parse time.
+
+    #[test]
+    fn default_ron_parses() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.title, "Application");
+        assert!(matches!(cfg.kind, WindowKind::Main));
+        assert_eq!(cfg.size, [1100.0, 680.0]);
+        assert_eq!(cfg.font_size, 15.0);
+        assert_eq!(cfg.resize_zone, 6.0);
+        // skip-fields — ron leaves them at their type-default.
+        assert!(cfg.window_icon.is_none());
+        assert!(matches!(cfg.font, FontChoice::Builtin(_)));
+    }
+
+    #[test]
+    fn titlebar_main_matches_default() {
+        let tb = TitlebarConfig::default();
+        assert_eq!(tb.height, 28.0);
+        assert!(tb.buttons.minimize && tb.buttons.maximize && tb.buttons.close);
+        assert!(tb.double_click_maximize);
+    }
+
+    #[test]
+    fn titlebar_tool_is_compact_close_only() {
+        let tb = TitlebarConfig::tool();
+        assert_eq!(tb.height, 22.0);
+        assert!(!tb.buttons.minimize && !tb.buttons.maximize);
+        assert!(tb.buttons.close);
+        assert!(!tb.double_click_maximize);
+    }
+
+    #[test]
+    fn titlebar_dialog_is_close_only_no_dblclick() {
+        let tb = TitlebarConfig::dialog();
+        assert_eq!(tb.height, 28.0);
+        assert!(!tb.buttons.minimize && !tb.buttons.maximize);
+        assert!(tb.buttons.close);
+        assert!(!tb.double_click_maximize);
+    }
+
+    #[test]
+    fn default_chrome_inline_matches_titlebar_main_ron() {
+        // Drift guard: `default.ron` inlines the main-titlebar block
+        // because ron 0.8 has no `include`. If `titlebar_main.ron`
+        // changes, `default.ron`'s chrome must be updated too.
+        let from_default = AppConfig::default();
+        let from_titlebar = TitlebarConfig::default();
+        let Chrome::Custom(ref tb) = from_default.chrome else {
+            panic!("AppConfig::default().chrome must be Chrome::Custom");
+        };
+        assert_eq!(tb.height, from_titlebar.height);
+        assert_eq!(tb.title_align, from_titlebar.title_align);
+        assert_eq!(tb.title_padding_left, from_titlebar.title_padding_left);
+        assert_eq!(tb.separator_visible, from_titlebar.separator_visible);
+        assert_eq!(tb.separator_height, from_titlebar.separator_height);
+        assert_eq!(tb.double_click_maximize, from_titlebar.double_click_maximize);
+        assert_eq!(tb.close_mode, from_titlebar.close_mode);
+        assert_eq!(tb.buttons.width, from_titlebar.buttons.width);
+        assert_eq!(tb.buttons.icon_radius, from_titlebar.buttons.icon_radius);
+        assert_eq!(tb.buttons.icon_hover_pad, from_titlebar.buttons.icon_hover_pad);
+        assert_eq!(tb.buttons.hover_zoom_scale, from_titlebar.buttons.hover_zoom_scale);
+        assert_eq!(tb.buttons.show_hover_bg, from_titlebar.buttons.show_hover_bg);
+    }
+
+    #[test]
+    fn default_round_trips_through_ron_for_serde_fields() {
+        // Skip-fields (`font`, `window_icon`) are excluded by serde, so a
+        // ron→struct→ron→struct cycle must preserve everything else.
+        let original = AppConfig::default();
+        let text =
+            ron::ser::to_string_pretty(&original, ron::ser::PrettyConfig::default()).unwrap();
+        let restored: AppConfig = ron::from_str(&text).unwrap();
+        assert_eq!(original.title, restored.title);
+        assert_eq!(original.size, restored.size);
+        assert_eq!(original.min_size, restored.min_size);
+        assert_eq!(original.font_size, restored.font_size);
+        assert_eq!(original.opacity, restored.opacity);
+        assert_eq!(original.corner_radius, restored.corner_radius);
+        assert_eq!(original.resize_zone, restored.resize_zone);
+        assert_eq!(original.raw_content, restored.raw_content);
+        assert!(matches!(restored.kind, WindowKind::Main));
+        assert!(matches!(restored.border, BorderStyle::Sizeable));
+        assert!(matches!(restored.theme, Theme::Dark));
+    }
+
+    #[test]
+    fn presets_compose_over_default_correctly() {
+        let splash = AppConfig::splash("S", 600.0, 400.0);
+        assert!(matches!(splash.kind, WindowKind::Splash));
+        assert!(matches!(splash.border, BorderStyle::None));
+        assert!(matches!(splash.chrome, Chrome::None));
+
+        let tool = AppConfig::tool("T", 320.0, 480.0);
+        assert!(matches!(tool.kind, WindowKind::Tool));
+        let Chrome::Custom(ref tb) = tool.chrome else {
+            panic!("tool preset must use Chrome::Custom");
+        };
+        assert_eq!(tb.height, 22.0);
+
+        let dialog = AppConfig::dialog("D", 400.0, 150.0);
+        assert!(matches!(dialog.kind, WindowKind::Dialog));
+        assert!(matches!(dialog.form_style, FormStyle::StayOnTop));
     }
 }

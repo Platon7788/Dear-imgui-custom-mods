@@ -99,31 +99,38 @@ pub(super) fn classify_operand_token(token: &str) -> TokenKind {
         return TokenKind::Plain;
     }
 
-    let lower = token.to_ascii_lowercase();
-
     // Size keywords → memory context (check before registers).
     // Covers MASM/Intel/iced-x86 default formatter outputs:
     //   `byte`, `word`, `dword`, `fword`, `qword`, `tbyte`, `oword`,
     //   `xmmword`, `ymmword`, `zmmword`, `ptr`.
-    if matches!(
-        lower.as_str(),
-        "byte"
-            | "word"
-            | "dword"
-            | "fword"
-            | "qword"
-            | "tbyte"
-            | "oword"
-            | "xmmword"
-            | "ymmword"
-            | "zmmword"
-            | "ptr"
-    ) {
+    if token.eq_ignore_ascii_case("byte")
+        || token.eq_ignore_ascii_case("word")
+        || token.eq_ignore_ascii_case("dword")
+        || token.eq_ignore_ascii_case("fword")
+        || token.eq_ignore_ascii_case("qword")
+        || token.eq_ignore_ascii_case("tbyte")
+        || token.eq_ignore_ascii_case("oword")
+        || token.eq_ignore_ascii_case("xmmword")
+        || token.eq_ignore_ascii_case("ymmword")
+        || token.eq_ignore_ascii_case("zmmword")
+        || token.eq_ignore_ascii_case("ptr")
+    {
         return TokenKind::Memory;
     }
 
-    if is_x86_register(&lower) {
-        return TokenKind::Register;
+    // `is_x86_register` expects lowercase ASCII. All x86 register names
+    // used by iced-x86 are ASCII and ≤ 6 bytes ("rflags"/"eflags"); 16
+    // is a generous upper bound to remain correct if new names are added.
+    if token.len() <= 16 && token.is_ascii() {
+        let mut buf = [0u8; 16];
+        for (dst, &src) in buf.iter_mut().zip(token.as_bytes()) {
+            *dst = src.to_ascii_lowercase();
+        }
+        // SAFETY: all bytes are lowercased ASCII (0x00–0x7F) ⇒ valid UTF-8.
+        let lower = unsafe { std::str::from_utf8_unchecked(&buf[..token.len()]) };
+        if is_x86_register(lower) {
+            return TokenKind::Register;
+        }
     }
 
     // Number — accept `0x...` / `0X...` (must have ≥1 hex digit after

@@ -404,8 +404,9 @@ impl HexViewer {
             let bpr = self.config.bytes_per_row.value();
             let addr = self.config.base_address + (row * bpr) as u64;
             let formatted = self.format_address_literal(addr);
+            let s = self.strings();
             crate::utils::tooltip::themed_tooltip(ui, || {
-                ui.text(format!("Double-click to copy: {}", formatted));
+                ui.text(format!("{}: {}", s.tooltip_double_click_copy, formatted));
             });
             if !shift && !ctrl && ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
             {

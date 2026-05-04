@@ -129,7 +129,12 @@ struct CachedLineTokens {
 
 /// The CodeEditor widget.
 pub struct CodeEditor {
-    id: String,
+    /// Pre-baked `##ce_<id>` ImGui child-window identifier — built once
+    /// in `new()` instead of `format!`-allocating every render.
+    /// `Arc<str>` so we can hand out a cheap refcount-bumped clone
+    /// before the child-window closure (which itself takes `&mut self`)
+    /// without borrowing `self` for the immutable handle.
+    child_id: std::sync::Arc<str>,
     buffer: TextBuffer,
     config: EditorConfig,
     undo_stack: UndoStack,
@@ -199,13 +204,45 @@ pub struct CodeEditor {
     wrap_cached_width: f32,
     /// Edit version when the wrap cache was last built.
     wrap_cached_version: u64,
+
+    // ── Per-frame scratch ─────────────────────────────────────────────
+    /// Pre-allocated `String` re-used to format the gutter line number
+    /// once per visible row. `clear()` + `write!` keeps capacity, so
+    /// repeated renders are zero-alloc after the first frame — replaces
+    /// the historic `format!("{}", line_idx + 1)` heap allocation that
+    /// fired ≥ visible-rows times every frame.
+    gutter_buf: String,
 }
 
 impl CodeEditor {
+    /// Override the user-visible language. Default English; pass
+    /// [`crate::i18n::Locale::Ru`] for Russian. The host must bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas — without
+    /// that, Cyrillic characters render as `?`.
+    ///
+    /// The locale is stored on [`EditorConfig::locale`] so it
+    /// round-trips through `ron::to_string` / `ron::from_str`.
+    #[must_use]
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.config.locale = locale;
+        self
+    }
+
+    /// Mid-flight language switch.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.config.locale = locale;
+    }
+
+    /// Currently-active locale.
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.config.locale
+    }
+
     /// Create a new editor instance.
     pub fn new(id: &str) -> Self {
+        let child_id: std::sync::Arc<str> = format!("##ce_{id}").into();
         Self {
-            id: id.to_string(),
+            child_id,
             buffer: TextBuffer::default(),
             config: EditorConfig::default(),
             undo_stack: UndoStack::new(500),
@@ -248,6 +285,9 @@ impl CodeEditor {
             wrap_row_offsets: vec![0],
             wrap_cached_width: 0.0,
             wrap_cached_version: u64::MAX,
+
+            // 12 covers every plausible line count (`u32::MAX` = 10 digits).
+            gutter_buf: String::with_capacity(12),
         }
     }
 
@@ -543,7 +583,11 @@ impl CodeEditor {
         }
 
         let avail = ui.content_region_avail();
-        let child_id = format!("##ce_{}", self.id);
+        // `Arc::clone` is a single atomic refcount bump — way cheaper
+        // than the historic `format!("##ce_{}", self.id)` alloc, and it
+        // lets us drop the immutable borrow on `self` before the
+        // `&mut self` closure below.
+        let child_id = std::sync::Arc::clone(&self.child_id);
 
         // Push style for the editor region (uses theme's editor_bg)
         let _bg_token = ui.push_style_color(StyleColor::ChildBg, self.config.colors.editor_bg);
@@ -560,7 +604,7 @@ impl CodeEditor {
                 | WindowFlags::NO_SCROLL_WITH_MOUSE
         };
 
-        ui.child_window(&child_id)
+        ui.child_window(child_id.as_ref())
             .size(avail)
             .flags(child_flags)
             .build(ui, || {
@@ -789,9 +833,14 @@ impl CodeEditor {
                                 );
                             }
 
-                            // Line number
+                            // Line number — scratch buffer keeps its
+                            // capacity across frames (10 digits max),
+                            // so this branch is zero-alloc after the
+                            // first repaint.
                             if self.config.show_line_numbers {
-                                let num_str = format!("{}", line_idx + 1);
+                                use std::fmt::Write as _;
+                                self.gutter_buf.clear();
+                                let _ = write!(self.gutter_buf, "{}", line_idx + 1);
                                 let num_color = if line_idx == cursor_pos.line {
                                     self.config.colors.line_number_active
                                 } else {
@@ -803,8 +852,13 @@ impl CodeEditor {
                                     0.5
                                 };
                                 let num_x = origin_x + gutter_width
-                                    - (num_str.len() as f32 + right_pad) * self.char_advance;
-                                draw_list.add_text([num_x, y], col32(num_color), &num_str);
+                                    - (self.gutter_buf.len() as f32 + right_pad)
+                                        * self.char_advance;
+                                draw_list.add_text(
+                                    [num_x, y],
+                                    col32(num_color),
+                                    self.gutter_buf.as_str(),
+                                );
                             }
                         }
 
@@ -2337,10 +2391,12 @@ impl CodeEditor {
         let has_sel = self.buffer.selection().is_some();
         let ro = self.config.read_only;
         let cm = self.config.context_menu.clone();
+        let s = crate::i18n::code_editor::strings(self.config.locale);
+        let locale = self.config.locale;
 
         // ── Clipboard ────────────────────────────────────────────────────────
         if cm.show_clipboard {
-            if ui.menu_item_enabled_selected_with_shortcut("Cut", "Ctrl+X", false, has_sel && !ro) {
+            if ui.menu_item_enabled_selected_with_shortcut(s.menu_cut, "Ctrl+X", false, has_sel && !ro) {
                 let text = self.buffer.selected_text();
                 if !text.is_empty() {
                     set_clipboard(&text);
@@ -2351,14 +2407,14 @@ impl CodeEditor {
                 }
                 ui.close_current_popup();
             }
-            if ui.menu_item_enabled_selected_with_shortcut("Copy", "Ctrl+C", false, has_sel) {
+            if ui.menu_item_enabled_selected_with_shortcut(s.menu_copy, "Ctrl+C", false, has_sel) {
                 let text = self.buffer.selected_text();
                 if !text.is_empty() {
                     set_clipboard(&text);
                 }
                 ui.close_current_popup();
             }
-            if ui.menu_item_enabled_selected_with_shortcut("Paste", "Ctrl+V", false, !ro) {
+            if ui.menu_item_enabled_selected_with_shortcut(s.menu_paste, "Ctrl+V", false, !ro) {
                 if let Some(clip) = get_clipboard()
                     && !clip.is_empty()
                 {
@@ -2375,7 +2431,7 @@ impl CodeEditor {
 
         // ── Select All ───────────────────────────────────────────────────────
         if cm.show_select_all {
-            if ui.menu_item_with_shortcut("Select All", "Ctrl+A") {
+            if ui.menu_item_with_shortcut(s.menu_select_all, "Ctrl+A") {
                 self.buffer.select_all();
                 ui.close_current_popup();
             }
@@ -2385,7 +2441,7 @@ impl CodeEditor {
         // ── Undo / Redo ──────────────────────────────────────────────────────
         if cm.show_undo_redo {
             if ui.menu_item_enabled_selected_with_shortcut(
-                "Undo",
+                s.menu_undo,
                 "Ctrl+Z",
                 false,
                 !ro && self.undo_stack.can_undo(),
@@ -2394,7 +2450,7 @@ impl CodeEditor {
                 ui.close_current_popup();
             }
             if ui.menu_item_enabled_selected_with_shortcut(
-                "Redo",
+                s.menu_redo,
                 "Ctrl+Y",
                 false,
                 !ro && self.undo_stack.can_redo(),
@@ -2407,7 +2463,7 @@ impl CodeEditor {
 
         // ── Code actions ─────────────────────────────────────────────────────
         if cm.show_code_actions {
-            if ui.menu_item_enabled_selected_with_shortcut("Toggle Comment", "Ctrl+/", false, !ro) {
+            if ui.menu_item_enabled_selected_with_shortcut(s.menu_toggle_comment, "Ctrl+/", false, !ro) {
                 self.snapshot_undo(true);
                 let (start, end) = if let Some(sel) = self.buffer.selection() {
                     let (s, e) = sel.ordered();
@@ -2421,7 +2477,7 @@ impl CodeEditor {
                 ui.close_current_popup();
             }
             if ui.menu_item_enabled_selected_with_shortcut(
-                "Duplicate Line",
+                s.menu_duplicate_line,
                 "Ctrl+Shift+D",
                 false,
                 !ro,
@@ -2433,7 +2489,7 @@ impl CodeEditor {
                 ui.close_current_popup();
             }
             if ui.menu_item_enabled_selected_with_shortcut(
-                "Delete Line",
+                s.menu_delete_line,
                 "Ctrl+Shift+K",
                 false,
                 !ro,
@@ -2449,8 +2505,8 @@ impl CodeEditor {
 
         // ── Transform submenu ────────────────────────────────────────────────
         if cm.show_transform && !ro && has_sel {
-            if let Some(_m) = ui.begin_menu("Transform") {
-                if ui.menu_item("UPPERCASE") {
+            if let Some(_m) = ui.begin_menu(s.submenu_transform) {
+                if ui.menu_item(s.menu_uppercase) {
                     let t = self.buffer.selected_text().to_uppercase();
                     self.snapshot_undo(true);
                     self.buffer.backspace();
@@ -2458,7 +2514,7 @@ impl CodeEditor {
                     self.invalidate_token_cache_all();
                     ui.close_current_popup();
                 }
-                if ui.menu_item("lowercase") {
+                if ui.menu_item(s.menu_lowercase) {
                     let t = self.buffer.selected_text().to_lowercase();
                     self.snapshot_undo(true);
                     self.buffer.backspace();
@@ -2466,7 +2522,7 @@ impl CodeEditor {
                     self.invalidate_token_cache_all();
                     ui.close_current_popup();
                 }
-                if ui.menu_item("Title Case") {
+                if ui.menu_item(s.menu_title_case) {
                     let t = title_case(&self.buffer.selected_text());
                     self.snapshot_undo(true);
                     self.buffer.backspace();
@@ -2474,7 +2530,7 @@ impl CodeEditor {
                     self.invalidate_token_cache_all();
                     ui.close_current_popup();
                 }
-                if ui.menu_item("Trim Whitespace") {
+                if ui.menu_item(s.menu_trim_whitespace) {
                     let t = self
                         .buffer
                         .selected_text()
@@ -2494,7 +2550,7 @@ impl CodeEditor {
 
         // ── Find ─────────────────────────────────────────────────────────────
         if cm.show_find {
-            if ui.menu_item_enabled_selected_with_shortcut("Find…", "Ctrl+F", false, true) {
+            if ui.menu_item_enabled_selected_with_shortcut(s.menu_find, "Ctrl+F", false, true) {
                 let sel = self.buffer.selected_text();
                 if !sel.is_empty() && !sel.contains('\n') {
                     self.find_replace.query = sel;
@@ -2510,7 +2566,7 @@ impl CodeEditor {
 
         // ── View submenu ─────────────────────────────────────────────────────
         if cm.show_view_toggles
-            && let Some(_m) = ui.begin_menu("View")
+            && let Some(_m) = ui.begin_menu(s.submenu_view)
         {
             macro_rules! toggle {
                 ($label:expr, $field:expr) => {
@@ -2519,19 +2575,22 @@ impl CodeEditor {
                     }
                 };
             }
-            toggle!("Word Wrap", self.config.word_wrap);
-            toggle!("Line Numbers", self.config.show_line_numbers);
-            toggle!("Highlight Current Line", self.config.highlight_current_line);
-            toggle!("Show Whitespace", self.config.show_whitespace);
-            toggle!("Color Swatches", self.config.show_color_swatches);
-            toggle!("Smooth Scrolling", self.config.smooth_scrolling);
-            toggle!("English on Focus", self.config.force_english_on_focus);
+            toggle!(s.view_word_wrap, self.config.word_wrap);
+            toggle!(s.view_line_numbers, self.config.show_line_numbers);
+            toggle!(s.view_highlight_current_line, self.config.highlight_current_line);
+            toggle!(s.view_show_whitespace, self.config.show_whitespace);
+            toggle!(s.view_color_swatches, self.config.show_color_swatches);
+            toggle!(s.view_smooth_scrolling, self.config.smooth_scrolling);
+            toggle!(s.view_english_on_focus, self.config.force_english_on_focus);
         }
 
         // ── Language submenu ─────────────────────────────────────────────────
         if cm.show_language_selector
-            && let Some(_m) = ui.begin_menu("Language")
+            && let Some(_m) = ui.begin_menu(s.submenu_language)
         {
+            // Programming-language identifiers (Rust / RON / JSON / TOML / …)
+            // stay untranslated — they're proper nouns. Only the
+            // catch-all "Plain Text" entry follows the locale.
             for (lang, name) in [
                 (Language::Rust, "Rust"),
                 (Language::Rhai, "Rhai"),
@@ -2542,7 +2601,7 @@ impl CodeEditor {
                 (Language::Xml, "XML / HTML"),
                 (Language::Asm, "Assembly (x86)"),
                 (Language::Hex, "Hex Bytes"),
-                (Language::None, "Plain Text"),
+                (Language::None, s.language_plain_text),
             ] {
                 let selected = self.config.language == lang;
                 if ui.menu_item_enabled_selected_no_shortcut(name, selected, true) {
@@ -2553,13 +2612,13 @@ impl CodeEditor {
             // Show custom language name (read-only — can't switch away via menu)
             if let Language::Custom(ref def) = self.config.language.clone() {
                 ui.separator();
-                ui.text_disabled(format!("Custom: {}", def.name()));
+                ui.text_disabled(format!("{}{}", s.custom_language_prefix, def.name()));
             }
         }
 
         // ── Theme submenu ─────────────────────────────────────────────────────
         if cm.show_theme_selector
-            && let Some(_m) = ui.begin_menu("Theme")
+            && let Some(_m) = ui.begin_menu(s.submenu_theme)
         {
             for &theme in EditorTheme::ALL {
                 let selected = self.config.theme == theme;
@@ -2573,14 +2632,14 @@ impl CodeEditor {
 
         // ── Font size ±────────────────────────────────────────────────────────
         if cm.show_font_size {
-            ui.text("Font scale:");
+            ui.text(s.font_scale_label);
             ui.same_line();
             let dec_lbl = format!("{}##fsd", icons::FORMAT_FONT_SIZE_DECREASE);
             if ui.small_button(&dec_lbl) {
                 self.config.font_size_scale = (self.config.font_size_scale - 0.1).clamp(0.4, 4.0);
             }
             if ui.is_item_hovered() {
-                crate::utils::themed_tooltip(ui, || ui.text("Decrease font size"));
+                crate::utils::themed_tooltip(ui, || ui.text(s.tip_decrease_font));
             }
             ui.same_line();
             ui.text(format!("{:.0}%", self.config.font_size_scale * 100.0));
@@ -2590,7 +2649,7 @@ impl CodeEditor {
                 self.config.font_size_scale = (self.config.font_size_scale + 0.1).clamp(0.4, 4.0);
             }
             if ui.is_item_hovered() {
-                crate::utils::themed_tooltip(ui, || ui.text("Increase font size"));
+                crate::utils::themed_tooltip(ui, || ui.text(s.tip_increase_font));
             }
             ui.separator();
         }
@@ -2599,16 +2658,17 @@ impl CodeEditor {
         if cm.show_cursor_info {
             let cur = self.buffer.cursor();
             let total = self.buffer.line_count();
-            ui.text_disabled(format!(
-                "Ln {}, Col {}  /  {} lines",
+            ui.text_disabled(crate::i18n::code_editor::cursor_info(
+                locale,
                 cur.line + 1,
                 cur.col + 1,
-                total
+                total,
             ));
         }
     }
 
     fn render_find_replace_bar(&mut self, ui: &Ui) {
+        let s = crate::i18n::code_editor::strings(self.config.locale);
         let avail_w = ui.content_region_avail()[0];
         // Row height: search row + optional replace row + 2px separator
         let row_h = self.line_height + 8.0;
@@ -2643,7 +2703,7 @@ impl CodeEditor {
                 ui.set_next_item_width(query_w);
                 let changed = ui
                     .input_text("##find_query", &mut self.find_replace.query)
-                    .hint("Find…")
+                    .hint(s.find_hint)
                     .build();
                 if changed {
                     self.update_find_matches();
@@ -2669,7 +2729,7 @@ impl CodeEditor {
                 if self.find_replace.query.is_empty() {
                     ui.text_disabled("…");
                 } else if self.find_replace.matches.is_empty() {
-                    ui.text_colored([0.9, 0.35, 0.35, 1.0], "No matches");
+                    ui.text_colored([0.9, 0.35, 0.35, 1.0], s.no_matches);
                 } else {
                     ui.text_colored(
                         [0.55, 0.85, 0.55, 1.0],
@@ -2689,7 +2749,7 @@ impl CodeEditor {
                     self.find_prev();
                 }
                 if ui.is_item_hovered() {
-                    crate::utils::themed_tooltip(ui, || ui.text("Previous match  Shift+F3"));
+                    crate::utils::themed_tooltip(ui, || ui.text(s.tip_prev_match));
                 }
                 ui.same_line();
                 let next_lbl = format!("{}##fn", icons::ARROW_DOWN_BOLD);
@@ -2697,7 +2757,7 @@ impl CodeEditor {
                     self.find_next();
                 }
                 if ui.is_item_hovered() {
-                    crate::utils::themed_tooltip(ui, || ui.text("Next match  F3"));
+                    crate::utils::themed_tooltip(ui, || ui.text(s.tip_next_match));
                 }
 
                 ui.same_line();
@@ -2720,7 +2780,7 @@ impl CodeEditor {
                 }
                 drop(_c);
                 if ui.is_item_hovered() {
-                    crate::utils::themed_tooltip(ui, || ui.text("Case sensitive"));
+                    crate::utils::themed_tooltip(ui, || ui.text(s.tip_case_sensitive));
                 }
 
                 ui.same_line();
@@ -2739,7 +2799,7 @@ impl CodeEditor {
                 }
                 drop(_w);
                 if ui.is_item_hovered() {
-                    crate::utils::themed_tooltip(ui, || ui.text("Whole word"));
+                    crate::utils::themed_tooltip(ui, || ui.text(s.tip_whole_word));
                 }
 
                 if !self.config.read_only {
@@ -2750,7 +2810,7 @@ impl CodeEditor {
                         self.find_replace.show_replace = !self.find_replace.show_replace;
                     }
                     if ui.is_item_hovered() {
-                        crate::utils::themed_tooltip(ui, || ui.text("Toggle replace  Ctrl+H"));
+                        crate::utils::themed_tooltip(ui, || ui.text(s.tip_toggle_replace));
                     }
                 }
 
@@ -2762,7 +2822,7 @@ impl CodeEditor {
                     self.find_replace.open = false;
                 }
                 if ui.is_item_hovered() {
-                    crate::utils::themed_tooltip(ui, || ui.text("Close  Esc"));
+                    crate::utils::themed_tooltip(ui, || ui.text(s.tip_close));
                 }
 
                 // ── Row 2: Replace (only in writable editors) ────────────
@@ -2772,14 +2832,16 @@ impl CodeEditor {
                     let rep_w = (avail_w * 0.38).clamp(140.0, 360.0);
                     ui.set_next_item_width(rep_w);
                     ui.input_text("##find_rep", &mut self.find_replace.replacement)
-                        .hint("Replace with…")
+                        .hint(s.replace_hint)
                         .build();
                     ui.same_line();
-                    if ui.small_button("Replace##r1") {
+                    let replace_lbl = format!("{}##r1", s.btn_replace);
+                    if ui.small_button(&replace_lbl) {
                         self.replace_current();
                     }
                     ui.same_line();
-                    if ui.small_button("All##ra") {
+                    let all_lbl = format!("{}##ra", s.btn_replace_all);
+                    if ui.small_button(&all_lbl) {
                         self.replace_all();
                     }
                 }
@@ -3518,5 +3580,29 @@ mod tests {
             prop_assert_eq!((rgba[1] * 255.0).round() as u8, g);
             prop_assert_eq!((rgba[2] * 255.0).round() as u8, b);
         }
+    }
+
+    #[test]
+    fn context_menu_inline_in_config_ron_matches_canonical() {
+        // `code_editor/config.ron` inlines `context_menu:(...)`; this
+        // drift-test catches the case where one is updated without
+        // the other.
+        let canonical = ContextMenuConfig::default();
+        let cfg = EditorConfig::default();
+        assert_eq!(cfg.context_menu.enabled, canonical.enabled);
+        assert_eq!(cfg.context_menu.show_clipboard, canonical.show_clipboard);
+        assert_eq!(cfg.context_menu.show_select_all, canonical.show_select_all);
+        assert_eq!(cfg.context_menu.show_undo_redo, canonical.show_undo_redo);
+        assert_eq!(cfg.context_menu.show_code_actions, canonical.show_code_actions);
+        assert_eq!(cfg.context_menu.show_transform, canonical.show_transform);
+        assert_eq!(cfg.context_menu.show_find, canonical.show_find);
+        assert_eq!(cfg.context_menu.show_view_toggles, canonical.show_view_toggles);
+        assert_eq!(
+            cfg.context_menu.show_language_selector,
+            canonical.show_language_selector,
+        );
+        assert_eq!(cfg.context_menu.show_theme_selector, canonical.show_theme_selector);
+        assert_eq!(cfg.context_menu.show_font_size, canonical.show_font_size);
+        assert_eq!(cfg.context_menu.show_cursor_info, canonical.show_cursor_info);
     }
 }

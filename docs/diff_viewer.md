@@ -131,3 +131,15 @@ diff_viewer/
   config.rs   DiffViewerConfig, DiffMode
   diff.rs     Myers diff algorithm, DiffOp, DiffHunk, group_hunks
 ```
+
+## Configuration & localisation
+
+`DiffViewerConfig` follows the project-wide DDD config pattern:
+schema in `src/diff_viewer/config.rs`, default values in
+`src/diff_viewer/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
+
+The toolbar Prev/Next hunk-navigation buttons are localised through
+`crate::i18n::diff_viewer`. Switch with
+`DiffViewer::new(...).with_locale(Locale::Ru)`. Diff content (the
+old/new texts and any user labels) stays host-driven. See
+[`docs/i18n.md`](./i18n.md).

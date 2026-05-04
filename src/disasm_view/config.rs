@@ -37,28 +37,12 @@ pub struct ColumnWidths {
 }
 
 impl Default for ColumnWidths {
+    /// Loads `column_widths.ron` — the canonical column geometry.
+    /// `disasm_view/config.ron` inlines the same field set; drift is
+    /// guarded by `columns_inline_in_config_ron_matches_canonical`.
     fn default() -> Self {
-        Self {
-            // Wider gutter so the bookmark glyph (left half) and
-            // breakpoint number (right half) each get ~12 px of
-            // breathing room — the previous 14-px gutter forced
-            // the two markers flush against each other and the
-            // column edges.
-            margin: 26.0,
-            arrows: 36.0,
-            // +20 px lifted from the comment column so the address
-            // text gets clear breathing room around it (user
-            // feedback 2026-04-30).
-            address: 150.0,
-            bytes: 200.0,
-            mnemonic: 80.0,
-            operands: 220.0,
-            // -20 px (was 120) to balance the address bump. The
-            // comment column is dynamic anyway — it stretches to
-            // fill remaining width via `frame_comment_w` — so this
-            // is only the *floor* for narrow windows.
-            comment: 100.0,
-        }
+        ron::from_str(include_str!("column_widths.ron"))
+            .expect("built-in disasm_view/column_widths.ron is valid")
     }
 }
 
@@ -146,6 +130,17 @@ pub struct DisasmViewConfig {
     pub base_address: u64,
     /// Maximum visible arrows per render (for performance).
     pub max_arrows: usize,
+
+    /// User-visible language for labels, popups, tooltips, and menu
+    /// items rendered by the disassembler view. Default
+    /// [`crate::i18n::Locale::En`]. Switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` (or a superset) into the active font
+    /// atlas — otherwise non-ASCII characters render as `?`.
+    /// `#[serde(default)]` so older `config.ron` files that pre-date
+    /// the locale field deserialise cleanly (falling back to English).
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 
     // ── Colors ──────────────────────────────────────────────
     /// Full color theme.

@@ -129,6 +129,16 @@ pub struct TimelineConfig {
 
     /// Palette for span bars (cycled by name hash / depth).
     pub span_palette: Vec<[f32; 4]>,
+
+    /// User-visible language for the span hover tooltip
+    /// ("Category:", "Source:", "Start/End:", "Depth:"). Default
+    /// [`crate::i18n::Locale::En`]. Switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` (or a superset) into the active font
+    /// atlas — without that, non-ASCII characters render as `?`.
+    /// `#[serde(default)]` so older `config.ron` files still parse.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 impl Default for TimelineConfig {

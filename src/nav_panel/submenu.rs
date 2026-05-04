@@ -3,7 +3,7 @@
 use dear_imgui_rs::{Condition, MouseButton, StyleColor, StyleVar, Ui, WindowFlags};
 
 use crate::utils::color::pack_color_f32 as c32;
-use crate::utils::text::calc_text_size;
+use crate::utils::text::{calc_text_size, line_height};
 
 use super::NavEvent;
 use super::buttons::{NavButton, SubMenuItem};
@@ -117,7 +117,7 @@ pub(super) fn render_submenu(
                             }
                         }
 
-                        let text_y = iy + (ih - calc_text_size("M")[1]) * 0.5;
+                        let text_y = iy + (ih - line_height(ui)) * 0.5;
                         let mut tx = sm_pos[0] + 12.0;
                         if let Some(ico) = icon {
                             sm_draw.add_text([tx, text_y], c32(colors.submenu_text), ico);

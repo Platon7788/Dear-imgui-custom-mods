@@ -205,9 +205,11 @@ pub(crate) fn handle_context_menu(
         ui.text_disabled(label);
         ui.separator();
 
+        let s = crate::i18n::force_graph::strings(config.locale);
+
         // Pin / Unpin.
         let pinned = graph.node(id).is_some_and(|s| s.pinned);
-        let pin_label = if pinned { "Unpin" } else { "Pin" };
+        let pin_label = if pinned { s.menu_unpin } else { s.menu_pin };
         if ui.menu_item(pin_label) {
             let new_pin = !graph.node(id).is_some_and(|n| n.pinned);
             graph.node_set_pinned(id, new_pin);
@@ -216,7 +218,7 @@ pub(crate) fn handle_context_menu(
         }
 
         // Select neighbours.
-        if ui.menu_item("Select neighbours") {
+        if ui.menu_item(s.menu_select_neighbours) {
             selection.clear();
             selection.insert(id);
             for nb in graph.neighbors(id) {
@@ -226,14 +228,14 @@ pub(crate) fn handle_context_menu(
         }
 
         // Focus (depth filter from this node).
-        if ui.menu_item("Focus here") {
+        if ui.menu_item(s.menu_focus_here) {
             filter.focused_node = Some(id);
             filter.depth.get_or_insert(2);
             events.push(GraphEvent::FilterChanged);
         }
 
         // Clear depth focus.
-        if filter.focused_node.is_some() && ui.menu_item("Clear focus") {
+        if filter.focused_node.is_some() && ui.menu_item(s.menu_clear_focus) {
             filter.focused_node = None;
             filter.depth = None;
             events.push(GraphEvent::FilterChanged);
@@ -242,7 +244,7 @@ pub(crate) fn handle_context_menu(
         ui.separator();
 
         // Activate (open).
-        if ui.menu_item("Activate") {
+        if ui.menu_item(s.menu_activate) {
             events.push(GraphEvent::NodeActivated(id));
         }
     });

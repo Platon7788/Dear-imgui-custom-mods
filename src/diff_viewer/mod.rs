@@ -122,6 +122,25 @@ impl DiffViewer {
         }
     }
 
+    /// Override the user-visible language. Default English; pass
+    /// [`crate::i18n::Locale::Ru`] for Russian. The host must bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas.
+    #[must_use]
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.config.locale = locale;
+        self
+    }
+
+    /// Mid-flight language switch.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.config.locale = locale;
+    }
+
+    /// Currently-active locale.
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.config.locale
+    }
+
     /// Set both texts and recompute the diff.
     pub fn set_texts(&mut self, old: &str, new: &str) {
         self.old_text = old.to_string();
@@ -477,14 +496,15 @@ impl DiffViewer {
         );
 
         ui.same_line();
-        if ui.button("Prev (Shift+F7)") {
+        let s = crate::i18n::diff_viewer::strings(self.config.locale);
+        if ui.button(s.prev_button) {
             self.prev_hunk();
             events.push(DiffViewerEvent::HunkSelected {
                 index: self.current_hunk,
             });
         }
         ui.same_line();
-        if ui.button("Next (F7)") {
+        if ui.button(s.next_button) {
             self.next_hunk();
             events.push(DiffViewerEvent::HunkSelected {
                 index: self.current_hunk,

@@ -297,6 +297,17 @@ pub struct HexViewerConfig {
     /// in-tree consumer (`IMGUI_NXT`, the demo) ships the MDI atlas.
     pub icons_available: bool,
 
+    /// User-visible language for labels, popups, tooltips, and menu
+    /// items rendered by the viewer. Default
+    /// [`crate::i18n::Locale::En`]. Switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` (or a superset) into the active font
+    /// atlas — otherwise non-ASCII characters render as `?`.
+    /// `#[serde(default)]` so older `config.ron` files that pre-date
+    /// the locale field deserialise cleanly (falling back to English).
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
+
     // ── Colors: semantic byte categories ────────────────────
     /// Color for null bytes (0x00).
     #[serde(skip, default)]
@@ -357,57 +368,14 @@ pub struct HexViewerConfig {
 }
 
 impl Default for HexViewerConfig {
+    /// Non-color fields come from `config.ron` (the values file); colour
+    /// fields are theme-derived and applied via `apply_theme_colors`.
+    /// To re-skin a viewer for a different theme, call `with_theme(...)`.
     fn default() -> Self {
-        // Single source of truth: every colour comes from the
-        // theme-driven `HexViewerColors` palette (which itself
-        // defaults to `Theme::Dark.hex_viewer_colors()`). To re-skin
-        // a viewer for a different theme, call `with_theme(...)` or
-        // `apply_theme_colors(...)`.
-        let p = crate::theme::HexViewerColors::default();
-        Self {
-            bytes_per_row: BytesPerRow::SIXTEEN,
-            grouping: ByteGrouping::DWord,
-            show_ascii: true,
-            show_inspector: true,
-            show_offsets: true,
-            show_column_headers: true,
-            show_column_dividers: true,
-            show_splitter: false,
-            address_width: AddressWidth::Auto,
-            uppercase: true,
-            endianness: Endianness::Little,
-
-            editable: false,
-            base_address: 0,
-            highlight_changes: false,
-            category_colors: true,
-            dim_zeros: true,
-            auto_refresh_frames: 0,
-            search_mode: HexSearchMode::Hex,
-            copy_format: CopyFormat::HexSpaced,
-            max_undo: 256,
-            icons_available: true,
-
-            color_cat_zero: p.cat_zero,
-            color_cat_control: p.cat_control,
-            color_cat_printable: p.cat_printable,
-            color_cat_high: p.cat_high,
-            color_cat_full: p.cat_full,
-
-            color_offset: p.offset,
-            color_hex: p.hex,
-            color_ascii: p.ascii,
-            color_ascii_dot: p.ascii_dot,
-            color_zero: p.zero_legacy,
-            color_selection_bg: p.selection_bg,
-            color_changed: p.changed,
-            color_cursor_bg: p.cursor_bg,
-            color_header: p.header,
-            color_inspector_label: p.inspector_label,
-            color_inspector_value: p.inspector_value,
-            color_search_match: p.search_match,
-            color_unreadable: p.unreadable,
-        }
+        let mut cfg: Self = ron::from_str(include_str!("config.ron"))
+            .expect("built-in hex_viewer/config.ron is valid");
+        cfg.apply_theme_colors(&crate::theme::HexViewerColors::default());
+        cfg
     }
 }
 

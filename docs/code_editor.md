@@ -427,3 +427,21 @@ editor.set_error_markers(vec![
 ```
 
 Errors show red underlines, warnings show yellow underlines. Hover the gutter icon to see the message tooltip.
+
+## Configuration & localisation
+
+`EditorConfig` follows the project-wide DDD config pattern: schema in
+`src/code_editor/config.rs`, default values in
+`src/code_editor/config.ron` plus `context_menu.ron` for the
+context-menu visibility sub-struct. See [`docs/config_pattern.md`](./config_pattern.md).
+
+The right-click context menu (Cut/Copy/Paste, Undo/Redo, code
+actions, Transform submenu, View/Language/Theme submenus, font scale,
+cursor info), the find/replace toolbar, and all its tooltips are
+localised through `crate::i18n::code_editor`. Switch with
+`CodeEditor::new(...).with_locale(Locale::Ru)`.
+
+Programming-language identifiers (Rust, RON, JSON, …), theme display
+names, and keyboard shortcuts deliberately stay untranslated as
+proper nouns / cross-locale technical labels. See
+[`docs/i18n.md`](./i18n.md).

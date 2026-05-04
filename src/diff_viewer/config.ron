@@ -19,4 +19,5 @@
     color_header: (0.50, 0.55, 0.65, 1.0),
     color_separator: (0.25, 0.27, 0.32, 0.8),
     color_current_hunk: (0.30, 0.45, 0.65, 0.3),
+    locale: En,
 )

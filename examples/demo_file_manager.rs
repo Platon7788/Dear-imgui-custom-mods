@@ -35,6 +35,19 @@ struct DemoState {
 
 impl DemoState {
     fn new() -> Self {
+        // To open the file manager in Russian:
+        //   let config = FileManagerConfig {
+        //       enable_multi_select: true,
+        //       locale: dear_imgui_custom_mod::i18n::Locale::Ru,
+        //       ..Default::default()
+        //   };
+        //   FileManager::new_with_config(config)  // strings = STRINGS_RU
+        //
+        // Or after construction:
+        //   fm.set_locale(dear_imgui_custom_mod::i18n::Locale::Ru);
+        //
+        // The host must bake `GlyphRanges::Cyrillic` into the active
+        // font atlas for Cyrillic to render.
         let config = FileManagerConfig {
             enable_multi_select: true,
             ..Default::default()

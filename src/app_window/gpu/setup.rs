@@ -154,12 +154,11 @@ fn pick_adapter(
 
 /// Pick a [`wgpu::PresentMode`] that the adapter actually advertises.
 ///
-/// NxT proved that hard-coded `Fifo` works on every Windows GPU we've
-/// tested (Intel iGPU, NVIDIA discrete, AMD discrete, software fallback).
-/// We respect the user's `FpsMode::Unlimited` preference by trying
-/// `Mailbox` / `Immediate` first, then falling back through `FifoRelaxed`
-/// to `Fifo`. `Fifo` is mandated by the wgpu spec to be supported on
-/// every surface, so the final fallback is guaranteed.
+/// `Fifo` is mandated by the wgpu spec on every surface, so the cap-off
+/// fallback is guaranteed. We deliberately avoid `FifoRelaxed` for
+/// capped modes — it permits the driver to skip vblanks on "late"
+/// frames, which produces the rough pacing we observed (interval avg
+/// 20 ms / max 48 ms instead of clean 16.67 ms ticks).
 fn pick_present_mode(available: &[wgpu::PresentMode], fps: &FpsMode) -> wgpu::PresentMode {
     let supports = |m: wgpu::PresentMode| available.contains(&m);
 
@@ -174,14 +173,11 @@ fn pick_present_mode(available: &[wgpu::PresentMode], fps: &FpsMode) -> wgpu::Pr
                 wgpu::PresentMode::Fifo
             }
         }
-        _ => {
-            // Adaptive vsync (smooth on slow frames) → strict vsync.
-            if supports(wgpu::PresentMode::FifoRelaxed) {
-                wgpu::PresentMode::FifoRelaxed
-            } else {
-                wgpu::PresentMode::Fifo
-            }
-        }
+        // `Auto` and `Fixed(_)` both want a stable cadence — strict
+        // `Fifo` blocks `Surface::get_current_texture` until the next
+        // vblank, which is the textbook equivalent of D3D's
+        // `IDXGISwapChain::Present(1, 0)`.
+        _ => wgpu::PresentMode::Fifo,
     }
 }
 

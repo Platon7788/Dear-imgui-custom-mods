@@ -1,0 +1,27 @@
+// `TitlebarConfig::default()` — full chrome for `WindowKind::Main`.
+//
+// The matching `Buttons` block is inlined (ron 0.8 has no `include`),
+// so any change to `Buttons::default()` semantics must also be reflected
+// in `titlebar_tool.ron` and `titlebar_dialog.ron`.
+
+(
+    height: 28.0,
+    title_visible: true,
+    title_align: Left,
+    title_padding_left: 10.0,
+    icon: None,
+    separator_visible: true,
+    separator_height: 1.0,
+    double_click_maximize: true,
+    buttons: (
+        minimize: true,
+        maximize: true,
+        close: true,
+        width: 44.0,
+        icon_radius: 6.0,
+        icon_hover_pad: 4.0,
+        hover_zoom_scale: 1.20,
+        show_hover_bg: false,
+    ),
+    close_mode: Immediate,
+)

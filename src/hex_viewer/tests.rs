@@ -6,7 +6,7 @@
 //! `format_bytes`, …) are imported from their respective sub-modules.
 
 use super::config::AddressWidth;
-use super::draw::col32;
+use crate::utils::color::col32;
 use super::input::EditColumn;
 use super::search::{
     PatternByte, base64_encode, find_pattern_masked, format_bytes, parse_address,
@@ -777,4 +777,98 @@ fn unused_warnings_dont_fire_on_legacy_address_format_path() {
     ] {
         let _ = format_bytes(bytes, fmt, false);
     }
+}
+
+// ── config.ron round-trip ───────────────────────────────────────────────
+//
+// Locks the schema/values split: `config.rs` defines the struct, the
+// shipped `config.ron` carries the actual defaults. If a new field is
+// added to `HexViewerConfig` without a corresponding entry in `config.ron`,
+// `ron::from_str` fails and these tests catch it before the demo runs.
+
+#[test]
+fn config_ron_parses() {
+    let cfg: HexViewerConfig = ron::from_str(include_str!("config.ron"))
+        .expect("hex_viewer/config.ron must parse against the current schema");
+    // Sanity: a representative non-default field — `category_colors`
+    // defaults to `true` in the shipped ron.
+    assert!(cfg.category_colors);
+}
+
+#[test]
+fn config_default_round_trips_through_ron() {
+    let original = HexViewerConfig::default();
+    let ron_text =
+        ron::ser::to_string_pretty(&original, ron::ser::PrettyConfig::default()).unwrap();
+    let restored: HexViewerConfig = ron::from_str(&ron_text).unwrap();
+
+    assert_eq!(original.bytes_per_row, restored.bytes_per_row);
+    assert_eq!(original.grouping, restored.grouping);
+    assert_eq!(original.show_ascii, restored.show_ascii);
+    assert_eq!(original.show_inspector, restored.show_inspector);
+    assert_eq!(original.address_width, restored.address_width);
+    assert_eq!(original.uppercase, restored.uppercase);
+    assert_eq!(original.endianness, restored.endianness);
+    assert_eq!(original.editable, restored.editable);
+    assert_eq!(original.base_address, restored.base_address);
+    assert_eq!(original.search_mode, restored.search_mode);
+    assert_eq!(original.copy_format, restored.copy_format);
+    assert_eq!(original.max_undo, restored.max_undo);
+    assert_eq!(original.locale, restored.locale);
+}
+
+#[test]
+fn config_default_locale_is_english() {
+    let cfg = HexViewerConfig::default();
+    assert_eq!(cfg.locale, crate::i18n::Locale::En);
+}
+
+#[test]
+fn config_locale_round_trips_through_ron() {
+    // Round-trip a non-default locale to lock in that the field
+    // really is `Serialize + Deserialize` (not silently skipped).
+    let cfg = HexViewerConfig {
+        locale: crate::i18n::Locale::Ru,
+        ..HexViewerConfig::default()
+    };
+    let text = ron::ser::to_string(&cfg).unwrap();
+    let back: HexViewerConfig = ron::from_str(&text).unwrap();
+    assert_eq!(back.locale, crate::i18n::Locale::Ru);
+}
+
+#[test]
+fn config_locale_field_optional_in_ron() {
+    // `#[serde(default)]` lets older `config.ron` files (saved before
+    // the locale field existed) deserialise without errors.
+    // Strip `locale: ...` from the catalogue ron and re-parse — the
+    // `Default` impl already round-trips, so this validates the
+    // forward-compat guarantee for hosts that saved configs before
+    // the field landed.
+    let cfg: HexViewerConfig = ron::from_str(
+        r#"(
+            bytes_per_row: (16),
+            grouping: DWord,
+            show_ascii: true,
+            show_inspector: true,
+            show_offsets: true,
+            show_column_headers: true,
+            show_column_dividers: true,
+            show_splitter: false,
+            address_width: Auto,
+            uppercase: true,
+            endianness: Little,
+            editable: false,
+            base_address: 0,
+            highlight_changes: false,
+            category_colors: true,
+            dim_zeros: true,
+            auto_refresh_frames: 0,
+            search_mode: Hex,
+            copy_format: HexSpaced,
+            max_undo: 256,
+            icons_available: true,
+        )"#,
+    )
+    .expect("hex_viewer config without `locale` field must still parse");
+    assert_eq!(cfg.locale, crate::i18n::Locale::En);
 }

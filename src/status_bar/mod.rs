@@ -25,7 +25,7 @@ pub use config::{Alignment, StatusBarConfig};
 use dear_imgui_rs::{MouseButton, Ui};
 
 use crate::utils::color::rgba_f32;
-use crate::utils::text::calc_text_size;
+use crate::utils::text::{calc_text_size, line_height};
 
 fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
@@ -316,8 +316,9 @@ impl StatusBar {
             }
         }
 
-        // Use "Mg" for representative glyph height (covers ascenders + descenders).
-        let text_y = cursor[1] + (bar_h - calc_text_size("Mg")[1]) * 0.5;
+        // `line_height(ui)` is `igGetTextLineHeight()` — a direct read
+        // from `ImGuiContext::FontSize`, no glyph walk per frame.
+        let text_y = cursor[1] + (bar_h - line_height(ui)) * 0.5;
 
         // ── Left items ──────────────────────────────────────────────
         let mut x = cursor[0] + cfg.item_padding;

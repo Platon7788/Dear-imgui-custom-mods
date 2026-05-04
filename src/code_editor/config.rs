@@ -44,21 +44,12 @@ pub struct ContextMenuConfig {
 }
 
 impl Default for ContextMenuConfig {
+    /// Loads `context_menu.ron` — every section visible. `code_editor/
+    /// config.ron` inlines the same field set; drift is guarded by
+    /// `context_menu_inline_in_config_ron_matches_canonical`.
     fn default() -> Self {
-        Self {
-            enabled: true,
-            show_clipboard: true,
-            show_select_all: true,
-            show_undo_redo: true,
-            show_code_actions: true,
-            show_transform: true,
-            show_find: true,
-            show_view_toggles: true,
-            show_language_selector: true,
-            show_theme_selector: true,
-            show_font_size: true,
-            show_cursor_info: true,
-        }
+        ron::from_str(include_str!("context_menu.ron"))
+            .expect("built-in code_editor/context_menu.ron is valid")
     }
 }
 
@@ -135,6 +126,16 @@ pub struct EditorConfig {
     /// Maximum character length per line (0 = unlimited).
     /// When set, typing/paste will not extend a line beyond this limit.
     pub max_line_length: usize,
+
+    /// User-visible language for the right-click context menu, the
+    /// find/replace bar, and the cursor-info footer. Default
+    /// [`crate::i18n::Locale::En`]. Switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas — without
+    /// that, non-ASCII characters render as `?`.
+    /// `#[serde(default)]` so older `config.ron` files still parse.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 impl Default for EditorConfig {

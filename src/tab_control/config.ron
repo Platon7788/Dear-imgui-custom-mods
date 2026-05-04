@@ -67,4 +67,5 @@
         overflow_tooltip: "All tabs",
         add_tab: "New tab",
     ),
+    locale: En,
 )

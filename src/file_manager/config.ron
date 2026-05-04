@@ -1,3 +1,9 @@
+// `strings`, `custom_title`, and `icon_override` are `#[serde(skip)]`
+// (runtime-only / function-pointer / static-ref payload) — `strings`
+// is restored to `STRINGS_EN` on parse and refreshed by
+// `FileManager::set_locale`. `locale` is `#[serde(default)]` so older
+// ron files without the field still parse cleanly.
+
 (
     initial_size: (750.0, 520.0),
     min_size: (500.0, 350.0),
@@ -18,4 +24,5 @@
     button_height: 24.0,
     filter_width: 180.0,
     inline_input_width: 200.0,
+    locale: En,
 )

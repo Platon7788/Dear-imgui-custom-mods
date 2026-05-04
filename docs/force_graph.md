@@ -234,3 +234,17 @@ When set on `ViewerConfig::time_travel`, adds a slider to the sidebar:
 | 1 000 nodes | 60 | LOD kicks in, labels hidden |
 | 5 000 nodes | ~60 | Barnes-Hut tree helps repulsion pass |
 | 10 000 nodes | ~30 | Recommend disabling minimap + glow |
+
+## Configuration & localisation
+
+`ViewerConfig` and `ForceConfig` follow the project-wide DDD config
+pattern: schema in `src/force_graph/config.rs`, default values in
+`src/force_graph/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
+
+The whole sidebar (Filters / Color Groups / Display / Export /
+Physics sections, all sliders, all toggles) and the right-click
+context menu (Pin/Unpin, Select neighbours, Focus here, Clear focus,
+Activate) are localised through `crate::i18n::force_graph`. Switch
+with `GraphViewer::new(...).with_locale(Locale::Ru)`. Node labels and
+tags themselves come from the host and stay host-driven. See
+[`docs/i18n.md`](./i18n.md).

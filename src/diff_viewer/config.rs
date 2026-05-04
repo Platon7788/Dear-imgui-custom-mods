@@ -55,6 +55,14 @@ pub struct DiffViewerConfig {
     pub color_separator: [f32; 4],
     /// Current (selected) hunk highlight.
     pub color_current_hunk: [f32; 4],
+
+    /// User-visible language for the toolbar Prev/Next buttons.
+    /// Default [`crate::i18n::Locale::En`]. Switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas.
+    /// `#[serde(default)]` so older `config.ron` files still parse.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 impl Default for DiffViewerConfig {

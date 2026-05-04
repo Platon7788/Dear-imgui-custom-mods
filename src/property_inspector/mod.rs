@@ -28,7 +28,7 @@ pub use value::PropertyValue;
 use dear_imgui_rs::{MouseButton, Ui};
 
 use crate::utils::color::rgba_f32;
-use crate::utils::text::calc_text_size;
+use crate::utils::text::{calc_text_size, line_height};
 
 fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
@@ -246,12 +246,19 @@ impl PropertyInspector {
                         } else {
                             "\u{25BE}"
                         };
-                        let text = format!("{} {}", arrow, self.categories[cat_idx].name);
-                        let ty = y + (cfg.row_height - calc_text_size(&text)[1]) * 0.5;
+                        // Two `add_text` calls — the arrow glyph is fixed
+                        // width, so we know the offset for the name without
+                        // measuring a heap-allocated `format!` slice every
+                        // frame.
+                        let ty = y + (cfg.row_height - line_height(ui)) * 0.5;
+                        let arrow_x = win_pos[0] + 4.0;
+                        let text_color = col32(cfg.color_category_text);
+                        draw.add_text([arrow_x, ty], text_color, arrow);
+                        let arrow_w = calc_text_size(arrow)[0] + 4.0;
                         draw.add_text(
-                            [win_pos[0] + 4.0, ty],
-                            col32(cfg.color_category_text),
-                            &text,
+                            [arrow_x + arrow_w, ty],
+                            text_color,
+                            &self.categories[cat_idx].name,
                         );
 
                         // Click detection for category collapse toggle
@@ -367,7 +374,7 @@ impl PropertyInspector {
         }
 
         let indent = prop.depth as f32 * cfg.indent;
-        let ty = *y + (cfg.row_height - calc_text_size("A")[1]) * 0.5;
+        let ty = *y + (cfg.row_height - line_height(ui)) * 0.5;
 
         // Expand arrow for Object/Array
         let has_children = !prop.children.is_empty()

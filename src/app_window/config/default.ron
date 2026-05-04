@@ -1,0 +1,57 @@
+// `AppConfig::default()` — main-window-style configuration.
+//
+// Two fields are absent on purpose:
+// * `font`         — `FontChoice` carries `Arc<[u8]>` TTF buffers
+//                    (runtime payload, not config); marked `#[serde(skip)]`.
+// * `window_icon`  — `WindowIcon` is raw RGBA pixel data; same reason.
+//
+// The `chrome` block duplicates `titlebar_main.ron` because ron 0.8 has
+// no `include` mechanism. If you change titlebar defaults, mirror them
+// in both files (a `default_main_chrome_matches_titlebar_main_ron` test
+// guards against drift).
+
+(
+    title: "Application",
+    kind: Main,
+    border: Sizeable,
+    form_style: Normal,
+    size: (1100.0, 680.0),
+    min_size: Some((640.0, 400.0)),
+    max_size: None,
+    position: ScreenCenter,
+    chrome: Custom((
+        height: 28.0,
+        title_visible: true,
+        title_align: Left,
+        title_padding_left: 10.0,
+        icon: None,
+        separator_visible: true,
+        separator_height: 1.0,
+        double_click_maximize: true,
+        buttons: (
+            minimize: true,
+            maximize: true,
+            close: true,
+            width: 44.0,
+            icon_radius: 6.0,
+            icon_hover_pad: 4.0,
+            hover_zoom_scale: 1.20,
+            show_hover_bg: false,
+        ),
+        close_mode: Immediate,
+    )),
+    theme: Dark,
+    corner_radius: 8,
+    auto_close_after: None,
+    render_mode: EventDriven(
+        idle_pulse: Some((secs: 2, nanos: 0)),
+        unfocused_idle_pulse: Some((secs: 5, nanos: 0)),
+    ),
+    power_mode: HighPerformance,
+    font_size: 15.0,
+    merge_mdi_icons: false,
+    visible: true,
+    opacity: 1.0,
+    raw_content: false,
+    resize_zone: 6.0,
+)

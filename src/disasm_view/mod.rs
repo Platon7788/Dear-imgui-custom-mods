@@ -48,7 +48,6 @@ pub use arrows::{BranchArrow, MAX_ARROW_DEPTH, compute_arrows, compute_arrows_cl
 pub use config::{ColumnWidths, DisasmColors, DisasmViewConfig};
 pub use provider::{DisasmDataProvider, FlowKind, Instruction, InstructionEntry, VecDisasmProvider};
 
-use crate::utils::color::rgba_f32;
 use crate::utils::text::calc_text_size;
 
 use std::collections::BTreeSet;
@@ -76,11 +75,6 @@ pub(super) const SEARCH_MIN_BYTES: usize = 5;
 pub(super) const ORIGIN_BG_ALPHA_FACTOR: f32 = 0.30;
 pub(super) const ORIGIN_STRIPE_ALPHA: f32 = 0.90;
 pub(super) const ORIGIN_STRIPE_WIDTH: f32 = 3.0;
-
-/// Convert `[r, g, b, a]` to packed u32 color.
-fn col32(c: [f32; 4]) -> u32 {
-    rgba_f32(c[0], c[1], c[2], c[3])
-}
 
 // ── Edit State ──────────────────────────────────────────────────────────────
 
@@ -124,11 +118,11 @@ struct EditState {
 
 /// Standalone disassembly viewer widget.
 pub struct DisasmView {
-    id: String,
     /// Configuration.
     pub config: DisasmViewConfig,
 
     // ── Cached ImGui IDs (built once at construction) ─────────
+    pub(super) child_id: String,
     pub(super) edit_label: String,
     pub(super) goto_popup_id: String,
     pub(super) ctx_popup_id: String,
@@ -159,6 +153,14 @@ pub struct DisasmView {
     /// the popup opens; consumed inside the popup body the first
     /// frame the input renders. Mirrors `hex_viewer`'s pattern.
     pub(super) goto_focus_pending: bool,
+    /// Goto-address request from the popup that the host needs to
+    /// service — separate from `goto_address()` which only scrolls
+    /// inside the *current* provider. When the user types an address
+    /// outside the loaded range (e.g. a different module / RIP), the
+    /// host (Vex0r `MemoryTab::forward_goto`) re-anchors the buffer
+    /// and issues a fresh `ReadMem`. Drained via
+    /// `take_pending_goto_request()` once per frame.
+    pub(super) pending_goto_request: Option<u64>,
     /// Whether the widget is focused.
     focused: bool,
     /// Cached char advance.
@@ -263,6 +265,9 @@ pub struct DisasmView {
     /// job — read [`Self::bookmarks`] on shutdown, push back via
     /// [`Self::add_bookmark`] on startup.
     bookmarks: BTreeSet<u64>,
+    // The active locale lives on `config.locale` so it round-trips
+    // through `ron::to_string(&cfg)` / `ron::from_str` along with
+    // every other display flag — see `with_locale` / `set_locale`.
 }
 
 impl DisasmView {
@@ -276,14 +281,15 @@ impl DisasmView {
     /// Create a new disassembly view with the given ImGui ID.
     pub fn new(id: impl Into<String>) -> Self {
         let id: String = id.into();
+        let child_id = format!("##dv_child_{id}");
         let edit_label = format!("##dv_edit_{id}");
         let goto_popup_id = format!("##dv_goto_{id}");
         let ctx_popup_id = format!("##dv_ctx_{id}");
         let settings_popup_id = format!("##dv_settings_{id}");
         let search_popup_id = format!("##dv_search_{id}");
         Self {
-            id,
             config: DisasmViewConfig::default(),
+            child_id,
             edit_label,
             goto_popup_id,
             ctx_popup_id,
@@ -299,6 +305,7 @@ impl DisasmView {
             goto_buf: String::new(),
             show_goto: false,
             goto_focus_pending: false,
+            pending_goto_request: None,
             focused: false,
             char_advance: 0.0,
             line_height: 0.0,
@@ -323,6 +330,38 @@ impl DisasmView {
             frame_comment_w: std::cell::Cell::new(None),
             bookmarks: BTreeSet::new(),
         }
+    }
+
+    /// Override the user-visible language on construction. Default is
+    /// English; pass [`crate::i18n::Locale::Ru`] to switch to Russian.
+    /// The host is responsible for baking `GlyphRanges::Cyrillic`
+    /// into the active font atlas — without that, non-ASCII characters
+    /// render as `?` placeholders.
+    ///
+    /// The locale is stored on [`DisasmViewConfig::locale`], so it
+    /// round-trips through `ron::to_string` / `ron::from_str` along
+    /// with every other display setting.
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.config.locale = locale;
+        self
+    }
+
+    /// Mid-flight language switch. Same caveat as [`Self::with_locale`]
+    /// regarding font atlas glyph ranges.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.config.locale = locale;
+    }
+
+    /// Currently-active locale (mirror of `self.config.locale`).
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.config.locale
+    }
+
+    /// Static catalogue lookup for the current locale. Convenience
+    /// for the per-frame popup / draw paths.
+    #[inline]
+    pub(super) fn strings(&self) -> &'static crate::i18n::disasm_view::Strings {
+        crate::i18n::disasm_view::strings(self.config.locale)
     }
 
     // ── Byte search ──────────────────────────────────────────────────
@@ -696,6 +735,14 @@ impl DisasmView {
         self.bookmarks.clear();
     }
 
+    /// Drain the goto-address request emitted by the popup so the host
+    /// can re-anchor the backing buffer when the user typed an address
+    /// outside the currently decoded range. Returns `Some(addr)` once
+    /// per popup commit, `None` otherwise.
+    pub fn take_pending_goto_request(&mut self) -> Option<u64> {
+        self.pending_goto_request.take()
+    }
+
     /// Scroll to and select the instruction at `addr`.
     ///
     /// Side effects on jump (when `addr != current cursor address`):
@@ -966,7 +1013,7 @@ impl DisasmView {
         self.render_search_popup(ui, provider);
 
         let avail = ui.content_region_avail();
-        let child_id = format!("##dv_child_{}", self.id);
+        let child_id = self.child_id.clone();
 
         ui.child_window(&child_id)
             .size([avail[0], avail[1]])
@@ -3060,5 +3107,87 @@ mod tests {
         let visible_count = 30;
         let last_row = (first_row + visible_count).min(count);
         assert!(last_row >= first_row, "last_row must not underflow");
+    }
+
+    // ── Locale on `DisasmViewConfig` ─────────────────────────────────
+
+    #[test]
+    fn config_default_locale_is_english() {
+        let cfg = DisasmViewConfig::default();
+        assert_eq!(cfg.locale, crate::i18n::Locale::En);
+    }
+
+    #[test]
+    fn config_locale_round_trips_through_ron() {
+        let cfg = DisasmViewConfig {
+            locale: crate::i18n::Locale::Ru,
+            ..DisasmViewConfig::default()
+        };
+        let text = ron::ser::to_string(&cfg).unwrap();
+        let back: DisasmViewConfig = ron::from_str(&text).unwrap();
+        assert_eq!(back.locale, crate::i18n::Locale::Ru);
+    }
+
+    #[test]
+    fn with_locale_updates_config_field() {
+        // The view-level builder forwards into `config.locale`, so
+        // `set_locale` mutations persist into the saved ron payload.
+        let view = DisasmView::new("test").with_locale(crate::i18n::Locale::Ru);
+        assert_eq!(view.config.locale, crate::i18n::Locale::Ru);
+        assert_eq!(view.locale(), crate::i18n::Locale::Ru);
+    }
+
+    #[test]
+    fn columns_inline_in_config_ron_matches_canonical() {
+        // `disasm_view/config.ron` inlines `columns:(...)` because ron
+        // 0.8 has no `include`. This drift-test makes sure the inline
+        // block stays in lock-step with `column_widths.ron`.
+        let canonical = super::ColumnWidths::default();
+        let cfg = DisasmViewConfig::default();
+        assert_eq!(cfg.columns.margin, canonical.margin);
+        assert_eq!(cfg.columns.arrows, canonical.arrows);
+        assert_eq!(cfg.columns.address, canonical.address);
+        assert_eq!(cfg.columns.bytes, canonical.bytes);
+        assert_eq!(cfg.columns.mnemonic, canonical.mnemonic);
+        assert_eq!(cfg.columns.operands, canonical.operands);
+        assert_eq!(cfg.columns.comment, canonical.comment);
+    }
+
+    #[test]
+    fn config_locale_field_optional_in_ron() {
+        // Older configs (saved before the locale field landed) still
+        // parse — `#[serde(default)]` falls back to English. Pre-0.10.x
+        // hosts depend on this for forward compatibility.
+        let cfg: DisasmViewConfig = ron::from_str(
+            r#"(
+                columns: (
+                    margin: 26.0,
+                    arrows: 36.0,
+                    address: 150.0,
+                    bytes: 200.0,
+                    mnemonic: 80.0,
+                    operands: 220.0,
+                    comment: 100.0,
+                ),
+                show_bytes: true,
+                show_comments: true,
+                show_arrows: true,
+                show_breakpoints: true,
+                show_bookmarks: true,
+                icons_available: true,
+                show_block_tints: false,
+                show_header: true,
+                show_column_dividers: true,
+                uppercase: true,
+                address_width_64: true,
+                byte_category_colors: true,
+                editable: false,
+                follow_execution: false,
+                base_address: 0,
+                max_arrows: 256,
+            )"#,
+        )
+        .expect("disasm_view config without `locale` field must still parse");
+        assert_eq!(cfg.locale, crate::i18n::Locale::En);
     }
 }

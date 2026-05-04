@@ -208,3 +208,17 @@ file_manager/
 | Page Up/Down | Scroll file list by page |
 | Home/End | Jump to first/last file |
 | Type characters | Jump to matching filename (resets after timeout) |
+
+## Configuration & localisation
+
+`FileManagerConfig` follows the project-wide DDD config pattern:
+schema in `src/file_manager/config.rs`, default values in
+`src/file_manager/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
+
+`FmStrings` carries the catalogue (toolbar buttons, footer labels,
+column headers, error messages, modal titles, sidebar headers,
+context menu entries). `STRINGS_EN` / `STRINGS_RU` are static
+constants; `strings_for_locale(Locale)` resolves them. Switch with
+`FileManager::new().with_locale(Locale::Ru)` — the builder
+auto-refreshes `config.strings` so the whole UI flips with one call.
+See [`docs/i18n.md`](./i18n.md).

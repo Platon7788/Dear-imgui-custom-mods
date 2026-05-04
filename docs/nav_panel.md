@@ -208,3 +208,16 @@ let _sub = NavButton::submenu("id", "icon", "tooltip")    // opens flyout
     .with_tooltip("Updated tooltip")
     .without_tooltip();
 ```
+
+## Configuration & localisation
+
+`NavPanelConfig` follows the project-wide DDD config pattern: schema
+in `src/nav_panel/config.rs`, default values in
+`src/nav_panel/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
+
+The panel-toggle tooltips ("Show panel" / "Toggle panel") are
+localised through `crate::i18n::nav_panel`. Set
+`NavPanelConfig.locale = Locale::Ru` directly (functional API — no
+struct-level builder). The nav buttons themselves carry host-supplied
+labels via `NavItem::label` and stay host-driven. See
+[`docs/i18n.md`](./i18n.md).

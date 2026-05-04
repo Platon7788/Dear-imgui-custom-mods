@@ -60,7 +60,7 @@ pub use theme::NotificationColors;
 use dear_imgui_rs::{Condition, MouseButton, StyleColor, StyleVar, Ui, WindowFlags};
 
 use crate::utils::color::rgba_f32;
-use crate::utils::text::calc_text_size;
+use crate::utils::text::{calc_text_size, line_height};
 
 // ─── Events ──────────────────────────────────────────────────────────────────
 
@@ -264,7 +264,7 @@ impl NotificationCenter {
         for &i in &indices {
             let n = &self.queue[i];
 
-            let est_h = estimate_height(n, &cfg);
+            let est_h = estimate_height(n, &cfg, ui);
 
             // Slot fraction drives how much vertical space this toast claims
             // in the stack — animating from 0→1 (enter) or 1→0 (exit) so
@@ -402,10 +402,10 @@ struct ToastOutcome {
 
 /// Height in pixels for a toast — computed before rendering so the stack can
 /// lay itself out in a single pass.
-fn estimate_height(n: &Notification, cfg: &CenterConfig) -> f32 {
+fn estimate_height(n: &Notification, cfg: &CenterConfig, ui: &dear_imgui_rs::Ui) -> f32 {
     let pad_x = cfg.padding[0];
     let pad_y = cfg.padding[1];
-    let title_h = calc_text_size("Mg")[1];
+    let title_h = line_height(ui);
     let body_line_h = title_h;
 
     // Content width = toast width - accent strip - left/right padding - close button.
@@ -635,7 +635,7 @@ fn render_toast(
 
             // Body
             if !n.body.is_empty() {
-                ui.set_cursor_pos([content_left, cfg.padding[1] + calc_text_size("Mg")[1] + 2.0]);
+                ui.set_cursor_pos([content_left, cfg.padding[1] + line_height(ui) + 2.0]);
                 let _bc = ui.push_style_color(StyleColor::Text, c.body);
                 let _wrap = ui.push_text_wrap_pos(ui.window_pos()[0] + content_left + content_w);
                 ui.text_wrapped(&n.body);

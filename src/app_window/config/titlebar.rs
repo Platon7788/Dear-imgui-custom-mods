@@ -31,7 +31,7 @@ impl ExtraButton {
 // ── Buttons ────────────────────────────────────────────────────────────────
 
 /// Which standard buttons to draw in the custom titlebar.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Buttons {
     pub minimize: bool,
     pub maximize: bool,
@@ -59,17 +59,12 @@ pub struct Buttons {
 }
 
 impl Default for Buttons {
+    /// Loads `buttons.ron` — full chrome (minimize + maximize + close).
+    /// `Buttons::close_only()` is the alternative constructor and stays
+    /// in Rust because it's a value-derivation, not a free default.
     fn default() -> Self {
-        Self {
-            minimize: true,
-            maximize: true,
-            close: true,
-            width: 44.0,
-            icon_radius: 6.0,
-            icon_hover_pad: 4.0,
-            hover_zoom_scale: 1.20,
-            show_hover_bg: false,
-        }
+        ron::from_str(include_str!("buttons.ron"))
+            .expect("built-in app_window/config/buttons.ron is valid")
     }
 }
 
@@ -145,12 +140,52 @@ mod tests {
         let b = b.with_hover_bg(false);
         assert!(!b.show_hover_bg);
     }
+
+    // ── Drift guards: `buttons.ron` is the single source of truth for
+    // every shared field of `Buttons` (width, icon_radius, icon_hover_pad,
+    // hover_zoom_scale, show_hover_bg). The three titlebar presets each
+    // inline a copy because ron 0.8 has no `include` mechanism — these
+    // tests fail loudly if anyone updates one file without updating the
+    // others. `minimize` / `maximize` are deliberately preset-specific
+    // (full chrome / close-only) and not compared.
+
+    fn assert_buttons_inline_matches_canonical(actual: &Buttons) {
+        let canonical = Buttons::default();
+        assert_eq!(actual.width, canonical.width);
+        assert_eq!(actual.icon_radius, canonical.icon_radius);
+        assert_eq!(actual.icon_hover_pad, canonical.icon_hover_pad);
+        assert_eq!(actual.hover_zoom_scale, canonical.hover_zoom_scale);
+        assert_eq!(actual.show_hover_bg, canonical.show_hover_bg);
+    }
+
+    #[test]
+    fn buttons_inline_in_titlebar_main_matches_canonical() {
+        // `titlebar_main.ron` uses the full set; `minimize/maximize` must
+        // both be `true` for that preset.
+        let tb = TitlebarConfig::default();
+        assert!(tb.buttons.minimize && tb.buttons.maximize && tb.buttons.close);
+        assert_buttons_inline_matches_canonical(&tb.buttons);
+    }
+
+    #[test]
+    fn buttons_inline_in_titlebar_tool_matches_canonical() {
+        let tb = TitlebarConfig::tool();
+        assert!(!tb.buttons.minimize && !tb.buttons.maximize && tb.buttons.close);
+        assert_buttons_inline_matches_canonical(&tb.buttons);
+    }
+
+    #[test]
+    fn buttons_inline_in_titlebar_dialog_matches_canonical() {
+        let tb = TitlebarConfig::dialog();
+        assert!(!tb.buttons.minimize && !tb.buttons.maximize && tb.buttons.close);
+        assert_buttons_inline_matches_canonical(&tb.buttons);
+    }
 }
 
 // ── TitlebarConfig ──────────────────────────────────────────────────────────
 
 /// Pixel-level titlebar configuration. Used inside [`Chrome::Custom`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TitlebarConfig {
     pub height: f32,
     pub title_visible: bool,
@@ -161,52 +196,42 @@ pub struct TitlebarConfig {
     pub separator_height: f32,
     pub double_click_maximize: bool,
     pub buttons: Buttons,
+    /// Extra buttons rendered next to the standard ones. `ExtraButton`
+    /// holds `&'static str` fields (id/label/tooltip) for zero-allocation
+    /// dispatch, so it cannot be deserialised — extras are populated by
+    /// the host via the builder API instead. Skipped from ron.
+    #[serde(skip, default)]
     pub extras: Vec<ExtraButton>,
     pub close_mode: CloseMode,
 }
 
 impl Default for TitlebarConfig {
+    /// Loads `titlebar_main.ron` — the main-window chrome preset.
     fn default() -> Self {
-        Self {
-            height: 28.0,
-            title_visible: true,
-            title_align: TitleAlign::Left,
-            title_padding_left: 10.0,
-            icon: None,
-            separator_visible: true,
-            separator_height: 1.0,
-            double_click_maximize: true,
-            buttons: Buttons::default(),
-            extras: Vec::new(),
-            close_mode: CloseMode::Immediate,
-        }
+        ron::from_str(include_str!("titlebar_main.ron"))
+            .expect("built-in app_window/config/titlebar_main.ron is valid")
     }
 }
 
 impl TitlebarConfig {
     /// Compact preset for tool windows (smaller height, close-only).
+    /// Loaded from `titlebar_tool.ron`.
     pub fn tool() -> Self {
-        Self {
-            height: 22.0,
-            buttons: Buttons::close_only(),
-            double_click_maximize: false,
-            ..Self::default()
-        }
+        ron::from_str(include_str!("titlebar_tool.ron"))
+            .expect("built-in app_window/config/titlebar_tool.ron is valid")
     }
     /// Dialog preset (fixed-size feel — no maximize).
+    /// Loaded from `titlebar_dialog.ron`.
     pub fn dialog() -> Self {
-        Self {
-            buttons: Buttons::close_only(),
-            double_click_maximize: false,
-            ..Self::default()
-        }
+        ron::from_str(include_str!("titlebar_dialog.ron"))
+            .expect("built-in app_window/config/titlebar_dialog.ron is valid")
     }
 }
 
 // ── Chrome ──────────────────────────────────────────────────────────────────
 
 /// Titlebar mode selector. `None` for borderless splash; `Custom` for everything else.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Chrome {
     /// No titlebar at all. The whole client area is yours.
     None,

@@ -29,6 +29,7 @@
         depth_fade: false,
         cluster_hulls: false,
         search_highlight_mode: true,
+        locale: En,
     ),
     force: (
         barnes_hut_theta: 0.9,

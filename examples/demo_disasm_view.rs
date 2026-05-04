@@ -359,6 +359,11 @@ impl DemoState {
     fn new() -> Self {
         let instructions = sample_instructions();
         let provider = VecDisasmProvider::from_vec(instructions);
+        // Locale defaults to English. Switch to Russian via
+        //     DisasmView::new(...).with_locale(
+        //         dear_imgui_custom_mod::i18n::Locale::Ru)
+        // The host must bake `GlyphRanges::Cyrillic` into the active
+        // font atlas for Cyrillic glyphs to render.
         let mut view = DisasmView::new("##disasm_demo");
         view.select(0);
 

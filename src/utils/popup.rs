@@ -227,6 +227,20 @@ pub fn compact_popup_body<F: FnOnce()>(ui: &Ui, body: F) {
 /// have to thread `is_key_pressed` checks through its own button
 /// expressions.
 pub fn action_row(ui: &Ui, body_w: f32, primary_label: &str) -> (bool, bool) {
+    action_row_labeled(ui, body_w, primary_label, "Cancel")
+}
+
+/// Same as [`action_row`] but lets the caller supply both labels —
+/// used by widgets that drive their own localisation
+/// ([`crate::hex_viewer`] / [`crate::disasm_view`] feed the cancel
+/// label from their `crate::i18n` catalogue so the row reads
+/// "Перейти / Отмена" in Russian etc.).
+pub fn action_row_labeled(
+    ui: &Ui,
+    body_w: f32,
+    primary_label: &str,
+    cancel_label: &str,
+) -> (bool, bool) {
     const ACTION_BTN_WIDTH: f32 = 58.0;
     const ACTION_BTN_HEIGHT: f32 = 0.0; // ImGui auto-height
     const EDGE_GAP: f32 = 2.0;
@@ -236,7 +250,7 @@ pub fn action_row(ui: &Ui, body_w: f32, primary_label: &str) -> (bool, bool) {
     let primary_x = row_origin_x + body_w - ACTION_BTN_WIDTH - EDGE_GAP;
 
     ui.set_cursor_pos_x(cancel_x);
-    let cancel_clicked = ui.button_with_size("Cancel", [ACTION_BTN_WIDTH, ACTION_BTN_HEIGHT])
+    let cancel_clicked = ui.button_with_size(cancel_label, [ACTION_BTN_WIDTH, ACTION_BTN_HEIGHT])
         || ui.is_key_pressed(dear_imgui_rs::Key::Escape);
 
     ui.same_line();
@@ -245,6 +259,49 @@ pub fn action_row(ui: &Ui, body_w: f32, primary_label: &str) -> (bool, bool) {
         || ui.is_key_pressed(dear_imgui_rs::Key::Enter);
 
     (primary_clicked, cancel_clicked)
+}
+
+// ── Popup anchoring ─────────────────────────────────────────────────────────
+//
+// Both `hex_viewer` and `disasm_view` need to anchor their popups at exact
+// screen positions. `dear-imgui-rs` 0.11 has no `set_next_window_pos`
+// builder, so we call `igSetNextWindowPos` directly with `ImGuiCond_Always`
+// (re-applies every frame — ImGui caches popup positions across sessions,
+// so without `Always` the popup drifts to the cached position after the
+// first open).
+
+/// Anchor the next ImGui window at `pos` in screen space using `pivot`.
+/// `[0.0, 0.0]` = popup top-left snaps to `pos`;
+/// `[0.5, 0.5]` = popup centre snaps to `pos`.
+pub(crate) fn anchor_next_popup_at(pos: [f32; 2], pivot: [f32; 2]) {
+    // SAFETY: side-effect-only ImGui call — writes to the shared context.
+    // Safe from the single render thread that owns the ImGui context.
+    unsafe {
+        #[allow(clippy::unnecessary_cast)]
+        // `ImGuiCond_Always` is `u32` on Linux / `i32` on Windows.
+        dear_imgui_rs::sys::igSetNextWindowPos(
+            dear_imgui_rs::sys::ImVec2 {
+                x: pos[0],
+                y: pos[1],
+            },
+            dear_imgui_rs::sys::ImGuiCond_Always as i32,
+            dear_imgui_rs::sys::ImVec2 {
+                x: pivot[0],
+                y: pivot[1],
+            },
+        );
+    }
+}
+
+/// Top-left anchor — for click-position-aware popups (right-click menus).
+pub(crate) fn anchor_next_popup_topleft(pos: [f32; 2]) {
+    anchor_next_popup_at(pos, [0.0, 0.0]);
+}
+
+/// Centred anchor — for modal-style popups (Goto / Search / Settings).
+/// `pos` is the popup's visual centre.
+pub(crate) fn anchor_next_popup_centred(pos: [f32; 2]) {
+    anchor_next_popup_at(pos, [0.5, 0.5]);
 }
 
 #[cfg(test)]

@@ -7,50 +7,21 @@
 
 use super::provider::DisasmDataProvider;
 use super::{DisasmView, parse_address};
+use crate::i18n;
 use crate::utils::clipboard::set_clipboard;
-use crate::utils::popup::{action_row, compact_popup_body, themed_popup_style};
+use crate::utils::popup::{
+    action_row_labeled, anchor_next_popup_centred, anchor_next_popup_topleft,
+    compact_popup_body, themed_popup_style,
+};
 
 /// Reference width for the goto popup body (input + action row).
 /// Matches `hex_viewer::popup::POPUP_INPUT_WIDTH` so both modules
 /// host visually-identical goto dialogs.
 const POPUP_INPUT_WIDTH: f32 = 360.0;
 
-/// Anchor the next ImGui window (a popup) at `pos` in screen space
-/// using the given `pivot`. See `hex_viewer::popup` for full
-/// rationale — same `igSetNextWindowPos(.., Cond_Always, pivot)`
-/// FFI call (no `set_next_window_pos` builder in dear-imgui-rs 0.11).
-fn anchor_next_popup_at(pos: [f32; 2], pivot: [f32; 2]) {
-    // SAFETY: side-effect-only ImGui call; just records the
-    // requested next-window position in the shared context.
-    unsafe {
-        #[allow(clippy::unnecessary_cast)]
-        // `ImGuiCond_Always` is `u32` on Linux, `i32` on Windows.
-        dear_imgui_rs::sys::igSetNextWindowPos(
-            dear_imgui_rs::sys::ImVec2 {
-                x: pos[0],
-                y: pos[1],
-            },
-            dear_imgui_rs::sys::ImGuiCond_Always as i32,
-            dear_imgui_rs::sys::ImVec2 {
-                x: pivot[0],
-                y: pivot[1],
-            },
-        );
-    }
-}
-
-/// Top-left anchor — for the right-click context menu (spawns
-/// where the click happened).
-fn anchor_next_popup_topleft(pos: [f32; 2]) {
-    anchor_next_popup_at(pos, [0.0, 0.0]);
-}
-
-/// Centred anchor — for modal popups (Goto). Pivot `(0.5, 0.5)`
-/// means `pos` is the popup's CENTRE, so the body is centred no
-/// matter what its size is.
-fn anchor_next_popup_centred(pos: [f32; 2]) {
-    anchor_next_popup_at(pos, [0.5, 0.5]);
-}
+// `anchor_next_popup_centred` / `anchor_next_popup_topleft` moved to
+// `crate::utils::popup` on 2026-05-04 so both `hex_viewer` and
+// `disasm_view` share the same implementation. Imported above.
 
 impl DisasmView {
     pub(super) fn render_goto_popup(
@@ -68,10 +39,11 @@ impl DisasmView {
             self.goto_focus_pending = true;
         }
 
+        let s = self.strings();
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.goto_popup_id) {
                 compact_popup_body(ui, || {
-                    ui.text("Goto address (hex):");
+                    ui.text(s.goto_title);
 
                     if self.goto_focus_pending {
                         ui.set_keyboard_focus_here();
@@ -82,12 +54,23 @@ impl DisasmView {
                         .build();
 
                     let (go_clicked, cancel_clicked) =
-                        action_row(ui, POPUP_INPUT_WIDTH, "Go");
+                        action_row_labeled(ui, POPUP_INPUT_WIDTH, s.action_go, s.action_cancel);
                     if cancel_clicked {
                         ui.close_current_popup();
                     }
                     if go_clicked {
                         if let Some(addr) = parse_address(&self.goto_buf) {
+                            // Always notify the host — it owns the
+                            // backing buffer and is the only place that
+                            // can re-anchor + ReadMem if `addr` is
+                            // outside the currently decoded range.
+                            // `goto_address` here is best-effort: if
+                            // `addr` happens to be in-range we get
+                            // immediate scroll on the same frame; if
+                            // not, the host's `forward_goto` will
+                            // re-anchor and a later frame will land on
+                            // the new instruction.
+                            self.pending_goto_request = Some(addr);
                             self.goto_address(addr, provider);
                         }
                         ui.close_current_popup();
@@ -164,17 +147,19 @@ impl DisasmView {
                 let bp_col = palette.breakpoint;
                 let watch_col = palette.operand_memory;
                 let bookmark_col = palette.bookmark;
+                let s = self.strings();
+                let locale = self.config.locale;
 
                 {
                     let _c =
                         ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
-                    if ui.menu_item("\u{00BB}  Goto Address...\tG") {
+                    if ui.menu_item(s.menu_goto_address) {
                         self.show_goto = true;
                         self.goto_buf.clear();
                         self.goto_focus_pending = true;
                         ui.close_current_popup();
                     }
-                    if ui.menu_item("\u{00BB}  Search bytes...\tCtrl+F") {
+                    if ui.menu_item(s.menu_search_bytes) {
                         self.show_search = true;
                         self.search_focus_pending = true;
                         ui.close_current_popup();
@@ -184,7 +169,7 @@ impl DisasmView {
                 {
                     let _c =
                         ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
-                    if ui.menu_item("\u{00BB}  Copy Address") {
+                    if ui.menu_item(s.menu_copy_address) {
                         if let Some(addr) = instr_addr {
                             set_clipboard(&self.format_address_literal(addr));
                         }
@@ -192,9 +177,9 @@ impl DisasmView {
                     }
                     let sel_count = self.selection.len();
                     let copy_label = if sel_count > 1 {
-                        format!("\u{00BB}  Copy {} Instructions\tCtrl+C", sel_count)
+                        i18n::disasm_view::copy_n_instructions(locale, sel_count)
                     } else {
-                        "\u{00BB}  Copy Instruction\tCtrl+C".to_string()
+                        s.menu_copy_instruction.to_string()
                     };
                     if ui.menu_item(&copy_label) {
                         self.copy_selected(provider);
@@ -213,7 +198,7 @@ impl DisasmView {
                     };
                     let _c = ui
                         .push_style_color(dear_imgui_rs::StyleColor::Text, call_col);
-                    if ui.menu_item("\u{2192}  Follow\tEnter / Space") {
+                    if ui.menu_item(s.menu_follow) {
                         self.cursor_idx = Some(idx);
                         self.follow_at_cursor(provider);
                         ui.close_current_popup();
@@ -225,17 +210,17 @@ impl DisasmView {
                 {
                     let _c = ui
                         .push_style_color(dear_imgui_rs::StyleColor::Text, jump_col);
-                    if ui.menu_item("\u{2191}  Jump to function start\tCtrl+Up") {
+                    if ui.menu_item(s.menu_jump_func_start) {
                         self.cursor_idx = Some(idx);
                         self.jump_to_function_start(provider);
                         ui.close_current_popup();
                     }
-                    if ui.menu_item("\u{2193}  Jump to function end\tCtrl+Down") {
+                    if ui.menu_item(s.menu_jump_func_end) {
                         self.cursor_idx = Some(idx);
                         self.jump_to_function_end(provider);
                         ui.close_current_popup();
                     }
-                    if ui.menu_item("\u{00BB}  Select function\tCtrl+L") {
+                    if ui.menu_item(s.menu_select_function) {
                         self.cursor_idx = Some(idx);
                         self.select_function(provider);
                         ui.close_current_popup();
@@ -246,26 +231,17 @@ impl DisasmView {
                 {
                     let _c =
                         ui.push_style_color(dear_imgui_rs::StyleColor::Text, bp_col);
-                    if ui.menu_item("\u{25CF}  Toggle Breakpoint\tF9") {
+                    if ui.menu_item(s.menu_toggle_breakpoint) {
                         if let Some(addr) = instr_addr {
                             provider.toggle_breakpoint(addr);
                         }
                         ui.close_current_popup();
                     }
                 }
-                // Watchpoint — orange. Same `\u{25CF}` filled
-                // circle as Toggle Breakpoint so both "things
-                // that pause the running process" (BP / RW) read
-                // as one visual class — colour carries the kind.
-                // Single entry instead of separate R / W rows;
-                // hosts that distinguish read-only vs write-only
-                // data breakpoints sort that out on the engine
-                // side and report the union via
-                // `Instruction::has_watchpoint`.
                 {
                     let _c = ui
                         .push_style_color(dear_imgui_rs::StyleColor::Text, watch_col);
-                    if ui.menu_item("\u{25CF}  Toggle Watchpoint") {
+                    if ui.menu_item(s.menu_toggle_watchpoint) {
                         if let Some(addr) = instr_addr {
                             provider.toggle_watchpoint(addr);
                         }
@@ -290,9 +266,9 @@ impl DisasmView {
                         "\u{25CB}"
                     };
                     let bookmark_label = if bookmarked {
-                        format!("{glyph}  Remove from bookmarks\tCtrl+B")
+                        format!("{glyph}  {}", s.menu_remove_bookmark)
                     } else {
-                        format!("{glyph}  Add to bookmarks\tCtrl+B")
+                        format!("{glyph}  {}", s.menu_add_bookmark)
                     };
                     if ui.menu_item(&bookmark_label) {
                         if let Some(addr) = instr_addr {
@@ -308,12 +284,13 @@ impl DisasmView {
                 // (U+F1B91) when `icons_available`, ellipsis
                 // fallback otherwise so the entry reads sanely on
                 // hosts without the MDI atlas.
-                let settings_label = if self.config.icons_available {
-                    "\u{F1B91}  Settings..."
+                let icon = if self.config.icons_available {
+                    "\u{F1B91}  "
                 } else {
-                    "\u{2026}  Settings..."
+                    "\u{2026}  "
                 };
-                if ui.menu_item(settings_label) {
+                let settings_label = format!("{icon}{}", s.menu_settings);
+                if ui.menu_item(&settings_label) {
                     self.show_settings = true;
                     ui.close_current_popup();
                 }
@@ -334,46 +311,45 @@ impl DisasmView {
             self.show_settings = false;
         }
 
+        let s = self.strings();
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.settings_popup_id) {
                 compact_popup_body(ui, || {
-                    let header = if self.config.icons_available {
-                        "\u{F1B91}  Disassembly Settings"
+                    let icon = if self.config.icons_available {
+                        "\u{F1B91}  "
                     } else {
-                        "\u{2026}  Disassembly Settings"
+                        "\u{2026}  "
                     };
-                    ui.text(header);
+                    let header = format!("{icon}{}", s.settings_title);
+                    ui.text(&header);
                     ui.separator();
 
-                    ui.text("Display:");
-                    ui.checkbox("Show bytes", &mut self.config.show_bytes);
-                    ui.checkbox("Show comments", &mut self.config.show_comments);
-                    ui.checkbox("Show branch arrows", &mut self.config.show_arrows);
-                    ui.checkbox("Show breakpoints", &mut self.config.show_breakpoints);
-                    ui.checkbox("Show bookmarks", &mut self.config.show_bookmarks);
-                    ui.checkbox("Show block tints", &mut self.config.show_block_tints);
-                    ui.checkbox("Show header", &mut self.config.show_header);
+                    ui.text(s.settings_display);
+                    ui.checkbox(s.settings_show_bytes, &mut self.config.show_bytes);
+                    ui.checkbox(s.settings_show_comments, &mut self.config.show_comments);
+                    ui.checkbox(s.settings_show_branch_arrows, &mut self.config.show_arrows);
+                    ui.checkbox(s.settings_show_breakpoints, &mut self.config.show_breakpoints);
+                    ui.checkbox(s.settings_show_bookmarks, &mut self.config.show_bookmarks);
+                    ui.checkbox(s.settings_show_block_tints, &mut self.config.show_block_tints);
+                    ui.checkbox(s.settings_show_header, &mut self.config.show_header);
                     ui.checkbox(
-                        "Show column dividers",
+                        s.settings_show_column_dividers,
                         &mut self.config.show_column_dividers,
                     );
 
                     ui.separator();
-                    ui.text("Format:");
-                    ui.checkbox("Uppercase hex", &mut self.config.uppercase);
-                    ui.checkbox("64-bit address width", &mut self.config.address_width_64);
+                    ui.text(s.settings_format);
+                    ui.checkbox(s.settings_uppercase, &mut self.config.uppercase);
+                    ui.checkbox(s.settings_address_width_64, &mut self.config.address_width_64);
                     ui.checkbox(
-                        "Byte category colors",
+                        s.settings_byte_category_colors,
                         &mut self.config.byte_category_colors,
                     );
 
                     ui.separator();
-                    ui.text("Behavior:");
-                    ui.checkbox("Editable (double-click to patch)", &mut self.config.editable);
-                    ui.checkbox(
-                        "Follow execution",
-                        &mut self.config.follow_execution,
-                    );
+                    ui.text(s.settings_behavior);
+                    ui.checkbox(s.settings_editable, &mut self.config.editable);
+                    ui.checkbox(s.settings_follow_execution, &mut self.config.follow_execution);
 
                     ui.separator();
 
@@ -381,7 +357,7 @@ impl DisasmView {
                     let close_w = 64.0_f32;
                     let close_x = ui.cursor_pos()[0] + (total_w - close_w - 2.0).max(0.0);
                     ui.set_cursor_pos_x(close_x);
-                    if ui.button_with_size("Close", [close_w, 0.0])
+                    if ui.button_with_size(s.action_close, [close_w, 0.0])
                         || ui.is_key_pressed(dear_imgui_rs::Key::Escape)
                     {
                         ui.close_current_popup();
@@ -415,13 +391,12 @@ impl DisasmView {
             self.search_focus_pending = true;
         }
 
+        let s = self.strings();
+        let locale = self.config.locale;
         themed_popup_style(ui, || {
             if let Some(_popup) = ui.begin_popup(&self.search_popup_id) {
                 compact_popup_body(ui, || {
-                    ui.text(format!(
-                        "Search bytes (min {} bytes; ?? wildcard):",
-                        super::SEARCH_MIN_BYTES,
-                    ));
+                    ui.text(s.search_hint);
 
                     if self.search_focus_pending {
                         ui.set_keyboard_focus_here();
@@ -441,24 +416,26 @@ impl DisasmView {
                             .len();
                     if !self.search_buf.trim().is_empty() {
                         if parsed_len < super::SEARCH_MIN_BYTES {
-                            ui.text(format!(
-                                "Pattern too short: {} / {} bytes",
+                            ui.text(i18n::disasm_view::pattern_too_short(
+                                locale,
                                 parsed_len,
                                 super::SEARCH_MIN_BYTES,
                             ));
                         } else if !self.search_match_starts.is_empty() {
-                            ui.text(format!(
-                                "Result {}/{}  (F3 / Shift+F3 to step)",
+                            let mut line = i18n::disasm_view::result_n_of_m(
+                                locale,
                                 self.search_idx + 1,
                                 self.search_match_starts.len(),
-                            ));
+                            );
+                            line.push_str(s.result_step_hint);
+                            ui.text(line);
                         } else if !self.search_pattern.is_empty() {
-                            ui.text("No matches.");
+                            ui.text(s.no_matches);
                         }
                     }
 
                     let (find_clicked, cancel_clicked) =
-                        action_row(ui, POPUP_INPUT_WIDTH, "Find");
+                        action_row_labeled(ui, POPUP_INPUT_WIDTH, s.action_find, s.action_cancel);
                     if cancel_clicked {
                         ui.close_current_popup();
                     }

@@ -176,6 +176,9 @@ pub struct HexViewer {
     /// this so the ASCII column lines up with where mouse clicks
     /// expect it.
     pub(super) inner_content_w: f32,
+    // The active locale lives on `config.locale` so it round-trips
+    // through `ron::to_string(&cfg)` / `ron::from_str` along with
+    // every other display flag — see `with_locale` / `set_locale`.
 }
 
 impl HexViewer {
@@ -232,6 +235,38 @@ impl HexViewer {
             popup_open_pos: [0.0, 0.0],
             component_center: [0.0, 0.0],
         }
+    }
+
+    /// Override the user-visible language on construction. Default is
+    /// English; pass [`crate::i18n::Locale::Ru`] to switch to Russian.
+    /// The host is responsible for baking `GlyphRanges::Cyrillic`
+    /// into the active font atlas — without that, non-ASCII
+    /// characters render as `?` placeholders.
+    ///
+    /// The locale is stored on [`HexViewerConfig::locale`], so it
+    /// round-trips through `ron::to_string` / `ron::from_str` along
+    /// with every other display setting.
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.config.locale = locale;
+        self
+    }
+
+    /// Mid-flight language switch. Same caveat as [`Self::with_locale`]
+    /// regarding font atlas glyph ranges.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.config.locale = locale;
+    }
+
+    /// Currently-active locale (mirror of `self.config.locale`).
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.config.locale
+    }
+
+    /// Static catalogue lookup for the current locale. Convenience
+    /// for the per-frame popup / draw paths.
+    #[inline]
+    pub(super) fn strings(&self) -> &'static crate::i18n::hex_viewer::Strings {
+        crate::i18n::hex_viewer::strings(self.config.locale)
     }
 
     // ── Data management ─────────────────────────────────────────────

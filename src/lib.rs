@@ -122,6 +122,7 @@ pub use winit;
 pub mod clipboard_backend;
 pub mod fonts;
 pub mod frame_demand;
+pub mod i18n;
 pub mod icons;
 pub mod input;
 pub mod theme;

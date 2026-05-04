@@ -1,0 +1,22 @@
+// `Buttons::default()` — full chrome (minimize + maximize + close).
+//
+// `Buttons::close_only()` is a Rust-side composer that re-uses these
+// defaults through `..Buttons::default()` and overrides
+// `minimize/maximize` to `false` — kept in code because it's an
+// alternative constructor, not a free-standing default value.
+//
+// The same field set is inlined into `titlebar_main.ron`,
+// `titlebar_tool.ron`, and `titlebar_dialog.ron` (with their own
+// `minimize` / `maximize` overrides). Drift between this file and
+// the inlined blocks is guarded by `tests::buttons_inline_in_titlebar_*_matches_default`.
+
+(
+    minimize: true,
+    maximize: true,
+    close: true,
+    width: 44.0,
+    icon_radius: 6.0,
+    icon_hover_pad: 4.0,
+    hover_zoom_scale: 1.20,
+    show_hover_bg: false,
+)

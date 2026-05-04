@@ -158,6 +158,13 @@ pub(super) fn init<H: AppHandler + 'static>(
             } => {
                 let fi = match fps_mode {
                     FpsMode::Fixed(n) if *n > 0 => Duration::from_secs_f64(1.0 / *n as f64),
+                    // `Auto` — pacing handled by `PresentMode::Fifo`
+                    // inside `render_frame::get_current_texture`, which
+                    // blocks until the next vblank. No software interval
+                    // needed; the vsync block IS the cap and naturally
+                    // matches the monitor's real refresh rate.
+                    FpsMode::Auto => Duration::ZERO,
+                    // `Fixed(0)` (degenerate) and `Unlimited` — no cap.
                     _ => Duration::ZERO,
                 };
                 let ui = if *unfocused_fps > 0 {
@@ -178,6 +185,8 @@ pub(super) fn init<H: AppHandler + 'static>(
     // see the helper's doc-comment for the full rationale.
     let clear_color =
         crate::utils::color::wgpu_clear_color(cfg.theme.window_bg(), surface_cfg.format);
+    let titlebar_palette = cfg.theme.titlebar();
+    let titlebar_u32 = super::chrome::TitlebarColorsU32::from_palette(&titlebar_palette);
 
     app.gpu = Some(gpu::GpuState {
         device,
@@ -205,6 +214,7 @@ pub(super) fn init<H: AppHandler + 'static>(
         was_minimized: false,
         started_at: Instant::now(),
         clear_color,
-        cached_titlebar: cfg.theme.titlebar(),
+        cached_titlebar: titlebar_palette,
+        cached_titlebar_u32: titlebar_u32,
     });
 }

@@ -1,0 +1,21 @@
+// `ColumnWidths::default()` — disassembly column geometry (px).
+//
+// `comment` is a *minimum*; the per-frame render stretches the comment
+// area to `(window_w - left_columns_total).max(comment)` so it fills
+// remaining width. `margin` (26) gives the bookmark glyph + breakpoint
+// number ~12 px each. `address` (150) was bumped from 130 on 2026-04-30
+// for breathing room around the hex literal.
+//
+// The same field set is inlined into `disasm_view/config.ron` (under
+// `columns:`); drift between this file and that block is guarded by
+// `tests::columns_inline_in_config_ron_matches_canonical`.
+
+(
+    margin: 26.0,
+    arrows: 36.0,
+    address: 150.0,
+    bytes: 200.0,
+    mnemonic: 80.0,
+    operands: 220.0,
+    comment: 100.0,
+)

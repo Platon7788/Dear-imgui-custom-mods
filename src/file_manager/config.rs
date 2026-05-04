@@ -204,7 +204,9 @@ pub struct FmStrings {
 /// Default English strings for the file manager dialog.
 ///
 /// Pass to [`FileManagerConfig::strings`] or use as a reference when creating
-/// translated string tables.
+/// translated string tables. Resolve through
+/// [`crate::i18n::Locale`] via [`strings_for_locale`] to switch
+/// languages from a single config field.
 pub static STRINGS_EN: FmStrings = FmStrings {
     select_folder: "Select Folder",
     open_file: "Open File",
@@ -247,6 +249,69 @@ pub static STRINGS_EN: FmStrings = FmStrings {
     shortcut_hint: "F2: Rename · Del: Delete · Backspace: Parent · Type to search",
     select_all: "Select All",
 };
+
+/// Russian translation of [`STRINGS_EN`]. Switching to this catalogue
+/// requires the host to bake `GlyphRanges::Cyrillic` (or a superset)
+/// into the active font atlas — without that, non-ASCII characters
+/// render as `?` placeholders.
+pub static STRINGS_RU: FmStrings = FmStrings {
+    select_folder: "Выбор папки",
+    open_file: "Открыть файл",
+    save_file: "Сохранить файл",
+    up: "Вверх",
+    back: "Назад",
+    forward: "Вперёд",
+    new_folder: "Новая папка",
+    new_file: "Новый файл",
+    create: "Создать",
+    cancel: "Отмена",
+    save: "Сохранить",
+    open: "Открыть",
+    filename: "Имя файла:",
+    all_files: "Все файлы (*.*)",
+    empty_parens: "(пусто)",
+    cannot_read_dir: "Не удаётся прочитать каталог",
+    create_folder_failed: "Не удалось создать папку",
+    create_file_failed: "Не удалось создать файл",
+    path_not_found: "Путь не найден",
+    overwrite_title: "Подтверждение перезаписи",
+    overwrite_message: "Файл уже существует. Перезаписать?",
+    yes: "Да",
+    no: "Нет",
+    favorites: "Избранное",
+    col_name: "Имя",
+    col_size: "Размер",
+    col_date: "Изменён",
+    col_type: "Тип",
+    rename: "Переименовать",
+    delete: "Удалить",
+    confirm_delete_title: "Подтверждение удаления",
+    confirm_delete_message: "Вы уверены, что хотите удалить",
+    rename_failed: "Не удалось переименовать",
+    delete_failed: "Не удалось удалить",
+    copy_path: "Копировать путь",
+    show_hidden: "Скрытые",
+    status_items: "эл.",
+    status_selected: "выделено",
+    shortcut_hint: "F2: переименовать · Del: удалить · Backspace: вверх · Введите для поиска",
+    select_all: "Выделить всё",
+};
+
+/// Resolve the static catalogue for `locale`.
+///
+/// ```rust,no_run
+/// # use dear_imgui_custom_mod::i18n::Locale;
+/// # use dear_imgui_custom_mod::file_manager::strings_for_locale;
+/// let s = strings_for_locale(Locale::Ru);
+/// assert_eq!(s.cancel, "Отмена");
+/// ```
+#[must_use]
+pub fn strings_for_locale(locale: crate::i18n::Locale) -> &'static FmStrings {
+    match locale {
+        crate::i18n::Locale::En => &STRINGS_EN,
+        crate::i18n::Locale::Ru => &STRINGS_RU,
+    }
+}
 
 // ─── FileManagerConfig ──────────────────────────────────────────────────────
 
@@ -322,6 +387,20 @@ pub struct FileManagerConfig {
     /// Skipped by serde — function pointers are not serializable; always `None` after deserialization.
     #[serde(skip, default)]
     pub icon_override: Option<IconOverrideFn>,
+
+    /// User-visible language for the dialog's labels, buttons, and
+    /// tooltips. Default [`crate::i18n::Locale::En`]. Switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas — without
+    /// that, non-ASCII characters render as `?` placeholders.
+    ///
+    /// `strings` is automatically refreshed whenever `locale` changes
+    /// through [`FileManager::set_locale`], so the field on this struct
+    /// stays in sync. Callers can still set `strings` directly to a
+    /// custom catalogue (e.g. for a third language) — that bypasses
+    /// the locale match entirely.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 fn default_strings() -> &'static FmStrings {
@@ -332,5 +411,76 @@ impl Default for FileManagerConfig {
     fn default() -> Self {
         ron::from_str(include_str!("config.ron"))
             .expect("built-in file_manager/config.ron is valid")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::Locale;
+
+    #[test]
+    fn strings_en_and_ru_diverge_on_translatable_keys() {
+        // Make sure RU isn't a copy-paste of EN — every primary action
+        // label must actually be translated.
+        assert_ne!(STRINGS_EN.cancel, STRINGS_RU.cancel);
+        assert_ne!(STRINGS_EN.save, STRINGS_RU.save);
+        assert_ne!(STRINGS_EN.open, STRINGS_RU.open);
+        assert_ne!(STRINGS_EN.col_name, STRINGS_RU.col_name);
+        assert_eq!(STRINGS_EN.cancel, "Cancel");
+        assert_eq!(STRINGS_RU.cancel, "Отмена");
+    }
+
+    #[test]
+    fn strings_for_locale_resolves() {
+        assert_eq!(strings_for_locale(Locale::En).cancel, "Cancel");
+        assert_eq!(strings_for_locale(Locale::Ru).cancel, "Отмена");
+    }
+
+    #[test]
+    fn default_locale_is_english() {
+        let cfg = FileManagerConfig::default();
+        assert_eq!(cfg.locale, Locale::En);
+    }
+
+    #[test]
+    fn locale_round_trips_through_ron() {
+        let cfg = FileManagerConfig {
+            locale: Locale::Ru,
+            ..FileManagerConfig::default()
+        };
+        let text = ron::ser::to_string(&cfg).unwrap();
+        let back: FileManagerConfig = ron::from_str(&text).unwrap();
+        assert_eq!(back.locale, Locale::Ru);
+    }
+
+    #[test]
+    fn locale_field_optional_in_ron() {
+        // Older configs without `locale:` must fall back to English.
+        let cfg: FileManagerConfig = ron::from_str(
+            r#"(
+                initial_size: (750.0, 520.0),
+                min_size: (500.0, 350.0),
+                show_favorites: true,
+                favorites_width: 150.0,
+                enable_multi_select: false,
+                enable_breadcrumbs: true,
+                enable_history: true,
+                enable_type_to_search: true,
+                show_hidden_files: false,
+                show_column_size: true,
+                show_column_date: true,
+                show_column_type: true,
+                max_history: 100,
+                search_timeout: 0.5,
+                dirs_first: true,
+                button_width: 100.0,
+                button_height: 24.0,
+                filter_width: 180.0,
+                inline_input_width: 200.0,
+            )"#,
+        )
+        .expect("file_manager config without `locale` field must still parse");
+        assert_eq!(cfg.locale, Locale::En);
     }
 }

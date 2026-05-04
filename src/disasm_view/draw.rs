@@ -6,7 +6,8 @@ use super::arrows::MAX_ARROW_DEPTH;
 use super::config::DisasmColors;
 use super::provider::{FlowKind, Instruction};
 use super::tokens::{OperandTokenizer, TokenKind};
-use super::{DisasmView, EditColumn, col32};
+use super::{DisasmView, EditColumn};
+use crate::utils::color::col32;
 use crate::utils::hex::byte_hex;
 
 /// Pixel offset added to the X position of the comment column so
@@ -554,67 +555,110 @@ impl DisasmView {
 
         // ── Tooltip on hover (comprehensive) ─────────────────
         if row_hovered {
+            // Honour `cfg.address_width_64` AND `cfg.uppercase` — fixes
+            // the long-standing bug where the gutter respected both
+            // flags but the tooltip hard-coded uppercase 16-digit
+            // formatting regardless of widget config. The 32-bit
+            // shadow is only emitted in 64-bit mode (in 32-bit mode
+            // the primary line already shows 8 digits — a duplicate
+            // would just clutter the popup).
+            let strings = self.strings();
+            let upper = cfg.uppercase;
+            let is_64 = cfg.address_width_64;
             crate::utils::themed_tooltip(ui, || {
-                ui.text(format!("Address: 0x{:016X}", addr));
-                if addr <= 0xFFFF_FFFF {
-                    ui.text(format!("     32: 0x{:08X}", addr as u32));
+                let primary = match (upper, is_64) {
+                    (true, true) => format!("{}0x{:016X}", strings.tooltip_address_prefix, addr),
+                    (false, true) => format!("{}0x{:016x}", strings.tooltip_address_prefix, addr),
+                    (true, false) => format!("{}0x{:08X}", strings.tooltip_address_prefix, addr),
+                    (false, false) => format!("{}0x{:08x}", strings.tooltip_address_prefix, addr),
+                };
+                ui.text(primary);
+                if is_64 && addr <= 0xFFFF_FFFF {
+                    let shadow = if upper {
+                        format!("{}0x{:08X}", strings.tooltip_address32_prefix, addr as u32)
+                    } else {
+                        format!("{}0x{:08x}", strings.tooltip_address32_prefix, addr as u32)
+                    };
+                    ui.text(shadow);
                 }
 
                 let bytes = instr.bytes();
-                ui.text(format!("Size: {} bytes", bytes.len()));
+                ui.text(format!(
+                    "{}{} {}",
+                    strings.tooltip_size_label,
+                    bytes.len(),
+                    strings.tooltip_unit_bytes,
+                ));
                 let mut hex_str = String::with_capacity(bytes.len() * 3);
                 for (i, b) in bytes.iter().enumerate() {
                     if i > 0 {
                         hex_str.push(' ');
                     }
-                    hex_str.push_str(byte_hex(*b, true));
+                    hex_str.push_str(byte_hex(*b, upper));
                 }
-                ui.text(format!("Bytes: {}", hex_str));
+                ui.text(format!("{}{}", strings.tooltip_bytes_label, hex_str));
 
-                ui.text(format!("Instr: {} {}", instr.mnemonic(), instr.operands()));
+                ui.text(format!(
+                    "{}{} {}",
+                    strings.tooltip_instr_label,
+                    instr.mnemonic(),
+                    instr.operands(),
+                ));
 
                 let flow_desc = match instr.flow_kind() {
-                    FlowKind::Normal => "Normal (sequential)",
-                    FlowKind::Jump => "Jump (conditional/unconditional)",
-                    FlowKind::Call => "Call (function call)",
-                    FlowKind::Return => "Return (function epilogue)",
-                    FlowKind::Nop => "NOP / padding",
-                    FlowKind::Stack => "Stack operation (push/pop/sub rsp)",
-                    FlowKind::System => "System (syscall/int/sysenter)",
-                    FlowKind::Invalid => "INVALID (undecodable)",
+                    FlowKind::Normal => strings.flow_normal,
+                    FlowKind::Jump => strings.flow_jump,
+                    FlowKind::Call => strings.flow_call,
+                    FlowKind::Return => strings.flow_return,
+                    FlowKind::Nop => strings.flow_nop,
+                    FlowKind::Stack => strings.flow_stack,
+                    FlowKind::System => strings.flow_system,
+                    FlowKind::Invalid => strings.flow_invalid,
                 };
-                ui.text(format!("Flow: {}", flow_desc));
+                ui.text(format!("{}{}", strings.tooltip_flow_label, flow_desc));
 
                 if let Some(target) = instr.branch_target() {
-                    ui.text(format!("Target: 0x{:X}", target));
-                    let offset = target as i64 - addr as i64;
-                    if offset >= 0 {
-                        ui.text(format!(
-                            "Offset: +0x{:X} ({} bytes forward)",
-                            offset, offset
-                        ));
+                    let target_str = match (upper, is_64) {
+                        (true, true) => format!("{}0x{:016X}", strings.tooltip_target_label, target),
+                        (false, true) => format!("{}0x{:016x}", strings.tooltip_target_label, target),
+                        (true, false) => format!("{}0x{:08X}", strings.tooltip_target_label, target),
+                        (false, false) => format!("{}0x{:08x}", strings.tooltip_target_label, target),
+                    };
+                    ui.text(target_str);
+                    let off = target as i64 - addr as i64;
+                    let (sign, mag) = if off >= 0 { ('+', off) } else { ('-', -off) };
+                    let off_hex = if upper {
+                        format!("0x{mag:X}")
                     } else {
-                        ui.text(format!("Offset: -0x{:X} ({} bytes back)", -offset, -offset));
-                    }
+                        format!("0x{mag:x}")
+                    };
+                    ui.text(format!(
+                        "Offset: {sign}{off_hex} ({mag} {})",
+                        strings.tooltip_unit_bytes,
+                    ));
                 }
 
-                ui.text(format!("Block: {}", instr.block_index()));
+                ui.text(format!(
+                    "{}{}",
+                    strings.tooltip_block_label,
+                    instr.block_index(),
+                ));
 
                 if instr.has_breakpoint() {
                     let bp_num = instr.breakpoint_number();
                     if bp_num > 0 {
-                        ui.text(format!("Breakpoint: #{}", bp_num));
+                        ui.text(format!("{}#{}", strings.tooltip_breakpoint_label, bp_num));
                     } else {
-                        ui.text("Breakpoint: YES");
+                        ui.text(strings.tooltip_breakpoint_yes);
                     }
                 }
 
                 if instr.is_current() {
-                    ui.text(">> CURRENT INSTRUCTION POINTER <<");
+                    ui.text(strings.tooltip_current_ip);
                 }
 
                 if let Some(comment) = instr.comment() {
-                    ui.text(format!("Comment: {}", comment));
+                    ui.text(format!("{}{}", strings.tooltip_comment_label, comment));
                 }
             });
         }

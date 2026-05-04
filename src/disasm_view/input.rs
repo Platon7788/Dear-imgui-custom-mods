@@ -290,8 +290,9 @@ impl DisasmView {
             if let Some(instr) = provider.instruction(row) {
                 let addr = instr.address();
                 let formatted = self.format_address_literal(addr);
+                let s = self.strings();
                 crate::utils::tooltip::themed_tooltip(ui, || {
-                    ui.text(format!("Double-click to copy: {}", formatted));
+                    ui.text(format!("{}: {}", s.tooltip_double_click_copy, formatted));
                 });
                 if !shift
                     && !ctrl
@@ -633,16 +634,22 @@ impl DisasmView {
             return;
         }
 
+        let upper = self.config.uppercase;
         let lines: Vec<String> = indices
             .iter()
             .filter_map(|&idx| {
                 provider.instruction(idx).map(|instr| {
-                    let addr = if self.config.address_width_64 {
-                        format!("{:016X}", instr.address())
-                    } else {
-                        format!("{:08X}", instr.address())
+                    // Honour both `address_width_64` and `uppercase`
+                    // when assembling the clipboard payload — a host
+                    // configured for x32 lowercase output should get
+                    // exactly that on Ctrl+C.
+                    let addr = match (upper, self.config.address_width_64) {
+                        (true, true) => format!("{:016X}", instr.address()),
+                        (false, true) => format!("{:016x}", instr.address()),
+                        (true, false) => format!("{:08X}", instr.address()),
+                        (false, false) => format!("{:08x}", instr.address()),
                     };
-                    let bytes_str = join_bytes_hex(instr.bytes(), true);
+                    let bytes_str = join_bytes_hex(instr.bytes(), upper);
                     let comment = instr
                         .comment()
                         .map(|c| format!(" ; {}", c))

@@ -4,7 +4,7 @@
 
 /// High-level window preset. Picking one sets sensible defaults for everything
 /// else; you can still override any of them with the builder methods.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum WindowKind {
     /// Borderless splash — no titlebar, no buttons, no resize.
     /// Whole client area is yours for a logo, video, or loading animation.
@@ -21,7 +21,7 @@ pub enum WindowKind {
 // ── BorderStyle ───────────────────────────────────────────────────────────────
 
 /// Border behaviour. Equivalent to RAD Studio `BorderStyle`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum BorderStyle {
     /// No border. Splash. Use [`WindowKind::Splash`].
     None,
@@ -52,7 +52,7 @@ impl BorderStyle {
 // ── FormStyle ─────────────────────────────────────────────────────────────────
 
 /// Window stacking behaviour. Equivalent to RAD Studio `FormStyle`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum FormStyle {
     /// Normal window.
     #[default]
@@ -64,7 +64,7 @@ pub enum FormStyle {
 // ── Position ──────────────────────────────────────────────────────────────────
 
 /// Where the window opens. Equivalent to RAD Studio `Position`.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub enum Position {
     /// OS picks. Default.
     #[default]
@@ -80,7 +80,7 @@ pub enum Position {
 // ── CloseMode ─────────────────────────────────────────────────────────────────
 
 /// How the close button (and Alt-F4) behaves.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum CloseMode {
     /// Close immediately. Default.
     #[default]
@@ -96,7 +96,7 @@ pub enum CloseMode {
 /// Frame rate control. Only consulted in
 /// [`RenderMode::Continuous`](RenderMode) — event-driven mode always
 /// uses adaptive vsync (`AutoVsync`).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub enum FpsMode {
     /// Adaptive vsync — wgpu picks FifoRelaxed (smooth on slow frames) or Fifo. Default.
     #[default]
@@ -117,7 +117,7 @@ pub enum FpsMode {
 /// chat apps, dashboards — anything that mostly waits on user input.
 /// Continuous is for games, simulations, live previews, anything where
 /// content changes without input.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RenderMode {
     /// Default. Repaint only on input events, animation requests
     /// ([`crate::frame_demand`]), or the optional periodic *idle pulses*
@@ -185,7 +185,7 @@ impl RenderMode {
 ///
 /// The previous `Auto` variant was a duplicate alias and has been
 /// removed — there was only ever one strategy.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PowerMode {
     /// Ask the OS GPU manager for the highest-performance adapter.
     /// Default — works on every tested setup (integrated-only, hybrid,
@@ -202,7 +202,7 @@ pub enum PowerMode {
 // ── TitleAlign ────────────────────────────────────────────────────────────────
 
 /// Title text horizontal alignment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum TitleAlign {
     /// Left-aligned after icon. Default.
     #[default]

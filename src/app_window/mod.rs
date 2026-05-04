@@ -195,13 +195,16 @@ impl<H: AppHandler> WinitApp<H> {
 }
 
 impl<H: AppHandler + 'static> ApplicationHandler<()> for WinitApp<H> {
-    /// Cross-thread wake-up via [`AppProxy::wake`]. Triggers two redraws
-    /// so any in-flight state mutated from the background propagates to
-    /// the next stable hover frame as well.
+    /// Cross-thread wake-up via [`AppProxy::wake`]. Bumps the redraw
+    /// budget but **does NOT issue `request_redraw()` directly** —
+    /// that would bypass the FPS cap. The `about_to_wait` scheduler
+    /// (see `dispatch::schedule`) honours `g.fps_interval` /
+    /// `g.idle_pulse` and only emits a redraw request once the cap
+    /// allows it. Two frames so any background-mutated state still
+    /// propagates to the next stable hover frame.
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: ()) {
         if let Some(g) = self.gpu.as_mut() {
             g.pending_frames = g.pending_frames.max(2);
-            g.window.request_redraw();
         }
     }
 

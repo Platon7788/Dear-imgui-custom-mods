@@ -325,6 +325,11 @@ impl DemoState {
             ));
         }
 
+        // To localise the sidebar (Filters / Color Groups / Display /
+        // Export / Physics) and the right-click context menu, chain
+        // `.with_locale(dear_imgui_custom_mod::i18n::Locale::Ru)`.
+        // The host must bake `GlyphRanges::Cyrillic` into the active
+        // font atlas for Cyrillic to render.
         let viewer = GraphViewer::new("fg_main")
             .with_config(config)
             .with_force_config(ForceConfig::default())
