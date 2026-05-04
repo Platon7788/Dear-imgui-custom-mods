@@ -38,6 +38,8 @@
     show_idiom: true,
     show_gotcha: true,
     show_operand_hint: true,
+    show_compiler_pattern: true,
+    show_antidisasm: true,
     abi: Win64,
     locale: En,
 )

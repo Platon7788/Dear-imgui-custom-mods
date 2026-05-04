@@ -766,8 +766,8 @@ impl DisasmView {
                 // segment base, etc.) — the rest are skipped to keep
                 // the tooltip from spamming "RBX = general-purpose"
                 // for every plain reg/reg move.
+                let mut emitted_any = false;
                 if cfg.show_operand_hint {
-                    let mut emitted_any = false;
                     for raw in split_operand_list(instr.operands()) {
                         match super::operand::parse(raw) {
                             super::operand::OperandKind::Memory(mem) => {
@@ -810,6 +810,68 @@ impl DisasmView {
                             }
                             _ => {}
                         }
+                    }
+                }
+
+                // Compiler-pattern recogniser — labels Win64 leaf
+                // frames, `__chkstk` probes, vtable indirect calls,
+                // MSVC `/GS` security cookies, atomic CAS / RMW, IAT
+                // thunks, PEB / TEB / TIB accesses via `gs:` / `fs:`.
+                if cfg.show_compiler_pattern {
+                    let prev_pair = prev_instr.map(|p| (p.mnemonic(), p.operands()));
+                    let next_pair = next_instr.map(|n| (n.mnemonic(), n.operands()));
+                    let cctx = super::compiler::CompilerContext {
+                        prev: prev_pair,
+                        current: (instr.mnemonic(), instr.operands()),
+                        next: next_pair,
+                        abi: cfg.abi,
+                    };
+                    if let Some(pat) = super::compiler::detect(&cctx) {
+                        if !(emitted_any
+                            || cfg.show_explanation
+                            || cfg.show_idiom
+                            || cfg.show_gotcha
+                            || cfg.show_operand_hint)
+                        {
+                            ui.separator();
+                        }
+                        emitted_any = true;
+                        ui.text(format!(
+                            "{}{}",
+                            strings.tooltip_compiler_label,
+                            pat.description(cfg.locale),
+                        ));
+                    }
+                }
+
+                // Anti-disasm / anti-debug recogniser — flags
+                // stack-based control flow (`push imm; ret`), opaque
+                // predicates, self-modifying code, anti-VM CPUID
+                // checks, trap-flag debugger probes, jump-into-next-
+                // byte tricks, `rdtsc`-delta timing measurements.
+                if cfg.show_antidisasm {
+                    let prev_pair = prev_instr.map(|p| (p.mnemonic(), p.operands()));
+                    let next_pair = next_instr.map(|n| (n.mnemonic(), n.operands()));
+                    let actx = super::antidisasm::AntiDisasmContext {
+                        prev: prev_pair,
+                        current: (instr.mnemonic(), instr.operands()),
+                        next: next_pair,
+                    };
+                    if let Some(trick) = super::antidisasm::detect(&actx) {
+                        if !(emitted_any
+                            || cfg.show_explanation
+                            || cfg.show_idiom
+                            || cfg.show_gotcha
+                            || cfg.show_operand_hint
+                            || cfg.show_compiler_pattern)
+                        {
+                            ui.separator();
+                        }
+                        ui.text(format!(
+                            "{}{}",
+                            strings.tooltip_antidisasm_label,
+                            trick.description(cfg.locale),
+                        ));
                     }
                 }
             });

@@ -78,6 +78,14 @@ fn default_show_operand_hint() -> bool {
     true
 }
 
+fn default_show_compiler_pattern() -> bool {
+    true
+}
+
+fn default_show_antidisasm() -> bool {
+    true
+}
+
 fn default_disasm_colors() -> DisasmColors {
     DisasmColors::default()
 }
@@ -183,6 +191,25 @@ pub struct DisasmViewConfig {
     /// Default `true`.
     #[serde(default = "default_show_operand_hint")]
     pub show_operand_hint: bool,
+
+    /// Show the compiler-pattern recogniser line in the tooltip —
+    /// labels Win64-leaf frames, `__chkstk` probes, vtable indirect
+    /// calls, MSVC `/GS` security cookies, atomic CAS / RMW, IAT
+    /// thunks, PEB / TEB / TIB accesses via `gs:` / `fs:`. Pulls
+    /// from [`crate::disasm_view::compiler`]. Default `true`.
+    #[serde(default = "default_show_compiler_pattern")]
+    pub show_compiler_pattern: bool,
+
+    /// Show the anti-disasm / anti-debug trick recogniser — flags
+    /// stack-based control flow (`push imm; ret`), opaque
+    /// predicates, self-modifying code, anti-VM CPUID checks,
+    /// trap-flag debugger probes, jump-into-next-byte tricks,
+    /// `rdtsc`-delta timing measurements. Pulls from
+    /// [`crate::disasm_view::antidisasm`]. Default `true` — these
+    /// are the patterns analysts most need flagged when poking at
+    /// protected code.
+    #[serde(default = "default_show_antidisasm")]
+    pub show_antidisasm: bool,
 
     /// Target calling convention. Drives the
     /// [`crate::disasm_view::abi::role`] table that powers register-

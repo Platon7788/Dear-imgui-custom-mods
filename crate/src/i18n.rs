@@ -316,6 +316,8 @@ pub mod disasm_view {
         pub settings_show_idiom: &'static str,
         pub settings_show_gotcha: &'static str,
         pub settings_show_operand_hint: &'static str,
+        pub settings_show_compiler_pattern: &'static str,
+        pub settings_show_antidisasm: &'static str,
         pub action_close: &'static str,
 
         // Tooltip on hovered instruction
@@ -337,6 +339,8 @@ pub mod disasm_view {
         pub tooltip_idiom_label: &'static str,        // "Pattern: " / "Шаблон: "
         pub tooltip_gotcha_label: &'static str,       // "Watch out: " / "Внимание: "
         pub tooltip_operand_label: &'static str,      // "Operand: " / "Операнд: "
+        pub tooltip_compiler_label: &'static str,     // "Compiler: " / "Компилятор: "
+        pub tooltip_antidisasm_label: &'static str,   // "Anti-RE: " / "Анти-RE: "
 
         // Flow kinds
         pub flow_normal: &'static str,
@@ -397,6 +401,8 @@ pub mod disasm_view {
         settings_show_idiom: "Idiom detector (prologue / cmp+Jcc / NULL-check / ...)",
         settings_show_gotcha: "Anti-RE / anti-debug warnings",
         settings_show_operand_hint: "Operand decoder (memory / register roles)",
+        settings_show_compiler_pattern: "Compiler-pattern recognizer (Win64 leaf / __chkstk / vtable / SEH / TIB / PEB)",
+        settings_show_antidisasm: "Anti-disasm / anti-debug trick recognizer",
         action_close: "Close",
 
         tooltip_address_prefix: "Address: ",
@@ -417,6 +423,8 @@ pub mod disasm_view {
         tooltip_idiom_label: "Pattern: ",
         tooltip_gotcha_label: "Watch out: ",
         tooltip_operand_label: "Operand: ",
+        tooltip_compiler_label: "Compiler: ",
+        tooltip_antidisasm_label: "Anti-RE: ",
 
         flow_normal: "Normal (sequential)",
         flow_jump: "Jump (conditional/unconditional)",
@@ -475,6 +483,8 @@ pub mod disasm_view {
         settings_show_idiom: "Поиск шаблонов (пролог / cmp+Jcc / NULL-check / …)",
         settings_show_gotcha: "Предупреждения об анти-RE / анти-debug",
         settings_show_operand_hint: "Расшифровка операндов (память / роли регистров)",
+        settings_show_compiler_pattern: "Распознаватель шаблонов компилятора (Win64 leaf / __chkstk / vtable / SEH / TIB / PEB)",
+        settings_show_antidisasm: "Распознаватель анти-disasm / анти-debug приёмов",
         action_close: "Закрыть",
 
         tooltip_address_prefix: "Адрес: ",
@@ -495,6 +505,8 @@ pub mod disasm_view {
         tooltip_idiom_label: "Шаблон: ",
         tooltip_gotcha_label: "Внимание: ",
         tooltip_operand_label: "Операнд: ",
+        tooltip_compiler_label: "Компилятор: ",
+        tooltip_antidisasm_label: "Анти-RE: ",
 
         flow_normal: "Обычный (последовательный)",
         flow_jump: "Переход (условный/безусловный)",

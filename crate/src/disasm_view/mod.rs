@@ -36,7 +36,9 @@
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod abi;
+pub mod antidisasm;
 pub mod arrows;
+pub mod compiler;
 pub mod config;
 pub mod idiom;
 pub mod mnemonic;
