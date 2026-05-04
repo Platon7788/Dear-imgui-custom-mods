@@ -80,11 +80,14 @@ pub enum BorderStyle {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RowDensity {
     /// Comfortable: frame height + spacing (room for widgets).
-    #[default]
     Normal,
     /// Compact: frame height only (widgets fit tightly).
     Compact,
     /// Dense: font size + 2px (text-only, no widget padding).
+    /// Default — keeps high-row-count tables (10k+) on screen
+    /// without scrolling and matches the typical
+    /// reverse-engineering / observability use case.
+    #[default]
     Dense,
 }
 
