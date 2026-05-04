@@ -35,5 +35,7 @@
     base_address: 0,
     max_arrows: 256,
     show_explanation: true,
+    show_idiom: true,
+    show_gotcha: true,
     locale: En,
 )

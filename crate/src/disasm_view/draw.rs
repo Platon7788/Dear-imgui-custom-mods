@@ -90,6 +90,7 @@ impl DisasmView {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)] // tooltip needs prev/next neighbours for idiom detection
     pub(super) fn draw_instruction_row(
         &self,
         ui: &dear_imgui_rs::Ui,
@@ -98,6 +99,8 @@ impl DisasmView {
         y: f32,
         idx: usize,
         instr: &dyn Instruction,
+        prev_instr: Option<&dyn Instruction>,
+        next_instr: Option<&dyn Instruction>,
         mouse_pos: [f32; 2],
         win_w: f32,
         comment_x: f32,
@@ -661,17 +664,65 @@ impl DisasmView {
                     ui.text(format!("{}{}", strings.tooltip_comment_label, comment));
                 }
 
-                // Educational mnemonic explainer — opt-out via
-                // `cfg.show_explanation`. Resolves the mnemonic
-                // against the curated catalogue in
-                // `crate::disasm_view::mnemonic`; uncatalogued ops
-                // (rare SSE / x87 / vendor-specific) silently skip
-                // the line so the tooltip stays compact.
+                // ── Educational block (opt-out per cfg flag) ────────
+                //
+                // 1. Mnemonic explainer (`cfg.show_explanation`) —
+                //    plain-language description of the current opcode.
+                // 2. Idiom detector (`cfg.show_idiom`) — recognises
+                //    multi-instruction patterns from prev/current/next
+                //    (prologue / cmp+Jcc / get-IP / NULL-check / ...).
+                // 3. Gotcha (`cfg.show_gotcha`) — anti-debug /
+                //    anti-disasm / obfuscation warnings tied to
+                //    specific mnemonics (rdtsc timing, int 2D probe,
+                //    push/ret ROP gadgets, ...).
+                //
+                // Each block has its own toggle so senior REs can
+                // strip the tooltip down to the raw fields.
+                let info = super::mnemonic::lookup(instr.mnemonic());
+
                 if cfg.show_explanation
-                    && let Some(desc) = super::mnemonic::explain(instr.mnemonic(), cfg.locale)
+                    && let Some(info) = info
                 {
                     ui.separator();
-                    ui.text(format!("{}{}", strings.tooltip_explanation_label, desc));
+                    ui.text(format!(
+                        "{}{}",
+                        strings.tooltip_explanation_label,
+                        info.description(cfg.locale),
+                    ));
+                }
+
+                if cfg.show_idiom {
+                    let prev_pair = prev_instr.map(|p| (p.mnemonic(), p.operands()));
+                    let next_pair = next_instr.map(|n| (n.mnemonic(), n.operands()));
+                    let ctx = super::idiom::InstructionContext {
+                        prev: prev_pair,
+                        current: (instr.mnemonic(), instr.operands()),
+                        next: next_pair,
+                    };
+                    if let Some(idiom) = super::idiom::detect(&ctx) {
+                        // Reuse the explanation separator if it was
+                        // already drawn; if not, add one now so the
+                        // educational lines visually break away from
+                        // the technical fields above.
+                        if !cfg.show_explanation || info.is_none() {
+                            ui.separator();
+                        }
+                        ui.text(format!(
+                            "{}{}",
+                            strings.tooltip_idiom_label,
+                            idiom.description(cfg.locale),
+                        ));
+                    }
+                }
+
+                if cfg.show_gotcha
+                    && let Some(info) = info
+                    && let Some(gotcha) = info.gotcha(cfg.locale)
+                {
+                    if !(cfg.show_explanation || cfg.show_idiom) {
+                        ui.separator();
+                    }
+                    ui.text(format!("{}{}", strings.tooltip_gotcha_label, gotcha));
                 }
             });
         }

@@ -313,6 +313,8 @@ pub mod disasm_view {
         pub settings_editable: &'static str,
         pub settings_follow_execution: &'static str,
         pub settings_show_explanation: &'static str,
+        pub settings_show_idiom: &'static str,
+        pub settings_show_gotcha: &'static str,
         pub action_close: &'static str,
 
         // Tooltip on hovered instruction
@@ -331,6 +333,8 @@ pub mod disasm_view {
         pub tooltip_double_click_copy: &'static str,
         pub tooltip_unit_bytes: &'static str, // "bytes" suffix in "Size: 4 bytes"
         pub tooltip_explanation_label: &'static str, // "What it does: " / "Что делает: "
+        pub tooltip_idiom_label: &'static str,        // "Pattern: " / "Шаблон: "
+        pub tooltip_gotcha_label: &'static str,       // "Watch out: " / "Внимание: "
 
         // Flow kinds
         pub flow_normal: &'static str,
@@ -388,6 +392,8 @@ pub mod disasm_view {
         settings_editable: "Editable (double-click to patch)",
         settings_follow_execution: "Follow execution",
         settings_show_explanation: "Mnemonic explainer (educational)",
+        settings_show_idiom: "Idiom detector (prologue / cmp+Jcc / NULL-check / ...)",
+        settings_show_gotcha: "Anti-RE / anti-debug warnings",
         action_close: "Close",
 
         tooltip_address_prefix: "Address: ",
@@ -405,6 +411,8 @@ pub mod disasm_view {
         tooltip_double_click_copy: "Double-click to copy",
         tooltip_unit_bytes: "bytes",
         tooltip_explanation_label: "What it does: ",
+        tooltip_idiom_label: "Pattern: ",
+        tooltip_gotcha_label: "Watch out: ",
 
         flow_normal: "Normal (sequential)",
         flow_jump: "Jump (conditional/unconditional)",
@@ -460,6 +468,8 @@ pub mod disasm_view {
         settings_editable: "Редактируемо (двойной клик)",
         settings_follow_execution: "Следовать за выполнением",
         settings_show_explanation: "Подсказки по мнемоникам (для обучения)",
+        settings_show_idiom: "Поиск шаблонов (пролог / cmp+Jcc / NULL-check / …)",
+        settings_show_gotcha: "Предупреждения об анти-RE / анти-debug",
         action_close: "Закрыть",
 
         tooltip_address_prefix: "Адрес: ",
@@ -477,6 +487,8 @@ pub mod disasm_view {
         tooltip_double_click_copy: "Двойной клик копирует",
         tooltip_unit_bytes: "байт",
         tooltip_explanation_label: "Что делает: ",
+        tooltip_idiom_label: "Шаблон: ",
+        tooltip_gotcha_label: "Внимание: ",
 
         flow_normal: "Обычный (последовательный)",
         flow_jump: "Переход (условный/безусловный)",

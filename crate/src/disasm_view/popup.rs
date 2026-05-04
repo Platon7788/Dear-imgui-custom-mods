@@ -351,6 +351,8 @@ impl DisasmView {
                     ui.checkbox(s.settings_editable, &mut self.config.editable);
                     ui.checkbox(s.settings_follow_execution, &mut self.config.follow_execution);
                     ui.checkbox(s.settings_show_explanation, &mut self.config.show_explanation);
+                    ui.checkbox(s.settings_show_idiom, &mut self.config.show_idiom);
+                    ui.checkbox(s.settings_show_gotcha, &mut self.config.show_gotcha);
 
                     ui.separator();
 

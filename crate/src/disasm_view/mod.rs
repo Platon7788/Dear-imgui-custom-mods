@@ -37,6 +37,7 @@
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod arrows;
 pub mod config;
+pub mod idiom;
 pub mod mnemonic;
 pub mod provider;
 
@@ -1190,6 +1191,13 @@ impl DisasmView {
                 for row in first_row..last_row {
                     if let Some(instr) = provider.instruction(row) {
                         let y = origin_y + header_h + (row - first_row) as f32 * self.line_height;
+                        // Pull the immediate neighbours so the tooltip's
+                        // idiom detector can recognise multi-instruction
+                        // patterns (prologue / cmp+Jcc / get-IP / etc).
+                        // `prev` / `next` may be `None` near edges or
+                        // when the provider returns a sparse hole.
+                        let prev_instr = row.checked_sub(1).and_then(|i| provider.instruction(i));
+                        let next_instr = provider.instruction(row + 1);
                         self.draw_instruction_row(
                             ui,
                             &draw_list,
@@ -1197,6 +1205,8 @@ impl DisasmView {
                             y,
                             row,
                             instr,
+                            prev_instr,
+                            next_instr,
                             mouse_pos,
                             avail[0],
                             comment_x,

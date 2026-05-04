@@ -66,6 +66,14 @@ fn default_show_explanation() -> bool {
     true
 }
 
+fn default_show_idiom() -> bool {
+    true
+}
+
+fn default_show_gotcha() -> bool {
+    true
+}
+
 fn default_disasm_colors() -> DisasmColors {
     DisasmColors::default()
 }
@@ -146,6 +154,22 @@ pub struct DisasmViewConfig {
     /// `config.ron` files still parse and inherit the `true` default.
     #[serde(default = "default_show_explanation")]
     pub show_explanation: bool,
+
+    /// Show the multi-instruction idiom hint at the bottom of the
+    /// tooltip ("Pattern: function prologue", "Pattern: cmp+Jcc",
+    /// "Pattern: NULL check", …). Pulls from
+    /// [`crate::disasm_view::idiom`] which inspects the previous /
+    /// current / next instructions. Default `true`.
+    #[serde(default = "default_show_idiom")]
+    pub show_idiom: bool,
+
+    /// Show the anti-RE / anti-debug / obfuscation "gotcha" line for
+    /// mnemonics protectors love to abuse (`rdtsc`, `cpuid`, `int 3`,
+    /// `popf`, `xor`/`rol`/`lea` mutator filler, ...). Default `true`
+    /// — the warnings teach common reverse-engineering tricks
+    /// without forcing the user to memorise them.
+    #[serde(default = "default_show_gotcha")]
+    pub show_gotcha: bool,
 
     /// User-visible language for labels, popups, tooltips, and menu
     /// items rendered by the disassembler view. Default
