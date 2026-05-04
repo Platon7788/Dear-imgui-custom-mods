@@ -33,6 +33,33 @@
 //! let mut view = DisasmView::new("##disasm");
 //! // In render loop: view.render(ui, &mut provider);
 //! ```
+//!
+//! ## Educational tooltip pipeline
+//!
+//! Hovering an instruction draws a multi-section tooltip; each
+//! section is produced by a dedicated submodule and is independently
+//! toggleable via a `DisasmViewConfig::show_*` flag. The submodules
+//! share a `(prev, current, next)` view of the instruction stream
+//! plus the chosen [`abi::Abi`] and the host-resolved branch target.
+//! Render order from top to bottom of the tooltip:
+//!
+//! | Layer | Module | Toggle | Answers the question |
+//! |---|---|---|---|
+//! | 1 | [`mnemonic`] | `show_explanation` | "What does this opcode do?" |
+//! | 2 | [`idiom`] | `show_idiom` | "Is this part of a familiar 1-3 instruction pattern?" |
+//! | 3 | [`mnemonic`] (gotcha) | `show_gotcha` | "Anti-RE / anti-debug warning for this opcode?" |
+//! | 4 | [`operand`] + [`abi`] | `show_operand_hint` | "What is `[rcx+rax*8+8]` semantically? Which register has an ABI role?" |
+//! | 5 | [`compiler`] | `show_compiler_pattern` | "Is this a compiler-stereotyped sequence (vtable / __chkstk / SEH / PEB ...)?" |
+//! | 6 | [`antidisasm`] | `show_antidisasm` | "Is this an anti-RE / anti-debug trick?" |
+//! | 7 | [`boundary`] | `show_boundary` | "Is this a function entry / exit / block boundary?" |
+//! | 8 | [`branch`] | `show_branch_direction` | "Forward (if-then) or backward (loop) branch?" |
+//!
+//! Every layer is **pure / no-allocation** beyond the returned
+//! `&'static str` (or one `String` for `branch::BranchHint`). All
+//! recognisers are best-effort local pattern-matching — they don't
+//! replace a real CFG / call-graph; they nudge newcomers toward the
+//! right interpretation while staying useful for senior REs (who
+//! tend to disable layers 1, 3, 5–8 and keep just the raw fields).
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod abi;

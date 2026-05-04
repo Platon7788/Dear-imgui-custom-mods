@@ -4,6 +4,59 @@
 
 ### Added
 
+- **`disasm_view` educational tooltip uplift — 4-pass programme**
+  (session 043, four commits Заход 1-4). Turns the hover tooltip into
+  a beginner-friendly RE tutor that labels every instruction with up
+  to seven layers of educational context, all toggleable, all
+  locale-aware (EN / RU). Default `true` for every layer with
+  `#[serde(default = "fn")]` for forward compatibility.
+  - **`abi.rs` + `operand.rs`** (Заход 1, commit 38739b3). New
+    [`Abi`] enum (Win64 / SysVAmd64 / Cdecl / Stdcall / Fastcall /
+    Unknown) drives a per-register role table — calls `[rcx]` "the
+    1st argument under Win64", `[rdi]` "the 1st argument under
+    SysV". `operand::parse` decodes operand strings into typed
+    `OperandKind`; `explain_memory` turns `[rcx+rax*8+8]` into
+    "Array indexing: rcx is base, rax is index ×8 (qword elements),
+    then add 0x8". Recognises stack-relative, frame-relative,
+    RIP-relative, and TIB / PEB segment access at `fs:[0x18]` /
+    `gs:[0x60]` etc. 29 unit tests.
+  - **`compiler.rs` + `antidisasm.rs`** (Заход 2, commit 22af708).
+    `compiler::detect` labels MSVC / Clang / GCC stereotyped
+    sequences: PEB / TEB / TIB segment access, `__chkstk` probe,
+    Win64 leaf frame, vtable indirect call (slot-N and slot-0),
+    SEH frame install / uninstall, MSVC `/GS` `__security_cookie`,
+    atomic CAS / RMW, `cpuid` feature probe, IAT / GOT thunk,
+    indirect tail jump (13 patterns). `antidisasm::detect`
+    recognises stack-based control flow (`push imm; ret`), opaque
+    predicates, SMC writes to `[rip+disp]`, hypervisor bit
+    detection (`bt ecx, 31` after `cpuid`), hypervisor vendor leaf
+    `0x40000000`, trap-flag arming (`or [rsp], 0x100; popf`),
+    `jmp`-into-instruction tricks, `rdtsc`-delta timing prints
+    (9 patterns). Both pure / no-allocation, both strip
+    `qword ptr` / `dword ptr` size hints. 25 unit tests.
+  - **`boundary.rs` + `branch.rs`** (Заход 3, commit 3ca3929).
+    `boundary::detect` labels function prologues (framed
+    `push rbp; mov rbp, rsp`, CET `endbr64` landing pad),
+    epilogues (`leave; ret`, `pop rbp; ret`,
+    `add rsp, N; ret`), bare returns, and block-level
+    terminators (unconditional `jmp`, conditional `Jcc` /
+    `loop*` / `j[er]cxz` forks). `branch::classify` reads the
+    host-resolved `branch_target()` and labels forward jumps as
+    `if` / `match` / `switch` skip-overs, backward jumps as loops,
+    self-targeting jumps as anti-RE spin traps — embeds the signed
+    delta in the description so distance is immediate. 15 unit
+    tests.
+  - **i18n + settings + canonical pipeline doc** (Заход 4 — this
+    commit). Eight new tooltip labels (`tooltip_compiler_label` /
+    `tooltip_antidisasm_label` / `tooltip_boundary_label` /
+    `tooltip_branch_label` and four matching `settings_show_*`
+    keys) plus `show_compiler_pattern` / `show_antidisasm` /
+    `show_boundary` / `show_branch_direction` config flags
+    surfaced as four checkboxes in the disasm Settings popup.
+    `disasm_view` mod docs gain a "Pipeline" section listing all
+    seven detector layers in render order with a one-line summary
+    of each — analysts can see at a glance which layer fires for
+    which question.
 - **`crate::i18n` extended to `code_editor` — final batch** (session
   042, batch 4/4 — i18n now covers **9/9 standalone widgets**).
   ~58 keys: full right-click context menu (Cut/Copy/Paste/Select All
