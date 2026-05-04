@@ -34,5 +34,6 @@
     follow_execution: false,
     base_address: 0,
     max_arrows: 256,
+    show_explanation: true,
     locale: En,
 )

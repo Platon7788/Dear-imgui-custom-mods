@@ -350,6 +350,7 @@ impl DisasmView {
                     ui.text(s.settings_behavior);
                     ui.checkbox(s.settings_editable, &mut self.config.editable);
                     ui.checkbox(s.settings_follow_execution, &mut self.config.follow_execution);
+                    ui.checkbox(s.settings_show_explanation, &mut self.config.show_explanation);
 
                     ui.separator();
 

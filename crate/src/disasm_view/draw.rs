@@ -660,6 +660,19 @@ impl DisasmView {
                 if let Some(comment) = instr.comment() {
                     ui.text(format!("{}{}", strings.tooltip_comment_label, comment));
                 }
+
+                // Educational mnemonic explainer — opt-out via
+                // `cfg.show_explanation`. Resolves the mnemonic
+                // against the curated catalogue in
+                // `crate::disasm_view::mnemonic`; uncatalogued ops
+                // (rare SSE / x87 / vendor-specific) silently skip
+                // the line so the tooltip stays compact.
+                if cfg.show_explanation
+                    && let Some(desc) = super::mnemonic::explain(instr.mnemonic(), cfg.locale)
+                {
+                    ui.separator();
+                    ui.text(format!("{}{}", strings.tooltip_explanation_label, desc));
+                }
             });
         }
     }

@@ -62,6 +62,10 @@ impl Default for ColumnWidths {
 /// alias.
 pub type DisasmColors = crate::theme::DisasmViewColors;
 
+fn default_show_explanation() -> bool {
+    true
+}
+
 fn default_disasm_colors() -> DisasmColors {
     DisasmColors::default()
 }
@@ -130,6 +134,18 @@ pub struct DisasmViewConfig {
     pub base_address: u64,
     /// Maximum visible arrows per render (for performance).
     pub max_arrows: usize,
+
+    /// Show the educational "What it does: …" line at the bottom of
+    /// the instruction hover tooltip. Resolves the mnemonic against
+    /// [`crate::disasm_view::mnemonic`] and emits a one-line plain-
+    /// language description in the active locale. Default `true` —
+    /// the line is helpful to beginners and a no-op for the ~5 % of
+    /// uncommon mnemonics that aren't catalogued. Set `false` for
+    /// senior-RE / minimal-tooltip workflows.
+    /// `#[serde(default = "default_show_explanation")]` so older
+    /// `config.ron` files still parse and inherit the `true` default.
+    #[serde(default = "default_show_explanation")]
+    pub show_explanation: bool,
 
     /// User-visible language for labels, popups, tooltips, and menu
     /// items rendered by the disassembler view. Default

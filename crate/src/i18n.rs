@@ -312,6 +312,7 @@ pub mod disasm_view {
         pub settings_behavior: &'static str,
         pub settings_editable: &'static str,
         pub settings_follow_execution: &'static str,
+        pub settings_show_explanation: &'static str,
         pub action_close: &'static str,
 
         // Tooltip on hovered instruction
@@ -329,6 +330,7 @@ pub mod disasm_view {
         pub tooltip_comment_label: &'static str,
         pub tooltip_double_click_copy: &'static str,
         pub tooltip_unit_bytes: &'static str, // "bytes" suffix in "Size: 4 bytes"
+        pub tooltip_explanation_label: &'static str, // "What it does: " / "Что делает: "
 
         // Flow kinds
         pub flow_normal: &'static str,
@@ -385,6 +387,7 @@ pub mod disasm_view {
         settings_behavior: "Behavior:",
         settings_editable: "Editable (double-click to patch)",
         settings_follow_execution: "Follow execution",
+        settings_show_explanation: "Mnemonic explainer (educational)",
         action_close: "Close",
 
         tooltip_address_prefix: "Address: ",
@@ -401,6 +404,7 @@ pub mod disasm_view {
         tooltip_comment_label: "Comment: ",
         tooltip_double_click_copy: "Double-click to copy",
         tooltip_unit_bytes: "bytes",
+        tooltip_explanation_label: "What it does: ",
 
         flow_normal: "Normal (sequential)",
         flow_jump: "Jump (conditional/unconditional)",
@@ -455,6 +459,7 @@ pub mod disasm_view {
         settings_behavior: "Поведение:",
         settings_editable: "Редактируемо (двойной клик)",
         settings_follow_execution: "Следовать за выполнением",
+        settings_show_explanation: "Подсказки по мнемоникам (для обучения)",
         action_close: "Закрыть",
 
         tooltip_address_prefix: "Адрес: ",
@@ -471,6 +476,7 @@ pub mod disasm_view {
         tooltip_comment_label: "Комментарий: ",
         tooltip_double_click_copy: "Двойной клик копирует",
         tooltip_unit_bytes: "байт",
+        tooltip_explanation_label: "Что делает: ",
 
         flow_normal: "Обычный (последовательный)",
         flow_jump: "Переход (условный/безусловный)",
