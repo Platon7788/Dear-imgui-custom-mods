@@ -86,6 +86,14 @@ fn default_show_antidisasm() -> bool {
     true
 }
 
+fn default_show_boundary() -> bool {
+    true
+}
+
+fn default_show_branch_direction() -> bool {
+    true
+}
+
 fn default_disasm_colors() -> DisasmColors {
     DisasmColors::default()
 }
@@ -210,6 +218,25 @@ pub struct DisasmViewConfig {
     /// protected code.
     #[serde(default = "default_show_antidisasm")]
     pub show_antidisasm: bool,
+
+    /// Show the function / basic-block boundary recogniser line —
+    /// labels function prologues (framed `push rbp; mov rbp, rsp`,
+    /// CET `endbr64` landing pad), epilogues (`leave; ret`,
+    /// `pop rbp; ret`, `add rsp, N; ret`), bare returns, and
+    /// block-level terminators (unconditional `jmp`, conditional
+    /// `Jcc` forks). Pulls from [`crate::disasm_view::boundary`].
+    /// Default `true`.
+    #[serde(default = "default_show_boundary")]
+    pub show_boundary: bool,
+
+    /// Show the branch-direction hint for any instruction with a
+    /// resolved branch target — labels forward jumps as typical
+    /// `if` / `match` / `switch` skip-overs, backward jumps as
+    /// loops, and self-targeting jumps as anti-RE spin / `jmp $`
+    /// traps. Pulls from [`crate::disasm_view::branch`]. Default
+    /// `true`.
+    #[serde(default = "default_show_branch_direction")]
+    pub show_branch_direction: bool,
 
     /// Target calling convention. Drives the
     /// [`crate::disasm_view::abi::role`] table that powers register-

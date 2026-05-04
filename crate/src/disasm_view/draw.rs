@@ -867,12 +867,79 @@ impl DisasmView {
                         {
                             ui.separator();
                         }
+                        emitted_any = true;
                         ui.text(format!(
                             "{}{}",
                             strings.tooltip_antidisasm_label,
                             trick.description(cfg.locale),
                         ));
                     }
+                }
+
+                // Boundary recogniser — labels function prologues
+                // (framed `push rbp; mov rbp, rsp`, CET `endbr64`),
+                // epilogues (`leave; ret`, `pop rbp; ret`,
+                // `add rsp, N; ret`), bare returns, and block
+                // terminators (unconditional `jmp`, conditional
+                // `Jcc` forks). Pairs with `idiom`'s prologue idiom
+                // — `idiom` recognises the *fact*, `boundary`
+                // labels the *boundary*, so the analyst sees both
+                // angles.
+                if cfg.show_boundary {
+                    let prev_pair = prev_instr.map(|p| (p.mnemonic(), p.operands()));
+                    let next_pair = next_instr.map(|n| (n.mnemonic(), n.operands()));
+                    let bctx = super::boundary::BoundaryContext {
+                        prev: prev_pair,
+                        current: (instr.mnemonic(), instr.operands()),
+                        next: next_pair,
+                    };
+                    if let Some(b) = super::boundary::detect(&bctx) {
+                        if !(emitted_any
+                            || cfg.show_explanation
+                            || cfg.show_idiom
+                            || cfg.show_gotcha
+                            || cfg.show_operand_hint
+                            || cfg.show_compiler_pattern
+                            || cfg.show_antidisasm)
+                        {
+                            ui.separator();
+                        }
+                        emitted_any = true;
+                        ui.text(format!(
+                            "{}{}",
+                            strings.tooltip_boundary_label,
+                            b.description(cfg.locale),
+                        ));
+                    }
+                }
+
+                // Branch-direction hint — uses the host-resolved
+                // `branch_target()` rather than parsing the operand
+                // string, so labels and PC-relative encodings work
+                // identically. Forward jumps read as
+                // `if`/`match`/`switch` skip-overs; backward jumps
+                // are almost always loops; self-targeting jumps
+                // (`jmp $`) are anti-RE spin traps.
+                if cfg.show_branch_direction
+                    && let Some(target) = instr.branch_target()
+                {
+                    let hint = super::branch::classify(addr, target);
+                    if !(emitted_any
+                        || cfg.show_explanation
+                        || cfg.show_idiom
+                        || cfg.show_gotcha
+                        || cfg.show_operand_hint
+                        || cfg.show_compiler_pattern
+                        || cfg.show_antidisasm
+                        || cfg.show_boundary)
+                    {
+                        ui.separator();
+                    }
+                    ui.text(format!(
+                        "{}{}",
+                        strings.tooltip_branch_label,
+                        hint.description(cfg.locale),
+                    ));
                 }
             });
         }

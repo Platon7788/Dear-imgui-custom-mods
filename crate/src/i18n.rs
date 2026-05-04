@@ -318,6 +318,8 @@ pub mod disasm_view {
         pub settings_show_operand_hint: &'static str,
         pub settings_show_compiler_pattern: &'static str,
         pub settings_show_antidisasm: &'static str,
+        pub settings_show_boundary: &'static str,
+        pub settings_show_branch_direction: &'static str,
         pub action_close: &'static str,
 
         // Tooltip on hovered instruction
@@ -341,6 +343,8 @@ pub mod disasm_view {
         pub tooltip_operand_label: &'static str,      // "Operand: " / "Операнд: "
         pub tooltip_compiler_label: &'static str,     // "Compiler: " / "Компилятор: "
         pub tooltip_antidisasm_label: &'static str,   // "Anti-RE: " / "Анти-RE: "
+        pub tooltip_boundary_label: &'static str,     // "Boundary: " / "Граница: "
+        pub tooltip_branch_label: &'static str,       // "Branch: " / "Переход: "
 
         // Flow kinds
         pub flow_normal: &'static str,
@@ -403,6 +407,8 @@ pub mod disasm_view {
         settings_show_operand_hint: "Operand decoder (memory / register roles)",
         settings_show_compiler_pattern: "Compiler-pattern recognizer (Win64 leaf / __chkstk / vtable / SEH / TIB / PEB)",
         settings_show_antidisasm: "Anti-disasm / anti-debug trick recognizer",
+        settings_show_boundary: "Boundary recognizer (function prologue / epilogue / block terminator)",
+        settings_show_branch_direction: "Branch-direction hint (forward = if-then, backward = loop)",
         action_close: "Close",
 
         tooltip_address_prefix: "Address: ",
@@ -425,6 +431,8 @@ pub mod disasm_view {
         tooltip_operand_label: "Operand: ",
         tooltip_compiler_label: "Compiler: ",
         tooltip_antidisasm_label: "Anti-RE: ",
+        tooltip_boundary_label: "Boundary: ",
+        tooltip_branch_label: "Branch: ",
 
         flow_normal: "Normal (sequential)",
         flow_jump: "Jump (conditional/unconditional)",
@@ -485,6 +493,8 @@ pub mod disasm_view {
         settings_show_operand_hint: "Расшифровка операндов (память / роли регистров)",
         settings_show_compiler_pattern: "Распознаватель шаблонов компилятора (Win64 leaf / __chkstk / vtable / SEH / TIB / PEB)",
         settings_show_antidisasm: "Распознаватель анти-disasm / анти-debug приёмов",
+        settings_show_boundary: "Распознаватель границ (пролог / эпилог / конец блока)",
+        settings_show_branch_direction: "Подсказка направления перехода (вперёд = if-then, назад = цикл)",
         action_close: "Закрыть",
 
         tooltip_address_prefix: "Адрес: ",
@@ -507,6 +517,8 @@ pub mod disasm_view {
         tooltip_operand_label: "Операнд: ",
         tooltip_compiler_label: "Компилятор: ",
         tooltip_antidisasm_label: "Анти-RE: ",
+        tooltip_boundary_label: "Граница: ",
+        tooltip_branch_label: "Переход: ",
 
         flow_normal: "Обычный (последовательный)",
         flow_jump: "Переход (условный/безусловный)",

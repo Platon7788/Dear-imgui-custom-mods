@@ -38,6 +38,8 @@
 pub mod abi;
 pub mod antidisasm;
 pub mod arrows;
+pub mod boundary;
+pub mod branch;
 pub mod compiler;
 pub mod config;
 pub mod idiom;

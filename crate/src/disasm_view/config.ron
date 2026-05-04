@@ -40,6 +40,8 @@
     show_operand_hint: true,
     show_compiler_pattern: true,
     show_antidisasm: true,
+    show_boundary: true,
+    show_branch_direction: true,
     abi: Win64,
     locale: En,
 )

@@ -359,6 +359,11 @@ impl DisasmView {
                         &mut self.config.show_compiler_pattern,
                     );
                     ui.checkbox(s.settings_show_antidisasm, &mut self.config.show_antidisasm);
+                    ui.checkbox(s.settings_show_boundary, &mut self.config.show_boundary);
+                    ui.checkbox(
+                        s.settings_show_branch_direction,
+                        &mut self.config.show_branch_direction,
+                    );
 
                     ui.separator();
 
