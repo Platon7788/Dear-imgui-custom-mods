@@ -74,6 +74,15 @@ pub struct AppConfig {
     /// editors, or any widget that needs the whole client area pixel
     /// for pixel. Default: `false`.
     pub raw_content: bool,
+    /// Width of the invisible edge-resize hit zone in **logical pixels**.
+    ///
+    /// Dear ImGui works in logical pixels (already DPI-scaled by
+    /// `HiDpiMode::Default`), so this value automatically adapts:
+    /// `6.0` logical = 12 physical px at 200 % DPI.
+    ///
+    /// Increase for touch-friendly / high-DPI deployments (e.g. `10.0`).
+    /// Default: `6.0`.
+    pub resize_zone: f32,
 }
 
 // ── Default ──────────────────────────────────────────────────────────────────
@@ -102,6 +111,7 @@ impl Default for AppConfig {
             opacity: 1.0,
             window_icon: None,
             raw_content: false,
+            resize_zone: 6.0,
         }
     }
 }

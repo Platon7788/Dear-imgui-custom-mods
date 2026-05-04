@@ -328,4 +328,14 @@ impl AppConfig {
         self.raw_content = true;
         self
     }
+
+    /// Set the edge-resize hit zone width in logical pixels (default `6.0`).
+    ///
+    /// Increase for touch-friendly or high-DPI deployments where a finger
+    /// needs a wider grab area. The value is already in DPI-independent
+    /// logical pixels, so it scales automatically with monitor scale factor.
+    pub fn with_resize_zone(mut self, px: f32) -> Self {
+        self.resize_zone = px.max(1.0);
+        self
+    }
 }

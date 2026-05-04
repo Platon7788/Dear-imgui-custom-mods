@@ -198,7 +198,7 @@ pub(super) fn render_frame<H: AppHandler>(
                         // tuple repacking needed.
                         tb_result = whole_window_resize(
                             ui,
-                            6.0,
+                            cfg.resize_zone,
                             cfg.os_resizable(),
                             gpu.app_state.titlebar.maximized,
                         );
@@ -214,7 +214,7 @@ pub(super) fn render_frame<H: AppHandler>(
                             &cfg.title,
                             &gpu.cached_titlebar,
                             &gpu.app_state.titlebar,
-                            6.0,
+                            cfg.resize_zone,
                             cfg.os_resizable(),
                         );
                         content_top = t.height;
