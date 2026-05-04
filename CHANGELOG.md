@@ -4,6 +4,47 @@
 
 ### Added
 
+- **`serde` + `ron` config serialization across all modules** (session
+  036). Every config struct now derives `serde::Serialize, serde::Deserialize`.
+  Each module ships a `config.ron` file (embedded via `include_str!`) that
+  holds the canonical default values; `Default::default()` loads from it via
+  `ron::from_str`. This enables round-trip save/restore of any widget config
+  with zero hand-written code: `ron::to_string(&cfg)` / `ron::from_str(&s)`.
+
+### Changed
+
+- **Config schemas separated from logic** (session 036). Non-config code
+  extracted from `config.rs` into dedicated submodules to keep each file
+  under 500 lines:
+  - `disasm_view`: `provider.rs` (FlowKind, Instruction, DisasmDataProvider,
+    InstructionEntry, VecDisasmProvider), `arrows.rs` (BranchArrow,
+    MAX_ARROW_DEPTH, compute_arrows, compute_arrows_clipped).
+  - `hex_viewer`: `provider.rs` (HexDataProvider, VecDataProvider,
+    ColorRegion, ByteCategory), `nav_history.rs` (NavHistory), `undo.rs`
+    (UndoEntry, UndoStack).
+  - `code_editor`: `syntax_colors.rs` (EditorTheme, SyntaxColors),
+    `font_setup.rs` (CODE_EDITOR_FONT_PTR, install helpers).
+  - `tab_control`: `types.rs` (TabId, TabStatus, Badge, CloseGlyph, TabStyle,
+    TabAction), `colors.rs` (TabColors), `strings.rs` (TabStrings).
+  - `nav_panel`: `buttons.rs` (SubMenuItem, NavButton, NavItem),
+    `enums.rs` (DockPosition, ButtonStyle, ActiveStyle).
+  - `notifications`: `enums.rs` (Severity, Placement, Duration,
+    AnimationKind), `notification.rs` (Notification, NotificationAction).
+  All existing public re-exports are preserved — downstream code unchanged.
+
+- **`tab_control::TabStrings` fields changed from `&'static str` to
+  `String`** (session 036). Required for RON deserialization. Call sites
+  updated to pass `&field` where `&str` is expected.
+
+- **`app_window` module split** (session 036). `mod.rs` (679 → 227 lines)
+  and `config/mod.rs` (748 → 313 lines) extracted into dedicated submodules
+  to stay under the 500-line rule:
+  - `startup.rs` — GPU + ImGui init (`resumed` body).
+  - `dispatch.rs` — per-frame event dispatch (`window_event` + `about_to_wait`).
+  - `config/fonts.rs` — `FontChoice`, `FontLayer`, `GlyphRanges`.
+  - `config/builders.rs` — all `impl AppConfig { pub fn with_* }` builder methods.
+  All public re-exports unchanged.
+
 - **`disasm_view` bookmarks** (session 033). Up to 64 addresses, 7
   public methods (`is_bookmarked` / `add_bookmark` / `remove_bookmark`
   / `toggle_bookmark` / `bookmarks` / `bookmark_count` /

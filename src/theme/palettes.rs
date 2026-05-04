@@ -35,7 +35,7 @@
 
 /// A complete set of colours for the borderless titlebar, consumed by
 /// [`crate::app_window`]'s chrome layer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TitlebarColors {
     /// Titlebar background.
     pub bg: [f32; 4],
@@ -61,7 +61,7 @@ pub struct TitlebarColors {
 
 /// Complete colour set for the confirm dialog. Consumed by
 /// [`crate::confirm_dialog`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DialogColors {
     /// Fullscreen dim overlay behind the dialog.
     pub overlay: [f32; 4],
@@ -108,7 +108,7 @@ pub struct DialogColors {
 
 /// Complete colour set for the navigation panel. Consumed by
 /// [`crate::nav_panel`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NavColors {
     /// Panel background.
     pub bg: [f32; 4],
@@ -155,7 +155,7 @@ pub struct NavColors {
 /// feature gate) and as part of the full
 /// [`crate::theme::Theme::statusbar`] config (gated on the
 /// `status_bar` feature because that returns `StatusBarConfig`).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct StatusBarColors {
     /// Bar background color.
     pub bg: [f32; 4],
@@ -283,7 +283,7 @@ impl Default for StatusBarColors {
 /// [`crate::theme::Theme::hex_viewer_colors`]; bare
 /// `HexViewerConfig::default()` uses [`HexViewerColors::default`]
 /// which mirrors `Theme::Dark.hex_viewer_colors()`.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct HexViewerColors {
     // ── Byte categories ─────────────────────────────────────────
     /// `0x00` byte.
@@ -409,7 +409,7 @@ impl HexViewerColors {
 /// palette factory below can build per-flow mnemonic / arrow colours
 /// without pulling in the whole `disasm_view` module. Mirrors
 /// [`crate::disasm_view::FlowKind`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub enum DisasmFlowKind {
     /// Normal sequential instruction (mov, add, lea, etc.).
     #[default]
@@ -442,7 +442,7 @@ pub enum DisasmFlowKind {
 /// `DisasmViewConfig::default()` uses [`DisasmViewColors::default`]
 /// which mirrors `Theme::Dark.disasm_view_colors()`. Re-exported from
 /// `crate::disasm_view` as `DisasmColors` for backwards compatibility.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DisasmViewColors {
     // ── Mnemonic colors by flow kind ────────────────────────
     /// Normal instruction mnemonic (mov, add, lea, etc.).
@@ -759,7 +759,7 @@ pub struct DisasmViewTokens {
 /// `monokai()`). The built-in [`crate::theme::Theme`] variants delegate
 /// to these constructors so adding a new theme that wants the default
 /// notification look is one method call.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NotificationColors {
     /// Toast window background.
     pub bg: [f32; 4],

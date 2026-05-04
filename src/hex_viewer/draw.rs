@@ -8,7 +8,8 @@
 //! state lookup paths stay direct.
 
 use super::HexViewer;
-use super::config::{ByteCategory, Endianness};
+use super::config::Endianness;
+use super::provider::ByteCategory;
 use super::input::EditColumn;
 use crate::utils::color::rgba_f32;
 use crate::utils::hex::byte_hex;

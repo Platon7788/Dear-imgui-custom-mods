@@ -9,7 +9,7 @@ use super::types::{WireLayer, WireStyle};
 /// Color palette for node graph elements.
 ///
 /// All colors are `[R, G, B]` in 0–255 range. Alpha is applied per-use.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct NgColors {
     // Canvas
     pub canvas_bg: [u8; 3],
@@ -164,7 +164,7 @@ impl NgColors {
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 /// Full configuration for [`NodeGraph`](super::NodeGraph).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphConfig {
     // ── Grid ──
     /// Grid cell size (pixels at zoom 1.0).
@@ -320,83 +320,8 @@ pub struct NodeGraphConfig {
 
 impl Default for NodeGraphConfig {
     fn default() -> Self {
-        Self {
-            grid_size: 32.0,
-            grid_thick_every: 4,
-            show_grid: true,
-            grid_rotation: 0.0,
-
-            node_rounding: 6.0,
-            node_border_thickness: 1.5,
-            node_header_height: 24.0,
-            node_padding_h: 8.0,
-            node_padding_v: 4.0,
-            node_min_width: 120.0,
-            node_body_height: 30.0,
-            node_collapsible: true,
-
-            pin_radius: 5.0,
-            pin_spacing: 22.0,
-            pin_offset: 0.0,
-            pin_hit_radius: 10.0,
-
-            show_wires: true,
-            wire_style: WireStyle::Bezier,
-            wire_thickness: 2.0,
-            wire_hover_distance: 8.0,
-            wire_curvature: 0.5,
-            wire_layer: WireLayer::BehindNodes,
-
-            pan_button_middle: true,
-            pan_button_right: false,
-            pan_shift_lmb: true,
-            zoom_with_wheel: true,
-            zoom_min: 0.25,
-            zoom_max: 1.5,
-            zoom_speed: 0.1,
-            multi_select: true,
-            rect_select: true,
-            canvas_context_menu: true,
-            node_context_menu: true,
-            node_double_click: true,
-            snap_to_grid: false,
-            snap_size: 16.0,
-            wire_yanking: true,
-            drop_wire_menu: true,
-
-            keyboard_delete: true,
-            keyboard_select_all: true,
-            keyboard_escape_cancel: true,
-
-            show_stats_overlay: true,
-            stats_overlay_corner: 1, // top-right
-            stats_overlay_margin: 8.0,
-
-            show_minimap: true,
-            minimap_size: [180.0, 120.0],
-            minimap_corner: 3, // bottom-right
-            minimap_margin: 10.0,
-            minimap_interactive: true,
-
-            lod_hide_labels_zoom: 0.4,
-            lod_simplify_pins_zoom: 0.3,
-            lod_hide_body_zoom: 0.35,
-
-            smooth_zoom: true,
-            smooth_zoom_speed: 8.0,
-
-            node_shadow: true,
-            node_shadow_offset: 3.0,
-            node_shadow_alpha: 40,
-
-            wire_flow: false,
-            wire_flow_speed: 60.0,
-            wire_flow_spacing: 20.0,
-
-            tooltip_delay: 0.3,
-
-            colors: NgColors::default(),
-        }
+        ron::from_str(include_str!("config.ron"))
+            .expect("built-in node_graph/config.ron is valid")
     }
 }
 

@@ -6,7 +6,7 @@
 
 use dear_imgui_rs::DrawListMut;
 
-use super::config::Severity;
+use super::enums::Severity;
 
 /// Draw a severity-specific icon at `(cx, cy)` with radius `r`.
 ///

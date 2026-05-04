@@ -47,12 +47,14 @@
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass
 
 pub mod config;
+pub mod enums;
 pub mod icons;
+pub mod notification;
 pub mod theme;
 
-pub use config::{
-    AnimationKind, CenterConfig, Duration, Notification, NotificationAction, Placement, Severity,
-};
+pub use config::CenterConfig;
+pub use enums::{AnimationKind, Duration, Placement, Severity};
+pub use notification::{Notification, NotificationAction};
 pub use theme::NotificationColors;
 
 use dear_imgui_rs::{Condition, MouseButton, StyleColor, StyleVar, Ui, WindowFlags};

@@ -5,7 +5,7 @@
 //! consistent across arrow keys, Page/Home/End, and explicit `goto`.
 
 use super::HexViewer;
-use super::config::UndoEntry;
+use super::undo::UndoEntry;
 use super::search::{Selection, format_bytes};
 use crate::utils::clipboard::{self, set_clipboard};
 

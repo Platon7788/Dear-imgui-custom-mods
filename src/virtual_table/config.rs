@@ -26,10 +26,14 @@
 
 use dear_imgui_rs::TableFlags;
 
+fn default_table_flags() -> TableFlags {
+    TableFlags::NONE
+}
+
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
 /// Row selection mode.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SelectionMode {
     /// No selection.
     None,
@@ -41,7 +45,7 @@ pub enum SelectionMode {
 }
 
 /// What triggers inline cell editing.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EditTrigger {
     /// Editing disabled.
     None,
@@ -55,7 +59,7 @@ pub enum EditTrigger {
 }
 
 /// Table border style presets.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BorderStyle {
     /// No borders.
     None,
@@ -73,7 +77,7 @@ pub enum BorderStyle {
 }
 
 /// Row density / vertical padding mode.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RowDensity {
     /// Comfortable: frame height + spacing (room for widgets).
     #[default]
@@ -85,7 +89,7 @@ pub enum RowDensity {
 }
 
 /// Column sizing policy for the whole table.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SizingPolicy {
     /// Columns default to `WIDTH_FIXED` matching content.
     #[default]
@@ -101,7 +105,7 @@ pub enum SizingPolicy {
 // ─── TableConfig ────────────────────────────────────────────────────────────
 
 /// Complete configuration for a `VirtualTable`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TableConfig {
     // Dear ImGui native table features
     pub resizable: bool,
@@ -181,6 +185,7 @@ pub struct TableConfig {
     /// broken. Requires `scroll_y = true` (the default).
     pub snap_last_row: bool,
     /// Extra Dear ImGui flags merged into the computed flags.
+    #[serde(skip, default = "default_table_flags")]
     pub extra_flags: TableFlags,
 
     /// Default value for `ColumnDef::clip_tooltip` when a column hasn't set an
@@ -193,39 +198,10 @@ pub struct TableConfig {
 
 impl Default for TableConfig {
     fn default() -> Self {
-        Self {
-            resizable: true,
-            reorderable: false,
-            hideable: true,
-            sortable: true,
-            multi_sort: false,
-            borders: BorderStyle::Full,
-            show_row_lines: true,
-            show_column_lines: true,
-            row_bg: true,
-            scroll_x: false,
-            scroll_y: true,
-            highlight_hovered: true,
-            flat_headers: false,
-            show_headers: true,
-            context_menu: true,
-            freeze_cols: 0,
-            freeze_rows: 1,
-            sizing: SizingPolicy::FixedFit,
-
-            selection_mode: SelectionMode::Single,
-            selection_color: [0.20, 0.45, 0.85, 0.75],
-            selection_text_color: Some([1.0, 1.0, 1.0, 1.0]),
-            copy_to_clipboard: false,
-            edit_trigger: EditTrigger::DoubleClick,
-            commit_on_focus_loss: true,
-            auto_scroll: false,
-            row_density: RowDensity::Normal,
-            default_row_height: None,
-            snap_last_row: false,
-            extra_flags: TableFlags::NONE,
-            default_clip_tooltip: true,
-        }
+        let mut cfg: TableConfig = ron::from_str(include_str!("config.ron"))
+            .expect("built-in virtual_table/config.ron is valid");
+        cfg.extra_flags = TableFlags::NONE;
+        cfg
     }
 }
 

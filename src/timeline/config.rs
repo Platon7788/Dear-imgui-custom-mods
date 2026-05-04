@@ -1,7 +1,7 @@
 //! Configuration types for [`Timeline`](super::Timeline).
 
 /// Display mode for the timeline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum TimelineMode {
     /// Top-down: parent spans at top, children below (icicle chart).
     #[default]
@@ -20,7 +20,7 @@ impl TimelineMode {
 }
 
 /// How span colors are assigned.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum ColorMode {
     /// Color by span category / name hash.
     #[default]
@@ -34,7 +34,7 @@ pub enum ColorMode {
 }
 
 /// Time unit for the ruler.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TimeUnit {
     Nanoseconds,
     Microseconds,
@@ -63,7 +63,7 @@ impl TimeUnit {
 }
 
 /// Configuration for the Timeline widget.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TimelineConfig {
     // ── Layout ──────────────────────────────────────────────
     /// Height of each span bar in pixels.
@@ -133,51 +133,8 @@ pub struct TimelineConfig {
 
 impl Default for TimelineConfig {
     fn default() -> Self {
-        Self {
-            row_height: 20.0,
-            row_gap: 1.0,
-            ruler_height: 24.0,
-            track_label_width: 120.0,
-            min_span_width: 2.0,
-            track_header_height: 22.0,
-
-            mode: TimelineMode::TopDown,
-            color_mode: ColorMode::ByName,
-            show_ruler: true,
-            show_track_labels: true,
-            show_tooltip: true,
-            smooth_zoom: true,
-            smooth_zoom_speed: 12.0,
-            min_zoom: 1e-9,
-            max_zoom: 1e6,
-            show_markers: true,
-
-            color_bg: [0.12, 0.12, 0.14, 1.0],
-            color_bg_alt: [0.14, 0.14, 0.16, 1.0],
-            color_ruler_bg: [0.16, 0.18, 0.20, 1.0],
-            color_ruler_text: [0.60, 0.65, 0.70, 1.0],
-            color_track_label: [0.70, 0.75, 0.80, 1.0],
-            color_track_separator: [0.25, 0.28, 0.32, 0.8],
-            color_span_text: [0.95, 0.95, 0.95, 1.0],
-            color_selection: [1.00, 0.85, 0.20, 1.0],
-            color_hover: [0.80, 0.85, 1.00, 0.8],
-            color_marker: [0.90, 0.30, 0.30, 0.7],
-            color_tooltip_bg: [0.10, 0.10, 0.12, 0.95],
-            color_tooltip_text: [0.90, 0.90, 0.92, 1.0],
-
-            span_palette: vec![
-                [0.35, 0.55, 0.85, 0.9], // blue
-                [0.55, 0.75, 0.40, 0.9], // green
-                [0.85, 0.55, 0.35, 0.9], // orange
-                [0.70, 0.45, 0.75, 0.9], // purple
-                [0.40, 0.70, 0.70, 0.9], // teal
-                [0.85, 0.65, 0.35, 0.9], // gold
-                [0.60, 0.40, 0.35, 0.9], // brown
-                [0.75, 0.35, 0.45, 0.9], // rose
-                [0.45, 0.60, 0.45, 0.9], // sage
-                [0.55, 0.50, 0.80, 0.9], // lavender
-            ],
-        }
+        ron::from_str(include_str!("config.ron"))
+            .expect("built-in timeline/config.ron is valid")
     }
 }
 

@@ -9,7 +9,7 @@
 use crate::theme::StatusBarColors;
 
 /// Alignment of a status bar section.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum Alignment {
     #[default]
     Left,
@@ -22,7 +22,7 @@ pub enum Alignment {
 /// Layout fields live here; colour tokens are bundled in
 /// [`StatusBarColors`] (defined in the [`crate::theme`] module so that
 /// custom themes can construct one without depending on this widget).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct StatusBarConfig {
     /// Total height of the bar in pixels.
     pub height: f32,
@@ -57,22 +57,15 @@ pub struct StatusBarConfig {
     pub progress_height: f32,
     /// Colour palette. Pluggable via [`Theme::statusbar_colors`](crate::theme::Theme::statusbar_colors)
     /// or built directly. Default: NxT-dark.
+    #[serde(skip, default)]
     pub colors: StatusBarColors,
 }
 
 impl Default for StatusBarConfig {
     fn default() -> Self {
-        Self {
-            height: 22.0,
-            item_padding: 8.0,
-            separator_width: 1.0,
-            show_separators: true,
-            show_top_border: true,
-            top_border_offset_left: 0.0,
-            top_border_offset_right: 0.0,
-            progress_width: 60.0,
-            progress_height: 8.0,
-            colors: StatusBarColors::default(),
-        }
+        let mut cfg: StatusBarConfig = ron::from_str(include_str!("config.ron"))
+            .expect("built-in status_bar/config.ron is valid");
+        cfg.colors = StatusBarColors::default();
+        cfg
     }
 }

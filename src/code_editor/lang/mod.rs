@@ -1,4 +1,4 @@
-//! Language definitions for syntax highlighting.
+//! Language definitions, syntax traits, and font management for code_editor.
 //!
 //! Each built-in language is a unit struct implementing [`SyntaxDefinition`].
 //! The [`tokenize_line`] function dispatches to the correct tokenizer,
@@ -14,7 +14,158 @@ pub mod toml;
 pub mod xml;
 pub mod yaml;
 
-use super::config::{Language, SyntaxDefinition};
+use std::sync::Arc;
+
+// ── SyntaxDefinition ─────────────────────────────────────────────────────────
+
+/// Trait for custom syntax definitions.
+///
+/// Implement this to provide token-level highlighting for any language or DSL.
+/// The trait is object-safe and stored as `Arc<dyn SyntaxDefinition>` inside
+/// [`Language::Custom`], allowing cheap cloning of the language config.
+///
+/// # Example — minimal hex-packet DSL
+/// ```rust,no_run
+/// use dear_imgui_custom_mod::code_editor::{SyntaxDefinition, token::{Token, TokenKind}};
+/// use std::sync::Arc;
+///
+/// struct HexPacketSyntax;
+/// impl SyntaxDefinition for HexPacketSyntax {
+///     fn name(&self) -> &str { "HexPacket" }
+///     fn tokenize_line(&self, line: &str, _in_bc: bool) -> (Vec<Token>, bool) {
+///         if line.trim_start().starts_with("//") {
+///             return (vec![Token { kind: TokenKind::Comment, start: 0, len: line.len() }], false);
+///         }
+///         // … tokenize hex bytes …
+///         (vec![], false)
+///     }
+/// }
+/// // editor.config.language = Language::Custom(Arc::new(HexPacketSyntax));
+/// ```
+pub trait SyntaxDefinition: Send + Sync {
+    /// Short display name shown in the Language menu.
+    fn name(&self) -> &str;
+
+    /// Tokenize a single line.
+    ///
+    /// `in_block_comment` carries state from the previous line.
+    /// Return `(tokens, still_in_block_comment)`.
+    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool);
+
+    /// Prefix used by Toggle Comment (`Ctrl+/`). `None` disables the command.
+    fn line_comment_prefix(&self) -> Option<&str> {
+        Some("//")
+    }
+
+    /// Start/end delimiters for block comments (e.g. `("/*", "*/")` for C-style).
+    /// Returns `None` if the language has no block comment syntax.
+    fn block_comment_delimiters(&self) -> Option<(&str, &str)> {
+        Some(("/*", "*/"))
+    }
+
+    /// Matching bracket pairs used for bracket highlighting.
+    fn bracket_pairs(&self) -> &[(char, char)] {
+        &[('(', ')'), ('{', '}'), ('[', ']')]
+    }
+
+    /// Characters at the end of a line that trigger increased indentation on Enter.
+    fn auto_indent_after(&self) -> &[char] {
+        &['{']
+    }
+
+    /// Characters at the start of a new line that trigger decreased indentation.
+    fn auto_dedent_on(&self) -> &[char] {
+        &['}']
+    }
+
+    /// Pairs for auto-close: typing the open string automatically inserts the
+    /// close string after the cursor.
+    fn auto_close_pairs(&self) -> &[(&str, &str)] {
+        &[("(", ")"), ("{", "}"), ("[", "]"), ("\"", "\"")]
+    }
+
+    /// Whether a character should be considered part of a "word" for
+    /// double-click selection and Ctrl+arrow word navigation.
+    fn is_word_char(&self, c: char) -> bool {
+        c.is_alphanumeric() || c == '_'
+    }
+}
+
+// ── Language ──────────────────────────────────────────────────────────────────
+
+/// Syntax language for highlighting.
+///
+/// The `Custom` variant accepts any [`SyntaxDefinition`] implementation,
+/// enabling fully custom tokenizers for domain-specific languages.
+#[derive(Clone, Default)]
+pub enum Language {
+    /// No syntax highlighting (plain text).
+    None,
+    /// Rust language highlighting.
+    #[default]
+    Rust,
+    /// TOML configuration files.
+    Toml,
+    /// RON (Rusty Object Notation).
+    Ron,
+    /// Hex byte stream — each line is a sequence of `XX` byte pairs separated
+    /// by spaces. `//` comments are supported. Bytes are colored by value:
+    /// `00` = null (dim), `01–1F`/`7F` = control (red), `20–7E` = printable
+    /// (cyan), `80–FF` = high (purple). Invalid non-hex characters use
+    /// [`TokenKind::Operator`].
+    ///
+    /// Pair this with [`EditorConfig::hex_auto_space`] and
+    /// [`EditorConfig::hex_auto_uppercase`] for a full hex-editing experience.
+    Hex,
+    /// Rhai scripting language (embedded scripting for Rust).
+    Rhai,
+    /// JSON (JavaScript Object Notation).
+    Json,
+    /// YAML (YAML Ain't Markup Language).
+    Yaml,
+    /// XML / HTML markup.
+    Xml,
+    /// x86/x86-64 assembly (AT&T + Intel/NASM/MASM unified).
+    Asm,
+    /// Fully custom syntax via a [`SyntaxDefinition`] trait object.
+    Custom(Arc<dyn SyntaxDefinition>),
+}
+
+impl std::fmt::Debug for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Language::None => write!(f, "Language::None"),
+            Language::Rust => write!(f, "Language::Rust"),
+            Language::Toml => write!(f, "Language::Toml"),
+            Language::Ron => write!(f, "Language::Ron"),
+            Language::Hex => write!(f, "Language::Hex"),
+            Language::Rhai => write!(f, "Language::Rhai"),
+            Language::Json => write!(f, "Language::Json"),
+            Language::Yaml => write!(f, "Language::Yaml"),
+            Language::Xml => write!(f, "Language::Xml"),
+            Language::Asm => write!(f, "Language::Asm"),
+            Language::Custom(def) => write!(f, "Language::Custom(\"{}\")", def.name()),
+        }
+    }
+}
+
+impl PartialEq for Language {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Language::None, Language::None)
+                | (Language::Rust, Language::Rust)
+                | (Language::Toml, Language::Toml)
+                | (Language::Ron, Language::Ron)
+                | (Language::Hex, Language::Hex)
+                | (Language::Rhai, Language::Rhai)
+                | (Language::Json, Language::Json)
+                | (Language::Yaml, Language::Yaml)
+                | (Language::Xml, Language::Xml)
+                | (Language::Asm, Language::Asm) // Two Custom variants are distinct (no identity comparison).
+        )
+    }
+}
 
 // Re-export for convenience (backward compat with old `tokenizer` module).
 pub use super::token::{Token, TokenKind};
@@ -156,7 +307,6 @@ pub fn definition(language: &Language) -> &dyn SyntaxDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::code_editor::config::Language;
 
     #[test]
     fn test_empty_line_all_langs() {

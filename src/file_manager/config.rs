@@ -16,7 +16,7 @@ pub type IconOverrideFn = fn(&str) -> Option<(&'static str, [f32; 4])>;
 ///
 /// Each mode controls which entries are visible, what the confirm button says,
 /// and whether a filename input is shown.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DialogMode {
     /// Pick a directory. Shows only folders, confirm button = "Select Folder".
     /// The confirmed path is the current directory.
@@ -36,7 +36,7 @@ pub enum DialogMode {
 ///
 /// Extensions are stored without the leading dot and in lowercase.
 /// An empty `extensions` vec matches all files.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[must_use]
 pub struct FileFilter {
     /// Display name, e.g. "Image Files (*.png, *.jpg)"
@@ -266,8 +266,11 @@ pub static STRINGS_EN: FmStrings = FmStrings {
 /// let fm = FileManager::new_with_config(config);
 /// ```
 #[must_use]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct FileManagerConfig {
     /// Localized UI strings. Default: [`STRINGS_EN`].
+    /// Skipped by serde — restored to [`STRINGS_EN`] on deserialization.
+    #[serde(skip, default = "default_strings")]
     pub strings: &'static FmStrings,
     /// Initial window size `[width, height]` in pixels. Default: `[750, 520]`.
     pub initial_size: [f32; 2],
@@ -295,6 +298,8 @@ pub struct FileManagerConfig {
     pub show_column_type: bool,
     /// Custom window title. If `None`, uses mode-specific title from `strings`.
     /// Example: `Some("Select Output Directory")`. Default: `None`.
+    /// Skipped by serde — always `None` after deserialization.
+    #[serde(skip, default)]
     pub custom_title: Option<&'static str>,
     /// Maximum navigation history entries per stack. Default: `100`.
     pub max_history: usize,
@@ -314,34 +319,18 @@ pub struct FileManagerConfig {
     pub inline_input_width: f32,
     /// Custom icon/color mapping callback. If `None`, uses built-in `file_icon_for_ext`.
     /// The callback takes a lowercase file extension and returns `(icon: &'static str, color: [f32; 4])`.
+    /// Skipped by serde — function pointers are not serializable; always `None` after deserialization.
+    #[serde(skip, default)]
     pub icon_override: Option<IconOverrideFn>,
+}
+
+fn default_strings() -> &'static FmStrings {
+    &STRINGS_EN
 }
 
 impl Default for FileManagerConfig {
     fn default() -> Self {
-        Self {
-            strings: &STRINGS_EN,
-            initial_size: [750.0, 520.0],
-            min_size: [500.0, 350.0],
-            show_favorites: true,
-            favorites_width: 150.0,
-            enable_multi_select: false,
-            enable_breadcrumbs: true,
-            enable_history: true,
-            enable_type_to_search: true,
-            show_hidden_files: false,
-            show_column_size: true,
-            show_column_date: true,
-            show_column_type: true,
-            custom_title: None,
-            max_history: super::history::DEFAULT_MAX_HISTORY,
-            search_timeout: 0.5,
-            dirs_first: true,
-            button_width: 100.0,
-            button_height: 24.0,
-            filter_width: 180.0,
-            inline_input_width: 200.0,
-            icon_override: None,
-        }
+        ron::from_str(include_str!("config.ron"))
+            .expect("built-in file_manager/config.ron is valid")
     }
 }

@@ -1,7 +1,7 @@
 //! Configuration types for [`DiffViewer`](super::DiffViewer).
 
 /// Display mode for the diff.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum DiffMode {
     /// Two panels side by side.
     #[default]
@@ -11,7 +11,7 @@ pub enum DiffMode {
 }
 
 /// Configuration for the DiffViewer widget.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DiffViewerConfig {
     /// Display mode.
     pub mode: DiffMode,
@@ -59,29 +59,8 @@ pub struct DiffViewerConfig {
 
 impl Default for DiffViewerConfig {
     fn default() -> Self {
-        Self {
-            mode: DiffMode::SideBySide,
-            show_line_numbers: true,
-            fold_unchanged: true,
-            context_lines: 3,
-            show_minimap: false,
-            sync_scroll: true,
-
-            color_bg: [0.11, 0.11, 0.13, 1.0],
-            color_gutter_bg: [0.13, 0.14, 0.16, 1.0],
-            color_line_number: [0.40, 0.42, 0.48, 1.0],
-            color_text: [0.85, 0.87, 0.90, 1.0],
-            color_added_bg: [0.15, 0.30, 0.18, 0.5],
-            color_added_text: [0.55, 0.90, 0.55, 1.0],
-            color_removed_bg: [0.35, 0.15, 0.15, 0.5],
-            color_removed_text: [0.90, 0.55, 0.55, 1.0],
-            color_modified_bg: [0.30, 0.28, 0.15, 0.4],
-            color_inline_change: [0.90, 0.75, 0.20, 0.35],
-            color_fold: [0.35, 0.38, 0.45, 0.7],
-            color_header: [0.50, 0.55, 0.65, 1.0],
-            color_separator: [0.25, 0.27, 0.32, 0.8],
-            color_current_hunk: [0.30, 0.45, 0.65, 0.3],
-        }
+        ron::from_str(include_str!("config.ron"))
+            .expect("built-in diff_viewer/config.ron is valid")
     }
 }
 

@@ -2,7 +2,9 @@
 //! (with selection / hover / breakpoint / tooltip), syntax-colored operands,
 //! and L-shaped branch arrows.
 
-use super::config::{DisasmColors, FlowKind, Instruction, MAX_ARROW_DEPTH};
+use super::arrows::MAX_ARROW_DEPTH;
+use super::config::DisasmColors;
+use super::provider::{FlowKind, Instruction};
 use super::tokens::{OperandTokenizer, TokenKind};
 use super::{DisasmView, EditColumn, col32};
 use crate::utils::hex::byte_hex;

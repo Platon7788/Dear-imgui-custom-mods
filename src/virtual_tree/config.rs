@@ -9,7 +9,7 @@ use crate::virtual_table::config::TableConfig;
 // ─── ExpandStyle ────────────────────────────────────────────────────────────
 
 /// Visual style for expand/collapse indicators on branch nodes.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum ExpandStyle {
     /// Standard ImGui TreeNode arrow (default filled triangle ▶/▼).
     #[default]
@@ -27,7 +27,7 @@ pub enum ExpandStyle {
 // ─── TreeConfig ─────────────────────────────────────────────────────────────
 
 /// Complete configuration for a [`VirtualTree`](super::VirtualTree).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TreeConfig {
     /// Embedded table configuration (columns, borders, selection, editing, etc.).
     pub table: TableConfig,
@@ -93,22 +93,7 @@ pub struct TreeConfig {
 
 impl Default for TreeConfig {
     fn default() -> Self {
-        Self {
-            table: TableConfig::default(),
-            tree_column: 0,
-            indent_width: 20.0,
-            show_tree_lines: false,
-            tree_line_color: [0.35, 0.35, 0.35, 0.6],
-            expand_style: ExpandStyle::default(),
-            expand_on_double_click: true,
-            auto_expand_on_filter: true,
-            lazy_load: false,
-            drag_drop_enabled: false,
-            multi_select_flat: true,
-            striped: true,
-            flat_headers: false,
-            max_nodes: super::arena::MAX_TREE_NODES,
-            evict_on_overflow: false,
-        }
+        ron::from_str(include_str!("config.ron"))
+            .expect("built-in virtual_tree/config.ron is valid")
     }
 }

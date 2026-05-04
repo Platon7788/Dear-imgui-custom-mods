@@ -1,0 +1,11 @@
+(
+    height: 22.0,
+    item_padding: 8.0,
+    separator_width: 1.0,
+    show_separators: true,
+    show_top_border: true,
+    top_border_offset_left: 0.0,
+    top_border_offset_right: 0.0,
+    progress_width: 60.0,
+    progress_height: 8.0,
+)

@@ -15,8 +15,12 @@
 //! visibility on struct fields — every sub-module is inside
 //! `hex_viewer`, so `super` is the same crate-private boundary.
 //!
-//! - [`config`] — `HexViewerConfig`, `BytesPerRow`, palettes,
-//!   `UndoStack`, `NavHistory`.
+//! - [`config`] — `HexViewerConfig`, `BytesPerRow`, and all config
+//!   enums/structs with serde derives.
+//! - [`provider`] — `HexDataProvider`, `VecDataProvider`, `ColorRegion`,
+//!   `ByteCategory`.
+//! - [`nav_history`] — `NavHistory` back/forward address stack.
+//! - [`undo`] — `UndoEntry`, `UndoStack`.
 //! - [`search`] — `Selection`, `PatternByte`, wildcard pattern matching,
 //!   clipboard format conversion, `do_search`.
 //! - [`input`] — keyboard/mouse handling, edit-mode state machine,
@@ -31,21 +35,26 @@
 pub mod config;
 mod draw;
 mod input;
+pub mod nav_history;
 mod popup;
+pub mod provider;
 // `pub(crate)` so `disasm_view` can re-use the wildcard-aware byte
 // search primitives (`PatternByte`, `parse_hex_pattern_masked`,
 // `find_pattern_masked`) — both widgets must agree on byte-search
 // semantics, so a single source of truth beats a clone.
 pub(crate) mod search;
+pub mod undo;
 
 #[cfg(test)]
 mod tests;
 
 pub use config::{
-    AddressWidth, ByteCategory, ByteGrouping, BytesPerRow, ColorRegion, CopyFormat, Endianness,
-    HexDataProvider, HexSearchMode, HexViewerConfig, NavHistory, StringEncoding, UndoEntry,
-    UndoStack, VecDataProvider,
+    AddressWidth, ByteGrouping, BytesPerRow, CopyFormat, Endianness, HexSearchMode,
+    HexViewerConfig, StringEncoding,
 };
+pub use nav_history::NavHistory;
+pub use provider::{ByteCategory, ColorRegion, HexDataProvider, VecDataProvider};
+pub use undo::{UndoEntry, UndoStack};
 pub use input::EditColumn;
 pub use search::{PatternByte, Selection};
 

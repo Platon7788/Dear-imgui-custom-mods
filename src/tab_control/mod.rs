@@ -57,7 +57,10 @@
 //! (`hit_scratch`, `tab_widths_cache`, `fmt_buf`) and caches popup IDs.
 //! Steady-state rendering allocates nothing.
 
+pub mod colors;
 pub mod config;
+pub mod strings;
+pub mod types;
 pub(crate) mod layout;
 pub(crate) mod render;
 
@@ -65,6 +68,9 @@ pub(crate) mod render;
 mod tests;
 
 pub use config::*;
+pub use colors::TabColors;
+pub use strings::TabStrings;
+pub use types::*;
 
 use dear_imgui_rs::Ui;
 

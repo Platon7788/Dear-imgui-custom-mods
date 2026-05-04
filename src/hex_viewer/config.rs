@@ -1,182 +1,17 @@
-//! Configuration types for [`HexViewer`](super::HexViewer).
-
-// ── Data Provider ───────────────────────────────────────────────────────────
-
-/// Trait for abstracting the data source.
-///
-/// **Status:** the bundled [`HexViewer`](super::HexViewer) widget currently
-/// owns its own `Vec<u8>` (see `set_data` / `data` / `data_mut`) and does
-/// **not** read through this trait. The trait + [`VecDataProvider`] are
-/// kept as a stable contract for downstream extensions: a future
-/// `HexViewer::render_with(provider)` overload, or callers building their
-/// own hex widgets from the same primitives. Existing implementors of
-/// this trait remain valid; nothing here is deprecated, just not yet
-/// wired into the default render path.
-pub trait HexDataProvider {
-    /// Total data length in bytes (may be `u64::MAX` for streaming).
-    fn len(&self) -> u64;
-    /// Whether the data source is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    /// Read bytes at `offset` into `buf`. Returns number of bytes actually read.
-    fn read(&self, offset: u64, buf: &mut [u8]) -> usize;
-    /// Write bytes at `offset`. Returns `true` on success.
-    /// Default: returns `false` (read-only).
-    fn write(&mut self, _offset: u64, _data: &[u8]) -> bool {
-        false
-    }
-    /// Whether the given offset is readable (e.g., mapped memory region).
-    /// Default: `true` for any offset < len.
-    fn is_readable(&self, offset: u64) -> bool {
-        offset < self.len()
-    }
-    /// Whether the byte at `offset` has changed since last snapshot.
-    /// Used for diff highlighting in live-memory scenarios.
-    /// Default: `false`.
-    fn is_changed(&self, _offset: u64) -> bool {
-        false
-    }
-    /// Called every frame when auto-refresh is enabled.
-    /// Use this to trigger page re-fetches, poll for changes, etc.
-    fn refresh(&mut self) {}
-}
-
-/// Default in-memory data provider wrapping `Vec<u8>`.
-pub struct VecDataProvider {
-    data: Vec<u8>,
-    /// Optional reference snapshot for diff highlighting.
-    reference: Option<Vec<u8>>,
-}
-
-impl VecDataProvider {
-    pub fn new(data: Vec<u8>) -> Self {
-        Self {
-            data,
-            reference: None,
-        }
-    }
-    pub fn from_slice(data: &[u8]) -> Self {
-        Self {
-            data: data.to_vec(),
-            reference: None,
-        }
-    }
-    pub fn set_data(&mut self, data: Vec<u8>) {
-        self.data = data;
-    }
-    pub fn set_data_slice(&mut self, data: &[u8]) {
-        self.data = data.to_vec();
-    }
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-    pub fn data_mut(&mut self) -> &mut Vec<u8> {
-        &mut self.data
-    }
-    pub fn set_reference(&mut self, r: &[u8]) {
-        self.reference = Some(r.to_vec());
-    }
-    pub fn clear_reference(&mut self) {
-        self.reference = None;
-    }
-}
-
-impl HexDataProvider for VecDataProvider {
-    fn len(&self) -> u64 {
-        self.data.len() as u64
-    }
-    fn read(&self, offset: u64, buf: &mut [u8]) -> usize {
-        let off = offset as usize;
-        if off >= self.data.len() {
-            return 0;
-        }
-        let end = (off + buf.len()).min(self.data.len());
-        let n = end - off;
-        buf[..n].copy_from_slice(&self.data[off..end]);
-        n
-    }
-    fn write(&mut self, offset: u64, data: &[u8]) -> bool {
-        let off = offset as usize;
-        if off + data.len() > self.data.len() {
-            return false;
-        }
-        self.data[off..off + data.len()].copy_from_slice(data);
-        true
-    }
-    fn is_changed(&self, offset: u64) -> bool {
-        if let Some(ref r) = self.reference {
-            let i = offset as usize;
-            if i < self.data.len() && i < r.len() {
-                return self.data[i] != r[i];
-            }
-        }
-        false
-    }
-}
-
-// ── Color Region ────────────────────────────────────────────────────────────
-
-/// Color region — maps a byte range to a color and label for struct overlays.
-#[derive(Debug, Clone)]
-pub struct ColorRegion {
-    /// Start offset in the data buffer.
-    pub offset: usize,
-    /// Length in bytes.
-    pub len: usize,
-    /// RGBA color `[r, g, b, a]` in `0.0..=1.0`.
-    pub color: [f32; 4],
-    /// Human-readable label (e.g. field name).
-    pub label: String,
-}
-
-impl ColorRegion {
-    pub fn new(offset: usize, len: usize, color: [f32; 4], label: impl Into<String>) -> Self {
-        Self {
-            offset,
-            len,
-            color,
-            label: label.into(),
-        }
-    }
-}
-
-// ── Byte Category ───────────────────────────────────────────────────────────
-
-/// Semantic byte category for 5-tier coloring (like debugger hex views).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ByteCategory {
-    /// `0x00` — null bytes.
-    Zero,
-    /// `0x01..=0x1F`, `0x7F` — control characters.
-    Control,
-    /// `0x20..=0x7E` — printable ASCII.
-    Printable,
-    /// `0x80..=0xFE` — high / extended bytes.
-    High,
-    /// `0xFF` — all-ones byte.
-    Full,
-}
-
-impl ByteCategory {
-    /// Classify a byte value.
-    pub fn of(byte: u8) -> Self {
-        match byte {
-            0x00 => Self::Zero,
-            0x01..=0x1F | 0x7F => Self::Control,
-            0x20..=0x7E => Self::Printable,
-            0xFF => Self::Full,
-            _ => Self::High, // 0x80..=0xFE
-        }
-    }
-}
+//! Configuration schema for [`HexViewer`](super::HexViewer).
+//!
+//! This file contains only config structs, enums, and their impl blocks.
+//! Non-config types live in sibling modules:
+//! - [`super::provider`] — `HexDataProvider`, `VecDataProvider`, `ColorRegion`, `ByteCategory`
+//! - [`super::nav_history`] — `NavHistory`
+//! - [`super::undo`] — `UndoEntry`, `UndoStack`
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
 /// How many bytes to display per row.
 ///
 /// Supports: 8, 12, 16, 20, 24, 28, 32.  Arbitrary multiples of 4 also work.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BytesPerRow(usize);
 
 impl BytesPerRow {
@@ -231,7 +66,7 @@ impl Default for BytesPerRow {
 }
 
 /// Byte grouping for visual separation in the hex column.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum ByteGrouping {
     /// No extra spacing.
     None = 1,
@@ -251,7 +86,7 @@ impl ByteGrouping {
 }
 
 /// Endianness for multi-byte data inspector values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum Endianness {
     #[default]
     Little,
@@ -274,7 +109,7 @@ impl Endianness {
 /// highest address overflows `u32::MAX`, otherwise 32-bit — so a
 /// regular file dump stays compact while a memory snapshot of a 64-bit
 /// process automatically gets the wider column.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum AddressWidth {
     /// 32-bit when `base_address + data.len()` fits in `u32::MAX`,
     /// otherwise 64-bit. Default.
@@ -319,7 +154,7 @@ impl AddressWidth {
 /// Surrogate-pair characters (U+10000+) are encoded as two UTF-16
 /// code units (4 bytes total) — `String::encode_utf16` handles that
 /// transparently.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum StringEncoding {
     /// 1 byte per char, ASCII / Latin-1 wire bytes.
     #[default]
@@ -349,7 +184,7 @@ impl StringEncoding {
 }
 
 /// Search mode for the hex viewer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum HexSearchMode {
     /// Hex pattern with optional `??` wildcards (e.g. `4D 5A ?? 00`).
     #[default]
@@ -376,7 +211,7 @@ impl HexSearchMode {
 }
 
 /// Copy format when copying bytes to clipboard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum CopyFormat {
     /// Space-separated hex: `4D 5A 90 00`
     #[default]
@@ -393,160 +228,10 @@ pub enum CopyFormat {
     Ascii,
 }
 
-// ── Undo Entry ──────────────────────────────────────────────────────────────
-
-/// A single undo-able edit operation.
-#[derive(Debug, Clone)]
-pub struct UndoEntry {
-    /// Byte offset where the edit happened.
-    pub offset: u64,
-    /// Old byte values before the edit.
-    pub old_bytes: Vec<u8>,
-    /// New byte values after the edit.
-    pub new_bytes: Vec<u8>,
-}
-
-/// Undo/redo stack with configurable depth.
-#[derive(Debug, Clone)]
-pub struct UndoStack {
-    entries: Vec<UndoEntry>,
-    /// Points to the next undo position (entries[pos-1] is last applied).
-    pos: usize,
-    /// Maximum stack depth (0 = unlimited).
-    max_depth: usize,
-}
-
-impl UndoStack {
-    pub fn new(max_depth: usize) -> Self {
-        Self {
-            entries: Vec::new(),
-            pos: 0,
-            max_depth,
-        }
-    }
-
-    /// Record an edit. Truncates any redo history.
-    pub fn push(&mut self, entry: UndoEntry) {
-        self.entries.truncate(self.pos);
-        self.entries.push(entry);
-        self.pos = self.entries.len();
-        // Trim oldest if over capacity.
-        if self.max_depth > 0 && self.entries.len() > self.max_depth {
-            let remove = self.entries.len() - self.max_depth;
-            self.entries.drain(..remove);
-            self.pos = self.entries.len();
-        }
-    }
-
-    /// Undo the last edit. Returns the entry to reverse, or `None`.
-    pub fn undo(&mut self) -> Option<&UndoEntry> {
-        if self.pos == 0 {
-            return None;
-        }
-        self.pos -= 1;
-        Some(&self.entries[self.pos])
-    }
-
-    /// Redo the next edit. Returns the entry to re-apply, or `None`.
-    pub fn redo(&mut self) -> Option<&UndoEntry> {
-        if self.pos >= self.entries.len() {
-            return None;
-        }
-        let entry = &self.entries[self.pos];
-        self.pos += 1;
-        Some(entry)
-    }
-
-    /// Whether undo is available.
-    pub fn can_undo(&self) -> bool {
-        self.pos > 0
-    }
-    /// Whether redo is available.
-    pub fn can_redo(&self) -> bool {
-        self.pos < self.entries.len()
-    }
-    /// Number of undo steps available.
-    pub fn undo_count(&self) -> usize {
-        self.pos
-    }
-    /// Number of redo steps available.
-    pub fn redo_count(&self) -> usize {
-        self.entries.len() - self.pos
-    }
-    /// Clear all history.
-    pub fn clear(&mut self) {
-        self.entries.clear();
-        self.pos = 0;
-    }
-}
-
-impl Default for UndoStack {
-    fn default() -> Self {
-        Self::new(256)
-    }
-}
-
-// ── Navigation History ──────────────────────────────────────────────────────
-
-/// Back/forward navigation stack for address history.
-///
-/// Uses `VecDeque` for O(1) eviction of oldest entries.
-#[derive(Debug, Clone, Default)]
-pub struct NavHistory {
-    back: std::collections::VecDeque<u64>,
-    forward: Vec<u64>,
-    /// Maximum stack depth.
-    max_depth: usize,
-}
-
-impl NavHistory {
-    pub fn new(max_depth: usize) -> Self {
-        Self {
-            back: std::collections::VecDeque::new(),
-            forward: Vec::new(),
-            max_depth,
-        }
-    }
-
-    /// Record a navigation to `addr`. Call *before* changing the address.
-    pub fn push(&mut self, current_addr: u64) {
-        self.back.push_back(current_addr);
-        self.forward.clear();
-        if self.max_depth > 0 && self.back.len() > self.max_depth {
-            self.back.pop_front(); // O(1) instead of Vec::remove(0) O(n)
-        }
-    }
-
-    /// Go back. Returns previous address, or `None`.
-    pub fn go_back(&mut self, current_addr: u64) -> Option<u64> {
-        let addr = self.back.pop_back()?;
-        self.forward.push(current_addr);
-        Some(addr)
-    }
-
-    /// Go forward. Returns next address, or `None`.
-    pub fn go_forward(&mut self, current_addr: u64) -> Option<u64> {
-        let addr = self.forward.pop()?;
-        self.back.push_back(current_addr);
-        Some(addr)
-    }
-
-    pub fn can_go_back(&self) -> bool {
-        !self.back.is_empty()
-    }
-    pub fn can_go_forward(&self) -> bool {
-        !self.forward.is_empty()
-    }
-    pub fn clear(&mut self) {
-        self.back.clear();
-        self.forward.clear();
-    }
-}
-
 // ── Hex Viewer Config ───────────────────────────────────────────────────────
 
 /// Configuration for the hex viewer widget.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HexViewerConfig {
     // ── Layout ──────────────────────────────────────────────
     /// Bytes per row.
@@ -614,42 +299,60 @@ pub struct HexViewerConfig {
 
     // ── Colors: semantic byte categories ────────────────────
     /// Color for null bytes (0x00).
+    #[serde(skip, default)]
     pub color_cat_zero: [f32; 4],
     /// Color for control characters (0x01..0x1F, 0x7F).
+    #[serde(skip, default)]
     pub color_cat_control: [f32; 4],
     /// Color for printable ASCII (0x20..0x7E).
+    #[serde(skip, default)]
     pub color_cat_printable: [f32; 4],
     /// Color for high bytes (0x80..0xFE).
+    #[serde(skip, default)]
     pub color_cat_high: [f32; 4],
     /// Color for 0xFF bytes.
+    #[serde(skip, default)]
     pub color_cat_full: [f32; 4],
 
     // ── Colors: UI elements ─────────────────────────────────
     /// Offset column color.
+    #[serde(skip, default)]
     pub color_offset: [f32; 4],
     /// Normal hex byte color (used when `category_colors` is `false`).
+    #[serde(skip, default)]
     pub color_hex: [f32; 4],
     /// ASCII printable character color.
+    #[serde(skip, default)]
     pub color_ascii: [f32; 4],
     /// ASCII non-printable dot color.
+    #[serde(skip, default)]
     pub color_ascii_dot: [f32; 4],
     /// Zero byte color (legacy, when `dim_zeros` is true and `category_colors` is false).
+    #[serde(skip, default)]
     pub color_zero: [f32; 4],
     /// Selection highlight background.
+    #[serde(skip, default)]
     pub color_selection_bg: [f32; 4],
     /// Changed byte highlight color.
+    #[serde(skip, default)]
     pub color_changed: [f32; 4],
     /// Cursor highlight background.
+    #[serde(skip, default)]
     pub color_cursor_bg: [f32; 4],
     /// Column header color.
+    #[serde(skip, default)]
     pub color_header: [f32; 4],
     /// Inspector label color.
+    #[serde(skip, default)]
     pub color_inspector_label: [f32; 4],
     /// Inspector value color.
+    #[serde(skip, default)]
     pub color_inspector_value: [f32; 4],
     /// Search match highlight background.
+    #[serde(skip, default)]
     pub color_search_match: [f32; 4],
     /// Non-readable region background.
+    #[serde(skip, default)]
     pub color_unreadable: [f32; 4],
 }
 
@@ -757,6 +460,7 @@ impl HexViewerConfig {
 
     /// Get the foreground color for a byte based on its category.
     pub fn byte_fg_color(&self, byte: u8) -> [f32; 4] {
+        use super::provider::ByteCategory;
         if !self.category_colors {
             if byte == 0 && self.dim_zeros {
                 return self.color_zero;

@@ -4,7 +4,7 @@ use super::theme::DialogColors;
 use crate::theme::Theme;
 
 /// Icon type displayed in the dialog header.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum DialogIcon {
     /// No icon.
     None,
@@ -20,7 +20,7 @@ pub enum DialogIcon {
 }
 
 /// Confirm button visual style preset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum ConfirmStyle {
     /// Red / destructive (for close, delete, discard).
     #[default]
@@ -41,7 +41,7 @@ pub enum ConfirmStyle {
 ///     .with_cancel_label("Cancel")
 ///     .with_theme(Theme::Dark);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DialogConfig {
     /// Dialog title / header text.
     pub title: String,
@@ -58,6 +58,7 @@ pub struct DialogConfig {
     /// Color theme. Default: `Dark`.
     pub theme: Theme,
     /// Optional custom palette that bypasses [`theme`](Self::theme).
+    #[serde(skip, default)]
     pub colors_override: Option<DialogColors>,
     /// Dialog width (px). Default: `340.0`.
     pub width: f32,
@@ -102,31 +103,8 @@ pub struct DialogConfig {
 
 impl Default for DialogConfig {
     fn default() -> Self {
-        Self {
-            title: String::from("Confirm"),
-            message: String::from("Are you sure?"),
-            confirm_label: String::from("Confirm"),
-            cancel_label: String::from("Cancel"),
-            icon: DialogIcon::Warning,
-            confirm_style: ConfirmStyle::Destructive,
-            theme: Theme::Dark,
-            colors_override: None,
-            width: 340.0,
-            height: 160.0,
-            padding: 16.0,
-            button_height: 30.0,
-            button_gap: 20.0,
-            dim_background: true,
-            keyboard_shortcuts: true,
-            rounding: 6.0,
-            border_thickness: 1.5,
-            accent_border: true,
-            show_separator: false,
-            show_button_icons: true,
-            header_icon_size: 16.0,
-            button_padding_x: 22.0,
-            button_bottom_factor: 0.35,
-        }
+        ron::from_str(include_str!("config.ron"))
+            .expect("built-in confirm_dialog/config.ron is valid")
     }
 }
 

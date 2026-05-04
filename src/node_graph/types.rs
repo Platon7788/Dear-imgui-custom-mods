@@ -58,7 +58,7 @@ pub enum PinShape {
 // ─── Wire style ──────────────────────────────────────────────────────────────
 
 /// How wires are drawn between pins.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum WireStyle {
     /// Cubic bezier curve (smooth, default).
     #[default]
@@ -72,7 +72,7 @@ pub enum WireStyle {
 // ─── Wire layer ──────────────────────────────────────────────────────────────
 
 /// Rendering layer for wires relative to nodes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum WireLayer {
     /// Wires render behind nodes (default).
     #[default]

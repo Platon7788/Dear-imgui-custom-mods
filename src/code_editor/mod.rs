@@ -53,7 +53,9 @@
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod buffer;
 pub mod config;
+pub mod font_setup;
 pub mod lang;
+pub mod syntax_colors;
 pub mod token;
 pub mod tokenizer;
 pub mod undo;

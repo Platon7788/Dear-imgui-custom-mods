@@ -54,16 +54,18 @@
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 
+pub mod buttons;
 pub mod config;
+pub mod enums;
 pub mod state;
 pub mod theme;
 
 mod render;
 mod submenu;
 
-pub use config::{
-    ActiveStyle, ButtonStyle, DockPosition, NavButton, NavItem, NavPanelConfig, SubMenuItem,
-};
+pub use buttons::{NavButton, NavItem, SubMenuItem};
+pub use config::NavPanelConfig;
+pub use enums::{ActiveStyle, ButtonStyle, DockPosition};
 pub use state::NavPanelState;
 pub use theme::NavColors;
 

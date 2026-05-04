@@ -35,18 +35,18 @@
 //! ```
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
+pub mod arrows;
 pub mod config;
+pub mod provider;
 
 mod draw;
 mod input;
 mod popup;
 mod tokens;
 
-pub use config::{
-    BranchArrow, ColumnWidths, DisasmColors, DisasmDataProvider, DisasmViewConfig, FlowKind,
-    Instruction, InstructionEntry, MAX_ARROW_DEPTH, VecDisasmProvider, compute_arrows,
-    compute_arrows_clipped,
-};
+pub use arrows::{BranchArrow, MAX_ARROW_DEPTH, compute_arrows, compute_arrows_clipped};
+pub use config::{ColumnWidths, DisasmColors, DisasmViewConfig};
+pub use provider::{DisasmDataProvider, FlowKind, Instruction, InstructionEntry, VecDisasmProvider};
 
 use crate::utils::color::rgba_f32;
 use crate::utils::text::calc_text_size;
@@ -1352,7 +1352,7 @@ fn parse_address(s: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use config::{InstructionEntry, VecDisasmProvider};
+    use provider::{InstructionEntry, VecDisasmProvider};
     use tokens::{OperandTokenizer, TokenKind, classify_operand_token};
 
     fn sample_provider() -> VecDisasmProvider {

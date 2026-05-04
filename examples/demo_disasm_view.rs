@@ -7,6 +7,10 @@
 //! multi-selection (Shift / Ctrl + click — count shown in toolbar),
 //! current-instruction-pointer follow, and a live config panel.
 //!
+//! The config panel includes an **Export Config (RON)** button that prints
+//! the current `DisasmViewConfig` as a RON string — demonstrating the
+//! serde+ron round-trip added in session 036.
+//!
 //! Run: cargo run --example demo_disasm_view
 
 use dear_imgui_custom_mod::disasm_view::{
@@ -528,6 +532,18 @@ impl DemoState {
         ui.text_disabled("Ctrl+C: Copy");
         ui.text_disabled("Alt+</>: Nav history");
         ui.text_disabled("Right-click: Context menu");
+
+        ui.spacing();
+        ui.separator();
+        if ui.button("Export Config (RON)") {
+            match ron::to_string(&self.view.config) {
+                Ok(s) => println!("DisasmViewConfig:\n{s}"),
+                Err(e) => eprintln!("ron error: {e}"),
+            }
+        }
+        if ui.is_item_hovered() {
+            ui.tooltip_text("Prints the current config as a RON string to stdout.\nPaste into config.ron to persist your settings.");
+        }
     }
 }
 

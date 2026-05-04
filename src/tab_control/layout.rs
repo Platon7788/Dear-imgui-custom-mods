@@ -13,7 +13,8 @@
 
 use crate::utils::text::calc_text_size;
 
-use super::config::{TabControlConfig, TabStatus};
+use super::config::TabControlConfig;
+use super::types::TabStatus;
 use super::{TabControl, TabItem};
 
 // ─── Layout micro-constants ────────────────────────────────────────────────

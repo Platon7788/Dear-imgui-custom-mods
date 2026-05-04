@@ -4,7 +4,7 @@
 //! mouse interaction (click / shift / ctrl / drag-select / double-click
 //! to edit / right-click context menu), and the inline edit commit path.
 
-use super::config::DisasmDataProvider;
+use super::provider::DisasmDataProvider;
 use super::{DisasmView, EditColumn, EditState};
 use crate::utils::clipboard::set_clipboard;
 use crate::utils::hex::byte_hex;

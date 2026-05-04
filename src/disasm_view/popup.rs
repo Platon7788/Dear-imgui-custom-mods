@@ -5,7 +5,7 @@
 //! positioning so the goto popup always lands at the visual middle
 //! of the viewer regardless of where the user pressed `G`.
 
-use super::config::DisasmDataProvider;
+use super::provider::DisasmDataProvider;
 use super::{DisasmView, parse_address};
 use crate::utils::clipboard::set_clipboard;
 use crate::utils::popup::{action_row, compact_popup_body, themed_popup_style};

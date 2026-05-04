@@ -14,7 +14,8 @@ use crate::utils::color::rgb_arr as c32;
 use crate::utils::popup::danger_button;
 use crate::utils::text::calc_text_size;
 
-use super::config::*;
+use super::config::TabControlConfig;
+use super::types::*;
 use super::{TabControl, TabItem};
 
 // ─── Tunable constants ──────────────────────────────────────────────────────
@@ -175,8 +176,8 @@ fn render_empty_placeholder(ui: &Ui, cfg: &TabControlConfig) {
     };
 
     let icon_sz = icon.map(calc_text_size).unwrap_or([0.0, 0.0]);
-    let main_sz = calc_text_size(strings.no_tabs);
-    let hint_sz = calc_text_size(strings.empty_hint);
+    let main_sz = calc_text_size(&strings.no_tabs);
+    let hint_sz = calc_text_size(&strings.empty_hint);
 
     let spacing = 8.0;
     // Skip the icon row in the centring math when the icon is hidden,
@@ -203,13 +204,13 @@ fn render_empty_placeholder(ui: &Ui, cfg: &TabControlConfig) {
         cs[0] + (avail[0] - main_sz[0]) * 0.5,
         cs[1] + start_y + icon_block,
     ]);
-    ui.text_colored(label_color, strings.no_tabs);
+    ui.text_colored(label_color, &strings.no_tabs);
 
     ui.set_cursor_pos([
         cs[0] + (avail[0] - hint_sz[0]) * 0.5,
         cs[1] + start_y + icon_block + main_sz[1] + spacing * 0.5,
     ]);
-    ui.text_colored(hint_color, strings.empty_hint);
+    ui.text_colored(hint_color, &strings.empty_hint);
 }
 
 // ─── Tab strip + content ────────────────────────────────────────────────────
@@ -1470,7 +1471,7 @@ fn render_overflow_button(
         && !ui.is_mouse_clicked(MouseButton::Left)
         && !ui.is_mouse_clicked(MouseButton::Right)
     {
-        crate::utils::themed_tooltip(ui, || ui.text(cfg.strings.overflow_tooltip));
+        crate::utils::themed_tooltip(ui, || ui.text(&cfg.strings.overflow_tooltip));
     }
 
     hovered && ui.is_mouse_clicked(MouseButton::Left)
@@ -1547,7 +1548,7 @@ fn render_add_button(
         plus,
     );
     if hovered && !ui.is_mouse_clicked(MouseButton::Left) {
-        crate::utils::themed_tooltip(ui, || ui.text(cfg.strings.add_tab));
+        crate::utils::themed_tooltip(ui, || ui.text(&cfg.strings.add_tab));
     }
     hovered && ui.is_mouse_clicked(MouseButton::Left)
 }
@@ -1995,15 +1996,15 @@ fn render_close_popup<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
         let is_dirty = pending.is_some_and(|t| t.item.status() == TabStatus::Dirty);
 
         pc.fmt_buf.clear();
-        let _ = write!(pc.fmt_buf, "{} {}", icons::ALERT, strings.close);
+        let _ = write!(pc.fmt_buf, "{} {}", icons::ALERT, &strings.close);
         ui.text(&pc.fmt_buf);
         ui.spacing();
         ui.text_colored(rgba(pc.config.colors.text, 1.0), name);
         ui.spacing();
-        let confirm_text = if is_dirty {
-            strings.close_confirm_dirty
+        let confirm_text: &str = if is_dirty {
+            &strings.close_confirm_dirty
         } else {
-            strings.close_confirm
+            &strings.close_confirm
         };
         ui.text_colored(rgba(pc.config.colors.text_muted, 1.0), confirm_text);
         ui.spacing();
@@ -2017,7 +2018,7 @@ fn render_close_popup<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
         let offset = ((avail_w - total_w) * 0.5).max(0.0);
         ui.set_cursor_pos([ui.cursor_pos()[0] + offset, ui.cursor_pos()[1]]);
 
-        if danger_button(ui, strings.close, [btn_w, 0.0]) {
+        if danger_button(ui, &strings.close, [btn_w, 0.0]) {
             if let Some(id) = pc.pending_close.take() {
                 if pc.config.animate_close {
                     pc.closing_tab = Some((id, 1.0));
@@ -2030,7 +2031,7 @@ fn render_close_popup<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
 
         ui.same_line();
 
-        if ui.button_with_size(strings.cancel, [btn_w, 0.0]) {
+        if ui.button_with_size(&strings.cancel, [btn_w, 0.0]) {
             should_clear = true;
             ui.close_current_popup();
         }

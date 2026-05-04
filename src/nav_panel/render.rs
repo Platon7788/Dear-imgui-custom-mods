@@ -35,7 +35,9 @@ use dear_imgui_rs::{MouseButton, Ui};
 use crate::utils::color::pack_color_f32 as c32;
 use crate::utils::text::calc_text_size;
 
-use super::config::{ActiveStyle, ButtonStyle, DockPosition, NavItem, NavPanelConfig};
+use super::buttons::NavItem;
+use super::config::NavPanelConfig;
+use super::enums::{ActiveStyle, ButtonStyle, DockPosition};
 use super::state::NavPanelState;
 use super::submenu::{ButtonRect, render_submenu};
 use super::{NavEvent, NavPanelResult};

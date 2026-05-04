@@ -6,7 +6,9 @@ use crate::utils::color::pack_color_f32 as c32;
 use crate::utils::text::calc_text_size;
 
 use super::NavEvent;
-use super::config::{DockPosition, NavButton, NavPanelConfig, SubMenuItem};
+use super::buttons::{NavButton, SubMenuItem};
+use super::config::NavPanelConfig;
+use super::enums::DockPosition;
 use super::state::NavPanelState;
 use super::theme::NavColors;
 

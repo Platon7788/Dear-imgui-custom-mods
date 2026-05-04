@@ -18,7 +18,7 @@ pub type NodeColorFn =
 // ─── Color group query ───────────────────────────────────────────────────────
 
 /// A pattern used to match nodes for a [`ColorGroup`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ColorGroupQuery {
     /// Case-insensitive substring match on the node label.
     Label(String),
@@ -39,7 +39,7 @@ pub enum ColorGroupQuery {
 ///
 /// Groups are evaluated in order; the first matching group wins. Non-matching
 /// nodes fall back to the viewer's [`ViewerConfig::color_mode`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ColorGroup {
     /// Display name shown in the sidebar group list.
     pub name: String,
@@ -113,7 +113,7 @@ impl std::fmt::Debug for ColorMode {
 // ─── Label visibility ────────────────────────────────────────────────────────
 
 /// Controls when node labels are rendered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LabelVisibility {
     /// Labels are always drawn, regardless of zoom level or hover state.
     Always,
@@ -130,7 +130,7 @@ pub enum LabelVisibility {
 // ─── Selection mode ───────────────────────────────────────────────────────────
 
 /// Controls how mouse clicks and drag gestures select nodes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SelectionMode {
     /// Clicking a node selects only that node; clicking empty space clears.
     Single,
@@ -145,7 +145,7 @@ pub enum SelectionMode {
 // ─── Sidebar kind ────────────────────────────────────────────────────────────
 
 /// Determines whether and how the built-in sidebar is shown.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SidebarKind {
     /// No sidebar is rendered; the viewer uses the full panel width.
     None,
@@ -161,7 +161,7 @@ pub enum SidebarKind {
 ///
 /// When present on [`ViewerConfig::time_travel`], the sidebar shows a slider
 /// that controls [`crate::force_graph::filter::FilterState::time_threshold`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TimeTravelSlider {
     /// Minimum slider value (earliest timestamp to show).
     pub min: f32,
@@ -178,7 +178,7 @@ pub struct TimeTravelSlider {
 /// The defaults are tuned for graphs in the 100–5 000 node range. For very
 /// large or very sparse graphs, adjusting [`Self::repulsion`] and
 /// [`Self::attraction`] gives the most visible results.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ForceConfig {
     /// Barnes-Hut approximation threshold (θ). Higher = faster but less
     /// accurate repulsion. Range: 0.0 (exact) – 2.0 (very coarse).
@@ -211,21 +211,15 @@ pub struct ForceConfig {
     pub radius_per_degree: f32,
 }
 
+fn default_color_mode() -> ColorMode {
+    ColorMode::Static
+}
+
 impl Default for ForceConfig {
     fn default() -> Self {
-        Self {
-            barnes_hut_theta: 0.9,
-            repulsion: 120.0,
-            attraction: 0.04,
-            center_pull: 0.002,
-            collision_radius: 20.0,
-            link_distance: 80.0,
-            velocity_decay: 0.6,
-            gravity_strength: 0.0,
-            radius_by_degree: true,
-            radius_base: 4.0,
-            radius_per_degree: 1.5,
-        }
+        ron::from_str(include_str!("config.ron"))
+            .map(|c: ConfigRon| c.force)
+            .expect("built-in force_graph/config.ron is valid")
     }
 }
 
@@ -242,6 +236,7 @@ impl Default for ForceConfig {
 ///     ..ViewerConfig::default()
 /// };
 /// ```
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct ViewerConfig {
     /// Active application theme — used to derive the built-in colour palette
     /// when [`Self::colors_override`] is `None`.
@@ -250,6 +245,8 @@ pub struct ViewerConfig {
     /// Full colour palette override. When `Some`, completely replaces the
     /// theme-derived palette; when `None`, the viewer calls
     /// `Theme::graph_colors()` (or falls back to `GraphColors::default()`).
+    /// Skipped by serde — not serializable in the general case; always `None` after deserialization.
+    #[serde(skip, default)]
     pub colors_override: Option<Box<GraphColors>>,
 
     /// When and how node labels are drawn.
@@ -288,6 +285,8 @@ pub struct ViewerConfig {
     pub time_travel: Option<TimeTravelSlider>,
 
     /// How node fill colours are computed each frame.
+    /// Skipped by serde — `ColorMode::Custom` carries a non-serializable fn; always `ColorMode::Static` after deserialization.
+    #[serde(skip, default = "default_color_mode")]
     pub color_mode: ColorMode,
 
     // ── Interaction ───────────────────────────────────────────────────────────
@@ -377,39 +376,9 @@ impl ViewerConfig {
 
 impl Default for ViewerConfig {
     fn default() -> Self {
-        Self {
-            theme: Theme::Dark,
-            colors_override: None,
-            show_labels: LabelVisibility::HoverOnly,
-            min_label_zoom: 0.6,
-            show_edge_labels: false,
-            edge_arrow: true,
-            edge_bundling: false,
-            background_grid: true,
-            minimap: false,
-            selection_mode: SelectionMode::Additive,
-            lod_threshold: 5000,
-            time_travel: None,
-            color_mode: ColorMode::Static,
-            drag_enabled: true,
-            context_menu_enabled: true,
-            pin_on_drag: true,
-            hover_fade_opacity: 0.15,
-            glow_on_hover: true,
-            text_fade_threshold: 0.0,
-            node_size_multiplier: 1.0,
-            edge_thickness_multiplier: 1.0,
-            edge_curve: 0.0,
-            color_groups: Vec::new(),
-            show_orphans: true,
-            show_unresolved: true,
-            show_tags: true,
-            gravity_direction: [0.0, 0.0],
-            fit_padding: 40.0,
-            depth_fade: false,
-            cluster_hulls: false,
-            search_highlight_mode: true,
-        }
+        ron::from_str(include_str!("config.ron"))
+            .map(|c: ConfigRon| c.viewer)
+            .expect("built-in force_graph/config.ron is valid")
     }
 }
 
@@ -449,6 +418,16 @@ impl std::fmt::Debug for ViewerConfig {
             .field("search_highlight_mode", &self.search_highlight_mode)
             .finish()
     }
+}
+
+// ─── RON loader helper ────────────────────────────────────────────────────────
+
+/// Internal: top-level wrapper deserialized from `config.ron`.
+/// Splits the file into viewer and force sections so both can share one file.
+#[derive(serde::Deserialize)]
+struct ConfigRon {
+    viewer: ViewerConfig,
+    force: ForceConfig,
 }
 
 // ─── Unit tests ───────────────────────────────────────────────────────────────

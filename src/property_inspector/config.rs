@@ -1,7 +1,7 @@
 //! Configuration types for [`PropertyInspector`](super::PropertyInspector).
 
 /// Configuration for the PropertyInspector widget.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct InspectorConfig {
     /// Key column width ratio (0.0..1.0).
     pub key_width_ratio: f32,
@@ -39,24 +39,8 @@ pub struct InspectorConfig {
 
 impl Default for InspectorConfig {
     fn default() -> Self {
-        Self {
-            key_width_ratio: 0.40,
-            show_filter: true,
-            show_categories: true,
-            highlight_changes: false,
-            row_height: 22.0,
-            indent: 16.0,
-
-            color_bg: [0.11, 0.11, 0.13, 1.0],
-            color_bg_alt: [0.13, 0.13, 0.16, 1.0],
-            color_key: [0.70, 0.75, 0.82, 1.0],
-            color_value: [0.88, 0.90, 0.93, 1.0],
-            color_readonly: [0.50, 0.52, 0.58, 0.8],
-            color_category_bg: [0.16, 0.17, 0.20, 1.0],
-            color_category_text: [0.55, 0.60, 0.70, 1.0],
-            color_changed: [1.00, 0.65, 0.20, 0.6],
-            color_separator: [0.22, 0.24, 0.28, 0.5],
-        }
+        ron::from_str(include_str!("config.ron"))
+            .expect("built-in property_inspector/config.ron is valid")
     }
 }
 

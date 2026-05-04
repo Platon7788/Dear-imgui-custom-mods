@@ -1,7 +1,7 @@
 //! Configuration types for [`Toolbar`](super::Toolbar).
 
 /// Configuration for the Toolbar widget.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct ToolbarConfig {
     /// Toolbar height in pixels.
     pub height: f32,
@@ -41,25 +41,8 @@ pub struct ToolbarConfig {
 
 impl Default for ToolbarConfig {
     fn default() -> Self {
-        Self {
-            height: 30.0,
-            item_spacing: 2.0,
-            button_padding: 6.0,
-            separator_width: 1.0,
-            separator_margin: 4.0,
-            button_rounding: 3.0,
-
-            color_bg: [0.13, 0.14, 0.17, 1.0],
-            color_text: [0.85, 0.87, 0.90, 1.0],
-            color_disabled: [0.40, 0.42, 0.48, 0.5],
-            color_hover: [0.22, 0.24, 0.30, 1.0],
-            color_active: [0.28, 0.32, 0.40, 1.0],
-            color_toggled: [0.25, 0.38, 0.55, 0.7],
-            color_separator: [0.25, 0.27, 0.32, 0.6],
-            color_border: [0.20, 0.22, 0.27, 0.5],
-            color_hover_underline: [0.40, 0.63, 0.88, 0.8],
-            hover_underline_thickness: 2.0,
-        }
+        ron::from_str(include_str!("config.ron"))
+            .expect("built-in toolbar/config.ron is valid")
     }
 }
 
