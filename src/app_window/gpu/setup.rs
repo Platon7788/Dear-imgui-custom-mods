@@ -91,7 +91,7 @@ pub(crate) fn init_wgpu(
         width: phys.width.max(1),
         height: phys.height.max(1),
         present_mode,
-        desired_maximum_frame_latency: frame_latency(cfg.power_mode),
+        desired_maximum_frame_latency: frame_latency(),
         alpha_mode,
         view_formats: vec![],
     };
@@ -201,8 +201,8 @@ fn log_adapter(info: &wgpu::AdapterInfo) {
     }
 }
 
-fn frame_latency(_power: PowerMode) -> u32 {
-    // 2 = standard double-buffer. Tuning per power mode risks CPU stalls on weak
-    // hardware (latency=1) or visible lag (latency=3) — not worth it for a UI toolkit.
+fn frame_latency() -> u32 {
+    // 2 = standard double-buffer. Latency=1 risks CPU stalls on weak hardware;
+    // latency=3 adds visible lag. Neither trade-off is worthwhile for a UI toolkit.
     2
 }

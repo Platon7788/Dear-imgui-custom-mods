@@ -36,6 +36,14 @@
   `String`** (session 036). Required for RON deserialization. Call sites
   updated to pass `&field` where `&str` is expected.
 
+- **`FpsMode` now derives `Copy`** (session 037). All three variants (`Auto`,
+  `Fixed(u32)`, `Unlimited`) are inherently `Copy`-able. Two stale `.clone()`
+  calls in `builders.rs` and `enums.rs` replaced with deref-copy `*fps_mode`.
+
+- **`frame_latency` dead parameter removed** (session 037). `gpu/setup.rs`
+  internal helper always returned `2` regardless of the `PowerMode` argument.
+  Removed the parameter; call site updated. Comment explains the rationale.
+
 - **`app_window` module split** (session 036). `mod.rs` (679 → 227 lines)
   and `config/mod.rs` (748 → 313 lines) extracted into dedicated submodules
   to stay under the 500-line rule:

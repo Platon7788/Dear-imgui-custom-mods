@@ -101,7 +101,7 @@ impl AppConfig {
     /// [`RenderMode::EventDriven`]. Use `0` to disable the throttle.
     pub fn with_unfocused_fps(mut self, fps: u32) -> Self {
         let fps_mode = match &self.render_mode {
-            RenderMode::Continuous { fps_mode, .. } => fps_mode.clone(),
+            RenderMode::Continuous { fps_mode, .. } => *fps_mode,
             RenderMode::EventDriven { .. } => FpsMode::Auto,
         };
         self.render_mode = RenderMode::Continuous {

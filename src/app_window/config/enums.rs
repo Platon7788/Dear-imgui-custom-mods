@@ -96,7 +96,7 @@ pub enum CloseMode {
 /// Frame rate control. Only consulted in
 /// [`RenderMode::Continuous`](RenderMode) — event-driven mode always
 /// uses adaptive vsync (`AutoVsync`).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum FpsMode {
     /// Adaptive vsync — wgpu picks FifoRelaxed (smooth on slow frames) or Fifo. Default.
     #[default]
@@ -162,7 +162,7 @@ impl RenderMode {
     /// [`FpsMode::Auto`] so vsync gates the frame timing.
     pub fn fps_mode(&self) -> FpsMode {
         match self {
-            Self::Continuous { fps_mode, .. } => fps_mode.clone(),
+            Self::Continuous { fps_mode, .. } => *fps_mode,
             Self::EventDriven { .. } => FpsMode::Auto,
         }
     }
