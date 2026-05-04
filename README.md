@@ -49,6 +49,29 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 ## Project Structure
 
+The repo is a Cargo workspace with two packages: the publishable
+**library** (`crate/`) and a **`publish = false` demo runner**
+(`examples-app/`). Plain `cargo build` / `cargo test` / `cargo
+clippy` only touch the library — examples are opt-in via
+`-p examples-app` or `--workspace`.
+
+```
+.
+├── Cargo.toml                       Workspace root + shared profiles
+├── crate/                           Publishable `dear-imgui-custom-mod` library
+│   ├── Cargo.toml                   [package], features, deps, dev-deps, benches
+│   ├── src/                         Library code (see tree below)
+│   ├── tests/                       Integration tests
+│   ├── benches/                     Criterion microbenchmarks
+│   └── assets/                      Embedded fonts (Hack, JetBrainsMono, MDI)
+└── examples-app/                    Dev-only demo runner (publish = false)
+    ├── Cargo.toml                   [package], path-dep on ../crate
+    ├── src/lib.rs                   Empty stub (Cargo target placeholder)
+    └── examples/                    15 demo_*.rs files
+```
+
+`crate/src/` layout:
+
 ```
 src/
   lib.rs                            Crate root + feature flags
@@ -367,24 +390,26 @@ diff.set_texts("old text...", "new text...");
 ## Running the Demos
 
 ```bash
-cargo run --example demo_app_window --release
-cargo run --example demo_nav_panel --release
-cargo run --example demo_code_editor --release
-cargo run --example demo_tab_control --release
-cargo run --example demo_disasm_view --release
-cargo run --example demo_hex_viewer --release
-cargo run --example demo_file_manager --release
-cargo run --example demo_table --release
-cargo run --example demo_tree --release
-cargo run --example demo_node_graph --release
-cargo run --example demo_force_graph --release
-cargo run --example demo_timeline --release
-cargo run --example demo_diff_viewer --release
-cargo run --example demo_property_inspector --release
-cargo run --example demo_status_toolbar --release
+cargo run -p examples-app --example demo_app_window --release
+cargo run -p examples-app --example demo_nav_panel --release
+cargo run -p examples-app --example demo_code_editor --release
+cargo run -p examples-app --example demo_tab_control --release
+cargo run -p examples-app --example demo_disasm_view --release
+cargo run -p examples-app --example demo_hex_viewer --release
+cargo run -p examples-app --example demo_file_manager --release
+cargo run -p examples-app --example demo_table --release
+cargo run -p examples-app --example demo_tree --release
+cargo run -p examples-app --example demo_node_graph --release
+cargo run -p examples-app --example demo_force_graph --release
+cargo run -p examples-app --example demo_timeline --release
+cargo run -p examples-app --example demo_diff_viewer --release
+cargo run -p examples-app --example demo_property_inspector --release
+cargo run -p examples-app --example demo_status_toolbar --release
 ```
 
-Some demos require `assets/materialdesignicons-webfont.ttf` for icons.
+All demos load their fonts (Hack, JetBrains Mono, MDI icons) from
+`crate/assets/` via `include_bytes!`-baked constants — no external
+asset files at runtime.
 
 ## Design Principles
 

@@ -229,30 +229,11 @@ impl ApplicationHandler for App {
                 }]);
         }
 
-        // Load Material Design Icons font (merge mode)
-        // Place materialdesignicons-webfont.ttf in assets/ to see icons.
-        // Without it the dialog is fully functional, icons just show as boxes.
-        let mdi_paths = [
-            "assets/materialdesignicons-webfont.ttf",
-            "fonts/materialdesignicons-webfont.ttf",
-            "resources/materialdesignicons-webfont.ttf",
-        ];
-        for mdi_path in &mdi_paths {
-            if std::path::Path::new(mdi_path).exists() {
-                let mdi_cfg = dear_imgui_rs::FontConfig::new()
-                    .size_pixels(font_size)
-                    .merge_mode(true);
-                // MDI codepoints live in U+F0000..U+F1FFF (Private Use Area)
-                let glyph_ranges: &[u32] = &[0xF0000, 0xF1FFF, 0];
-                context.fonts().add_font_from_file_ttf(
-                    mdi_path,
-                    font_size,
-                    Some(&mdi_cfg),
-                    Some(glyph_ranges),
-                );
-                break;
-            }
-        }
+        // Load Material Design Icons font (merge mode) directly from
+        // the library — `MDI_FONT_DATA` is `include_bytes!`-baked into
+        // `dear-imgui-custom-mod` itself, so the demo no longer reads
+        // an external `assets/...` file at runtime.
+        dear_imgui_custom_mod::fonts::merge_mdi_icons(&mut context, font_size);
 
         apply_dark_theme(context.style_mut());
 

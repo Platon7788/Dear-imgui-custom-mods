@@ -1,0 +1,105 @@
+[package]
+name = "examples-app"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Dev-only demo runner for dear-imgui-custom-mod (not published)"
+publish = false
+
+# `examples-app` carries no library code of its own — it's a thin
+# package that owns the 15 `examples/demo_*.rs` files and their
+# dev-only assets (MDI icon font in `assets/`). The published library
+# lives in `../crate`.
+
+[dependencies]
+# Path-only — the demo runner pulls in every feature so all 15 demos
+# can compile out of the box. Downstream users never see this; it
+# stays inside the workspace.
+dear-imgui-custom-mod = { path = "../crate", features = ["full", "force_graph"] }
+
+# Each demo owns its own wgpu/winit/event-loop wiring (the library is
+# host-agnostic — it only consumes a `&Ui`). Keep the versions in
+# lock-step with `crate/Cargo.toml` so cargo doesn't pull duplicate
+# graphs.
+dear-imgui-rs = "0.11.0"
+dear-imgui-wgpu = "0.11.0"
+dear-imgui-winit = "0.11.0"
+pollster = "0.4.0"
+wgpu = "29.0.1"
+winit = "0.30.13"
+# `demo_disasm_view` exercises the ron-export "Save Config" button.
+ron = "0.8"
+
+[lib]
+# Empty stub crate — examples need a parent target to live under, but
+# we publish nothing to crates.io and have no shared demo-side
+# helpers worth exposing.
+path = "src/lib.rs"
+
+# ─── Examples ────────────────────────────────────────────────────────────────
+#
+# Each demo runs through `cargo run -p examples-app --example demo_<name>`.
+# `required-features` mirrors the original Cargo.toml gating; with the
+# umbrella `full` feature pulled in by `[dependencies]` above, every demo
+# compiles unconditionally.
+
+[[example]]
+name = "demo_table"
+path = "examples/demo_table.rs"
+
+[[example]]
+name = "demo_node_graph"
+path = "examples/demo_node_graph.rs"
+
+[[example]]
+name = "demo_tree"
+path = "examples/demo_tree.rs"
+
+[[example]]
+name = "demo_code_editor"
+path = "examples/demo_code_editor.rs"
+
+[[example]]
+name = "demo_hex_viewer"
+path = "examples/demo_hex_viewer.rs"
+
+[[example]]
+name = "demo_disasm_view"
+path = "examples/demo_disasm_view.rs"
+
+[[example]]
+name = "demo_file_manager"
+path = "examples/demo_file_manager.rs"
+
+[[example]]
+name = "demo_tab_control"
+path = "examples/demo_tab_control.rs"
+
+[[example]]
+name = "demo_timeline"
+path = "examples/demo_timeline.rs"
+
+[[example]]
+name = "demo_diff_viewer"
+path = "examples/demo_diff_viewer.rs"
+
+[[example]]
+name = "demo_property_inspector"
+path = "examples/demo_property_inspector.rs"
+
+[[example]]
+name = "demo_status_toolbar"
+path = "examples/demo_status_toolbar.rs"
+
+[[example]]
+name = "demo_app_window"
+path = "examples/demo_app_window.rs"
+
+[[example]]
+name = "demo_nav_panel"
+path = "examples/demo_nav_panel.rs"
+
+[[example]]
+name = "demo_force_graph"
+path = "examples/demo_force_graph.rs"

@@ -680,6 +680,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "examples-app"
+version = "0.0.0"
+dependencies = [
+ "dear-imgui-custom-mod",
+ "dear-imgui-rs",
+ "dear-imgui-wgpu",
+ "dear-imgui-winit",
+ "pollster",
+ "ron",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

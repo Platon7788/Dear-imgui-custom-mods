@@ -1,0 +1,139 @@
+[package]
+name = "dear-imgui-custom-mod"
+version = "0.10.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Custom UI components for dear-imgui-rs"
+
+# ─── Features ────────────────────────────────────────────────────────────────
+#
+# All components are on by default (`full`). Downstream consumers who want a
+# slimmer build can `--no-default-features --features=confirm_dialog` (for
+# example) and compile only what they need. `theme`, `utils`, `icons`,
+# `fonts`, `input`, `i18n` are always-on infrastructure — not exposed as
+# features.
+#
+# Inter-component dependencies are encoded transitively so toggling one
+# leaf component does the right thing (e.g. enabling `disasm_view`
+# automatically pulls `hex_viewer`; enabling `app_window` pulls
+# `code_editor`).
+
+[features]
+default = ["full"]
+
+# Meta-feature: every component.
+full = [
+    "app_window",
+    "code_editor",
+    "confirm_dialog",
+    "diff_viewer",
+    "disasm_view",
+    "file_manager",
+    "hex_viewer",
+    "nav_panel",
+    "node_graph",
+    "notifications",
+    "tab_control",
+    "property_inspector",
+    "status_bar",
+    "timeline",
+    "toolbar",
+    "virtual_table",
+    "virtual_tree",
+]
+
+# ── Window chrome ───────────────────────────────────────────────────────────
+# app_window: borderless wgpu+winit+ImGui host — pure ImGui hit detection,
+# flat config, WM_GETMINMAXINFO-only Win32 subclass, no DWM frame extension.
+# (Re-named from `app_window_v2` on 2026-04-29 after the original v1 +
+# `borderless_window` modules were removed.)
+app_window = ["code_editor"]
+
+# ── Dialogs & small widgets ─────────────────────────────────────────────────
+confirm_dialog = []
+nav_panel = []
+# Toast-notification center — severity-tinted popups with stacking, progress,
+# actions, 6 placements, fade/slide animations. Fully custom draw-list icons
+# so it's font-independent.
+notifications = []
+status_bar = []
+toolbar = []
+property_inspector = []
+
+# ── Data viewers ────────────────────────────────────────────────────────────
+diff_viewer = []
+file_manager = []
+hex_viewer = []
+# disasm_view reuses hex_viewer's NavHistory type.
+disasm_view = ["hex_viewer"]
+virtual_table = []
+# virtual_tree shares column + cell types with virtual_table.
+virtual_tree = ["virtual_table"]
+
+# ── Specialized ─────────────────────────────────────────────────────────────
+# Heavy: embeds 3 TTF fonts (Hack + JetBrains Mono + JetBrains Mono NL)
+# and ~10 languages of syntax highlighting. The single biggest size
+# contributor in the crate.
+code_editor = []
+# Full visual node editor — bezier wires, selection, pan/zoom, mini-map.
+node_graph = []
+# Modern tab controller (DevExpress XtraTabControl-inspired). 3 styles
+# (Pill / Underline / Square), pinned tabs, drag-reorder, scroll, overflow
+# dropdown, close confirmation, dirty indicator, badges, status pulses,
+# smooth scroll, single-pass hit-test, hover preview thumbnail. Pure tab
+# strip — no dashboard/tile grid (use plain ImGui inside `render_content`).
+tab_control = []
+timeline = []
+# Force-directed interactive graph viewer — Obsidian-style with Barnes-Hut
+# physics, pan/zoom/drag/select, sidebar, PageRank/betweenness metrics,
+# color groups, BFS depth filter, and SVG/DOT/Mermaid export (Phase D).
+# Re-uses nav_panel palette for the sidebar. Requires slotmap for stable NodeId/EdgeId.
+force_graph = ["nav_panel", "dep:slotmap"]
+
+[dependencies]
+slotmap = { version = "1.0", optional = true }
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+ron = "0.8"
+dear-imgui-rs = "0.11.0"
+dear-imgui-wgpu = "0.11.0"
+dear-imgui-winit = "0.11.0"
+foldhash = "0.2.0"
+pollster = "0.4.0"
+wgpu = "29.0.1"
+winit = "0.30.13"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Storage_FileSystem",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Performance",
+    "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
+] }
+
+[dev-dependencies]
+# Microbenchmarks via Criterion — gate behind the `bench` runner so
+# regular `cargo test` stays fast.
+criterion = { version = "0.7", features = ["html_reports"] }
+# Property-based testing for parser correctness — catches panics on
+# malformed input that example-based tests would miss.
+proptest = "1.8"
+
+[[bench]]
+name = "theme_dispatch"
+harness = false
+
+[[bench]]
+name = "color_packing"
+harness = false
