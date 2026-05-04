@@ -29,6 +29,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`hex_viewer`** | Binary hex dump viewer — offset/hex/ASCII columns, color regions, data inspector, goto address, pattern search, selection, diff highlighting, hover byte tooltips with binary/octal/decimal display, configurable bytes-per-row, endianness control | [docs/hex_viewer.md](docs/hex_viewer.md) |
 | **`timeline`** | Zoomable profiler timeline — nested spans, multi-track with collapse, flame graph view, markers, tooltips, pan/zoom with Shift+scroll, adaptive time ruler, color-by-duration/category/name modes, configurable track height | [docs/timeline.md](docs/timeline.md) |
 | **`diff_viewer`** | Side-by-side and unified diff viewer — Myers diff algorithm (O((N+M)D)), synchronized scrolling, fold unchanged regions, hunk navigation, hover row highlights, hunk accent bars, +/- prefixes in unified mode, context line control | [docs/diff_viewer.md](docs/diff_viewer.md) |
+| **`disasm_view`** | Disassembly viewer — virtual-list rendering of arbitrary instruction streams, branch-arrow overlay (up to 16 levels), syntax-coloring (mnemonic by flow class, operand by kind), breakpoint + bookmark + watchpoint gutter markers, keyboard navigation (Up/Down/PgUp/PgDn/Home/End/Enter), goto-address (G), navigation history (Alt+←/→), multi-selection, colour-coded context menu, block tinting, `DisasmDataProvider` + `VecDisasmProvider`. Config serializable via serde+ron. | [docs/disasm_view.md](docs/disasm_view.md) |
 | **`property_inspector`** | Hierarchical property editor — 15+ value types (bool, i32/i64, f32/f64, String, Color3/4, Vec2/3/4, Enum, Flags, Object, Array), categories with collapse, search/filter, diff highlighting, nested objects with expand/collapse, type badges, hover highlights | [docs/property_inspector.md](docs/property_inspector.md) |
 | **`toolbar`** | Configurable horizontal toolbar — buttons, toggles, separators, dropdowns, spacers, builder API, icon support, hover underline accent, window-hovered guard, flexible spacer layout | [docs/toolbar.md](docs/toolbar.md) |
 | **`status_bar`** | Composable bottom status bar — left/center/right sections, status indicators (Success/Warning/Error/Info), progress bars, clickable items with events, tooltips, icon support, hover highlights, overlay variant (`render_overlay`) | [docs/status_bar.md](docs/status_bar.md) |
@@ -50,158 +51,168 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 ```
 src/
-  lib.rs                            Crate root
-  icons.rs                          MDI icon constants
+  lib.rs                            Crate root + feature flags
+  icons.rs                          MDI icon constants (7400+ codepoints)
   utils/
     color.rs                        RGBA packing helpers
     text.rs                         CalcTextSize wrapper
   app_window/
-    mod.rs                          AppWindow + event loop, on_window_event, scale-factor font rebuild
+    mod.rs                          AppWindow + ApplicationHandler thin delegates
+    startup.rs                      GPU + ImGui init (resumed body)
+    dispatch.rs                     Per-frame event dispatch (window_event, about_to_wait)
     handler.rs                      AppHandler trait
-    state.rs                        AppState (theme switch, keep_alive, proxy)
-    proxy.rs                        AppProxy (Send + Sync) — cross-thread `wake()`
-    win32.rs                        Self-contained Win32 glue (DWM, rounded corners, MinMax subclass, opacity)
+    state.rs                        AppState (set_theme, keep_alive, exit, proxy)
+    proxy.rs                        AppProxy (Send + Sync) — cross-thread wake()
+    win32.rs                        Win32 glue (DWM, rounded corners, MinMax subclass, opacity)
     chrome/                         Pure-ImGui titlebar — buttons, drag, edge resize, glyphs
-    config/                         AppConfig (Splash/Tool/Dialog/Main presets) + TitlebarConfig + RenderMode + FontStack
-    gpu/                            wgpu+winit setup, ImGui IO wiring, surface management
-    platform.rs                     hwnd_of(), set_titlebar_dark_mode() — OS helpers
-  app_window/
-    mod.rs                          AppWindow::run(), AppHandler trait, re-exports borderless types
-    config.rs                       AppConfig builder, StartPosition
-    state.rs                        AppState — set_theme(), exit(), toggle_maximized()
-    gpu.rs                          wgpu + winit event loop, frame render, GPU init
-    style.rs                        apply_imgui_style_for_theme() — full ImGui color palette
+    config/
+      mod.rs                        AppConfig struct + Default + preset constructors
+      builders.rs                   with_* fluent builder methods
+      fonts.rs                      FontChoice, FontLayer, GlyphRanges
+      enums.rs                      WindowKind, BorderStyle, FormStyle, Position, RenderMode, …
+      titlebar.rs                   Buttons, Chrome, ExtraButton, TitlebarConfig
+      icon.rs                       WindowIcon
+    gpu/                            wgpu + winit setup, ImGui IO wiring, surface management
+    platform.rs                     hwnd_of(), set_titlebar_dark_mode()
   confirm_dialog/
-    mod.rs                          render_confirm_dialog() — themed modal dialog, DialogResult (#[must_use])
-    config.rs                       DialogConfig (theme: Theme + colors_override), DialogIcon, ConfirmStyle
-    theme.rs                        DialogColors (shared struct)
+    mod.rs                          render_confirm_dialog() — themed modal, DialogResult (#[must_use])
+    config.rs                       DialogConfig, DialogIcon, ConfirmStyle (+ config.ron)
+    theme.rs                        DialogColors
   notifications/
-    mod.rs                          NotificationCenter — push/dismiss/render, 5-pass render pipeline, events
-    config.rs                       Notification builder, Severity, Placement, Duration, AnimationKind, CenterConfig
-    theme.rs                        NotificationColors (5 palettes: dark/light/midnight/solarized/monokai)
-    icons.rs                        5 severity icons + × close glyph via DrawListMut (font-independent)
+    mod.rs                          NotificationCenter — push/dismiss/render, 5-pass pipeline
+    config.rs                       NotificationCenterConfig (+ config.ron)
+    enums.rs                        Severity, Placement, Duration, AnimationKind
+    notification.rs                 Notification builder, NotificationAction
+    theme.rs                        NotificationColors (5 palettes)
+    icons.rs                        Severity icons + × close glyph (font-independent draw-list)
   nav_panel/
-    mod.rs                          render_nav_panel() + render_nav_panel_overlay(), NavPanelResult (#[must_use])
-    config.rs                       NavPanelConfig (theme: Theme + colors_override), NavButton, SubMenuItem, DockPosition
+    mod.rs                          render_nav_panel() + overlay variant, NavPanelResult (#[must_use])
+    config.rs                       NavPanelConfig (+ config.ron)
+    buttons.rs                      SubMenuItem, NavButton, NavItem
+    enums.rs                        DockPosition, ButtonStyle, ActiveStyle
     state.rs                        NavPanelState — active, visible, animation, submenu
-    theme.rs                        NavColors (shared struct)
+    theme.rs                        NavColors
   theme/
-    mod.rs                          Theme enum, ALL, sub-palette resolvers, legacy color tokens
+    mod.rs                          Theme enum, ALL, sub-palette resolvers, legacy tokens
+    palettes.rs                     Palette structs for each theme
     dark.rs | light.rs | midnight.rs | solarized.rs | monokai.rs
-                                    Per-theme full stacks (titlebar/nav/dialog/statusbar/ImGui style)
   code_editor/
     mod.rs                          CodeEditor widget — render, input, drawing
+    config.rs                       EditorConfig, ContextMenuConfig (+ config.ron)
+    syntax_colors.rs                EditorTheme, SyntaxColors (8 colour palettes)
+    font_setup.rs                   CODE_EDITOR_FONT_PTR, font install helpers
     buffer.rs                       TextBuffer — lines, cursor, selection, editing
-    config.rs                       EditorConfig, SyntaxColors, Language, BuiltinFont
-    token.rs                        Token and TokenKind types
+    token.rs                        Token + TokenKind types
     tokenizer.rs                    Legacy tokenizer (Rust/TOML/RON/Hex)
-    undo.rs                         UndoStack with VecDeque and action grouping
+    undo.rs                         UndoStack
     lang/                           Per-language tokenizer modules (9 languages)
+  disasm_view/
+    mod.rs                          DisasmView widget — virtual list, keyboard nav, bookmarks
+    config.rs                       DisasmViewConfig, ColumnWidths (serde+ron, + config.ron)
+    provider.rs                     DisasmDataProvider trait, InstructionEntry, VecDisasmProvider
+    arrows.rs                       BranchArrow, compute_arrows, compute_arrows_clipped
+    draw.rs                         Rendering pipeline (gutter, mnemonic, operand, arrows)
+    input.rs                        Keyboard + mouse input, navigation history
+    popup.rs                        Colour-coded context menu (nav/follow/bp/watchpoint/bookmark)
+    tokens.rs                       Operand tokenizer for syntax colouring
+  hex_viewer/
+    mod.rs                          HexViewer widget — render, navigation, search, editing
+    config.rs                       HexViewerConfig (serde+ron, + config.ron)
+    provider.rs                     HexDataProvider, VecDataProvider, ColorRegion, ByteCategory
+    nav_history.rs                  NavHistory — back/forward navigation
+    undo.rs                         UndoEntry, UndoStack
+    draw.rs                         Rendering pipeline (offset, hex, ASCII columns)
+    input.rs                        Keyboard + mouse input
+    search.rs                       Hex search engine (wildcard `??` support)
+    popup.rs                        Context menu
   file_manager/
-    mod.rs                          FileManager struct, public API
-    config.rs                       DialogMode, FileFilter, FileManagerConfig
-    render.rs                       ImGui rendering (drive bar, breadcrumb, table, footer)
+    mod.rs                          FileManager — public API, dialog modes
+    config.rs                       FileManagerConfig, FileFilter, DialogMode (+ config.ron)
+    render.rs                       ImGui rendering (breadcrumb, table, footer)
     entry.rs                        FsEntry with pre-computed display strings
     favorites.rs                    Favorites sidebar
     history.rs                      Back/forward navigation stack
   virtual_table/
     mod.rs                          VirtualTable<T> struct, rendering, selection
-    config.rs                       TableConfig, SelectionMode, EditTrigger
-    column.rs                       ColumnDef builder, CellEditor variants, clip tooltip
+    config.rs                       TableConfig, SelectionMode, EditTrigger (+ config.ron)
+    column.rs                       ColumnDef, CellEditor variants, clip tooltip
     row.rs                          VirtualTableRow trait, CellValue, CellStyle
     edit.rs                         Inline editing state machine
     sort.rs                         Sort state (multi-column)
     ring_buffer.rs                  Fixed-capacity O(1) ring buffer
   virtual_tree/
     mod.rs                          VirtualTree<T> widget, render loop, public API
+    config.rs                       TreeConfig (+ config.ron)
     arena.rs                        TreeArena<T> — slab storage, NodeId, parent/children
     node.rs                         VirtualTreeNode trait, NodeIcon
-    config.rs                       TreeConfig (wraps TableConfig)
     flat_view.rs                    FlatView — cached linearization for ListClipper
     sort.rs                         Sibling-scoped sort state
     filter.rs                       FilterState — search with auto-expand
     drag.rs                         DragDropState for node reparenting
   tab_control/
     mod.rs                          TabControl<T>, TabItem trait, public API
-    config.rs                       TabControlConfig, TabStyle, TabStatus, CloseGlyph, …
+    config.rs                       TabControlConfig (serde+ron, + config.ron)
+    types.rs                        TabId, TabStatus, Badge, CloseGlyph, TabStyle, TabAction
+    colors.rs                       TabColors
+    strings.rs                      TabStrings (String fields for RON round-trip)
     layout.rs                       compute_tab_width, layout constants, pinned-prefix repair
-    render.rs                       single-file renderer (strip, styles, events, popups)
+    render.rs                       Strip renderer, styles, events, popups
     tests.rs                        32 unit tests
   node_graph/
     mod.rs                          NodeGraph<T> struct, public API
+    config.rs                       NodeGraphConfig, NgColors (+ config.ron)
     graph.rs                        Graph<T> — slab storage + HashSet<Wire>
     viewer.rs                       NodeGraphViewer<T> trait
-    config.rs                       NodeGraphConfig, NgColors
     state.rs                        InteractionState, Viewport, selection
-    render/                         Rendering sub-modules (7 files, ~2400 lines total)
-      mod.rs                        Main render entry point
-      grid.rs                       Canvas grid
-      nodes.rs                      Node frame, pin, body rendering
-      wires.rs                      Wire routing and flow animation
-      math.rs                       Geometry, obstacle avoidance, hit testing
-      input.rs                      Mouse/keyboard input
-      overlays.rs                   Stats overlay and minimap
     types.rs                        NodeId, PinInfo, PinShape, GraphAction
+    render/                         Rendering sub-modules (7 files)
   force_graph/
     mod.rs                          GraphViewer widget — public API, event loop
-    data.rs                         GraphData, NodeId/EdgeId (SlotMap backend)
+    config.rs                       ViewerConfig, ForceConfig, ColorMode (+ config.ron)
+    data.rs                         GraphData, NodeId/EdgeId (SlotMap)
     style.rs                        NodeStyle, EdgeStyle, NodeKind, GraphColors
-    config.rs                       ViewerConfig, ForceConfig, ColorMode
     event.rs                        GraphEvent — typed event stream
     filter.rs                       FilterState — tag/search/depth/time-travel
-    sim/                            Barnes-Hut O(N log N) physics simulation
+    sim/                            Barnes-Hut O(N log N) physics
     layout/                         Spiral + Louvain community layout
     metrics/                        PageRank, betweenness centrality
     render/                         Draw pipeline, camera, minimap, export
-      mod.rs                        Main render entry — edges, nodes, LOD
-      camera.rs                     Camera — pan/zoom/inertia/animation
-      visibility.rs                 Visibility pass — filter + search-highlight
-      minimap.rs                    160×100 minimap overlay with click-to-pan
-      export.rs                     SVG / DOT (Graphviz) / Mermaid export
-      groups.rs                     Color group resolution
-      interaction.rs                Drag, box-select, keyboard, context menu
-      labels.rs                     Label rendering with zoom-based fade
     sidebar.rs                      Sidebar — filters, color groups, display, export
-  hex_viewer/
-    mod.rs                          HexViewer widget — render, navigation, search
-    config.rs                       HexViewerConfig
   timeline/
     mod.rs                          Timeline widget — tracks, spans, markers, ruler
-    span.rs                         Span data type with validation
-    config.rs                       TimelineConfig, TimelineColors
+    config.rs                       TimelineConfig, TimelineColors (+ config.ron)
+    span.rs                         Span data type
   diff_viewer/
     mod.rs                          DiffViewer widget — side-by-side/unified modes
+    config.rs                       DiffViewerConfig (+ config.ron)
     diff.rs                         Myers diff algorithm, hunk grouping
-    config.rs                       DiffViewerConfig
   property_inspector/
     mod.rs                          PropertyInspector widget — categories, properties
+    config.rs                       InspectorConfig (+ config.ron)
     value.rs                        PropertyValue enum (15+ types)
-    config.rs                       InspectorConfig
   toolbar/
     mod.rs                          Toolbar widget — buttons, toggles, dropdowns
-    config.rs                       ToolbarConfig
+    config.rs                       ToolbarConfig (+ config.ron)
   status_bar/
     mod.rs                          StatusBar widget — items, indicators, progress
-    config.rs                       StatusBarConfig, Alignment
-  demo/mod.rs                       Interactive showcase
+    config.rs                       StatusBarConfig, Alignment (+ config.ron)
 
 examples/
-  demo_code_editor.rs               CodeEditor demo (wgpu + winit)
-  demo_tab_control.rs               TabControl demo (wgpu + winit)
-  demo_file_manager.rs              FileManager demo
-  demo_table.rs                     VirtualTable demo
-  demo_node_graph.rs                NodeGraph demo
-  demo_force_graph.rs               ForceGraph demo — Obsidian-style knowledge graph
-  demo_knowledge_graph.rs           Knowledge graph demo via the `knowledge_graph` alias (`force_graph` re-export) — 50+ nodes, NodeKind shapes, sidebar, color modes, box-select
-  demo_tree.rs                      VirtualTree demo
-  demo_hex_viewer.rs                HexViewer demo — PE header, color regions
-  demo_timeline.rs                  Timeline demo — 4 tracks, 50+ spans, markers
-  demo_diff_viewer.rs               DiffViewer demo — 4 sample datasets, modes
-  demo_property_inspector.rs        PropertyInspector demo — 5 categories, 20+ props
-  demo_status_toolbar.rs            Toolbar + StatusBar combined demo with events
-  demo_borderless.rs                BorderlessWindow standalone demo — all 5 themes, edge resize
-  demo_nav_panel.rs                 NavPanel + StatusBar demo — full config panel, all positions
-  demo_app_window.rs                AppWindow + Notifications demo — counter, theme picker, log panel, close confirm, all 5 toast severities, placement / animation combos, sticky / custom-color / action-button toasts
+  demo_app_window.rs                AppWindow — all 4 window kinds, themes, nav+status, dialogs
+  demo_nav_panel.rs                 NavPanel + StatusBar — full config panel, all dock positions
+  demo_code_editor.rs               CodeEditor — syntax highlighting, themes, MDI fonts
+  demo_tab_control.rs               TabControl — styles, pinned tabs, badges, nested tabs
+  demo_disasm_view.rs               DisasmView — branch arrows, breakpoints, bookmarks, RON export
+  demo_hex_viewer.rs                HexViewer — PE header overlay, wildcard search, undo/redo
+  demo_file_manager.rs              FileManager — open/save/folder dialogs, favorites
+  demo_table.rs                     VirtualTable — 10K rows, inline editing, multi-sort
+  demo_tree.rs                      VirtualTree — nested nodes, drag-drop, filter/search
+  demo_node_graph.rs                NodeGraph — bezier wires, minimap, snap-to-grid
+  demo_force_graph.rs               ForceGraph — Obsidian-style knowledge graph, physics
+  demo_timeline.rs                  Timeline — 4 tracks, 50+ spans, markers
+  demo_diff_viewer.rs               DiffViewer — 4 sample datasets, side-by-side + unified
+  demo_property_inspector.rs        PropertyInspector — 5 categories, 20+ typed properties
+  demo_status_toolbar.rs            Toolbar + StatusBar — combined demo with events
 ```
 
 ## Quick Start
@@ -223,7 +234,7 @@ impl AppHandler for MyApp {
 }
 
 fn main() {
-    AppWindow::new(AppConfig::new("My App", 1024.0, 768.0))
+    AppWindow::new(AppConfig::main("My App", 1024.0, 768.0))
         .run(MyApp)
         .expect("event loop error");
 }
@@ -357,22 +368,20 @@ diff.set_texts("old text...", "new text...");
 
 ```bash
 cargo run --example demo_app_window --release
-cargo run --example demo_borderless --release
 cargo run --example demo_nav_panel --release
 cargo run --example demo_code_editor --release
+cargo run --example demo_tab_control --release
+cargo run --example demo_disasm_view --release
+cargo run --example demo_hex_viewer --release
+cargo run --example demo_file_manager --release
 cargo run --example demo_table --release
 cargo run --example demo_tree --release
-cargo run --example demo_tab_control --features "tab_control,app_window" --release
-cargo run --example demo_file_manager --release
 cargo run --example demo_node_graph --release
 cargo run --example demo_force_graph --release
-cargo run --example demo_knowledge_graph --features force_graph,app_window --release
-cargo run --example demo_hex_viewer --release
 cargo run --example demo_timeline --release
 cargo run --example demo_diff_viewer --release
 cargo run --example demo_property_inspector --release
 cargo run --example demo_status_toolbar --release
-cargo run --example demo_disasm_view --release
 ```
 
 Some demos require `assets/materialdesignicons-webfont.ttf` for icons.
@@ -386,3 +395,4 @@ Some demos require `assets/materialdesignicons-webfont.ttf` for icons.
 - **Generic trait-based API** — `PageItem`, `VirtualTableRow`, `VirtualTreeNode`, `NodeGraphViewer` for user-defined types
 - **Slab/HashMap data structures** — O(1) insert, remove, and lookup where it matters
 - **Fully configurable** — colors, strings, sizes, capacity limits, behavior toggles via config structs
+- **Serializable configs** — every config struct derives `serde::Serialize + serde::Deserialize`; defaults embedded via `include_str!("config.ron")`; round-trip with `ron::to_string(&cfg)` / `ron::from_str(&s)`
