@@ -1,7 +1,7 @@
 //! Per-frame event dispatch and idle scheduling.
 
 use std::time::{Duration, Instant};
-use winit::event::{Event, WindowEvent};
+use winit::event::WindowEvent;
 use winit::event_loop::ControlFlow;
 
 use super::{gpu, AppHandler};
@@ -11,7 +11,7 @@ use super::win32;
 pub(super) fn handle_window_event<H: AppHandler + 'static>(
     app: &mut super::WinitApp<H>,
     event_loop: &winit::event_loop::ActiveEventLoop,
-    window_id: winit::window::WindowId,
+    _window_id: winit::window::WindowId,
     event: WindowEvent,
 ) {
     let (Some(g), Some(handler)) = (app.gpu.as_mut(), app.handler.as_mut()) else {
@@ -90,13 +90,10 @@ pub(super) fn handle_window_event<H: AppHandler + 'static>(
     }
 
     if !consumed && !kbd_handled {
-        g.platform.handle_event::<()>(
+        g.platform.handle_window_event(
             &mut g.context,
             &g.window,
-            &Event::WindowEvent {
-                window_id,
-                event: event.clone(),
-            },
+            &event,
         );
         // Reinforce physical-key state so the eventual release
         // matches the press we recorded — see

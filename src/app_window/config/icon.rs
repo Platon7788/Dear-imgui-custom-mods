@@ -19,9 +19,14 @@ pub struct WindowIcon {
 
 impl WindowIcon {
     /// Build from a tightly-packed RGBA byte slice (`width * height * 4` bytes).
-    /// Returns `Err` if the buffer length doesn't match the dimensions.
+    /// Returns `Err` if the buffer length doesn't match the dimensions, or if
+    /// the computed size overflows `usize` (icon too large).
     pub fn from_rgba(rgba: Vec<u8>, width: u32, height: u32) -> Result<Self, &'static str> {
-        if (width as usize) * (height as usize) * 4 != rgba.len() {
+        let expected = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|n| n.checked_mul(4))
+            .ok_or("icon dimensions overflow usize")?;
+        if expected != rgba.len() {
             return Err("rgba length must equal width * height * 4");
         }
         Ok(Self {
