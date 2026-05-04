@@ -37,5 +37,7 @@
     show_explanation: true,
     show_idiom: true,
     show_gotcha: true,
+    show_operand_hint: true,
+    abi: Win64,
     locale: En,
 )

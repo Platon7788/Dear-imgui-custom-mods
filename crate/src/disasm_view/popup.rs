@@ -353,6 +353,7 @@ impl DisasmView {
                     ui.checkbox(s.settings_show_explanation, &mut self.config.show_explanation);
                     ui.checkbox(s.settings_show_idiom, &mut self.config.show_idiom);
                     ui.checkbox(s.settings_show_gotcha, &mut self.config.show_gotcha);
+                    ui.checkbox(s.settings_show_operand_hint, &mut self.config.show_operand_hint);
 
                     ui.separator();
 

@@ -29,6 +29,38 @@ pub(super) const COL_INNER_PAD: f32 = 6.0;
 /// the rightmost glyph so the divider never hugs the text.
 pub(super) const COMMENT_GAP: f32 = 10.0;
 
+/// Split a disassembler-style operand list `"reg, [base+idx*8], imm"`
+/// into trimmed top-level slices. Commas inside `[...]` are part of
+/// the inner expression and **must not** trigger a split — the
+/// scanner tracks bracket depth.
+fn split_operand_list(operands: &str) -> impl Iterator<Item = &str> {
+    let mut depth: i32 = 0;
+    let mut start = 0usize;
+    let bytes = operands.as_bytes();
+    let mut idx = 0usize;
+    let mut out: Vec<&str> = Vec::new();
+    while idx < bytes.len() {
+        match bytes[idx] {
+            b'[' => depth += 1,
+            b']' => depth -= 1,
+            b',' if depth == 0 => {
+                let slice = operands[start..idx].trim();
+                if !slice.is_empty() {
+                    out.push(slice);
+                }
+                start = idx + 1;
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+    let tail = operands[start..].trim();
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    out.into_iter()
+}
+
 /// Background tint of the inline edit cell (Bytes / Comment) — warm
 /// brown so the user sees instantly which cell is being edited.
 /// Theme-independent on purpose: this is a transient, modal-ish UI
@@ -723,6 +755,62 @@ impl DisasmView {
                         ui.separator();
                     }
                     ui.text(format!("{}{}", strings.tooltip_gotcha_label, gotcha));
+                }
+
+                // Operand-pattern decoder — turns `[rcx+rax*8+8]` into
+                // "Array indexing: rcx is base, rax is index ×8 …".
+                // Walks every operand in the `instr.operands()` text,
+                // emits one line per memory operand we can decode.
+                // Bare register operands fire only when the register
+                // has an ABI-special role (argument N, return value,
+                // segment base, etc.) — the rest are skipped to keep
+                // the tooltip from spamming "RBX = general-purpose"
+                // for every plain reg/reg move.
+                if cfg.show_operand_hint {
+                    let mut emitted_any = false;
+                    for raw in split_operand_list(instr.operands()) {
+                        match super::operand::parse(raw) {
+                            super::operand::OperandKind::Memory(mem) => {
+                                let line = super::operand::explain_memory(
+                                    &mem, cfg.abi, cfg.locale,
+                                );
+                                if !line.is_empty() {
+                                    if !(emitted_any
+                                        || cfg.show_explanation
+                                        || cfg.show_idiom
+                                        || cfg.show_gotcha)
+                                    {
+                                        ui.separator();
+                                    }
+                                    emitted_any = true;
+                                    ui.text(format!(
+                                        "{}{}",
+                                        strings.tooltip_operand_label, line,
+                                    ));
+                                }
+                            }
+                            super::operand::OperandKind::Register(reg) => {
+                                let role = super::abi::role(reg, cfg.abi);
+                                if let Some(desc) = super::abi::role_description(
+                                    role, reg, cfg.locale,
+                                ) {
+                                    if !(emitted_any
+                                        || cfg.show_explanation
+                                        || cfg.show_idiom
+                                        || cfg.show_gotcha)
+                                    {
+                                        ui.separator();
+                                    }
+                                    emitted_any = true;
+                                    ui.text(format!(
+                                        "{}{}",
+                                        strings.tooltip_operand_label, desc,
+                                    ));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                 }
             });
         }

@@ -74,6 +74,10 @@ fn default_show_gotcha() -> bool {
     true
 }
 
+fn default_show_operand_hint() -> bool {
+    true
+}
+
 fn default_disasm_colors() -> DisasmColors {
     DisasmColors::default()
 }
@@ -170,6 +174,24 @@ pub struct DisasmViewConfig {
     /// without forcing the user to memorise them.
     #[serde(default = "default_show_gotcha")]
     pub show_gotcha: bool,
+
+    /// Show the operand-pattern decoder line in the tooltip — turns
+    /// `[rcx+rax*8+8]` into "Array indexing: rcx is base, rax is
+    /// element index ×8 (qword elements), then add 0x8". Pulls
+    /// register-role hints from [`crate::disasm_view::abi`] so
+    /// `[rcx]` says "dereferences the 1st argument under Win64".
+    /// Default `true`.
+    #[serde(default = "default_show_operand_hint")]
+    pub show_operand_hint: bool,
+
+    /// Target calling convention. Drives the
+    /// [`crate::disasm_view::abi::role`] table that powers register-
+    /// role hints in the tooltip and the idiom detector. Default
+    /// [`Abi::Win64`] — the most common modern Windows reverse-
+    /// engineering target. Switch to [`Abi::SysVAmd64`] for Linux
+    /// / macOS x64 binaries; pick a 32-bit variant for x86 code.
+    #[serde(default)]
+    pub abi: crate::disasm_view::abi::Abi,
 
     /// User-visible language for labels, popups, tooltips, and menu
     /// items rendered by the disassembler view. Default
