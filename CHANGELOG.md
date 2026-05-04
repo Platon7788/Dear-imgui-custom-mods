@@ -4,6 +4,37 @@
 
 ### Added
 
+- **`disasm_view::follow_at_cursor_diagnostic` + `FollowOutcome` enum**
+  (session 043, follow-up audit). Diagnostic variant of the existing
+  `follow_at_cursor()` boolean — surfaces the *reason* the
+  double-click / Enter gesture succeeded or quietly failed:
+  `Followed { from, to }`, `NoCursor`, `TargetOutsideProvider(addr)`,
+  `NoTargetAndNoNumber`. Hosts that want a status-line hint
+  ("Cannot follow: target 0x4011A0 not in provider") use this
+  instead of the bool wrapper. Mod docs gain a "Follow-at-cursor
+  gesture" section listing the resolution order, the bracket-aware
+  fallback, and the common host-side mistakes that make follow
+  appear broken (forgot `.with_target()`, target outside provider,
+  register-indirect operand).
+
+### Fixed
+
+- **`disasm_view::follow_at_cursor` no longer chases displacement
+  numbers inside `[...]` for `Call` / `Jump` rows** (session 043,
+  follow-up audit). Pre-fix, `call qword ptr [rip+0x1234]` would
+  send the operand-string fallback chasing `0x1234` (the
+  displacement, not the call target) — typically a ghost
+  `decode_range` call followed by a quiet no-op, leaving the user
+  to wonder why double-click "doesn't work". Post-fix the
+  scanner tracks bracket depth and skips in-bracket numbers for
+  branching flow kinds; non-branching rows (`mov rax, [0x401000]`)
+  keep the old behaviour so memory-pointer follow still works.
+  Pinned by 8 new follow tests (15 total) covering call-indirect,
+  jmp-indirect, register-indirect, symbolic-label, target-missing,
+  and no-cursor cases.
+
+### Added
+
 - **`disasm_view` educational tooltip uplift — 4-pass programme**
   (session 043, four commits Заход 1-4). Turns the hover tooltip into
   a beginner-friendly RE tutor that labels every instruction with up

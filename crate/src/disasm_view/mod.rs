@@ -34,6 +34,43 @@
 //! // In render loop: view.render(ui, &mut provider);
 //! ```
 //!
+//! ## Follow-at-cursor gesture (double-click on `call` / `jmp` / `Jcc`)
+//!
+//! Double-clicking the Instruction column (or pressing `Enter` /
+//! `Space` while the row is selected) invokes
+//! [`DisasmView::follow_at_cursor`]. The resolution order is:
+//!
+//! 1. The provider's [`provider::Instruction::branch_target`] —
+//!    the **canonical** path. Hosts should set this on every
+//!    branching row via [`provider::InstructionEntry::with_target`].
+//! 2. Operand-string fallback — scans for the first
+//!    [`tokens::TokenKind::Number`] that resolves to a known
+//!    instruction. For `Call` / `Jump` rows the scanner skips
+//!    numbers inside `[...]` (those are displacements, not
+//!    targets) so `call qword ptr [rip+0x1234]` doesn't chase
+//!    `0x1234` into nowhere.
+//!
+//! For streaming providers, `goto_address` calls
+//! [`provider::DisasmDataProvider::decode_range`] once before
+//! giving up, so a target landing in not-yet-decoded territory
+//! still has a chance to resolve.
+//!
+//! Hosts that want a status-line hint when follow fails ("Cannot
+//! follow: target 0x4011A0 not in provider") call
+//! [`DisasmView::follow_at_cursor_diagnostic`] instead — it
+//! returns a [`FollowOutcome`] with the precise reason the
+//! gesture did or didn't navigate.
+//!
+//! **Common reasons follow appears "broken":**
+//! - Provider didn't call `.with_target(addr)` on the call entry
+//!   — `Instruction::branch_target` returns `None` and the row
+//!   has no parseable numeric immediate (e.g. `call rax`,
+//!   `call kernel32!CreateFileW`).
+//! - Target address isn't in the provider and `decode_range` is a
+//!   no-op (the case for the built-in `VecDisasmProvider`).
+//! - Operand is a register (`call rax`, `jmp rcx`) — there's no
+//!   compile-time target to chase; this needs runtime tracing.
+//!
 //! ## Educational tooltip pipeline
 //!
 //! Hovering an instruction draws a multi-section tooltip; each
@@ -919,24 +956,61 @@ impl DisasmView {
     ///    target window before re-checking. Static providers
     ///    (`VecDisasmProvider`) implement `decode_range` as a
     ///    no-op so the lazy retry is free for pre-loaded data.
-    /// 2. Otherwise scan the operand string for a [`TokenKind::Number`]
-    ///    that parses as an address — same lazy-decode + retry
-    ///    treatment. Useful for memory operands like
-    ///    `[0x401000]` whose target the provider didn't tag as
-    ///    a branch.
+    /// 2. Otherwise scan the operand string for a
+    ///    [`tokens::TokenKind::Number`] that parses as an address —
+    ///    same lazy-decode + retry treatment.
+    ///
+    ///    For `call` / `jmp` / `Jcc` rows the scanner deliberately
+    ///    **ignores numbers inside `[...]`** — `call qword ptr
+    ///    [rip+0x1234]` hides a displacement, not a call target;
+    ///    chasing it lands the cursor on the wrong row (or, more
+    ///    commonly, on nothing at all and the user concludes "double-
+    ///    click is broken"). For non-branching rows (`mov rax,
+    ///    [0x401000]`) the scanner still considers in-bracket numbers
+    ///    so memory-pointer follow keeps working.
     ///
     /// Returns `true` when navigation actually happened. Pushes
     /// nav history + sets the origin breadcrumb in both paths.
     /// Returns `false` for unfollowable rows (no branch, no
     /// resolvable operand) so callers like the double-click
     /// handler can fall through to the edit-cell path.
+    ///
+    /// **Tip for host integrators**: for predictable follow on
+    /// `call` / `jmp` / `Jcc` rows, set the branch target on the
+    /// entry via `InstructionEntry::with_target`, or implement
+    /// `Instruction::branch_target` for custom providers. Operand-
+    /// scan is a best-effort fallback — it does not understand
+    /// label syntax (`call kernel32!CreateFileW`),
+    /// register-indirect (`call rax`), or symbolic relocations.
     pub fn follow_at_cursor(&mut self, provider: &mut dyn DisasmDataProvider) -> bool {
-        let Some(cur) = self.cursor_idx else { return false };
-        // Read just the cheap-to-clone bits up front; the operand
-        // string is only needed in the (rarer) fallback path so
-        // we lazy-clone it there to avoid a heap alloc on every
-        // jcc / call double-click.
-        let branch = provider.instruction(cur).and_then(|i| i.branch_target());
+        matches!(
+            self.follow_at_cursor_diagnostic(provider),
+            FollowOutcome::Followed { .. },
+        )
+    }
+
+    /// Diagnostic variant of [`Self::follow_at_cursor`] — returns a
+    /// [`FollowOutcome`] explaining *why* navigation succeeded /
+    /// failed. Hosts that want a status-line message (`"Cannot follow:
+    /// target 0x4011A0 not in provider"`) call this; the boolean
+    /// `follow_at_cursor` thin-wraps it for the legacy callers
+    /// (double-click handler, Enter / Space key).
+    pub fn follow_at_cursor_diagnostic(
+        &mut self,
+        provider: &mut dyn DisasmDataProvider,
+    ) -> FollowOutcome {
+        let Some(cur) = self.cursor_idx else {
+            return FollowOutcome::NoCursor;
+        };
+        let (branch, flow, from_addr, operands_owned) = match provider.instruction(cur) {
+            Some(instr) => (
+                instr.branch_target(),
+                instr.flow_kind(),
+                instr.address(),
+                instr.operands().to_string(),
+            ),
+            None => return FollowOutcome::NoCursor,
+        };
 
         // Helper: try to navigate to `addr`, decoding lazily if the
         // target isn't yet in the provider. Returns `true` on
@@ -961,24 +1035,47 @@ impl DisasmView {
         };
 
         if let Some(target) = branch {
-            return try_goto(self, target, provider);
+            return if try_goto(self, target, provider) {
+                FollowOutcome::Followed { from: from_addr, to: target }
+            } else {
+                FollowOutcome::TargetOutsideProvider(target)
+            };
         }
 
-        // Operand-pointer scan — only when there's no branch_target,
-        // so the string clone is paid only by the fallback path.
-        let operands_owned = match provider.instruction(cur) {
-            Some(instr) => instr.operands().to_string(),
-            None => return false,
-        };
+        // Operand-pointer scan — only when there's no branch_target.
+        //
+        // For Call/Jump rows, displacement numbers inside `[...]`
+        // are NOT call targets (they're memory disp); chasing them
+        // is the most common cause of "follow appears broken" on
+        // hosts that forgot `.with_target(...)`. Track bracket depth
+        // and skip in-bracket numbers for branching flow kinds; for
+        // non-branching rows (`mov rax, [0x401000]`) keep the old
+        // behaviour so memory-pointer follow still works.
+        let prefer_outside_brackets = matches!(flow, FlowKind::Call | FlowKind::Jump);
+        let mut bracket_depth: i32 = 0;
         for tok in tokens::OperandTokenizer::new(&operands_owned) {
+            if tok.kind == tokens::TokenKind::Memory {
+                match tok.text {
+                    "[" => {
+                        bracket_depth = bracket_depth.saturating_add(1);
+                        continue;
+                    }
+                    "]" => {
+                        bracket_depth = (bracket_depth - 1).max(0);
+                        continue;
+                    }
+                    _ => continue, // size keywords like "qword"/"ptr"
+                }
+            }
             if tok.kind == tokens::TokenKind::Number
+                && !(prefer_outside_brackets && bracket_depth > 0)
                 && let Some(addr) = parse_operand_number(tok.text)
                 && try_goto(self, addr, provider)
             {
-                return true;
+                return FollowOutcome::Followed { from: from_addr, to: addr };
             }
         }
-        false
+        FollowOutcome::NoTargetAndNoNumber
     }
 
     // ── Selection helpers ────────────────────────────────────────────
@@ -1392,6 +1489,52 @@ pub fn find_function_start(provider: &dyn DisasmDataProvider, idx: usize) -> usi
 // ── Free helpers ─────────────────────────────────────────────────────────────
 
 /// Parse a single operand token classified as
+/// Outcome of a [`DisasmView::follow_at_cursor_diagnostic`] call —
+/// every reason the gesture could succeed or quietly fail. Hosts use
+/// this to surface a status-line / toast hint ("Cannot follow:
+/// target 0x4011A0 not yet decoded") instead of leaving the user
+/// guessing why the double-click "did nothing".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FollowOutcome {
+    /// Navigation happened — `from` was the row's address, `to` is
+    /// the address the cursor landed on.
+    Followed {
+        /// Source row address.
+        from: u64,
+        /// Destination row address.
+        to: u64,
+    },
+    /// No row is selected (`cursor_idx == None`).
+    NoCursor,
+    /// The provider supplied a `branch_target`, but
+    /// [`provider::DisasmDataProvider::index_of_address`] still
+    /// returns `None` after a lazy `decode_range` retry. Typical
+    /// causes: target is outside the loaded view of a streaming
+    /// provider, or the host built a `VecDisasmProvider` whose
+    /// `decode_range` is a no-op and forgot to populate the target
+    /// row.
+    TargetOutsideProvider(u64),
+    /// The row has no `branch_target` AND no
+    /// [`tokens::TokenKind::Number`] in the operand string that
+    /// resolves to an existing instruction. Typical for
+    /// `call rax`, `call kernel32!CreateFileW`, or any
+    /// register-indirect / symbolic-label form. The host should
+    /// either set `branch_target` directly via
+    /// [`provider::InstructionEntry::with_target`], or accept that
+    /// these forms can only be followed at runtime (after the
+    /// indirect resolves).
+    NoTargetAndNoNumber,
+}
+
+impl FollowOutcome {
+    /// Convenience: did navigation actually happen?
+    #[inline]
+    #[must_use]
+    pub fn is_followed(&self) -> bool {
+        matches!(self, FollowOutcome::Followed { .. })
+    }
+}
+
 /// [`tokens::TokenKind::Number`] into an absolute `u64` address.
 /// Accepts:
 ///   - `0x...` / `0X...` hex prefix
@@ -2423,6 +2566,181 @@ mod tests {
         let mut view = DisasmView::new("test_no_follow");
         view.cursor_idx = Some(0);
         assert!(!view.follow_at_cursor(&mut p));
+    }
+
+    #[test]
+    fn follow_at_cursor_call_indirect_memory_skips_displacement() {
+        // `call qword ptr [rip+0x1234]` — `0x1234` is a displacement,
+        // NOT the call target. Pre-fix, the operand-scan fallback
+        // would chase 0x1234 (and either land on a wrong row or
+        // quietly fail with `decode_range` no-op). Post-fix: for
+        // Call/Jump rows, in-bracket numbers are skipped → no
+        // false navigation, the diagnostic returns NoTargetAndNoNumber.
+        let mut p = VecDisasmProvider::new();
+        p.push(
+            InstructionEntry::new(
+                0x401000,
+                vec![0xFF, 0x15, 0x34, 0x12, 0x00, 0x00],
+                "call",
+                "qword ptr [rip+0x1234]",
+            )
+            .with_flow(FlowKind::Call),
+        );
+        // Add a row at 0x1234 so any accidental chase would land here —
+        // its presence proves the skip is intentional, not a side-effect
+        // of "target missing".
+        p.push(InstructionEntry::new(0x1234, vec![0x90], "nop", ""));
+
+        let mut view = DisasmView::new("test_call_indirect");
+        view.cursor_idx = Some(0);
+        assert!(!view.follow_at_cursor(&mut p));
+        // Cursor is unchanged from where the test placed it (0).
+        assert_eq!(view.selected_index(), Some(0));
+        // Diagnostic surfaces the precise reason.
+        view.cursor_idx = Some(0);
+        assert_eq!(
+            view.follow_at_cursor_diagnostic(&mut p),
+            FollowOutcome::NoTargetAndNoNumber,
+        );
+    }
+
+    #[test]
+    fn follow_at_cursor_jmp_indirect_memory_skips_displacement() {
+        // Same as the call-indirect case but for `jmp [rip+0x500]`
+        // (IAT thunk shape).
+        let mut p = VecDisasmProvider::new();
+        p.push(
+            InstructionEntry::new(
+                0x401000,
+                vec![0xFF, 0x25, 0x00, 0x05, 0x00, 0x00],
+                "jmp",
+                "qword ptr [rip+0x500]",
+            )
+            .with_flow(FlowKind::Jump),
+        );
+        p.push(InstructionEntry::new(0x500, vec![0x90], "nop", ""));
+
+        let mut view = DisasmView::new("test_jmp_indirect");
+        view.cursor_idx = Some(0);
+        assert!(!view.follow_at_cursor(&mut p));
+    }
+
+    #[test]
+    fn follow_at_cursor_mov_with_memory_pointer_still_follows_in_bracket_number() {
+        // Regression guard for the in-bracket-skip change: it must
+        // ONLY apply to Call/Jump rows. For non-branching rows the
+        // memory-pointer follow keeps working as before.
+        let mut p = VecDisasmProvider::new();
+        p.push(InstructionEntry::new(
+            0x100,
+            vec![0x48, 0x8B, 0x05],
+            "mov",
+            "rax, [0x500]",
+        )); // FlowKind::Normal by default
+        p.push(InstructionEntry::new(0x500, vec![0x90], "nop", ""));
+
+        let mut view = DisasmView::new("test_mov_ptr");
+        view.cursor_idx = Some(0);
+        assert!(view.follow_at_cursor(&mut p));
+        assert_eq!(view.selected_index(), Some(1));
+    }
+
+    #[test]
+    fn follow_at_cursor_call_register_indirect_returns_no_target_and_no_number() {
+        // `call rax` — no number, no branch_target, no operand to
+        // chase. Diagnostic must say so explicitly.
+        let mut p = VecDisasmProvider::new();
+        p.push(
+            InstructionEntry::new(0x401000, vec![0xFF, 0xD0], "call", "rax")
+                .with_flow(FlowKind::Call),
+        );
+
+        let mut view = DisasmView::new("test_call_reg");
+        view.cursor_idx = Some(0);
+        assert_eq!(
+            view.follow_at_cursor_diagnostic(&mut p),
+            FollowOutcome::NoTargetAndNoNumber,
+        );
+    }
+
+    #[test]
+    fn follow_at_cursor_call_with_target_outside_provider_signals_diagnostic() {
+        // Provider explicitly reports a `branch_target` that
+        // isn't decoded; static `VecDisasmProvider::decode_range` is
+        // a no-op so the lazy retry can't help. Diagnostic must
+        // return `TargetOutsideProvider(target)` instead of an
+        // opaque `false` — host can show a status hint.
+        let mut p = VecDisasmProvider::new();
+        p.push(
+            InstructionEntry::new(0x401000, vec![0xE8, 0x00, 0x00, 0x00, 0x00], "call", "0x4011A0")
+                .with_flow(FlowKind::Call)
+                .with_target(0x4011A0),
+        );
+        // Note: NO row at 0x4011A0 in the provider.
+
+        let mut view = DisasmView::new("test_call_missing_target");
+        view.cursor_idx = Some(0);
+        assert_eq!(
+            view.follow_at_cursor_diagnostic(&mut p),
+            FollowOutcome::TargetOutsideProvider(0x4011A0),
+        );
+        assert!(!view.follow_at_cursor(&mut p));
+    }
+
+    #[test]
+    fn follow_at_cursor_call_symbolic_label_returns_no_target_and_no_number() {
+        // `call kernel32!CreateFileW` — symbolic operand, no
+        // numeric immediate, no branch_target. Should fail
+        // gracefully with a clear diagnostic.
+        let mut p = VecDisasmProvider::new();
+        p.push(
+            InstructionEntry::new(
+                0x401000,
+                vec![0xE8, 0x00, 0x00, 0x00, 0x00],
+                "call",
+                "kernel32!CreateFileW",
+            )
+            .with_flow(FlowKind::Call),
+        );
+
+        let mut view = DisasmView::new("test_call_symbolic");
+        view.cursor_idx = Some(0);
+        assert_eq!(
+            view.follow_at_cursor_diagnostic(&mut p),
+            FollowOutcome::NoTargetAndNoNumber,
+        );
+    }
+
+    #[test]
+    fn follow_at_cursor_diagnostic_no_cursor() {
+        let mut p = VecDisasmProvider::new();
+        p.push(InstructionEntry::new(0x100, vec![0x90], "nop", ""));
+        let mut view = DisasmView::new("test_no_cursor");
+        // cursor_idx is None by default.
+        assert_eq!(
+            view.follow_at_cursor_diagnostic(&mut p),
+            FollowOutcome::NoCursor,
+        );
+    }
+
+    #[test]
+    fn follow_at_cursor_diagnostic_followed_carries_from_to() {
+        // Confirms the success outcome includes both addresses for
+        // host-side status logging.
+        let mut p = VecDisasmProvider::new();
+        p.push(
+            InstructionEntry::new(0x500, vec![0xEB, 0x00], "jmp", "0x510")
+                .with_flow(FlowKind::Jump)
+                .with_target(0x510),
+        );
+        p.push(InstructionEntry::new(0x510, vec![0x90], "nop", ""));
+
+        let mut view = DisasmView::new("test_followed_outcome");
+        view.cursor_idx = Some(0);
+        assert_eq!(
+            view.follow_at_cursor_diagnostic(&mut p),
+            FollowOutcome::Followed { from: 0x500, to: 0x510 },
+        );
     }
 
     // ── parse_operand_number ─────────────────────────────────────────────
