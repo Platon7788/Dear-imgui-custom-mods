@@ -671,6 +671,14 @@ impl DisasmView {
                         "Offset: {sign}{off_hex} ({mag} {})",
                         strings.tooltip_unit_bytes,
                     ));
+                    // Discoverability: spell out the gesture so users
+                    // who haven't read the docs know `call` / `jmp` /
+                    // `Jcc` rows are followable. Only painted when
+                    // `branch_target` is set — the gesture is a no-op
+                    // otherwise (operand-scan fallback succeeds for a
+                    // narrow set of forms only). Mirrors the
+                    // address-gutter "Double-click to copy" hint.
+                    ui.text(strings.tooltip_double_click_follow);
                 }
 
                 ui.text(format!(

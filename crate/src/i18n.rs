@@ -336,6 +336,7 @@ pub mod disasm_view {
         pub tooltip_current_ip: &'static str,       // ">> CURRENT INSTRUCTION POINTER <<"
         pub tooltip_comment_label: &'static str,
         pub tooltip_double_click_copy: &'static str,
+        pub tooltip_double_click_follow: &'static str, // "Double-click / middle-click to follow"
         pub tooltip_unit_bytes: &'static str, // "bytes" suffix in "Size: 4 bytes"
         pub tooltip_explanation_label: &'static str, // "What it does: " / "Что делает: "
         pub tooltip_idiom_label: &'static str,        // "Pattern: " / "Шаблон: "
@@ -424,6 +425,7 @@ pub mod disasm_view {
         tooltip_current_ip: ">> CURRENT INSTRUCTION POINTER <<",
         tooltip_comment_label: "Comment: ",
         tooltip_double_click_copy: "Double-click to copy",
+        tooltip_double_click_follow: "Double-click / middle-click to follow",
         tooltip_unit_bytes: "bytes",
         tooltip_explanation_label: "What it does: ",
         tooltip_idiom_label: "Pattern: ",
@@ -510,6 +512,7 @@ pub mod disasm_view {
         tooltip_current_ip: ">> ТЕКУЩИЙ УКАЗАТЕЛЬ ИНСТРУКЦИЙ <<",
         tooltip_comment_label: "Комментарий: ",
         tooltip_double_click_copy: "Двойной клик копирует",
+        tooltip_double_click_follow: "Двойной клик / средняя кнопка — переход",
         tooltip_unit_bytes: "байт",
         tooltip_explanation_label: "Что делает: ",
         tooltip_idiom_label: "Шаблон: ",

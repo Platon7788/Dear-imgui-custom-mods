@@ -19,6 +19,32 @@
 
 ### Fixed
 
+- **`disasm_view` follow-at-cursor hit-zone widened + middle-click
+  added** (session 043, follow-up audit #2). User reported that
+  even `jmp` rows didn't navigate on double-click. Root cause:
+  the previous handler restricted follow to the
+  Mnemonic+Operands column only (`mouse_in_instruction_column`),
+  but wide operands like `jmp qword ptr [rip+0x12345678]`
+  overflow into the Comment-column area at typical zoom levels,
+  so the click landed in the edit-cell handler (silent no-op
+  when `editable=false`). Three changes:
+  - **Hit-zone widened** — double-click anywhere on a row (not
+    just Instruction column, address-gutter still has its own
+    copy-to-clipboard gesture above) now attempts follow first.
+    Edit-cell handler runs only when follow declines (no branch
+    target, no resolvable operand). Removes the dead
+    `mouse_in_instruction_column` helper.
+  - **Middle-click follow added** — IDA / Cheat-Engine convention.
+    Single deliberate middle-click bypasses ImGui's double-click
+    time / position thresholds entirely; more discoverable for
+    users unsure whether the gesture is wired.
+  - **Tooltip discoverability hint** — when a row exposes
+    `branch_target`, the hover tooltip now emits a
+    `tooltip_double_click_follow` line ("Double-click /
+    middle-click to follow" / "Двойной клик / средняя кнопка —
+    переход") right after the existing Target / Offset lines.
+    Mirrors the long-standing "Double-click to copy" hint on
+    the address gutter.
 - **`disasm_view::follow_at_cursor` no longer chases displacement
   numbers inside `[...]` for `Call` / `Jump` rows** (session 043,
   follow-up audit). Pre-fix, `call qword ptr [rip+0x1234]` would

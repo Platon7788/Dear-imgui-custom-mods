@@ -369,19 +369,24 @@ impl DisasmView {
             self.drag_origin = None;
         }
 
-        // Double-click in Instruction column → "Cheat-Engine-style"
-        // follow at cursor. Independent of `editable` because this
-        // gesture is read-only (just navigates), and gated to
-        // happen *before* the edit-cell double-click branch so
-        // double-click on a `jmp` / `call` row never falls
-        // through into the edit path. Only fires when
-        // [`DisasmView::follow_at_cursor`] actually navigates;
-        // otherwise lets the edit-cell branch take over (e.g.
-        // double-click on a `mov` with no followable operand can
-        // still open the bytes / comment editor in the right
-        // sub-column).
+        // ── Double-click anywhere on a row → "Cheat-Engine-style"
+        // follow at cursor ───────────────────────────────────────
+        //
+        // Pre-2026-05-05 this branch only fired in the
+        // Mnemonic+Operands column, so a double-click on a wide
+        // operand text that overflowed into the Comment area
+        // (e.g. `jmp qword ptr [rip+0x12345678]`) silently fell
+        // through into the edit-cell handler — the user reported
+        // "double-click on jmp doesn't work". Now: any non-address-
+        // gutter row hit attempts follow first; only when follow
+        // declines (no branch target, no resolvable operand
+        // pointer) does the edit-cell branch get a turn.
+        //
+        // Address-gutter double-click is handled separately above
+        // (copy-to-clipboard with `return`), so we never run twice
+        // on the same gesture.
         if ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
-            && let Some(row) = self.mouse_in_instruction_column(ui, provider)
+            && let Some(row) = self.mouse_to_instruction(ui, provider)
         {
             self.cursor_idx = Some(row);
             if self.follow_at_cursor(provider) {
@@ -389,7 +394,27 @@ impl DisasmView {
             }
         }
 
-        // Double-click to edit (if editable). Cell hit-test picks
+        // ── Middle-click anywhere on a row → follow ──────────────
+        //
+        // IDA / Cheat-Engine convention. Middle-click is more
+        // discoverable than double-click for users who aren't sure
+        // whether the gesture is enabled; it also dodges the
+        // double-click time threshold (`io.MouseDoubleClickTime`)
+        // and same-position threshold (`MouseDoubleClickMaxDist`)
+        // entirely — a single deliberate middle-click always
+        // navigates if the row is followable.
+        if ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Middle)
+            && let Some(row) = self.mouse_to_instruction(ui, provider)
+        {
+            self.cursor_idx = Some(row);
+            self.follow_at_cursor(provider);
+            return;
+        }
+
+        // ── Double-click to edit (if editable) ───────────────────
+        //
+        // Reached only when follow declined (e.g. `mov rax, rbx`
+        // with no number / branch target). Cell hit-test picks
         // the right column → buffer initialiser:
         //   Bytes    — pre-fill with current "AA BB CC" hex string
         //   Mnemonic — reserved for a future re-assemble flow (not
@@ -486,51 +511,6 @@ impl DisasmView {
         }
         let addr_right = addr_left + cols.address;
         if mx >= addr_left && mx < addr_right {
-            Some(row)
-        } else {
-            None
-        }
-    }
-
-    /// Hit-test: returns the instruction row when the mouse X falls
-    /// inside the Instruction (mnemonic + operands) column. Used by
-    /// the "Cheat-Engine follow on double-click" gesture, which
-    /// fires regardless of `editable` — pure navigation, no edit
-    /// affordance.
-    pub(super) fn mouse_in_instruction_column(
-        &self,
-        ui: &dear_imgui_rs::Ui,
-        provider: &dyn DisasmDataProvider,
-    ) -> Option<usize> {
-        let row = self.mouse_to_instruction(ui, provider)?;
-        let [mx, _] = ui.io().mouse_pos();
-        let [win_x, _] = ui.cursor_screen_pos();
-        let cols = &self.config.columns;
-        let mut x = win_x + ui.scroll_x();
-        if self.config.show_breakpoints {
-            x += cols.margin;
-        }
-        if self.config.show_arrows {
-            x += cols.arrows;
-        }
-        x += cols.address;
-        let mnemonic_x = if self.config.show_bytes {
-            x + cols.bytes
-        } else {
-            x
-        };
-        // Same per-frame dynamic comment-X used by `mouse_to_cell` —
-        // when the comment column shifted right last frame, the
-        // Instruction column extends to match so the user double-
-        // clicks the glyphs they actually see.
-        //
-        // `Option<f32>` cell — `None` only on frame 0 before
-        // `render()` populated the value (M1 from session 034 audit).
-        let comment_x = self
-            .frame_comment_x
-            .get()
-            .unwrap_or(mnemonic_x + cols.mnemonic + cols.operands);
-        if mx >= mnemonic_x && mx < comment_x {
             Some(row)
         } else {
             None
