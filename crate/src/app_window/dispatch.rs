@@ -107,32 +107,24 @@ pub(super) fn handle_window_event<H: AppHandler + 'static>(
     // Two frames is the minimum ImGui needs for hover-state to settle
     // (one to detect, one to draw the resulting style change).
     //
-    // Coverage: pointer / cursor / mouse / wheel, keyboard / modifiers /
-    // IME, scale / theme system changes, touch + touchpad gestures,
-    // drag-and-drop hover/cancel/drop. Excluded: `Occluded` (just OS
-    // bookkeeping), `RedrawRequested` (handled separately), focus and
-    // resize (handled in their own match arms).
+    // Coverage (kept narrow on purpose — every extra arm here causes a
+    // 2-frame render burst on idle): real input only — pointer move /
+    // mouse button / wheel, keyboard / modifiers / IME, theme system
+    // changes, file drop. Drag-hover (`HoveredFile{,Cancelled}`),
+    // touchpad pressure / gestures, `CursorEntered`/`CursorLeft`,
+    // `Touch` are intentionally **excluded**: ImGui is mouse-driven on
+    // desktop, the next real `CursorMoved` will redraw anyway.
+    // `ScaleFactorChanged` redraws via its own match arm (font rebuild).
     let needs_redraw = matches!(
         &event,
         WindowEvent::CursorMoved { .. }
-            | WindowEvent::CursorEntered { .. }
-            | WindowEvent::CursorLeft { .. }
             | WindowEvent::MouseInput { .. }
             | WindowEvent::MouseWheel { .. }
             | WindowEvent::KeyboardInput { .. }
             | WindowEvent::ModifiersChanged(..)
             | WindowEvent::Ime(..)
-            | WindowEvent::ScaleFactorChanged { .. }
             | WindowEvent::ThemeChanged(..)
-            | WindowEvent::Touch(..)
-            | WindowEvent::TouchpadPressure { .. }
-            | WindowEvent::PinchGesture { .. }
-            | WindowEvent::PanGesture { .. }
-            | WindowEvent::RotationGesture { .. }
-            | WindowEvent::DoubleTapGesture { .. }
             | WindowEvent::DroppedFile(..)
-            | WindowEvent::HoveredFile(..)
-            | WindowEvent::HoveredFileCancelled
     );
     if needs_redraw {
         g.pending_frames = g.pending_frames.max(2);
