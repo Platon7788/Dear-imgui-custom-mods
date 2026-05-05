@@ -10,9 +10,17 @@
 //! 2. DWM dark-mode attribute on the OS titlebar.
 //! 3. Rounded corners (Win11 DWM, Win10 `SetWindowRgn` fallback).
 //! 4. `WS_EX_TOOLWINDOW` for tool-window kinds (excludes from Alt-Tab).
-//! 5. `WM_GETMINMAXINFO` subclass that clamps a maximised
-//!    `WS_THICKFRAME` window to the monitor work area so it doesn't
-//!    cover the taskbar.
+//! 5. Subclass procedure that handles:
+//!    - `WM_NCCALCSIZE` — return 0 with `rgrc[0]` left as the proposed
+//!      window rect, so client-area = window-area (no NC frame).
+//!      Critical on configurations where winit's own handler doesn't
+//!      fully strip the non-client zone — typically high-DPI laptops,
+//!      systems with basic theme / DWM composition off, or 3rd-party
+//!      shell extensions like StarDock. Without this, Windows draws a
+//!      phantom caption on top + a thin resize border on the left,
+//!      visible above and beside our custom borderless chrome.
+//!    - `WM_GETMINMAXINFO` — clamp a maximised `WS_THICKFRAME` window
+//!      to the monitor work area so it doesn't cover the taskbar.
 //! 6. `set_opacity` — toggles `WS_EX_LAYERED`.
 //! 7. `debug_log` — `OutputDebugStringW` so messages survive
 //!    `windows_subsystem = "windows"` (where stderr is detached).
@@ -34,8 +42,8 @@ use windows_sys::Win32::Graphics::Gdi::{
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetClientRect, GetWindowLongPtrW, LWA_ALPHA, MINMAXINFO,
-    SetLayeredWindowAttributes, SetWindowLongPtrW, WM_DESTROY, WM_GETMINMAXINFO, WS_EX_LAYERED,
-    WS_EX_TOOLWINDOW,
+    SetLayeredWindowAttributes, SetWindowLongPtrW, WM_DESTROY, WM_GETMINMAXINFO, WM_NCCALCSIZE,
+    WS_EX_LAYERED, WS_EX_TOOLWINDOW,
 };
 
 // ── HWND extraction ──────────────────────────────────────────────────────────
@@ -217,6 +225,22 @@ unsafe extern "system" fn subclass_proc(
     _refdata: usize,
 ) -> LRESULT {
     let result = catch_unwind(AssertUnwindSafe(|| match umsg {
+        // `wparam == TRUE` form: lparam points to NCCALCSIZE_PARAMS,
+        // where rgrc[0] is the proposed window rect. Returning 0 with
+        // the rect untouched tells Windows "client area equals window
+        // area" — no NC frame allocated, so the OS draws no caption,
+        // no border, no resize edge bevel. This is the canonical
+        // borderless pattern (Chrome / VS Code / Slack / Discord).
+        //
+        // Why we need this on top of winit's `with_decorations(false)`:
+        // on high-DPI laptops, on systems with DWM composition off, or
+        // on machines with 3rd-party shell extensions, winit's NCCALCSIZE
+        // handler can leave a residual frame visible. ADR-028 (2026-05-05).
+        //
+        // `wparam == FALSE` falls through — Windows expects different
+        // semantics (lparam is a plain RECT*) and we let DefSubclassProc
+        // handle it.
+        WM_NCCALCSIZE if wparam != 0 => 0,
         WM_GETMINMAXINFO => clamp_minmax(hwnd, lparam),
         WM_DESTROY => {
             unsafe {
