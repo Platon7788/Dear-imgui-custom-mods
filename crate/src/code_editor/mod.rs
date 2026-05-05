@@ -87,7 +87,7 @@ use token::{Token, TokenKind};
 use undo::{UndoEntry, UndoStack};
 
 use crate::icons;
-use dear_imgui_rs::{Key, MouseButton, StyleColor, Ui, WindowFlags};
+use dear_imgui_rs::{Key, MouseButton, StyleColor, StyleVar, Ui, WindowFlags};
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -1598,15 +1598,23 @@ impl CodeEditor {
                     // (next was ' ' and old code inserted another ' ').
                     if self.config.hex_auto_space && ch.is_ascii_hexdigit() {
                         let line_idx = self.buffer.cursor().line;
-                        let line = self.buffer.line(line_idx).to_string();
                         let col = self.buffer.cursor().col;
-                        let before: String = line.chars().take(col).collect();
-                        let nibbles_before: usize = before
-                            .chars()
-                            .rev()
-                            .take_while(|c| c.is_ascii_hexdigit())
-                            .count();
-                        if nibbles_before == 2 && hex_auto_space_needed(&line, col) {
+                        // Compute everything on a borrowed `&str` so the
+                        // hot path stays alloc-free. The two `String`s the
+                        // old code allocated (`.to_string()` + `.collect()`)
+                        // ran on every keypress while typing hex.
+                        let (nibbles_before, needs_space) = {
+                            let line = self.buffer.line(line_idx);
+                            let byte_idx: usize =
+                                line.chars().take(col).map(|c| c.len_utf8()).sum();
+                            let nibbles = line[..byte_idx]
+                                .chars()
+                                .rev()
+                                .take_while(|c| c.is_ascii_hexdigit())
+                                .count();
+                            (nibbles, hex_auto_space_needed(line, col))
+                        };
+                        if nibbles_before == 2 && needs_space {
                             self.buffer.insert_char(' ');
                             self.invalidate_token_cache_at(line_idx);
                         }
@@ -2385,6 +2393,16 @@ impl CodeEditor {
     }
 
     fn render_context_menu(&mut self, ui: &Ui) {
+        // Apply popup padding/spacing/rounding consistent with other themed
+        // popups in the crate. ImGui defaults are tight (text touches the
+        // border); these match `utils::themed_popup_style`.
+        // Guard order matters: the popup must drop BEFORE the style guards
+        // so the popup body sees the pushed style.
+        let _pad = ui.push_style_var(StyleVar::WindowPadding([12.0, 10.0]));
+        let _spc = ui.push_style_var(StyleVar::ItemSpacing([10.0, 6.0]));
+        let _frame_pad = ui.push_style_var(StyleVar::FramePadding([10.0, 5.0]));
+        let _round = ui.push_style_var(StyleVar::WindowRounding(6.0));
+        let _frame_round = ui.push_style_var(StyleVar::FrameRounding(4.0));
         let Some(_popup) = ui.begin_popup("##editor_ctx") else {
             return;
         };

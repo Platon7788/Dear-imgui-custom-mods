@@ -7,6 +7,22 @@
 
 use super::buffer::{self, CursorPos};
 
+/// Lowercase a string with an ASCII fast-path.
+///
+/// `to_lowercase` walks the full Unicode case-folding tables. For the
+/// 99 % of source code that's pure ASCII, `to_ascii_lowercase` is
+/// roughly an order of magnitude faster (no UTF-8 decode, no table
+/// lookup). We dispatch on `is_ascii` per call so non-Latin lines
+/// (Cyrillic comments, CJK strings) still get correct case folding.
+#[inline]
+fn lowercase_with_ascii_fast_path(s: &str) -> String {
+    if s.is_ascii() {
+        s.to_ascii_lowercase()
+    } else {
+        s.to_lowercase()
+    }
+}
+
 /// Where to search — matches VSCode's find-in-selection semantics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FindScope {
@@ -83,7 +99,7 @@ impl FindReplaceState {
         let query = if self.case_sensitive {
             self.query.clone()
         } else {
-            self.query.to_lowercase()
+            lowercase_with_ascii_fast_path(&self.query)
         };
 
         // Build (or reuse) the per-line lowercase cache for case-insensitive
@@ -94,7 +110,8 @@ impl FindReplaceState {
             self.lowercase_cache.clear();
             self.lowercase_cache.reserve(lines.len());
             for line in lines {
-                self.lowercase_cache.push(line.to_lowercase());
+                self.lowercase_cache
+                    .push(lowercase_with_ascii_fast_path(line));
             }
             self.lowercase_version = edit_version;
         }
@@ -199,5 +216,37 @@ mod tests {
         let lines = vec!["Hello HELLO hello".to_string()];
         state.update_matches(&lines, 1);
         assert_eq!(state.matches.len(), 3);
+    }
+
+    /// ASCII fast-path must preserve existing case-insensitive
+    /// semantics — both `s.to_lowercase()` and `s.to_ascii_lowercase()`
+    /// produce the same output on pure-ASCII input. Regression for
+    /// ADR-027 phase 4.
+    #[test]
+    fn lowercase_helper_ascii_matches_unicode_path() {
+        let cases = [
+            "hello",
+            "HELLO",
+            "MiXeD CaSe",
+            "1234 ABC",
+            "",
+            "  spaces  ",
+        ];
+        for s in &cases {
+            assert_eq!(
+                lowercase_with_ascii_fast_path(s),
+                s.to_lowercase(),
+                "ASCII fast-path differs for {s:?}"
+            );
+        }
+    }
+
+    /// Non-ASCII input must use the full Unicode path. `Σ → σ`,
+    /// `Ж → ж`, `İ → i̇` (Turkish dotted i — note 2 codepoints).
+    #[test]
+    fn lowercase_helper_unicode_correct() {
+        for s in &["Σ", "Ж", "ÉÈÊË", "你好"] {
+            assert_eq!(lowercase_with_ascii_fast_path(s), s.to_lowercase());
+        }
     }
 }

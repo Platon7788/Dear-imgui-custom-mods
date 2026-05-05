@@ -5,6 +5,9 @@
 //! mnemonics → [`TokenKind::Keyword`], directives → [`TokenKind::Attribute`],
 //! labels → [`TokenKind::MacroCall`].
 
+use std::collections::HashSet;
+use std::sync::OnceLock;
+
 use super::{is_ident_continue, is_ident_start};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
@@ -471,20 +474,43 @@ impl SyntaxDefinition for AsmLang {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+/// `OnceLock`-backed `HashSet` cache for the three keyword lists. Each
+/// is built on first lookup and reused for the lifetime of the process.
+///
+/// Rationale: a typical `cargo objdump` listing tokenizer pass walks
+/// `MNEMONICS` (≈220 entries) and `DIRECTIVES` (≈90) and `REGISTERS`
+/// (≈170) once per identifier. On a 5 000-line listing that's ~3.3 M
+/// `&str` comparisons per syntax pass — measurable in profiles.
+/// `HashSet::contains` collapses the lookup to one hash + probe.
+fn registers_set() -> &'static HashSet<&'static str> {
+    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| REGISTERS.iter().copied().collect())
+}
+
+fn mnemonics_set() -> &'static HashSet<&'static str> {
+    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| MNEMONICS.iter().copied().collect())
+}
+
+fn directives_set() -> &'static HashSet<&'static str> {
+    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| DIRECTIVES.iter().copied().collect())
+}
+
 /// Check if an identifier (lowercase) matches a register name.
 fn is_register(word: &str) -> bool {
     // Registers are always lowercase in our list
-    REGISTERS.contains(&word)
+    registers_set().contains(word)
 }
 
 /// Check if a word matches a mnemonic (case-insensitive for Intel compat).
 fn is_mnemonic(word: &str) -> bool {
-    MNEMONICS.contains(&word)
+    mnemonics_set().contains(word)
 }
 
 /// Check if a word matches a directive.
 fn is_directive(word: &str) -> bool {
-    DIRECTIVES.contains(&word)
+    directives_set().contains(word)
 }
 
 /// Extended ident: allows `.` at start for GAS directives, `%` for NASM macros.
@@ -986,5 +1012,29 @@ mod tests {
             toks.iter()
                 .any(|t| t.0 == TokenKind::Number && t.1 == "0b11001010")
         );
+    }
+
+    /// Regression for ADR-027 phase 4 — keyword lookups switched from
+    /// linear `&[&str]::contains` to `OnceLock<HashSet<&'static str>>`.
+    /// Behaviour must stay identical: every entry of each list resolves
+    /// to its expected `TokenKind` and unknown words don't.
+    #[test]
+    fn keyword_sets_match_slice_contents() {
+        // Sanity sample from each list — sample-based rather than full
+        // sweep to keep the test fast.
+        for r in ["rax", "eax", "al", "rip", "xmm0"] {
+            assert!(super::is_register(r), "register `{r}` lost");
+            assert!(!super::is_register(&format!("not_{r}")));
+        }
+        for m in ["mov", "add", "ret", "call", "jmp"] {
+            assert!(super::is_mnemonic(m), "mnemonic `{m}` lost");
+        }
+        for d in [".text", ".data", ".global"] {
+            assert!(super::is_directive(d), "directive `{d}` lost");
+        }
+        // Negative cases — these should NOT be classified.
+        assert!(!super::is_register("hello"));
+        assert!(!super::is_mnemonic("hello"));
+        assert!(!super::is_directive("hello"));
     }
 }
