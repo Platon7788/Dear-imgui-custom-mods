@@ -3,7 +3,7 @@
 //! Keys are highlighted as [`TokenKind::Attribute`] (distinguished from string
 //! values by lookahead for `:`).  JSONC-style `//` line comments are supported.
 
-use super::{consume_decimal, is_ident_continue, is_ident_start};
+use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -113,12 +113,15 @@ fn tokenize(line: &str) -> Vec<Token> {
         }
 
         // ── Number ───────────────────────────────────────────────────────
+        // JSON-spec strict: decimal only, no underscore separators,
+        // no radix prefixes. `1_000` would not be a single Number;
+        // the `_000` portion would fall through to identifier handling.
         if b.is_ascii_digit() || (b == b'-' && i + 1 < len && bytes[i + 1].is_ascii_digit()) {
             let start = i;
             if b == b'-' {
                 i += 1;
             }
-            consume_decimal(&mut i, bytes);
+            consume_number(&mut i, bytes, NumberOpts::JSON);
             tokens.push(Token {
                 kind: TokenKind::Number,
                 start,
@@ -240,5 +243,48 @@ mod tests {
                 .any(|t| t.0 == TokenKind::Attribute && t.1 == r#""a""#)
         );
         assert!(toks.iter().any(|t| t.0 == TokenKind::Number && t.1 == "1"));
+    }
+
+    /// JSON spec is strict: `_` is **not** a valid digit separator.
+    /// `1_000` should NOT tokenize as a single number — the `_000`
+    /// portion falls through to identifier handling.
+    /// Regression for ADR-027 phase 2.
+    #[test]
+    fn no_underscore_separators() {
+        let toks = tok("1_000");
+        // First token: Number "1"
+        let nums: Vec<_> = toks
+            .iter()
+            .filter(|t| t.0 == TokenKind::Number)
+            .collect();
+        assert_eq!(nums.len(), 1);
+        assert_eq!(nums[0].1, "1");
+        // The `_000` lands in an identifier-ish bucket (TokenKind::Identifier).
+        assert!(toks.iter().any(|t| t.1.starts_with('_')));
+    }
+
+    /// JSON spec rejects radix prefixes — `0x10` is `0` then identifier.
+    #[test]
+    fn no_radix_prefixes() {
+        let toks = tok("0x10");
+        let nums: Vec<_> = toks
+            .iter()
+            .filter(|t| t.0 == TokenKind::Number)
+            .collect();
+        // Only `0` parses as a number.
+        assert_eq!(nums.len(), 1);
+        assert_eq!(nums[0].1, "0");
+    }
+
+    /// JSON does support exponent and decimal-point floats.
+    #[test]
+    fn decimal_with_exponent() {
+        let toks = tok("-3.14e+2");
+        let nums: Vec<_> = toks
+            .iter()
+            .filter(|t| t.0 == TokenKind::Number)
+            .collect();
+        assert_eq!(nums.len(), 1);
+        assert_eq!(nums[0].1, "-3.14e+2");
     }
 }

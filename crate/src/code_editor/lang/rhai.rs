@@ -1,6 +1,8 @@
 //! Rhai scripting language tokenizer.
 
-use super::{consume_decimal, is_ident_continue, is_ident_start};
+use super::{
+    NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start,
+};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -195,45 +197,30 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
 
         // ── Char literal ─────────────────────────────────────────────────
         if b == b'\'' {
-            let start = i;
-            i += 1;
-            if i < len && bytes[i] == b'\\' {
-                i += 1;
-                if i < len {
-                    i += 1;
-                }
-            } else if i < len {
-                i += 1;
-            }
-            if i < len && bytes[i] == b'\'' {
-                i += 1;
+            if let Some(end) = consume_char_literal(line, i) {
                 tokens.push(Token {
                     kind: TokenKind::CharLit,
-                    start,
-                    len: i - start,
+                    start: i,
+                    len: end - i,
                 });
+                i = end;
                 continue;
             }
-            i = start + 1;
+            // Stray apostrophe — emit as punctuation (Rhai has no
+            // lifetime / raw-string-suffix usage for `'`).
             tokens.push(Token {
                 kind: TokenKind::Punctuation,
-                start,
+                start: i,
                 len: 1,
             });
+            i += 1;
             continue;
         }
 
         // ── Number ───────────────────────────────────────────────────────
         if b.is_ascii_digit() || (b == b'.' && i + 1 < len && bytes[i + 1].is_ascii_digit()) {
             let start = i;
-            if b == b'0' && i + 1 < len && (bytes[i + 1] == b'x' || bytes[i + 1] == b'X') {
-                i += 2;
-                while i < len && (bytes[i].is_ascii_hexdigit() || bytes[i] == b'_') {
-                    i += 1;
-                }
-            } else {
-                consume_decimal(&mut i, bytes);
-            }
+            consume_number(&mut i, bytes, NumberOpts::RUST_LIKE);
             tokens.push(Token {
                 kind: TokenKind::Number,
                 start,
@@ -412,5 +399,47 @@ mod tests {
             toks.iter()
                 .any(|t| t.0 == TokenKind::TypeName && t.1 == "Dynamic")
         );
+    }
+
+    /// Multi-byte char literals classify as a single `CharLit`.
+    /// Regression for ADR-027 phase 3.
+    #[test]
+    fn char_literal_unicode() {
+        for (input, want_lit) in [
+            ("let c = 'é';", "'é'"),
+            ("let c = '你';", "'你'"),
+            (r"let c = '\n';", r"'\n'"),
+        ] {
+            let toks = tok(input);
+            let chars: Vec<_> = toks
+                .iter()
+                .filter(|t| t.0 == TokenKind::CharLit)
+                .collect();
+            assert_eq!(chars.len(), 1, "input {input:?} produced {toks:?}");
+            assert_eq!(chars[0].1, want_lit);
+        }
+    }
+
+    /// Rhai 1.0+ supports hex, binary and octal radix prefixes plus
+    /// underscore separators (and float exponent for decimals).
+    /// Regression for ADR-027 phase 2 — rhai previously only had
+    /// `0x`, missed `0b`/`0o`.
+    #[test]
+    fn radix_and_underscore_separators() {
+        for (line, want_lit) in [
+            ("let a = 0xDEAD_BEEF;", "0xDEAD_BEEF"),
+            ("let a = 0b1010;", "0b1010"),
+            ("let a = 0o755;", "0o755"),
+            ("let a = 1_000;", "1_000"),
+            ("let a = 1.5e10;", "1.5e10"),
+        ] {
+            let toks = tok(line);
+            let nums: Vec<_> = toks
+                .iter()
+                .filter(|t| t.0 == TokenKind::Number)
+                .collect();
+            assert_eq!(nums.len(), 1, "input {line:?} produced {nums:?}");
+            assert_eq!(nums[0].1, want_lit, "input: {line:?}");
+        }
     }
 }

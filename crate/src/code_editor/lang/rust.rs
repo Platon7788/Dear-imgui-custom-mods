@@ -1,6 +1,8 @@
 //! Rust / RON syntax tokenizer.
 
-use super::{consume_decimal, is_ident_continue, is_ident_start};
+use super::{
+    NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start,
+};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -382,27 +384,18 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         }
 
         // ── Char literal ─────────────────────────────────────────────────
-        if b == b'\'' && i + 1 < len && bytes[i + 1] != b'\'' {
-            let start = i;
-            i += 1;
-            if i < len && bytes[i] == b'\\' {
-                i += 1;
-                if i < len {
-                    i += 1;
-                }
-            } else if i < len {
-                i += 1;
-            }
-            if i < len && bytes[i] == b'\'' {
-                i += 1;
-                tokens.push(Token {
-                    kind: TokenKind::CharLit,
-                    start,
-                    len: i - start,
-                });
-                continue;
-            }
-            i = start;
+        // Helper short-circuits on `bytes[i] != b'\''`, so calling it
+        // unconditionally costs only a single byte compare for the
+        // non-`'` case. On a stray `'` (e.g. `'a` lifetime) it returns
+        // `None` and we fall through to the lifetime branch below.
+        if let Some(end) = consume_char_literal(line, i) {
+            tokens.push(Token {
+                kind: TokenKind::CharLit,
+                start: i,
+                len: end - i,
+            });
+            i = end;
+            continue;
         }
 
         // ── Lifetime ─────────────────────────────────────────────────────
@@ -423,35 +416,8 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         // ── Number ───────────────────────────────────────────────────────
         if b.is_ascii_digit() || (b == b'.' && i + 1 < len && bytes[i + 1].is_ascii_digit()) {
             let start = i;
-            if b == b'0' && i + 1 < len {
-                match bytes[i + 1] {
-                    b'x' | b'X' => {
-                        i += 2;
-                        while i < len && (bytes[i].is_ascii_hexdigit() || bytes[i] == b'_') {
-                            i += 1;
-                        }
-                    }
-                    b'b' | b'B' => {
-                        i += 2;
-                        while i < len && (bytes[i] == b'0' || bytes[i] == b'1' || bytes[i] == b'_')
-                        {
-                            i += 1;
-                        }
-                    }
-                    b'o' | b'O' => {
-                        i += 2;
-                        while i < len
-                            && ((bytes[i] >= b'0' && bytes[i] <= b'7') || bytes[i] == b'_')
-                        {
-                            i += 1;
-                        }
-                    }
-                    _ => consume_decimal(&mut i, bytes),
-                }
-            } else {
-                consume_decimal(&mut i, bytes);
-            }
-            // Type suffix
+            consume_number(&mut i, bytes, NumberOpts::RUST_LIKE);
+            // Type suffix (e.g. `42_u8`, `0xFF_i32`)
             if i < len && is_ident_start(bytes[i]) {
                 while i < len && is_ident_continue(bytes[i]) {
                     i += 1;
@@ -698,5 +664,42 @@ mod tests {
         let toks = tok(r###"let s = r#"hello"#;"###);
         let strings: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::String).collect();
         assert_eq!(strings.len(), 1);
+    }
+
+    /// Multi-byte char literals must classify as a single `CharLit`,
+    /// not fragment into the fallback bucket. Regression for ADR-027
+    /// phase 3 — byte-by-byte scanner couldn't recognise non-ASCII.
+    #[test]
+    fn char_literal_unicode() {
+        for (input, want_lit) in [
+            ("'a'", "'a'"),
+            ("'é'", "'é'"),
+            ("'你'", "'你'"),
+            ("'😀'", "'😀'"),
+            (r"'\n'", r"'\n'"),
+            (r"'\\'", r"'\\'"),
+            (r"'\''", r"'\''"),
+            (r"'\x41'", r"'\x41'"),
+            (r"'\u{1F600}'", r"'\u{1F600}'"),
+        ] {
+            let toks = tok(input);
+            let chars: Vec<_> = toks
+                .iter()
+                .filter(|t| t.0 == TokenKind::CharLit)
+                .collect();
+            assert_eq!(chars.len(), 1, "input {input:?} produced {toks:?}");
+            assert_eq!(chars[0].1, want_lit);
+        }
+    }
+
+    /// Unterminated char (`'a`) must NOT classify as CharLit — the
+    /// lifetime branch picks it up afterwards.
+    #[test]
+    fn unterminated_char_falls_through_to_lifetime() {
+        let toks = tok("fn foo<'a>(x: &'a T)");
+        let lifetimes: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Lifetime).collect();
+        assert_eq!(lifetimes.len(), 2);
+        let chars: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::CharLit).collect();
+        assert!(chars.is_empty());
     }
 }

@@ -1,6 +1,6 @@
 //! TOML configuration file tokenizer.
 
-use super::{consume_decimal, is_ident_continue, is_ident_start};
+use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -125,13 +125,17 @@ fn tokenize(line: &str) -> Vec<Token> {
             continue;
         }
 
-        // Number
-        if b.is_ascii_digit() || (b == b'-' && i + 1 < len && bytes[i + 1].is_ascii_digit()) {
+        // Number — TOML supports decimal, hex/oct/bin radix, underscore
+        // separators and exponent (`1_000`, `0xDEAD_BEEF`, `0o755`,
+        // `0b1010`, `1.5e10`).
+        if b.is_ascii_digit()
+            || ((b == b'-' || b == b'+') && i + 1 < len && bytes[i + 1].is_ascii_digit())
+        {
             let start = i;
-            if b == b'-' {
+            if b == b'-' || b == b'+' {
                 i += 1;
             }
-            consume_decimal(&mut i, bytes);
+            consume_number(&mut i, bytes, NumberOpts::RUST_LIKE);
             tokens.push(Token {
                 kind: TokenKind::Number,
                 start,
@@ -235,5 +239,29 @@ mod tests {
     fn bare_key_with_dash() {
         let (toks, _) = tokenize_line("my-key = 42", &Language::Toml, false);
         assert!(toks.iter().any(|t| t.kind == TokenKind::Identifier));
+    }
+
+    /// TOML supports hex/oct/bin radix, underscore separators and
+    /// exponent. Regression for ADR-027 phase 2 — drift between
+    /// `lang/*.rs` number tokenizers.
+    #[test]
+    fn radix_and_underscore_separators() {
+        for (line, want_lit) in [
+            ("a = 0xDEAD_BEEF", "0xDEAD_BEEF"),
+            ("a = 0o755", "0o755"),
+            ("a = 0b1010", "0b1010"),
+            ("a = 1_000_000", "1_000_000"),
+            ("a = 1.5e10", "1.5e10"),
+            ("a = 3.14", "3.14"),
+            ("a = -42", "-42"),
+        ] {
+            let (toks, _) = tokenize_line(line, &Language::Toml, false);
+            let nums: Vec<_> = toks
+                .iter()
+                .filter(|t| t.kind == TokenKind::Number)
+                .map(|t| &line[t.start..t.start + t.len])
+                .collect();
+            assert_eq!(nums, vec![want_lit], "input: {line:?}");
+        }
     }
 }

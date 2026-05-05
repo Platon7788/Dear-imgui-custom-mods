@@ -44,7 +44,10 @@ impl SyntaxDefinition for HexLang {
     }
 
     fn is_word_char(&self, c: char) -> bool {
-        c.is_ascii_hexdigit() || c == ' '
+        // A "word" in hex mode is a single 1- or 2-nibble byte token.
+        // Including space here would make Ctrl+Right skip across whole
+        // runs of bytes, defeating per-byte navigation.
+        c.is_ascii_hexdigit()
     }
 }
 
@@ -176,5 +179,20 @@ mod tests {
         let toks = tok("GG");
         // 'G' is not valid hex
         assert!(toks.iter().any(|t| t.0 == TokenKind::Operator));
+    }
+
+    /// Regression: `is_word_char` must NOT include space, otherwise
+    /// Ctrl+Right in hex mode skips across whole runs of bytes
+    /// instead of advancing one byte at a time.
+    #[test]
+    fn word_char_excludes_space() {
+        use crate::code_editor::config::SyntaxDefinition;
+        use crate::code_editor::lang::hex::HexLang;
+        assert!(HexLang.is_word_char('0'));
+        assert!(HexLang.is_word_char('A'));
+        assert!(HexLang.is_word_char('f'));
+        assert!(!HexLang.is_word_char(' '));
+        assert!(!HexLang.is_word_char('\t'));
+        assert!(!HexLang.is_word_char('G'));
     }
 }

@@ -3,7 +3,7 @@
 //! Handles document markers (`---`/`...`), anchors (`&name`), aliases (`*name`),
 //! tags (`!type`), directives (`%YAML`), flow collections, and keyword literals.
 
-use super::{consume_decimal, is_ident_continue, is_ident_start};
+use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -225,6 +225,10 @@ fn tokenize(line: &str) -> Vec<Token> {
         }
 
         // ── Number ───────────────────────────────────────────────────────
+        // YAML 1.1 supports decimal, `0x`, `0b`, `0o`, `_` separators,
+        // and floats. But — unlike Rust/RON — a "number" tail must end
+        // at whitespace or structural punctuation; otherwise the run
+        // is a bare-string scalar (e.g. `2:30`, `1.2.3`).
         if b.is_ascii_digit()
             || ((b == b'-' || b == b'+') && i + 1 < len && bytes[i + 1].is_ascii_digit())
         {
@@ -233,15 +237,8 @@ fn tokenize(line: &str) -> Vec<Token> {
             if b == b'-' || b == b'+' {
                 i += 1;
             }
-            if i + 1 < len && bytes[i] == b'0' && (bytes[i + 1] == b'x' || bytes[i + 1] == b'X') {
-                i += 2;
-                while i < len && (bytes[i].is_ascii_hexdigit() || bytes[i] == b'_') {
-                    i += 1;
-                }
-            } else {
-                consume_decimal(&mut i, bytes);
-            }
-            // Only treat as number if followed by whitespace/end/punctuation
+            consume_number(&mut i, bytes, NumberOpts::RUST_LIKE);
+            // Only treat as number if followed by whitespace/end/punctuation.
             if i >= len
                 || bytes[i] == b' '
                 || bytes[i] == b'\t'
@@ -386,6 +383,46 @@ mod tests {
         assert!(
             toks.iter()
                 .any(|t| t.0 == TokenKind::Punctuation && t.1 == "-")
+        );
+    }
+
+    /// YAML 1.1 supports decimal, hex (`0x`), octal (`0o`), binary
+    /// (`0b`) and underscore separators. Number ends at whitespace or
+    /// structural punctuation; otherwise it's a bare-string scalar.
+    /// Regression for ADR-027 phase 2.
+    #[test]
+    fn radix_and_underscore_separators() {
+        for (line, want_lit) in [
+            ("a: 0xDEAD_BEEF", "0xDEAD_BEEF"),
+            ("a: 0o755", "0o755"),
+            ("a: 0b1010", "0b1010"),
+            ("a: 1_000_000", "1_000_000"),
+            ("a: 3.14", "3.14"),
+        ] {
+            let toks = tok(line);
+            let nums: Vec<_> = toks
+                .iter()
+                .filter(|t| t.0 == TokenKind::Number)
+                .collect();
+            assert_eq!(nums.len(), 1, "input {line:?} produced {nums:?}");
+            assert_eq!(nums[0].1, want_lit);
+        }
+    }
+
+    /// Trailing-context check is preserved: `2:30` is a bare string,
+    /// not a number followed by colon.
+    #[test]
+    fn bare_string_not_number() {
+        let toks = tok("time: 2:30");
+        // `2:30` should NOT produce a Number token (no whitespace
+        // terminator after `2`, `:` is not a number-terminating punct).
+        let nums: Vec<_> = toks
+            .iter()
+            .filter(|t| t.0 == TokenKind::Number)
+            .collect();
+        assert!(
+            nums.is_empty(),
+            "expected no number tokens for bare-string `2:30`, got {nums:?}"
         );
     }
 }

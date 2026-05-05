@@ -547,7 +547,21 @@ impl TextBuffer {
     }
 
     /// Insert a string at cursor position (handles newlines).
+    ///
+    /// Normalises CRLF → LF on entry: clipboard pastes from Windows
+    /// hosts arrive as `\r\n`, but the buffer stores lines without
+    /// terminator (the line-ending style is tracked separately in
+    /// [`line_ending`](Self::line_ending) and re-applied by
+    /// [`text`](Self::text)). Without normalisation a stray `\r` ends
+    /// up at the end of every pasted line.
     pub fn insert_text(&mut self, text: &str) {
+        let normalised = if text.contains("\r\n") {
+            std::borrow::Cow::Owned(text.replace("\r\n", "\n"))
+        } else {
+            std::borrow::Cow::Borrowed(text)
+        };
+        let text = normalised.as_ref();
+
         self.delete_selection_impl();
         let pos = self.cursor;
 
@@ -1444,6 +1458,42 @@ mod tests {
         b.set_text(src);
         assert_eq!(b.line_ending(), LineEnding::Lf);
         assert_eq!(b.text(), src);
+    }
+
+    /// `insert_text` must normalise CRLF → LF on entry. The Windows
+    /// clipboard delivers paste payloads as `\r\n`, but the buffer
+    /// stores lines without their terminator — without normalisation
+    /// a stray `\r` ends up appended to every pasted line.
+    #[test]
+    fn test_insert_text_normalises_crlf() {
+        let mut b = TextBuffer::default();
+        b.set_text("");
+        b.insert_text("a\r\nb\r\nc");
+        assert_eq!(b.line_count(), 3);
+        assert_eq!(b.line(0), "a");
+        assert_eq!(b.line(1), "b");
+        assert_eq!(b.line(2), "c");
+        // No stray \r should have leaked into any stored line.
+        for i in 0..b.line_count() {
+            assert!(
+                !b.line(i).contains('\r'),
+                "line {i} = {:?} contains stray \\r",
+                b.line(i)
+            );
+        }
+    }
+
+    /// Single-line CRLF paste (no embedded newline) is a no-op for the
+    /// normaliser — but if a future refactor breaks the `\r\n` check,
+    /// this catches the regression.
+    #[test]
+    fn test_insert_text_preserves_pure_lf() {
+        let mut b = TextBuffer::default();
+        b.set_text("");
+        b.insert_text("hello\nworld");
+        assert_eq!(b.line_count(), 2);
+        assert_eq!(b.line(0), "hello");
+        assert_eq!(b.line(1), "world");
     }
 
     /// `restore_from_undo` must preserve `modified = true` and bump
