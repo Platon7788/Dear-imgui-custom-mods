@@ -782,6 +782,16 @@ fn tokenize(line: &str) -> Vec<Token> {
 }
 
 /// Consume a number: decimal, hex (0x), binary (0b), octal (0o/0).
+///
+/// **Why this isn't migrated to `super::consume_number`** (the shared
+/// helper introduced in ADR-027 phase 2): assembly has the NASM /
+/// MASM-style hex literal `0FFh` — digit-prefix then `h` suffix —
+/// which the body loop below accepts (it eats hex digits regardless
+/// of the prefix). The shared helper is strictly digit-only on the
+/// decimal branch and would split `0FFh` into `Number(0) + Identifier
+/// (FFh)`. ASM also tolerates `_` in hex bodies without a `0x` prefix
+/// because some macros emit underscored labels. Migrating would
+/// regress these legacy syntaxes — keep the local copy.
 fn consume_number(i: &mut usize, bytes: &[u8]) {
     let len = bytes.len();
     if *i >= len {

@@ -241,6 +241,28 @@ mod tests {
         assert!(toks.iter().any(|t| t.kind == TokenKind::Identifier));
     }
 
+    /// Sign + radix combinations. TOML accepts `+` and `-` as
+    /// optional prefix on integers (incl. `+0xFF` per spec).
+    /// Caller eats the sign, helper handles the radix body — single
+    /// Number token covers both.
+    #[test]
+    fn signed_radix_combinations() {
+        for (input, want_lit) in [
+            ("x = -0xFF", "-0xFF"),
+            ("x = +0xDEAD_BEEF", "+0xDEAD_BEEF"),
+            ("x = +0b1010", "+0b1010"),
+            ("x = -0o755", "-0o755"),
+        ] {
+            let (toks, _) = tokenize_line(input, &Language::Toml, false);
+            let nums: Vec<_> = toks
+                .iter()
+                .filter(|t| t.kind == TokenKind::Number)
+                .map(|t| &input[t.start..t.start + t.len])
+                .collect();
+            assert_eq!(nums, vec![want_lit], "input: {input:?}");
+        }
+    }
+
     /// TOML supports hex/oct/bin radix, underscore separators and
     /// exponent. Regression for ADR-027 phase 2 — drift between
     /// `lang/*.rs` number tokenizers.

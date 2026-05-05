@@ -465,6 +465,49 @@ mod tests {
         assert_eq!(toks2[0].kind, TokenKind::Comment);
     }
 
+    /// RON allows leading `+` on float literals (`+1.5`). Before
+    /// ADR-027 phase 0 the dispatch fell back to `RustLang`, which
+    /// classified `+` as a separate `Operator` and `1.5` as a
+    /// `Number` — two tokens. With the dedicated `RonLang` we
+    /// recognise `+1.5` as one `Number` token. Pinning this so a
+    /// future refactor doesn't silently regress.
+    #[test]
+    fn leading_plus_on_float_is_single_number() {
+        let toks = tok("a: +1.5");
+        let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
+        assert_eq!(nums.len(), 1);
+        assert_eq!(nums[0].1, "+1.5");
+        // No stray `Operator(+)` should leak into the stream.
+        let plus_ops: Vec<_> = toks
+            .iter()
+            .filter(|t| t.0 == TokenKind::Operator && t.1 == "+")
+            .collect();
+        assert!(
+            plus_ops.is_empty(),
+            "expected `+` to be folded into the number, got Operator tokens: {plus_ops:?}"
+        );
+    }
+
+    /// Sign + radix prefix combinations. RON inherits Rust's
+    /// integer-literal grammar via `consume_number(RUST_LIKE)`.
+    /// The caller eats the sign first, then the helper handles the
+    /// radix body — net result is a single Number token covering both.
+    #[test]
+    fn signed_radix_combinations() {
+        for (input, want_lit) in [
+            ("a: -0xFF", "-0xFF"),
+            ("a: +0xDEAD_BEEF", "+0xDEAD_BEEF"),
+            ("a: -0b1010", "-0b1010"),
+            ("a: -0o755", "-0o755"),
+            ("a: +42", "+42"),
+        ] {
+            let toks = tok(input);
+            let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
+            assert_eq!(nums.len(), 1, "input {input:?} produced {toks:?}");
+            assert_eq!(nums[0].1, want_lit);
+        }
+    }
+
     #[test]
     fn numbers_with_signs_and_radix() {
         let toks = tok("a: -3.14");
