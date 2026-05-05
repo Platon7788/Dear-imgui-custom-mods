@@ -11,14 +11,18 @@
 //! 3. Rounded corners (Win11 DWM, Win10 `SetWindowRgn` fallback).
 //! 4. `WS_EX_TOOLWINDOW` for tool-window kinds (excludes from Alt-Tab).
 //! 5. Subclass procedure that handles:
-//!    - `WM_NCCALCSIZE` — return 0 with `rgrc[0]` left as the proposed
-//!      window rect, so client-area = window-area (no NC frame).
-//!      Critical on configurations where winit's own handler doesn't
-//!      fully strip the non-client zone — typically high-DPI laptops,
-//!      systems with basic theme / DWM composition off, or 3rd-party
-//!      shell extensions like StarDock. Without this, Windows draws a
-//!      phantom caption on top + a thin resize border on the left,
-//!      visible above and beside our custom borderless chrome.
+//!    - `WM_NCCALCSIZE` — drives borderless-mode rect manipulation in
+//!      two modes. **Restored:** leave rect untouched, so client
+//!      area = window area (zero NC frame, no caption / border / bevel
+//!      painted by the OS). **Maximized (`IsZoomed`)**: shrink rect by
+//!      `SM_CXSIZEFRAME + SM_CXPADDEDBORDER` on each side to compensate
+//!      for the offscreen extension Windows applies to maximized
+//!      `WS_THICKFRAME` windows — without this the client-area would
+//!      extend past the monitor edge and OS-drawn min/max/close glyphs
+//!      would leak into the corner. Critical on configurations where
+//!      winit's own handler doesn't fully strip the NC frame —
+//!      typically high-DPI laptops, systems with basic theme / DWM
+//!      composition off, or 3rd-party shell extensions.
 //!    - `WM_GETMINMAXINFO` — clamp a maximised `WS_THICKFRAME` window
 //!      to the monitor work area so it doesn't cover the taskbar.
 //! 6. `set_opacity` — toggles `WS_EX_LAYERED`.
@@ -41,7 +45,8 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GetClientRect, GetWindowLongPtrW, LWA_ALPHA, MINMAXINFO,
+    GWL_EXSTYLE, GetClientRect, GetSystemMetrics, GetWindowLongPtrW, IsZoomed, LWA_ALPHA, MINMAXINFO,
+    NCCALCSIZE_PARAMS, SM_CXPADDEDBORDER, SM_CXSIZEFRAME, SM_CYSIZEFRAME,
     SetLayeredWindowAttributes, SetWindowLongPtrW, WM_DESTROY, WM_GETMINMAXINFO, WM_NCCALCSIZE,
     WS_EX_LAYERED, WS_EX_TOOLWINDOW,
 };
@@ -225,22 +230,55 @@ unsafe extern "system" fn subclass_proc(
     _refdata: usize,
 ) -> LRESULT {
     let result = catch_unwind(AssertUnwindSafe(|| match umsg {
-        // `wparam == TRUE` form: lparam points to NCCALCSIZE_PARAMS,
-        // where rgrc[0] is the proposed window rect. Returning 0 with
-        // the rect untouched tells Windows "client area equals window
-        // area" — no NC frame allocated, so the OS draws no caption,
-        // no border, no resize edge bevel. This is the canonical
-        // borderless pattern (Chrome / VS Code / Slack / Discord).
+        // `wparam == TRUE`: lparam points to NCCALCSIZE_PARAMS, rgrc[0]
+        // is the proposed window rect. We modify it to define our
+        // desired client area, then return 0 (≡ WVR_DEFAULT).
         //
-        // Why we need this on top of winit's `with_decorations(false)`:
-        // on high-DPI laptops, on systems with DWM composition off, or
-        // on machines with 3rd-party shell extensions, winit's NCCALCSIZE
-        // handler can leave a residual frame visible. ADR-028 (2026-05-05).
+        // Restored state — leave rect untouched. client = window means
+        // no caption / border / resize bevel painted by the OS. This is
+        // the canonical borderless pattern (Chrome / VS Code / Slack /
+        // Discord). Needed on top of winit's `with_decorations(false)`
+        // because on a subset of configurations (high-DPI laptops, DWM
+        // composition off, 3rd-party shells) winit's own handler leaves
+        // a residual NC frame visible.
         //
-        // `wparam == FALSE` falls through — Windows expects different
-        // semantics (lparam is a plain RECT*) and we let DefSubclassProc
-        // handle it.
-        WM_NCCALCSIZE if wparam != 0 => 0,
+        // Maximized state — shrink rect by the frame metrics. Windows
+        // positions a maximized `WS_THICKFRAME` window so it extends
+        // offscreen by `SM_CXSIZEFRAME + SM_CXPADDEDBORDER` on each side,
+        // expecting the OS-drawn NC frame to absorb the overflow.
+        // Without this shrink, our client extends offscreen too:
+        // content gets clipped at the monitor edge AND the OS-drawn
+        // min/max/close glyphs on the offscreen extension leak back
+        // into view as phantom buttons in the corner.
+        //
+        // ADR-028 (2026-05-05).
+        //
+        // `wparam == FALSE` falls through to `DefSubclassProc` —
+        // Windows expects different semantics there (lparam is a
+        // plain RECT*).
+        WM_NCCALCSIZE if wparam != 0 && lparam != 0 => {
+            // SAFETY: lparam is a valid `NCCALCSIZE_PARAMS*` per the
+            // documented contract for `WM_NCCALCSIZE` with wparam==TRUE,
+            // and we just verified it's non-null. The struct lives for
+            // the duration of this message dispatch.
+            let params = unsafe { &mut *(lparam as *mut NCCALCSIZE_PARAMS) };
+            let rect = &mut params.rgrc[0];
+            // SAFETY: IsZoomed is a stable Win32 API on a valid HWND.
+            if unsafe { IsZoomed(hwnd) } != 0 {
+                // SAFETY: GetSystemMetrics is documented as a pure read.
+                let pad_x = unsafe {
+                    GetSystemMetrics(SM_CXSIZEFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
+                };
+                let pad_y = unsafe {
+                    GetSystemMetrics(SM_CYSIZEFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
+                };
+                rect.left += pad_x;
+                rect.right -= pad_x;
+                rect.top += pad_y;
+                rect.bottom -= pad_y;
+            }
+            0
+        }
         WM_GETMINMAXINFO => clamp_minmax(hwnd, lparam),
         WM_DESTROY => {
             unsafe {
