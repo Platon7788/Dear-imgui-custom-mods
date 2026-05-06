@@ -1,8 +1,9 @@
-// `TitlebarConfig::default()` — full chrome for `WindowKind::Main`.
+// `TitlebarConfig::default()` — main-window chrome layout values.
 //
-// The matching `Buttons` block is inlined (ron 0.8 has no `include`),
-// so any change to `Buttons::default()` semantics must also be reflected
-// in `titlebar_tool.ron` and `titlebar_dialog.ron`.
+// Schema lives in `config.rs`; this file owns the value side. `Buttons`
+// is inlined (ron 0.8 has no `include` mechanism); `Buttons::close_only`
+// in `config.rs` reuses these defaults via `..Buttons::default()` and
+// flips `minimize` / `maximize` to `false`.
 
 (
     height: 28.0,
@@ -19,9 +20,7 @@
         close: true,
         width: 44.0,
         icon_radius: 6.0,
-        icon_hover_pad: 4.0,
         hover_zoom_scale: 1.20,
-        show_hover_bg: false,
     ),
     close_mode: Immediate,
 )

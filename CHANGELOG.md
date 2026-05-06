@@ -2,7 +2,34 @@
 
 ## [Unreleased]
 
+### Removed (BREAKING)
+
+- **`app_window` module deleted entirely** (session 044, 2026-05-06,
+  ADR-029). The runner machinery (event loop, wgpu surface lifecycle,
+  ImGui platform / renderer init, font atlas, frame scheduler, proxy)
+  duplicated `dear-app` and was the sole source of the borderless-on-
+  small-screen, surface-reconfigure, and keyboard-event ordering bugs
+  reported across sessions 040-044. Public types removed: `AppWindow`,
+  `AppHandler`, `AppState`, `AppProxy`, `AppConfig`, `BorderStyle`,
+  `Chrome` enum (now `Option<TitlebarConfig>`), `ExtraButton`,
+  `FontChoice`, `FontLayer`, `FormStyle`, `FpsMode`, `GlyphRanges`,
+  `Position`, `PowerMode`, `RenderMode`, `WindowIcon`, `WindowKind`,
+  `TitlebarState`. Cargo feature `app_window` removed (chrome is
+  always-on infrastructure now). See [docs/chrome.md](docs/chrome.md)
+  for the migration recipe; `test-dear-imgui-rs` (sibling repo) is the
+  end-to-end reference for the new pattern.
+
 ### Added
+
+- **`chrome` module** — borderless-window helpers as stateless / explicit-
+  state helpers (no runner). Exposes `render_titlebar()`,
+  `whole_window_resize()`, a `Chrome` convenience wrapper,
+  `TitlebarConfig`, `Buttons`, `TitleAlign`, `CloseMode`, `ResizeEdge`,
+  `TitlebarAction`, `TitlebarResult`, `ContentArea`, plus the
+  `chrome::win32::*` Win32 helpers (`setup_window`, `sync_region`,
+  `set_opacity`, `hwnd_of`, `is_win11`). Hosts wire chrome into any
+  `winit`-based runner — typically `dear-app` via `on_gpu_init` +
+  `on_event` + `on_frame` callbacks.
 
 - **`disasm_view::follow_at_cursor_diagnostic` + `FollowOutcome` enum**
   (session 043, follow-up audit). Diagnostic variant of the existing

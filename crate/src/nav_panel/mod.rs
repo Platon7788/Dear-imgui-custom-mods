@@ -138,15 +138,12 @@ pub fn render_nav_panel(
 /// its own ImGui window (it needs input focus and lives in the
 /// popup layer naturally).
 ///
-/// **Host requirement:** if the host is an `app_window` instance,
-/// it must be configured with `AppConfig::raw_content()` so the
-/// root window receives `WindowFlags::NO_BACKGROUND` — otherwise
-/// the root's `WindowBg` fill clobbers the background draw list
-/// and the panel becomes invisible.
-///
-/// For the legacy foreground behaviour (kiosk-style HUDs that
-/// genuinely need to obscure popups) use
-/// [`render_nav_panel_overlay_foreground`].
+/// **Host requirement:** the background draw list is drawn
+/// **before** all ImGui windows. [`crate::app_window::AppWindow`]
+/// hosts a full-window root behind every frame, so background-list
+/// overlays are not visible under it — use
+/// [`render_nav_panel_overlay_foreground`] instead so the panel
+/// paints into the foreground draw list (above all windows).
 pub fn render_nav_panel_overlay(
     ui: &Ui,
     cfg: &NavPanelConfig,

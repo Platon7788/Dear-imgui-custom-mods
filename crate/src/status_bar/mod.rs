@@ -240,12 +240,11 @@ impl StatusBar {
     /// **Host requirement:** the background draw list is drawn
     /// **before** all ImGui windows. If the host renders a top-level
     /// window over the same region, that window's `WindowBg` style
-    /// fill will clobber the bar. When using
-    /// [`crate::app_window::AppWindow`], call
-    /// [`crate::app_window::AppConfig::raw_content`] so the root
-    /// `##app_root` window receives `WindowFlags::NO_BACKGROUND` and
-    /// becomes transparent — exposing the background draw list (and
-    /// thus the status bar) to the user.
+    /// fill will clobber the bar. [`crate::app_window::AppWindow`]
+    /// hosts a full-window root behind every frame — when running
+    /// under it, use [`Self::render_overlay_foreground`] instead so
+    /// the bar paints into the foreground draw list (above all
+    /// windows).
     ///
     /// Hover detection uses position-only (no `is_window_hovered`), so
     /// the bar stays responsive even when no ImGui window covers the

@@ -24,7 +24,6 @@ default = ["full"]
 
 # Meta-feature: every component.
 full = [
-    "app_window",
     "code_editor",
     "confirm_dialog",
     "diff_viewer",
@@ -43,12 +42,11 @@ full = [
     "virtual_tree",
 ]
 
-# ── Window chrome ───────────────────────────────────────────────────────────
-# app_window: borderless wgpu+winit+ImGui host — pure ImGui hit detection,
-# flat config, WM_GETMINMAXINFO-only Win32 subclass, no DWM frame extension.
-# (Re-named from `app_window_v2` on 2026-04-29 after the original v1 +
-# `borderless_window` modules were removed.)
-app_window = ["code_editor"]
+# Note: the previous `app_window` feature (borderless runner) was removed in
+# the 2026 architectural refactor. Its replacement, `chrome::*`, is always-on
+# infrastructure (no feature flag) — chrome helpers are tiny and broadly
+# applicable, while the runner machinery moved out of the crate (use
+# `dear-app` or your own winit + wgpu loop).
 
 # ── Dialogs & small widgets ─────────────────────────────────────────────────
 confirm_dialog = []

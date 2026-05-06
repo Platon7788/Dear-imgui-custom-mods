@@ -36,10 +36,9 @@ pub mod solarized;
 // ─── Palette types — single source of truth ─────────────────────────────────
 //
 // Re-exported from [`palettes`] so the standard import path is
-// `crate::theme::TitlebarColors` etc. The consumer modules (
-// `app_window`, `confirm_dialog`, `nav_panel`, `notifications`)
-// re-export these too for backwards-compatible user paths like
-// `crate::theme::TitlebarColors`.
+// `crate::theme::TitlebarColors` etc. The consumer modules
+// (`chrome`, `confirm_dialog`, `nav_panel`, `notifications`)
+// re-export these too for backwards-compatible user paths.
 pub use palettes::{
     DialogColors, DisasmFlowKind, DisasmViewColors, HexViewerColors, NavColors, NotificationColors,
     StatusBarColors, TitlebarColors,
@@ -226,9 +225,8 @@ impl Theme {
     }
 
     /// Titlebar colours for this theme. The palette type lives in
-    /// [`palettes`] and is always available — the consumer module
-    /// `app_window` is feature-gated, but inspecting / building
-    /// a `TitlebarColors` does not require it.
+    /// [`palettes`] and is always available; consumed by [`crate::chrome`]
+    /// when rendering the borderless titlebar.
     pub fn titlebar(self) -> TitlebarColors {
         match self {
             Self::Dark => dark::titlebar_colors(),
@@ -707,13 +705,13 @@ mod tests {
     // ── WCAG contrast (informational baseline — not strict AA) ─────────────
     //
     // Computes W3C "relative luminance" + contrast ratio for the primary
-    // text-on-window-bg pair sourced from `titlebar()` (under the
-    // `app_window` feature). The threshold is set to 4.5 ("AA body
+    // text-on-window-bg pair sourced from `titlebar()`. The threshold is
+    // set to 4.5 ("AA body
     // text") for the Light theme and 3.0 (relaxed for dark dim contrasts
     // — many popular dark themes flunk strict AA but read well in practice)
     // for everything else. Catches accidental black-on-black regressions.
 
-    #[cfg(feature = "app_window")]
+
     fn relative_luminance(c: [f32; 4]) -> f32 {
         // sRGB → linear conversion per WCAG 2.x.
         fn lin(c: f32) -> f32 {
@@ -729,7 +727,7 @@ mod tests {
         0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    #[cfg(feature = "app_window")]
+
     fn contrast_ratio(a: [f32; 4], b: [f32; 4]) -> f32 {
         let la = relative_luminance(a);
         let lb = relative_luminance(b);
@@ -737,7 +735,7 @@ mod tests {
         (l1 + 0.05) / (l2 + 0.05)
     }
 
-    #[cfg(feature = "app_window")]
+
     #[test]
     fn primary_text_meets_minimum_contrast() {
         // Floor levels chosen as regression detectors, NOT strict WCAG
@@ -756,7 +754,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "app_window")]
+
     #[test]
     fn button_glyphs_pop_against_titlebar_bg() {
         // The per-button accent palette (amber/cyan/red) MUST stand out

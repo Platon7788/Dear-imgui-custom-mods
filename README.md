@@ -10,7 +10,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 | Component | Description | Docs |
 |-----------|-------------|------|
-| **`app_window`** | Zero-boilerplate borderless application window — `AppWindow::run()` + `AppHandler` trait replaces ~300 lines of wgpu/winit/ImGui setup. Pure ImGui hit-detection titlebar (5 built-in themes via the unified `Theme` enum + per-instance `colors_override`, minimize/maximize/close, 8-direction edge resize, drag-to-move, close-confirmation, icon, extra buttons), event-driven render loop (`RenderMode`), DPI font rebuild, system clipboard backend, layout-independent shortcuts, cross-thread `AppProxy::wake()`, raw `on_window_event` hook, `WindowKind` presets (Splash / Tool / Dialog / Main) | [docs/app_window.md](docs/app_window.md) |
+| **`chrome`** | Borderless-window helpers (stateless / explicit-state) — custom Dear ImGui titlebar (min/max/close/drag, double-click maximize, hover zoom, 5 themes), 8-direction edge resize, vector glyphs, Win32 helpers (DWM dark mode, rounded corners, opacity, Win10 region sync). A `Chrome` convenience wrapper plugs into any `winit`-based runner — typically [`dear-app`](https://crates.io/crates/dear-app) — via `on_gpu_init` + `on_event` + `on_frame` callbacks. Replaces the removed `app_window` runner module (see CHANGELOG / ADR-029). | [docs/chrome.md](docs/chrome.md) |
 | **`nav_panel`** | Modern navigation panel (activity bar) — 3 docking positions (Left/Right/Top), flyout submenus, auto-hide with slide animation, toggle arrow, badges, button spacing/separators, per-button tooltip control, 5 unified themes, overlay variant (`render_nav_panel_overlay`) | [docs/nav_panel.md](docs/nav_panel.md) |
 | **`confirm_dialog`** | Reusable modal confirmation dialog — 5 unified themes + `colors_override`, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
 | **`notifications`** | Modern toast-notification center — 5 severity levels (Info/Success/Warning/Error/Debug) with draw-list icons, 6 stack placements (4 corners + top/bottom center), auto-dismiss timer with bottom progress bar, pause-on-hover, Fade/SlideIn/None animations, action buttons with caller-defined ids, manual `×` close, per-toast custom accent override, max-visible cap, 5 unified themes + `colors_override` | [docs/notifications.md](docs/notifications.md) |
@@ -79,24 +79,12 @@ src/
   utils/
     color.rs                        RGBA packing helpers
     text.rs                         CalcTextSize wrapper
-  app_window/
-    mod.rs                          AppWindow + ApplicationHandler thin delegates
-    startup.rs                      GPU + ImGui init (resumed body)
-    dispatch.rs                     Per-frame event dispatch (window_event, about_to_wait)
-    handler.rs                      AppHandler trait
-    state.rs                        AppState (set_theme, keep_alive, exit, proxy)
-    proxy.rs                        AppProxy (Send + Sync) — cross-thread wake()
-    win32.rs                        Win32 glue (DWM, rounded corners, MinMax subclass, opacity)
-    chrome/                         Pure-ImGui titlebar — buttons, drag, edge resize, glyphs
-    config/
-      mod.rs                        AppConfig struct + Default + preset constructors
-      builders.rs                   with_* fluent builder methods
-      fonts.rs                      FontChoice, FontLayer, GlyphRanges
-      enums.rs                      WindowKind, BorderStyle, FormStyle, Position, RenderMode, …
-      titlebar.rs                   Buttons, Chrome, ExtraButton, TitlebarConfig
-      icon.rs                       WindowIcon
-    gpu/                            wgpu + winit setup, ImGui IO wiring, surface management
-    platform.rs                     hwnd_of(), set_titlebar_dark_mode()
+  chrome/
+    mod.rs                          render_titlebar() + Chrome wrapper (stateful), public API
+    config.rs                       TitlebarConfig, Buttons, TitleAlign, CloseMode
+    edge.rs                         ResizeEdge, edge_at(), cursor_for_edge()
+    glyph.rs                        Vector glyphs (DPI-crisp min / max / restore / close)
+    win32.rs                        DWM dark mode, rounded corners, sync_region, opacity
   confirm_dialog/
     mod.rs                          render_confirm_dialog() — themed modal, DialogResult (#[must_use])
     config.rs                       DialogConfig, DialogIcon, ConfirmStyle (+ config.ron)
@@ -221,7 +209,6 @@ src/
     config.rs                       StatusBarConfig, Alignment (+ config.ron)
 
 examples/
-  demo_app_window.rs                AppWindow — all 4 window kinds, themes, nav+status, dialogs
   demo_nav_panel.rs                 NavPanel + StatusBar — full config panel, all dock positions
   demo_code_editor.rs               CodeEditor — syntax highlighting, themes, MDI fonts
   demo_tab_control.rs               TabControl — styles, pinned tabs, badges, nested tabs
@@ -240,37 +227,79 @@ examples/
 
 ## Quick Start
 
-### AppWindow
+### Borderless window — `chrome` + `dear-app`
+
+The custom titlebar lives in `chrome::*` — a set of stateless helpers plus
+a `Chrome` convenience wrapper. The crate itself does **not** ship an
+event loop; you wire `chrome` into any `winit`-based runner. The recommended
+runner is [`dear-app`](https://crates.io/crates/dear-app), which already
+provides battle-tested wgpu / surface / DPI / event dispatch.
 
 ```rust
-use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow};
-use dear_imgui_rs::Ui;
-
-struct MyApp;
-
-impl AppHandler for MyApp {
-    fn render(&mut self, ui: &Ui, _state: &mut AppState) {
-        ui.window("Hello").build(|| {
-            ui.text("Hello from AppWindow!");
-        });
-    }
-}
+use std::sync::{Arc, Mutex};
+use dear_app::{AppBuilder, DockingConfig, RunnerConfig};
+use dear_imgui_custom_mod::chrome::{Chrome, TitlebarConfig};
 
 fn main() {
-    AppWindow::new(AppConfig::main("My App", 1024.0, 768.0))
-        .run(MyApp)
-        .expect("event loop error");
+    let chrome = Arc::new(Mutex::new(
+        Chrome::new(TitlebarConfig::default())
+            .with_title("My App")
+            .with_corner_radius(8),
+    ));
+    let win_stash = Arc::new(Mutex::new(None));
+
+    AppBuilder::new()
+        .with_config(RunnerConfig {
+            window_title: "My App".into(),
+            window_size: (1100.0, 700.0),
+            // CRITICAL: dear-app's auto-dockspace would absorb every click
+            // before chrome / toolbars / tab control see them — disable.
+            docking: DockingConfig {
+                enable: false,
+                auto_dockspace: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .on_gpu_init({
+            let c = chrome.clone();
+            let w = win_stash.clone();
+            move |window, _, _, _| {
+                c.lock().unwrap().on_setup(window, 8);
+                *w.lock().unwrap() = Some(window.clone());
+            }
+        })
+        .on_event({
+            let c = chrome.clone();
+            let w = win_stash.clone();
+            move |event, _, _| {
+                if let Some(window) = w.lock().unwrap().as_ref() {
+                    c.lock().unwrap().on_event(event, window);
+                }
+            }
+        })
+        .on_frame({
+            let c = chrome.clone();
+            let w = win_stash.clone();
+            move |ui, _| {
+                let Some(window) = w.lock().unwrap().clone() else { return };
+                c.lock().unwrap().render(ui, &window, |ui, _area| {
+                    ui.window("Hello").build(|| ui.text("Hello from chrome!"));
+                });
+                if c.lock().unwrap().take_close_request() {
+                    std::process::exit(0);
+                }
+            }
+        })
+        .run().expect("event loop error");
 }
 ```
 
-### Borderless Window — use the bundled `AppWindow` host
-
-The custom titlebar (drag, edge resize, minimize / maximize / close,
-icon, extra buttons, all themes, close-confirm mode) lives **inside**
-`app_window` — there is no separate `borderless_window` crate path
-anymore. See [docs/app_window.md](docs/app_window.md) for the full
-config builder reference and the four window-kind presets
-(`splash` / `tool` / `dialog` / `main`).
+See [docs/chrome.md](docs/chrome.md) for the full architecture, two
+integration patterns (stateless helpers vs the `Chrome` wrapper),
+limitations (Cyrillic Ctrl+C currently degraded under `dear-app` —
+upstream issue tracking), and the migration recipe from the removed
+`app_window` runner.
 
 `nav_panel` and `status_bar` keep matching `render_nav_panel_overlay`
 and `StatusBar::render_overlay` entry points for foreground-draw-list
@@ -390,7 +419,6 @@ diff.set_texts("old text...", "new text...");
 ## Running the Demos
 
 ```bash
-cargo run -p examples-app --example demo_app_window --release
 cargo run -p examples-app --example demo_nav_panel --release
 cargo run -p examples-app --example demo_code_editor --release
 cargo run -p examples-app --example demo_tab_control --release

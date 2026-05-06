@@ -5,13 +5,21 @@ use winit::window::CursorIcon;
 /// Edge / corner under the cursor, for drag-resize.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResizeEdge {
+    /// Top edge — vertical resize from the top.
     North,
+    /// Bottom edge — vertical resize from the bottom.
     South,
+    /// Right edge — horizontal resize from the right.
     East,
+    /// Left edge — horizontal resize from the left.
     West,
+    /// Top-right corner — diagonal resize.
     NorthEast,
+    /// Top-left corner — diagonal resize.
     NorthWest,
+    /// Bottom-right corner — diagonal resize.
     SouthEast,
+    /// Bottom-left corner — diagonal resize.
     SouthWest,
 }
 

@@ -93,10 +93,6 @@ name = "demo_status_toolbar"
 path = "examples/demo_status_toolbar.rs"
 
 [[example]]
-name = "demo_app_window"
-path = "examples/demo_app_window.rs"
-
-[[example]]
 name = "demo_nav_panel"
 path = "examples/demo_nav_panel.rs"
 
