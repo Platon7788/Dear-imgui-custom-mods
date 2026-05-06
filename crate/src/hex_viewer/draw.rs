@@ -556,30 +556,45 @@ impl HexViewer {
             // gap before the divider so the address text never
             // grazes the line.
             //
-            // Per-row formatting reuses a thread-local scratch
-            // `String` so the address gutter pays zero allocations
-            // per frame (the previous `format!("{:016X} ", addr)`
-            // built a fresh `String` ~50 rows × 60 fps = ~3000
-            // alloc/sec). `draw_row` runs on `&self`, so the
-            // mutable scratch buffer can't live on the struct —
-            // thread-local is the right scope: each render thread
-            // gets its own reused buffer.
-            use std::cell::RefCell;
-            use std::fmt::Write as _;
-            thread_local! {
-                static ADDR_BUF: RefCell<String> = RefCell::new(String::with_capacity(18));
+            // Host can override the displayed address via the
+            // `address_formatter` closure (see `set_address_formatter`)
+            // — typically used to show "module+offset" strings for
+            // mapped memory. The widget itself stays domain-agnostic.
+            // When the host returns `Some(s)` we pay one allocation
+            // per row for the host's string; the default `None` path
+            // routes through the thread-local zero-alloc buffer below.
+            let host_str = self
+                .address_formatter
+                .as_ref()
+                .and_then(|f| f(addr));
+            if let Some(s) = host_str {
+                draw_list.add_text([origin_x, y], col32(cfg.color_offset), &s);
+            } else {
+                // Per-row formatting reuses a thread-local scratch
+                // `String` so the address gutter pays zero allocations
+                // per frame (the previous `format!("{:016X} ", addr)`
+                // built a fresh `String` ~50 rows × 60 fps = ~3000
+                // alloc/sec). `draw_row` runs on `&self`, so the
+                // mutable scratch buffer can't live on the struct —
+                // thread-local is the right scope: each render thread
+                // gets its own reused buffer.
+                use std::cell::RefCell;
+                use std::fmt::Write as _;
+                thread_local! {
+                    static ADDR_BUF: RefCell<String> = RefCell::new(String::with_capacity(18));
+                }
+                ADDR_BUF.with(|cell| {
+                    let mut buf = cell.borrow_mut();
+                    buf.clear();
+                    let _ = match (cfg.uppercase, digits) {
+                        (true, 16) => write!(&mut *buf, "{:016X} ", addr),
+                        (false, 16) => write!(&mut *buf, "{:016x} ", addr),
+                        (true, _) => write!(&mut *buf, "{:08X} ", addr),
+                        (false, _) => write!(&mut *buf, "{:08x} ", addr),
+                    };
+                    draw_list.add_text([origin_x, y], col32(cfg.color_offset), buf.as_str());
+                });
             }
-            ADDR_BUF.with(|cell| {
-                let mut buf = cell.borrow_mut();
-                buf.clear();
-                let _ = match (cfg.uppercase, digits) {
-                    (true, 16) => write!(&mut *buf, "{:016X} ", addr),
-                    (false, 16) => write!(&mut *buf, "{:016x} ", addr),
-                    (true, _) => write!(&mut *buf, "{:08X} ", addr),
-                    (false, _) => write!(&mut *buf, "{:08x} ", addr),
-                };
-                draw_list.add_text([origin_x, y], col32(cfg.color_offset), buf.as_str());
-            });
         }
 
         let hex_x = origin_x + self.offset_col_width();

@@ -119,7 +119,24 @@ pub trait DisasmDataProvider {
         false
     }
 
-    /// Get a human-readable name for an address (symbol, export, label).
+    /// Override the string the widget displays in the Address column
+    /// for `addr`. Return `None` (the default) to keep the absolute
+    /// hex format (`{:016X}` / `{:08X}` per `DisasmViewConfig
+    /// ::address_width_64`).
+    ///
+    /// Typical host implementations:
+    /// - `Some("kernel32+0x1234")` — module name + offset for memory
+    ///   inside a known loaded module.
+    /// - `Some("RtlAllocateHeap")` — exported / known symbol name when
+    ///   the address coincides exactly with one.
+    /// - `None` — for unmapped / raw memory and when the host wants the
+    ///   raw absolute address shown.
+    ///
+    /// Performance note: this is called once per visible row per
+    /// frame. Hosts implementing module / symbol resolution should
+    /// back it with a sorted-by-address vector + binary search (or an
+    /// LRU cache), not a linear scan over module list — at 60 FPS with
+    /// 100 visible rows you'll get 6000 calls/second.
     fn symbol_name(&self, _addr: u64) -> Option<String> {
         None
     }

@@ -1340,6 +1340,7 @@ impl DisasmView {
                             mouse_pos,
                             avail[0],
                             comment_x,
+                            provider,
                         );
                     }
                 }

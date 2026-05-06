@@ -52,13 +52,33 @@ pub use config::{
     AddressWidth, ByteGrouping, BytesPerRow, CopyFormat, Endianness, HexSearchMode,
     HexViewerConfig, StringEncoding,
 };
+// `AddressFormatter` is defined below in this file but re-exported
+// from the public surface so consumers can name the closure-trait type
+// without reaching into private paths.
 pub use nav_history::NavHistory;
 pub use provider::{ByteCategory, ColorRegion, HexDataProvider, VecDataProvider};
 pub use undo::{UndoEntry, UndoStack};
 pub use input::EditColumn;
 pub use search::{PatternByte, Selection};
 
+use std::sync::Arc;
+
 use crate::utils::clipboard;
+
+/// Closure type for the host-supplied Address-column formatter.
+///
+/// Takes the absolute address of a row and returns:
+/// - `Some(string)` — show that string in the Address column instead
+///   of the default absolute hex (typical use: `"kernel32+0x1234"` for
+///   memory inside a known loaded module, or a known export name).
+/// - `None` — fall back to the default absolute hex format
+///   (`{:016X}` / `{:08X}` per [`HexViewerConfig::address_width`]).
+///
+/// `Send + Sync` so the boxed closure can be cloned freely between
+/// threads if the host moves the widget across them. Performance: this
+/// is invoked once per visible row per frame — back it with a
+/// sorted-by-address vector + binary search, not a linear scan.
+pub type AddressFormatter = Arc<dyn Fn(u64) -> Option<String> + Send + Sync>;
 
 // ── HexViewer ────────────────────────────────────────────────────────────────
 
@@ -176,6 +196,16 @@ pub struct HexViewer {
     /// this so the ASCII column lines up with where mouse clicks
     /// expect it.
     pub(super) inner_content_w: f32,
+
+    /// Optional host-supplied Address-column formatter. When `Some`,
+    /// invoked for every visible row's absolute address; if it returns
+    /// `Some(string)` that string is rendered instead of the default
+    /// hex format. `None` keeps every row in the default absolute hex
+    /// rendering.
+    ///
+    /// Excluded from RON round-trip — it's runtime payload, not
+    /// configuration. See [`Self::set_address_formatter`].
+    pub(super) address_formatter: Option<AddressFormatter>,
     // The active locale lives on `config.locale` so it round-trips
     // through `ron::to_string(&cfg)` / `ron::from_str` along with
     // every other display flag — see `with_locale` / `set_locale`.
@@ -234,7 +264,29 @@ impl HexViewer {
             inner_content_w: 0.0,
             popup_open_pos: [0.0, 0.0],
             component_center: [0.0, 0.0],
+            address_formatter: None,
         }
+    }
+
+    /// Install (or clear with `None`) the host-supplied Address-column
+    /// formatter. See [`AddressFormatter`] for the contract and
+    /// performance notes.
+    ///
+    /// ```rust,no_run
+    /// # use dear_imgui_custom_mod::hex_viewer::HexViewer;
+    /// # use std::sync::Arc;
+    /// let mut hv = HexViewer::new("dump");
+    /// hv.set_address_formatter(Some(Arc::new(|addr: u64| {
+    ///     // Host-side module table lookup goes here.
+    ///     if addr >= 0x7FF6_0000_0000 && addr < 0x7FF6_0010_0000 {
+    ///         Some(format!("kernel32+0x{:X}", addr - 0x7FF6_0000_0000))
+    ///     } else {
+    ///         None  // fall back to default absolute hex
+    ///     }
+    /// })));
+    /// ```
+    pub fn set_address_formatter(&mut self, f: Option<AddressFormatter>) {
+        self.address_formatter = f;
     }
 
     /// Override the user-visible language on construction. Default is

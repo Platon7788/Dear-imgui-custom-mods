@@ -4,7 +4,7 @@
 
 use super::arrows::MAX_ARROW_DEPTH;
 use super::config::DisasmColors;
-use super::provider::{FlowKind, Instruction};
+use super::provider::{DisasmDataProvider, FlowKind, Instruction};
 use super::tokens::{OperandTokenizer, TokenKind};
 use super::{DisasmView, EditColumn};
 use crate::utils::color::col32;
@@ -136,6 +136,7 @@ impl DisasmView {
         mouse_pos: [f32; 2],
         win_w: f32,
         comment_x: f32,
+        provider: &dyn DisasmDataProvider,
     ) {
         let cfg = &self.config;
         let colors = &cfg.colors;
@@ -382,18 +383,27 @@ impl DisasmView {
         }
 
         // ── Address column ────────────────────────────────────
+        // Host can override the displayed address via
+        // `DisasmDataProvider::symbol_name(addr)` — typically used to
+        // show "module+offset" (e.g. `kernel32+0x1234`) for mapped
+        // memory regions, or a known export / symbol name when one is
+        // resolvable. Returning `None` falls back to the raw absolute
+        // hex format. The widget itself stays domain-agnostic — it has
+        // no knowledge of modules, PE files, or PDB symbols.
         let addr = instr.address();
-        let addr_str = if cfg.address_width_64 {
-            if cfg.uppercase {
-                format!("{:016X}", addr)
+        let addr_str = provider.symbol_name(addr).unwrap_or_else(|| {
+            if cfg.address_width_64 {
+                if cfg.uppercase {
+                    format!("{:016X}", addr)
+                } else {
+                    format!("{:016x}", addr)
+                }
+            } else if cfg.uppercase {
+                format!("{:08X}", addr)
             } else {
-                format!("{:016x}", addr)
+                format!("{:08x}", addr)
             }
-        } else if cfg.uppercase {
-            format!("{:08X}", addr)
-        } else {
-            format!("{:08x}", addr)
-        };
+        });
 
         // "Just copied" address-gutter flash — translucent
         // accent-coloured pill behind the address text whenever the
