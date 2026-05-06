@@ -5,21 +5,31 @@
 //!
 //! ## Architecture (Windows)
 //!
-//! All windows are created with `decorations=false`, so winit produces a
-//! `WS_POPUP + WS_THICKFRAME` window. That style has *no* caption, *no*
-//! system menu, *no* DWM chrome — meaning DWM has nothing to draw or
-//! tint when the window loses focus, and there is no inactive-window
-//! dimming to fight. `WS_THICKFRAME` keeps native edge resize, Aero
-//! Snap, and the DWM drop shadow.
+//! Borderless via the **post-creation** route: the window is created
+//! with normal `WS_OVERLAPPEDWINDOW` decorations, then after wgpu is
+//! initialised [`startup`] calls `window.set_decorations(false)`.
+//! winit's `MARKER_DECORATIONS` flag flips, `SetWindowPos(SWP_FRAMECHANGED)`
+//! triggers a `WM_NCCALCSIZE` recalc, and from that point winit's own
+//! handler returns `0` — the visual frame is gone, but DWM had a chance
+//! to fully initialise composition with proper chrome metrics first.
+//! This sequence avoids the phantom NC-frame artifacts that creating
+//! frameless from the start can cause on high-DPI laptops, hybrid GPU
+//! machines, and configurations with non-standard shell extensions.
+//! Verified against the reference at
+//! `D:\\GitHub\\Rust_Projects\\test-dear-imgui-rs`.
 //!
-//! Win32-side helpers are minimal:
+//! Win32-side helpers (in [`win32::setup_window`]) are minimal:
 //! - `DWMWA_USE_IMMERSIVE_DARK_MODE` for the Alt-Tab thumbnail.
 //! - `DWMWA_WINDOW_CORNER_PREFERENCE` (Win11) or `SetWindowRgn`
 //!   (Win10 fallback) for rounded corners.
 //! - `WS_EX_TOOLWINDOW` for tool-window kinds.
-//! - A tiny `WM_GETMINMAXINFO` subclass that clamps the maximised rect
-//!   to the monitor work area (so the taskbar stays visible).
 //! - `set_opacity` toggles `WS_EX_LAYERED` on demand.
+//!
+//! Notably absent: no `WM_NCCALCSIZE` / `WM_NCHITTEST` / `WM_GETMINMAXINFO`
+//! subclass. winit owns those handlers — its NCCALCSIZE already clamps
+//! `rgrc[0]` to the monitor work area on maximise, so the taskbar stays
+//! visible without us doing anything; native edge-resize works through
+//! `WS_OVERLAPPEDWINDOW` + `DefWindowProc`.
 //!
 //! The titlebar itself is pure Dear ImGui — buttons, drag, double-click
 //! are all drawn into the ImGui draw list and dispatched to the OS via

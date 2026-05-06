@@ -1,41 +1,47 @@
 //! Windows-specific helpers for the borderless app-host.
 //!
-//! `app_window` always creates `WS_POPUP + WS_THICKFRAME` windows
-//! (`with_decorations(false)` in [`super`]). That style has no caption,
-//! no system menu, no DWM chrome — DWM has nothing to draw or tint on
-//! focus change, so there is no inactive-window dimming to fight.
+//! `app_window` creates the window with normal `WS_OVERLAPPEDWINDOW`
+//! decorations (winit `with_decorations(true)`); after wgpu init the
+//! framework calls `window.set_decorations(false)` from `startup.rs`,
+//! which flips winit's `MARKER_DECORATIONS` flag and triggers a
+//! `SetWindowPos(SWP_FRAMECHANGED)` — winit's own `WM_NCCALCSIZE`
+//! handler then returns `0` for every NC pass, killing the visual
+//! frame. This is the post-creation route; verified working on
+//! laptops, desktops and VMs against the reference at
+//! `D:\\GitHub\\Rust_Projects\\test-dear-imgui-rs`.
 //!
-//! Provides the full set of Win32 hooks the framework needs:
+//! Provides:
 //! 1. HWND extraction from a `winit::Window`.
-//! 2. DWM dark-mode attribute on the OS titlebar.
+//! 2. DWM dark-mode attribute (Alt-Tab thumbnail tint).
 //! 3. Rounded corners (Win11 DWM, Win10 `SetWindowRgn` fallback).
 //! 4. `WS_EX_TOOLWINDOW` for tool-window kinds (excludes from Alt-Tab).
-//! 5. `WM_GETMINMAXINFO` subclass that clamps a maximised
-//!    `WS_THICKFRAME` window to the monitor work area so it doesn't
-//!    cover the taskbar.
-//! 6. `set_opacity` — toggles `WS_EX_LAYERED`.
-//! 7. `debug_log` — `OutputDebugStringW` so messages survive
+//! 5. `set_opacity` — toggles `WS_EX_LAYERED`.
+//! 6. `debug_log` — `OutputDebugStringW` so messages survive
 //!    `windows_subsystem = "windows"` (where stderr is detached).
 //!
-//! Before the v1 / `borderless_window` removal (2026-04-29), helpers
-//! 1-3 lived in `borderless_window::platform`; they are inlined here
-//! now so the framework is fully self-contained.
+//! Deliberately NOT done here:
+//! - **No `WM_GETMINMAXINFO` subclass.** winit's `WM_NCCALCSIZE` handler
+//!   already sets `rgrc[0] = monitorInfo.rcWork` on maximise (see
+//!   `winit/src/platform_impl/windows/event_loop.rs` ~line 1170), so
+//!   the taskbar stays visible automatically. Adding our own MINMAX
+//!   clamp on top double-constrained the window and produced visible
+//!   gap+clip artifacts on configurations where the OS already
+//!   accounted for the work area.
+//! - **No `WM_NCCALCSIZE` override.** winit owns that handler — we let
+//!   it do its job.
+//! - **No `WM_NCHITTEST` override.** winit + `WS_OVERLAPPEDWINDOW`
+//!   handles native edge-resize through `DefWindowProc`. The titlebar
+//!   drag is handled at the app layer through
+//!   `winit::Window::drag_window`.
 
 #![cfg(windows)]
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
-
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows_sys::Win32::Foundation::{HWND, RECT};
 use windows_sys::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
-use windows_sys::Win32::Graphics::Gdi::{
-    CreateRoundRectRgn, GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-    MonitorFromWindow, SetWindowRgn,
-};
-use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GetClientRect, GetWindowLongPtrW, LWA_ALPHA, MINMAXINFO,
-    SetLayeredWindowAttributes, SetWindowLongPtrW, WM_DESTROY, WM_GETMINMAXINFO, WS_EX_LAYERED,
-    WS_EX_TOOLWINDOW,
+    GWL_EXSTYLE, GetClientRect, GetWindowLongPtrW, LWA_ALPHA, SetLayeredWindowAttributes,
+    SetWindowLongPtrW, WS_EX_LAYERED, WS_EX_TOOLWINDOW,
 };
 
 // ── HWND extraction ──────────────────────────────────────────────────────────
@@ -137,9 +143,9 @@ fn apply_rounded_region_raw(hwnd: isize, radius: i32) {
 
 // ── DWM dark titlebar ────────────────────────────────────────────────────────
 
-/// Apply the DWM immersive-dark-mode attribute. Even with
-/// `with_decorations(false)`, Windows still renders a small drop-shadow;
-/// dark mode prevents the brief white flash on startup.
+/// Apply the DWM immersive-dark-mode attribute. Affects the Alt-Tab
+/// thumbnail and the brief OS-rendered frame during minimise/restore
+/// animations, which can otherwise flash white on dark themes.
 pub(super) fn set_titlebar_dark_mode(hwnd: isize, dark: bool) {
     if hwnd == 0 {
         return;
@@ -171,7 +177,6 @@ pub(super) struct SetupOptions {
 /// 1. Dark mode for the Alt-Tab thumbnail.
 /// 2. Rounded corners (Win11 DWM, Win10 region fallback).
 /// 3. `WS_EX_TOOLWINDOW` (tool kinds only).
-/// 4. `WM_GETMINMAXINFO` clamp subclass.
 pub(super) fn setup_window(hwnd: isize, opts: SetupOptions) {
     if hwnd == 0 {
         return;
@@ -179,7 +184,6 @@ pub(super) fn setup_window(hwnd: isize, opts: SetupOptions) {
     set_titlebar_dark_mode(hwnd, true);
     set_rounded_corners(hwnd, opts.corner_radius);
     apply_extended_styles(hwnd as HWND, opts.tool_window);
-    install_minmax_subclass(hwnd as HWND);
 }
 
 // ── WS_EX_TOOLWINDOW ─────────────────────────────────────────────────────────
@@ -194,86 +198,6 @@ fn apply_extended_styles(hwnd: HWND, tool_window: bool) {
         if want != cur {
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want as isize);
         }
-    }
-}
-
-// ── Maximise-clamp subclass ──────────────────────────────────────────────────
-
-const SUBCLASS_ID: usize = 0xAFE1_BD72;
-
-fn install_minmax_subclass(hwnd: HWND) {
-    let ok = unsafe { SetWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID, 0) };
-    if ok == 0 {
-        debug_log("SetWindowSubclass failed");
-    }
-}
-
-unsafe extern "system" fn subclass_proc(
-    hwnd: HWND,
-    umsg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-    _uid: usize,
-    _refdata: usize,
-) -> LRESULT {
-    let result = catch_unwind(AssertUnwindSafe(|| match umsg {
-        WM_GETMINMAXINFO => clamp_minmax(hwnd, lparam),
-        WM_DESTROY => {
-            unsafe {
-                RemoveWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID);
-            }
-            unsafe { DefSubclassProc(hwnd, umsg, wparam, lparam) }
-        }
-        _ => unsafe { DefSubclassProc(hwnd, umsg, wparam, lparam) },
-    }));
-    result.unwrap_or_else(|_| unsafe { DefSubclassProc(hwnd, umsg, wparam, lparam) })
-}
-
-fn clamp_minmax(hwnd: HWND, lparam: LPARAM) -> LRESULT {
-    let Some(work) = work_area_of(hwnd) else {
-        return unsafe { DefSubclassProc(hwnd, WM_GETMINMAXINFO, 0, lparam) };
-    };
-    let mmi: &mut MINMAXINFO = unsafe { &mut *(lparam as *mut MINMAXINFO) };
-    mmi.ptMaxPosition = POINT {
-        x: work.left,
-        y: work.top,
-    };
-    mmi.ptMaxSize = POINT {
-        x: work.right - work.left,
-        y: work.bottom - work.top,
-    };
-    mmi.ptMaxTrackSize = POINT {
-        x: (work.right - work.left).max(mmi.ptMinTrackSize.x),
-        y: (work.bottom - work.top).max(mmi.ptMinTrackSize.y),
-    };
-    0
-}
-
-fn work_area_of(hwnd: HWND) -> Option<RECT> {
-    let monitor: HMONITOR = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
-    if monitor.is_null() {
-        return None;
-    }
-    let mut info = MONITORINFO {
-        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-        rcMonitor: RECT {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        },
-        rcWork: RECT {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        },
-        dwFlags: 0,
-    };
-    if unsafe { GetMonitorInfoW(monitor, &mut info) } == 0 {
-        None
-    } else {
-        Some(info.rcWork)
     }
 }
 

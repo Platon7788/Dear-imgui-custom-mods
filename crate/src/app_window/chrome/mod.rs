@@ -1,10 +1,13 @@
 //! Custom titlebar rendered with Dear ImGui's draw list.
 //!
-//! The host window is `WS_POPUP + WS_THICKFRAME` (winit
-//! `with_decorations(false)`), so client area = window area and there is
-//! no OS chrome. This module draws the entire titlebar into the wgpu
-//! surface and detects clicks in ImGui space; resize edges are detected
-//! here too and dispatched via
+//! The host window is `WS_OVERLAPPEDWINDOW` with the post-creation
+//! `set_decorations(false)` chrome strip applied (see
+//! [`super::startup`] / [`super::win32`]), so client area visually =
+//! window area while caption-metrics geometry is preserved for native
+//! Aero Snap, maximise overflow, and edge-resize via `DefWindowProc`.
+//! This module draws the entire titlebar into the wgpu surface and
+//! detects clicks in ImGui space; resize edges are detected here too
+//! (as a hover/cursor hint) and dispatched via
 //! [`winit::window::Window::drag_resize_window`].
 
 mod edge;

@@ -18,16 +18,29 @@ pub(super) fn init<H: AppHandler + 'static>(
 ) {
     let cfg = &app.config;
 
-    // ALWAYS `decorations=false`. This makes winit create a `WS_POPUP +
-    // WS_THICKFRAME`-style window: no caption, no system menu, no DWM
-    // chrome of any kind — therefore nothing for DWM to dim or tint
-    // when the window loses focus. Resize, Aero Snap, drop shadow,
-    // taskbar / Alt-Tab integration all keep working through
-    // `WS_THICKFRAME`. This matches the v1 `app_window` approach.
+    // Borderless window via the **post-creation** `set_decorations(false)`
+    // route. The window is created WITH normal decorations
+    // (`WS_OVERLAPPEDWINDOW`, full caption-metrics, default DWM
+    // composition); after wgpu init we call `window.set_decorations(false)`
+    // which flips winit's `MARKER_DECORATIONS` flag and triggers
+    // `SetWindowPos(SWP_FRAMECHANGED)`. From that point on winit's own
+    // `WM_NCCALCSIZE` handler returns `0` (kills NC area).
+    //
+    // Why post-creation, not at attribute time:
+    // creating with `with_decorations(false)` from the start works on
+    // most machines but causes phantom NC-frame artifacts on a subset
+    // of configurations (high-DPI laptops, hybrid GPUs, certain shell
+    // extensions) — DWM has no chance to fully initialise composition
+    // for the chrome before we strip it, and on those configs renders
+    // a default chrome strip / left border as a fallback. Letting DWM
+    // see proper chrome first, *then* stripping it, sidesteps this
+    // entirely. Verified against the working reference at
+    // `D:\\GitHub\\Rust_Projects\\test-dear-imgui-rs` which uses the
+    // exact same sequence.
     let mut attrs = Window::default_attributes()
         .with_title(cfg.title.clone())
         .with_inner_size(LogicalSize::new(cfg.size[0], cfg.size[1]))
-        .with_decorations(false)
+        .with_decorations(true)
         .with_resizable(cfg.os_resizable())
         .with_visible(false);
 
@@ -120,6 +133,14 @@ pub(super) fn init<H: AppHandler + 'static>(
             frame.present();
         }
     }
+
+    // Strip the OS chrome AFTER swapchain priming but BEFORE making the
+    // window visible. winit flips MARKER_DECORATIONS off and triggers
+    // SetWindowPos(SWP_FRAMECHANGED) — its own WM_NCCALCSIZE handler
+    // now returns 0 for every NC layout pass, so the window is shown
+    // already borderless. The window is hidden at this point so there
+    // is no visible chrome flash.
+    window.set_decorations(false);
 
     // Now reveal the window. The pixel buffer in the swapchain is already
     // a flat tinted rectangle, so users no longer see a black flash.
