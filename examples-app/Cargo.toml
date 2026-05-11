@@ -29,7 +29,7 @@ pollster = "0.4.0"
 wgpu = "29.0.1"
 winit = "0.30.13"
 # `demo_disasm_view` exercises the ron-export "Save Config" button.
-ron = "0.8"
+ron = "0.12"
 
 [lib]
 # Empty stub crate — examples need a parent target to live under, but
