@@ -31,6 +31,78 @@ fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
 }
 
+/// 2026-05-25 (vex0r session 130) — paint a tooltip body directly
+/// into a foreground draw list, positioned ABOVE the cursor so the
+/// status bar (which lives on the same foreground draw list) cannot
+/// overlap it.
+///
+/// Used by `render_overlay_foreground` because a normal
+/// `ui.tooltip(..)` body would land in a TopLayer ImGui window —
+/// which paints BELOW the foreground draw list and gets sliced by
+/// the bar strip the user is hovering. Painting into the SAME
+/// foreground draw list with `cursor.y - box_h - 8 px gap` puts
+/// the tooltip body above the cursor and outside the bar strip.
+///
+/// Geometry mirrors the crate-wide `themed_tooltip` look: 10×8 px
+/// padding, 4 px corner rounding, 1 px border in the bar's
+/// separator colour, background in the bar's bg colour but at
+/// `0.95` alpha so the chrome under it bleeds through a touch and
+/// the tooltip reads as floating rather than baked-in.
+fn paint_foreground_tooltip(
+    ui: &Ui,
+    draw: &dear_imgui_rs::DrawListMut,
+    cfg: &StatusBarConfig,
+    text: &str,
+) {
+    const PAD_X: f32 = 10.0;
+    const PAD_Y: f32 = 8.0;
+    const ROUND: f32 = 4.0;
+    const CURSOR_GAP_Y: f32 = 8.0; // gap between cursor and tooltip bottom
+
+    let text_size = calc_text_size(text);
+    let box_w = text_size[0] + 2.0 * PAD_X;
+    let box_h = text_size[1] + 2.0 * PAD_Y;
+
+    let mouse = ui.io().mouse_pos();
+    let display = ui.io().display_size();
+
+    // Anchor box above the cursor; clamp inside the viewport.
+    let mut tip_y = mouse[1] - box_h - CURSOR_GAP_Y;
+    if tip_y < 4.0 {
+        // No room above — fall back to below the cursor. Bar's
+        // foreground body lives at the very bottom strip, so anything
+        // above the cursor is fine; below-cursor would only be needed
+        // if cursor is near the TOP of the viewport, where there's no
+        // bar to overlap anyway.
+        tip_y = (mouse[1] + CURSOR_GAP_Y).min(display[1] - box_h - 4.0);
+    }
+    let tip_x = mouse[0]
+        .min(display[0] - box_w - 4.0)
+        .max(4.0);
+
+    // Background — slight transparency so the tooltip floats above
+    // the chrome rather than baking in as part of the bar.
+    let mut bg = cfg.colors.bg;
+    bg[3] = 0.95;
+    draw.add_rect([tip_x, tip_y], [tip_x + box_w, tip_y + box_h], col32(bg))
+        .filled(true)
+        .rounding(ROUND)
+        .build();
+    draw.add_rect(
+        [tip_x, tip_y],
+        [tip_x + box_w, tip_y + box_h],
+        col32(cfg.colors.separator),
+    )
+    .rounding(ROUND)
+    .thickness(1.0)
+    .build();
+    draw.add_text(
+        [tip_x + PAD_X, tip_y + PAD_Y],
+        col32(cfg.colors.text),
+        text,
+    );
+}
+
 // ── Status indicator ────────────────────────────────────────────────────────
 
 /// Visual status indicator (colored dot before text).
@@ -271,7 +343,11 @@ impl StatusBar {
     ) -> Vec<StatusBarEvent> {
         let _id_tok = ui.push_id(&self.id);
         let draw = ui.get_foreground_draw_list();
-        self.render_impl(ui, origin, size, &draw, false)
+        // 2026-05-25 (vex0r session 130) — last arg flips tooltip
+        // rendering into the "paint into the same foreground draw
+        // list, above the cursor" path so per-icon tooltips don't get
+        // clipped by the bar body that sits on the same draw list.
+        self.render_impl_with_tooltip_mode(ui, origin, size, &draw, false, true)
     }
 
     fn render_impl(
@@ -281,6 +357,34 @@ impl StatusBar {
         size: [f32; 2],
         draw: &dear_imgui_rs::DrawListMut,
         use_window_hovered: bool,
+    ) -> Vec<StatusBarEvent> {
+        self.render_impl_with_tooltip_mode(
+            ui, origin, size, draw, use_window_hovered, false,
+        )
+    }
+
+    /// Shared body for both overlay variants. `tooltip_in_foreground`
+    /// switches per-item tooltips from the default `ui.tooltip(..)`
+    /// (TopLayer ImGui window) to a manual paint INTO the same
+    /// `draw` list this body uses. Required when the bar itself lives
+    /// in the foreground draw list — TopLayer windows render below
+    /// foreground, so a stock `ui.tooltip` body would be sliced by
+    /// the bar strip the user is hovering. The manual path:
+    ///
+    /// * positions the box ABOVE the cursor so the bar can never
+    ///   overlap it (cursor.y - box_h - 8 px gap),
+    /// * clamps to the viewport on both axes,
+    /// * paints background + 1 px border + text into the foreground
+    ///   draw list so it sits on top of everything (including the
+    ///   bar's own background fill from a few `draw` calls earlier).
+    fn render_impl_with_tooltip_mode(
+        &self,
+        ui: &Ui,
+        origin: [f32; 2],
+        size: [f32; 2],
+        draw: &dear_imgui_rs::DrawListMut,
+        use_window_hovered: bool,
+        tooltip_in_foreground: bool,
     ) -> Vec<StatusBarEvent> {
         let mut events = Vec::new();
         let cfg = &self.config;
@@ -333,6 +437,7 @@ impl StatusBar {
                 cursor[1],
                 bar_h,
                 use_window_hovered,
+                tooltip_in_foreground,
                 &mut events,
             );
             x += w + cfg.item_padding;
@@ -370,6 +475,7 @@ impl StatusBar {
                 cursor[1],
                 bar_h,
                 use_window_hovered,
+                tooltip_in_foreground,
                 &mut events,
             );
             rx -= cfg.item_padding;
@@ -406,6 +512,7 @@ impl StatusBar {
                     cursor[1],
                     bar_h,
                     use_window_hovered,
+                    tooltip_in_foreground,
                     &mut events,
                 );
                 cx += w + cfg.item_padding;
@@ -428,6 +535,7 @@ impl StatusBar {
         bar_y: f32,
         bar_h: f32,
         use_window_hovered: bool,
+        tooltip_in_foreground: bool,
         events: &mut Vec<StatusBarEvent>,
     ) -> f32 {
         let cfg = &self.config;
@@ -508,10 +616,29 @@ impl StatusBar {
             draw.add_text([cx, text_y], col32(text_color), &item.label);
         }
 
-        // Tooltip — routed through the crate-wide `themed_tooltip`
-        // helper so every widget shares one visual styling source.
+        // Tooltip — two paint paths.
+        //
+        // When the bar lives in a normal ImGui Window (`render(ui)`),
+        // tooltips go through the crate-wide `themed_tooltip` helper
+        // → `ui.tooltip(..)` → a TopLayer tooltip Window. Standard
+        // ImGui z-order puts that Window above the bar's own Window,
+        // so the tooltip body is always fully visible.
+        //
+        // When the bar is painted into the FOREGROUND draw list
+        // (`render_overlay_foreground`), a TopLayer tooltip Window
+        // would draw BELOW the foreground — the bar strip would
+        // slice the bottom of the tooltip body that hangs next to a
+        // bar-edge icon (vex0r session 130: "Kernel symbols ready
+        // (1651/1723)" tooltip was visibly cut off). We paint the
+        // tooltip into the SAME foreground draw list instead, with
+        // the body anchored ABOVE the cursor so the bar's strip
+        // never overlaps it.
         if hovered && let Some(ref tip) = item.tooltip {
-            crate::utils::themed_tooltip(ui, || ui.text(tip));
+            if tooltip_in_foreground {
+                paint_foreground_tooltip(ui, draw, cfg, tip);
+            } else {
+                crate::utils::themed_tooltip(ui, || ui.text(tip));
+            }
         }
 
         w
