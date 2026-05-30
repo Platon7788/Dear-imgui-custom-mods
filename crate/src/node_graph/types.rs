@@ -43,6 +43,25 @@ pub struct Wire {
     pub in_pin: InPinId,
 }
 
+// ─── Comment box ─────────────────────────────────────────────────────────────
+
+/// A free-floating annotation rectangle drawn behind nodes.
+///
+/// A comment box visually groups or annotates nodes. It is **not** a node:
+/// it is not part of [`Graph`](super::Graph)'s node slab and is not
+/// connectable. Comments are addressed by their index in the comment list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Comment {
+    /// Top-left corner in graph space.
+    pub pos: [f32; 2],
+    /// Width and height in graph space.
+    pub size: [f32; 2],
+    /// Title caption shown in the comment's title bar.
+    pub text: String,
+    /// RGB tint applied to the fill, title bar, and border.
+    pub color: [u8; 3],
+}
+
 // ─── Pin shape ───────────────────────────────────────────────────────────────
 
 /// Shape used to draw a pin.
@@ -211,4 +230,17 @@ pub enum GraphAction {
     SelectAll,
     /// Node collapse/expand toggled.
     NodeToggled(NodeId),
+    /// A comment box was moved or resized this frame (caller should mark dirty).
+    CommentChanged(usize),
+    /// Right-click on a comment box → its index (caller shows a context menu:
+    /// edit text / change color / delete).
+    CommentMenu(usize),
+    /// A drag-drop payload (`u32`, e.g. a host palette index) was dropped on the
+    /// canvas. Carries the payload value and the drop point in GRAPH space.
+    ///
+    /// Payload-name contract: the host must source the drag with the ImGui
+    /// payload identifier `"NODE_GRAPH_DND"` and a `u32` payload. The drop is
+    /// bound to the canvas invisible-button, so drops onto empty canvas area
+    /// are not swallowed by node bodies rendered afterwards.
+    PaletteDropped(u32, [f32; 2]),
 }

@@ -105,6 +105,10 @@ impl<T> NodeGraph<T> {
         // Apply pending node drags (must mutate graph positions)
         self.apply_node_drags(ui);
 
+        // Apply pending comment move/resize (must mutate graph comments).
+        // Returns the changed comment index if it actually moved this frame.
+        let comment_changed = self.apply_comment_drag(ui);
+
         let avail = ui.content_region_avail();
 
         // Use cursor_screen_pos() — NOT window_pos() + cursor_pos() — because
@@ -117,7 +121,29 @@ impl<T> NodeGraph<T> {
         ui.invisible_button(&self.imgui_id, canvas_size);
         let canvas_hovered = ui.is_item_hovered();
 
-        let actions = render::render_graph(
+        // Palette drop: a host drag-drop payload landed on the canvas
+        // invisible-button. This MUST run immediately after the invisible
+        // button is submitted (so it is the "last item"); render_graph below
+        // submits node bodies, which would otherwise become the drop target and
+        // swallow drops onto empty canvas area when nodes are present.
+        //
+        // `screen_to_graph` reads `viewport.canvas_origin`. render_graph sets it
+        // (to `canvas_pos`) but only after this point, so set it here too —
+        // render_graph re-assigns the same value, making this idempotent.
+        self.state.viewport.canvas_origin = canvas_pos;
+        let mut actions: Vec<GraphAction> = Vec::new();
+        if let Some(target) = ui.drag_drop_target() {
+            if let Some(Ok(pod)) = target
+                .accept_payload::<u32, _>("NODE_GRAPH_DND", dear_imgui_rs::DragDropFlags::empty())
+                && pod.delivery
+            {
+                let gp = self.state.viewport.screen_to_graph(ui.mouse_pos());
+                actions.push(GraphAction::PaletteDropped(pod.data, gp));
+            }
+            target.pop();
+        }
+
+        actions.extend(render::render_graph(
             &mut self.graph,
             &mut self.state,
             &self.config,
@@ -126,7 +152,12 @@ impl<T> NodeGraph<T> {
             canvas_pos,
             canvas_size,
             canvas_hovered,
-        );
+        ));
+
+        // Surface comment move/resize applied above as a frame action.
+        if let Some(index) = comment_changed {
+            actions.push(GraphAction::CommentChanged(index));
+        }
 
         // Handle internal actions before returning to the caller
         for action in &actions {
@@ -194,6 +225,65 @@ impl<T> NodeGraph<T> {
                 }
             }
         }
+    }
+
+    /// Apply a pending comment move/resize to the graph.
+    ///
+    /// Returns `Some(index)` if the comment actually changed this frame, so the
+    /// caller can surface a [`GraphAction::CommentChanged`]. Mirrors the node
+    /// drag mechanics: the title bar moves the comment, the bottom-right handle
+    /// resizes it. Moves snap to the grid when `config.snap_to_grid` is set.
+    fn apply_comment_drag(&mut self, ui: &Ui) -> Option<usize> {
+        use render::comments::{MIN_H, MIN_W};
+        use state::CommentDragKind;
+
+        let drag = self.state.comment_drag.as_ref()?;
+        let index = drag.index;
+        let kind = drag.kind;
+        let offset = drag.offset;
+
+        let mouse = ui.io().mouse_pos();
+        let vp = &self.state.viewport;
+        // Target graph-space point: mouse minus the grab offset, both in screen.
+        let target_screen = [mouse[0] - offset[0], mouse[1] - offset[1]];
+        let target_graph = vp.screen_to_graph(target_screen);
+
+        let snap = |v: f32| -> f32 {
+            if self.config.snap_to_grid {
+                let s = self.config.snap_size;
+                (v / s).round() * s
+            } else {
+                v
+            }
+        };
+
+        let comment = self.graph.comments_mut().get_mut(index)?;
+        let mut changed = false;
+        match kind {
+            CommentDragKind::Move => {
+                let new_pos = [snap(target_graph[0]), snap(target_graph[1])];
+                if new_pos != comment.pos {
+                    comment.pos = new_pos;
+                    changed = true;
+                }
+            }
+            CommentDragKind::Resize => {
+                // target_graph is the new bottom-right corner.
+                let new_w = snap((target_graph[0] - comment.pos[0]).max(MIN_W)).max(MIN_W);
+                let new_h = snap((target_graph[1] - comment.pos[1]).max(MIN_H)).max(MIN_H);
+                let new_size = [new_w, new_h];
+                if new_size != comment.size {
+                    comment.size = new_size;
+                    changed = true;
+                }
+            }
+        }
+
+        if changed && let Some(d) = self.state.comment_drag.as_mut() {
+            d.moved = true;
+        }
+
+        changed.then_some(index)
     }
 
     // ── Convenience methods ──────────────────────────────────────────────
@@ -279,6 +369,7 @@ impl<T> NodeGraph<T> {
     /// clicks again.
     pub fn reset_viewport(&mut self) {
         self.state.node_drag = None;
+        self.state.comment_drag = None;
         self.state.new_wire = None;
         self.state.rect_select = None;
         self.state.viewport.zoom = 1.0;
