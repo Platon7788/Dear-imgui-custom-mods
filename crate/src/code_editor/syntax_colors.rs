@@ -73,19 +73,16 @@ impl EditorTheme {
     /// palette that visually matches whichever chrome theme the host app
     /// is running under.
     ///
-    /// `Midnight` maps to `OneDark` because both are dark, near-black
-    /// surfaces with cool-blue accents — a separate dedicated Midnight
-    /// preset would duplicate ~95 % of OneDark's tokens.
+    /// The crate ships two chrome themes (`Dark`, `Light`); each maps to
+    /// the matching editor preset (`DarkDefault` / `GithubLight`). The
+    /// remaining [`EditorTheme`] presets (OneDark, Monokai, Solarized,
+    /// Catppuccin, Nord, …) stay available for direct selection via
+    /// [`EditorConfig::set_theme`].
     pub fn from_crate_theme(theme: crate::theme::Theme) -> Self {
         use crate::theme::Theme;
         match theme {
             Theme::Dark => Self::DarkDefault,
             Theme::Light => Self::GithubLight,
-            Theme::Midnight => Self::OneDark,
-            Theme::Solarized => Self::SolarizedDark,
-            Theme::Monokai => Self::Monokai,
-            Theme::Catppuccin => Self::Catppuccin,
-            Theme::Nord => Self::Nord,
         }
     }
 }
@@ -398,9 +395,8 @@ impl SyntaxColors {
     // ── Catppuccin Mocha ──────────────────────────────────────────────────
 
     /// Catppuccin Mocha — soft pastel palette over a desaturated charcoal
-    /// base. Built from the canonical Catppuccin Mocha swatches so a
-    /// `Theme::Catppuccin` editor reads as a member of the rest of the
-    /// chrome stack.
+    /// base. Built from the canonical Catppuccin Mocha swatches. Select
+    /// directly via [`EditorTheme::Catppuccin`].
     pub fn catppuccin() -> Self {
         Self {
             keyword: [0.804, 0.518, 0.812, 1.0],   // mauve
@@ -440,9 +436,8 @@ impl SyntaxColors {
 
     // ── Nord ──────────────────────────────────────────────────────────────
 
-    /// Nord — frost-blue accents over a polar-night base. Matches the
-    /// `Theme::Nord` chrome family so the syntax tokens stay visually
-    /// coherent with the rest of the UI.
+    /// Nord — frost-blue accents over a polar-night base. Select directly
+    /// via [`EditorTheme::Nord`] when you want the editor in Nord colours.
     pub fn nord() -> Self {
         Self {
             keyword: [0.506, 0.631, 0.757, 1.0],   // nord9 frost-blue

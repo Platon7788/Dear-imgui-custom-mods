@@ -157,7 +157,7 @@ impl EditorConfig {
     /// Apply the [`EditorTheme`] preset that matches the supplied crate-wide
     /// [`crate::theme::Theme`] via [`EditorTheme::from_crate_theme`]. Use this
     /// when the editor lives inside an app whose chrome already tracks
-    /// `Theme::Dark` / `Theme::Light` / etc., so the syntax palette flips
+    /// `Theme::Dark` / `Theme::Light`, so the syntax palette flips
     /// in sync without the host having to know about [`EditorTheme`].
     pub fn set_crate_theme(&mut self, theme: crate::theme::Theme) {
         self.set_theme(EditorTheme::from_crate_theme(theme));
@@ -167,7 +167,7 @@ impl EditorConfig {
     /// [`Self::set_crate_theme`]. Useful at editor construction time:
     ///
     /// ```rust,ignore
-    /// let cfg = EditorConfig::default().with_crate_theme(crate::theme::Theme::Nord);
+    /// let cfg = EditorConfig::default().with_crate_theme(crate::theme::Theme::Dark);
     /// ```
     #[must_use]
     pub fn with_crate_theme(mut self, theme: crate::theme::Theme) -> Self {

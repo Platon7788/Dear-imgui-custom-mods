@@ -375,7 +375,7 @@ impl DisasmViewConfig {
     /// family as `nav_panel` / `status_bar` / `hex_viewer`.
     ///
     /// ```rust,ignore
-    /// view.config_mut().apply_theme_colors(&Theme::Solarized.disasm_view_colors());
+    /// view.config_mut().apply_theme_colors(&Theme::Dark.disasm_view_colors());
     /// ```
     pub fn apply_theme_colors(&mut self, p: &crate::theme::DisasmViewColors) {
         self.colors = p.clone();
@@ -388,7 +388,7 @@ impl DisasmViewConfig {
     /// use dear_imgui_custom_mod::disasm_view::DisasmViewConfig;
     /// use dear_imgui_custom_mod::theme::Theme;
     ///
-    /// let cfg = DisasmViewConfig::default().with_theme(Theme::Nord);
+    /// let cfg = DisasmViewConfig::default().with_theme(Theme::Dark);
     /// ```
     pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
         self.apply_theme_colors(&theme.disasm_view_colors());

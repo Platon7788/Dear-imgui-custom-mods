@@ -408,7 +408,7 @@ impl HexViewerConfig {
     ///
     /// ```rust,ignore
     /// // Theme switch:
-    /// viewer.config_mut().apply_theme_colors(&Theme::Solarized.hex_viewer_colors());
+    /// viewer.config_mut().apply_theme_colors(&Theme::Dark.hex_viewer_colors());
     /// ```
     pub fn apply_theme_colors(&mut self, p: &crate::theme::HexViewerColors) {
         self.color_cat_zero = p.cat_zero;
@@ -440,7 +440,7 @@ impl HexViewerConfig {
     /// use dear_imgui_custom_mod::hex_viewer::HexViewerConfig;
     /// use dear_imgui_custom_mod::theme::Theme;
     ///
-    /// let cfg = HexViewerConfig::default().with_theme(Theme::Nord);
+    /// let cfg = HexViewerConfig::default().with_theme(Theme::Dark);
     /// ```
     pub fn with_theme(mut self, theme: crate::theme::Theme) -> Self {
         self.apply_theme_colors(&theme.hex_viewer_colors());

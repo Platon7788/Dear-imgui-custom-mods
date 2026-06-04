@@ -58,15 +58,7 @@ impl Default for DemoState {
     }
 }
 
-const THEMES: &[(Theme, &str)] = &[
-    (Theme::Dark, "Dark"),
-    (Theme::Light, "Light"),
-    (Theme::Midnight, "Midnight"),
-    (Theme::Solarized, "Solarized"),
-    (Theme::Monokai, "Monokai"),
-    (Theme::Catppuccin, "Catppuccin"),
-    (Theme::Nord, "Nord"),
-];
+const THEMES: &[(Theme, &str)] = &[(Theme::Dark, "Dark"), (Theme::Light, "Light")];
 
 fn main() {
     // ── Shared state — chrome wrapper plus a window handle stash ──────────

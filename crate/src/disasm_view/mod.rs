@@ -2451,17 +2451,16 @@ mod tests {
         // `with_theme` is a builder shortcut — it must replace the
         // embedded palette with the named theme's disasm-view colours.
         let dark = DisasmViewConfig::default().with_theme(Theme::Dark);
-        let nord = DisasmViewConfig::default().with_theme(Theme::Nord);
-        let solar = DisasmViewConfig::default().with_theme(Theme::Solarized);
+        let light = DisasmViewConfig::default().with_theme(Theme::Light);
 
-        // Different themes => different mnemonic colours (at minimum).
+        // Different themes => different surface colours (at minimum).
         assert_ne!(
-            dark.colors.mnemonic_jump, nord.colors.mnemonic_jump,
-            "Dark and Nord should expose distinct jump-mnemonic colours",
+            dark.colors.separator, light.colors.separator,
+            "Dark and Light should expose distinct separator colours",
         );
         assert_ne!(
-            nord.colors.address, solar.colors.address,
-            "Nord and Solarized should expose distinct address colours",
+            dark.colors.header, light.colors.header,
+            "Dark and Light should expose distinct header colours",
         );
     }
 

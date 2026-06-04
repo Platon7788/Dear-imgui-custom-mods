@@ -8,7 +8,7 @@ Reusable modal confirmation dialog component for Rust + Dear ImGui.
 
 ## Features
 
-- **5 built-in themes**: Dark, Light, Midnight, Solarized, Monokai (via the unified [`Theme`](theme.md) enum) + per-instance custom palette via `colors_override`
+- **Theme-aware** via the unified [`Theme`](theme.md) enum + per-instance custom palette via `colors_override` / `with_colors`
 - **4 icon types**: Warning (filled triangle), Error (circle + X), Info (circle + i), Question (circle + ?)
 - **Fullscreen dim overlay** behind the dialog (toggleable)
 - **Keyboard shortcuts**: Escape = cancel, Enter = confirm (toggleable)
@@ -55,7 +55,7 @@ use dear_imgui_custom_mod::confirm_dialog::{ConfirmStyle, DialogConfig, DialogIc
 use dear_imgui_custom_mod::theme::Theme;
 
 let _cfg = DialogConfig::new("Delete File", "This action cannot be undone.")
-    .with_theme(Theme::Solarized)                  // color theme
+    .with_theme(Theme::Dark)                        // color theme
     .with_icon(DialogIcon::Error)                  // icon type
     .with_confirm_label("Delete")                  // red button text
     .with_cancel_label("Keep")                     // green button text
@@ -69,18 +69,11 @@ let _cfg = DialogConfig::new("Delete File", "This action cannot be undone.")
 
 ## Themes
 
-Themes come from the unified [`Theme`](theme.md) enum. For a one-off custom
+Themes come from the unified [`Theme`](theme.md) enum (see that page for the
+current variant list). `Theme::Dark` is the default. For a one-off custom
 palette that does not fit any built-in theme, use
 `.with_colors(DialogColors)` — it takes priority over the `Theme` selector
 for that instance.
-
-| Variant | Description |
-|---------|-------------|
-| `Theme::Dark` | Deep navy, pastel accents (default) |
-| `Theme::Light` | Clean white / light-grey |
-| `Theme::Midnight` | Near-black, high-contrast |
-| `Theme::Solarized` | Solarized dark |
-| `Theme::Monokai` | Monokai Pro |
 
 ## Icons
 
@@ -125,9 +118,11 @@ Returns:
 | `width` | `f32` | `340.0` | Dialog width (px) |
 | `height` | `f32` | `160.0` | Dialog height (px) |
 | `padding` | `f32` | `16.0` | Inner padding (px) |
-| `button_height` | `f32` | `30.0` | Base button height (px) |
-| `button_gap` | `f32` | `20.0` | Pixel gap between buttons (literal — no implicit `× 1.6` multiplier) |
-| `button_padding_x` | `f32` | `22.0` | Horizontal padding inside each button cell |
+| `button_height` | `f32` | `27.0` | Base button height (px) |
+| `button_width` | `f32` | `75.0` | Fixed button width; `0.0` auto-sizes both buttons to content |
+| `button_gap` | `f32` | `60.0` | Pixel gap between buttons (literal — no implicit `× 1.6` multiplier) |
+| `button_padding_x` | `f32` | `22.0` | Horizontal padding inside each button cell (auto-size only) |
+| `button_icon_scale` | `f32` | `0.16` | In-button glyph radius as a fraction of button height |
 | `header_icon_size` | `f32` | `16.0` | Header icon canvas radius |
 | `button_bottom_factor` | `f32` | `0.35` | Button-row bottom margin as fraction of `padding` |
 | `dim_background` | `bool` | `true` | Draw overlay behind dialog |
@@ -138,10 +133,13 @@ Returns:
 | `show_separator` | `bool` | `false` | Draw line between message and buttons |
 | `show_button_icons` | `bool` | `true` | Draw X / power / check glyphs in buttons |
 
-## Integration with app_window
+## Render-loop integration
+
+Call `render_confirm_dialog` once per frame while the dialog should be
+visible. It owns the `open` flag — set it `true` to show the dialog, and the
+function flips it back to `false` on confirm or cancel.
 
 ```rust,ignore
-use dear_imgui_custom_mod::app_window::{AppHandler, AppState};
 use dear_imgui_custom_mod::confirm_dialog::{
     DialogConfig, DialogIcon, DialogResult, render_confirm_dialog,
 };
@@ -150,8 +148,8 @@ use dear_imgui_rs::Ui;
 
 struct MyApp { show_confirm: bool }
 
-impl AppHandler for MyApp {
-    fn render(&mut self, ui: &Ui, state: &mut AppState) {
+impl MyApp {
+    fn render(&mut self, ui: &Ui) {
         if self.show_confirm {
             let cfg = DialogConfig::new("Close", "Are you sure?")
                 .with_icon(DialogIcon::Warning)
@@ -161,13 +159,9 @@ impl AppHandler for MyApp {
             if let DialogResult::Confirmed =
                 render_confirm_dialog(ui, &cfg, &mut self.show_confirm)
             {
-                state.exit();
+                // perform the confirmed action (e.g. request app exit)
             }
         }
-    }
-
-    fn on_close_requested(&mut self, _state: &mut AppState) {
-        self.show_confirm = true;
     }
 }
 ```

@@ -32,12 +32,12 @@ fn dialog_config_builder_chain() {
         .with_confirm_style(ConfirmStyle::Destructive)
         .with_confirm_label("Delete")
         .with_cancel_label("Keep")
-        .with_theme(Theme::Monokai);
+        .with_theme(Theme::Light);
     assert!(matches!(cfg.icon, DialogIcon::Error));
     assert!(matches!(cfg.confirm_style, ConfirmStyle::Destructive));
     assert_eq!(cfg.confirm_label, "Delete");
     assert_eq!(cfg.cancel_label, "Keep");
-    assert_eq!(cfg.theme, Theme::Monokai);
+    assert_eq!(cfg.theme, Theme::Light);
 }
 
 // ── NavPanelConfig ──────────────────────────────────────────────────────────

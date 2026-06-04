@@ -3,7 +3,8 @@
 //! Reusable modal confirmation dialog for Dear ImGui.
 //!
 //! ## Features
-//! - 5 built-in color themes (Dark, Light, Midnight, Solarized, Monokai)
+//! - Theme-aware via the unified [`crate::theme::Theme`] selector, plus a
+//!   per-instance custom palette through [`DialogConfig::with_colors`]
 //! - 4 icon types drawn via draw-list primitives (Warning, Error, Info, Question)
 //! - Fullscreen dim overlay behind the dialog
 //! - Keyboard shortcuts: Escape to cancel, Enter to confirm
@@ -32,11 +33,16 @@
 //! ```
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
+mod buttons;
 pub mod config;
+mod icons;
 pub mod theme;
 
 pub use config::{ConfirmStyle, DialogConfig, DialogIcon};
 pub use theme::DialogColors;
+
+use buttons::{ButtonGlyph, icon_button};
+use icons::{draw_icon_error, draw_icon_info, draw_icon_question, draw_icon_warning};
 
 use dear_imgui_rs::{Condition, DrawListMut, Key, StyleColor, StyleVar, Ui, WindowFlags};
 
@@ -63,192 +69,6 @@ pub enum DialogResult {
 #[inline]
 fn c32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
-}
-
-// ── Icon drawing primitives ──────────────────────────────────────────────────
-
-fn draw_icon_warning(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32, bg_col: u32) {
-    // Equilateral triangle pointing up, centred at (cx, cy).
-    // Heights: top = cy - r, base = cy + r*0.6  (visually centred).
-    let h = r * 1.6;
-    let half_base = h * 0.577; // tan(30°) ≈ 0.577
-    let top_y = cy - r;
-    let base_y = top_y + h;
-
-    let p_top = [cx, top_y];
-    let p_bl = [cx - half_base, base_y];
-    let p_br = [cx + half_base, base_y];
-
-    // Filled triangle background
-    draw.add_triangle(p_top, p_bl, p_br, col)
-        .filled(true)
-        .build();
-    // "!" drawn in bg color on top of the filled triangle
-    let bang_top = cy - r * 0.22;
-    let bang_bot = cy + r * 0.20;
-    let dot_y = cy + r * 0.42;
-    draw.add_line([cx, bang_top], [cx, bang_bot], bg_col)
-        .thickness(2.2)
-        .build();
-    draw.add_circle([cx, dot_y], 1.6, bg_col)
-        .filled(true)
-        .build();
-}
-
-fn draw_icon_error(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
-    draw.add_circle([cx, cy], r, col).thickness(2.0).build();
-    let d = r * 0.42;
-    draw.add_line([cx - d, cy - d], [cx + d, cy + d], col)
-        .thickness(2.0)
-        .build();
-    draw.add_line([cx + d, cy - d], [cx - d, cy + d], col)
-        .thickness(2.0)
-        .build();
-}
-
-fn draw_icon_info(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
-    draw.add_circle([cx, cy], r, col).thickness(2.0).build();
-    draw.add_circle([cx, cy - r * 0.35], 1.8, col)
-        .filled(true)
-        .build();
-    draw.add_line([cx, cy - r * 0.10], [cx, cy + r * 0.45], col)
-        .thickness(2.0)
-        .build();
-}
-
-fn draw_icon_question(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
-    draw.add_circle([cx, cy], r, col).thickness(2.0).build();
-    let qx = cx;
-    draw.add_line([qx - r * 0.20, cy - r * 0.35], [qx, cy - r * 0.50], col)
-        .thickness(2.0)
-        .build();
-    draw.add_line([qx, cy - r * 0.50], [qx + r * 0.20, cy - r * 0.35], col)
-        .thickness(2.0)
-        .build();
-    draw.add_line([qx + r * 0.20, cy - r * 0.35], [qx, cy - r * 0.10], col)
-        .thickness(2.0)
-        .build();
-    draw.add_line([qx, cy - r * 0.10], [qx, cy + r * 0.05], col)
-        .thickness(2.0)
-        .build();
-    draw.add_circle([qx, cy + r * 0.30], 1.8, col)
-        .filled(true)
-        .build();
-}
-
-// ── Button glyph drawing ─────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ButtonGlyph {
-    None,
-    X,
-    Power,
-    Check,
-}
-
-fn draw_glyph_x(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
-    draw.add_line([cx - r, cy - r], [cx + r, cy + r], col)
-        .thickness(1.8)
-        .build();
-    draw.add_line([cx + r, cy - r], [cx - r, cy + r], col)
-        .thickness(1.8)
-        .build();
-}
-
-fn draw_glyph_power(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
-    // Open arc (gap at top) approximated with short line segments + vertical bar.
-    //
-    // Geometry: start angle is -π/2 (top of the circle) shifted clockwise by
-    // `GAP_RAD` radians; end angle mirrors that on the other side. The
-    // resulting open mouth at the top has angular width `2 * GAP_RAD` —
-    // ~63° at 0.55 rad, which leaves room for the vertical bar without
-    // touching the arc's endpoints.
-    const GAP_RAD: f32 = 0.55;
-    let segs = 18;
-    let start = -std::f32::consts::FRAC_PI_2 + GAP_RAD;
-    let end = 2.0 * std::f32::consts::PI - std::f32::consts::FRAC_PI_2 - GAP_RAD;
-    let step = (end - start) / segs as f32;
-    let mut prev = [cx + r * start.cos(), cy + r * start.sin()];
-    for i in 1..=segs {
-        let a = start + step * i as f32;
-        let p = [cx + r * a.cos(), cy + r * a.sin()];
-        draw.add_line(prev, p, col).thickness(1.8).build();
-        prev = p;
-    }
-    // Vertical bar at top — fits inside the gap left by GAP_RAD.
-    draw.add_line([cx, cy - r - 1.0], [cx, cy - r * 0.15], col)
-        .thickness(1.8)
-        .build();
-}
-
-fn draw_glyph_check(draw: &DrawListMut, cx: f32, cy: f32, r: f32, col: u32) {
-    let p1 = [cx - r, cy + r * 0.05];
-    let p2 = [cx - r * 0.30, cy + r * 0.55];
-    let p3 = [cx + r, cy - r * 0.55];
-    draw.add_line(p1, p2, col).thickness(2.0).build();
-    draw.add_line(p2, p3, col).thickness(2.0).build();
-}
-
-// ── Custom icon button ───────────────────────────────────────────────────────
-
-#[allow(clippy::too_many_arguments)]
-fn icon_button(
-    ui: &Ui,
-    id: &str,
-    label: &str,
-    size: [f32; 2],
-    glyph: ButtonGlyph,
-    bg: [f32; 4],
-    bg_hov: [f32; 4],
-    bg_act: [f32; 4],
-    text_col: [f32; 4],
-    rounding: f32,
-    icon_scale: f32,
-) -> bool {
-    let pos = ui.cursor_screen_pos();
-    let pressed = ui.invisible_button(id, size);
-    let hovered = ui.is_item_hovered();
-    let active = ui.is_item_active();
-    let cur_bg = if active {
-        bg_act
-    } else if hovered {
-        bg_hov
-    } else {
-        bg
-    };
-
-    let draw = ui.get_window_draw_list();
-    draw.add_rect(pos, [pos[0] + size[0], pos[1] + size[1]], c32(cur_bg))
-        .filled(true)
-        .rounding(rounding)
-        .build();
-
-    let text_size = calc_text_size(label);
-    let text_col_u32 = c32(text_col);
-
-    if matches!(glyph, ButtonGlyph::None) {
-        let tx = pos[0] + (size[0] - text_size[0]) * 0.5;
-        let ty = pos[1] + (size[1] - text_size[1]) * 0.5;
-        draw.add_text([tx, ty], text_col_u32, label);
-    } else {
-        let icon_r = size[1] * icon_scale;
-        let gap = 8.0;
-        let group_w = icon_r * 2.0 + gap + text_size[0];
-        let group_x = pos[0] + (size[0] - group_w) * 0.5;
-        let icon_cx = group_x + icon_r;
-        let icon_cy = pos[1] + size[1] * 0.5;
-        match glyph {
-            ButtonGlyph::X => draw_glyph_x(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
-            ButtonGlyph::Power => draw_glyph_power(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
-            ButtonGlyph::Check => draw_glyph_check(&draw, icon_cx, icon_cy, icon_r, text_col_u32),
-            ButtonGlyph::None => {}
-        }
-        let tx = icon_cx + icon_r + gap;
-        let ty = pos[1] + (size[1] - text_size[1]) * 0.5;
-        draw.add_text([tx, ty], text_col_u32, label);
-    }
-
-    pressed
 }
 
 // ── Main public function ─────────────────────────────────────────────────────
@@ -349,34 +169,38 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
                     let [_, cy_pos] = ui.cursor_pos();
                     let text_h = line_height(ui);
                     let icon_cy = win_pos[1] + cy_pos + text_h * 0.5;
-                    let icon_col = match cfg.icon {
-                        DialogIcon::Warning => colors.icon_warning,
-                        DialogIcon::Error => colors.icon_error,
-                        DialogIcon::Info => colors.icon_info,
-                        DialogIcon::Question => colors.icon_question,
-                        DialogIcon::None => unreachable!(),
-                    };
+                    // Single match resolves the per-icon colour *and* dispatches
+                    // the draw call. `has_icon` already excludes `None`, so no
+                    // `unreachable!()` panic path is needed here.
                     match cfg.icon {
                         DialogIcon::Warning => draw_icon_warning(
                             &wdl,
                             icon_cx,
                             icon_cy,
                             icon_size * 0.6,
-                            c32(icon_col),
+                            c32(colors.icon_warning),
                             c32(colors.bg),
                         ),
-                        DialogIcon::Error => {
-                            draw_icon_error(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col))
-                        }
-                        DialogIcon::Info => {
-                            draw_icon_info(&wdl, icon_cx, icon_cy, icon_size * 0.55, c32(icon_col))
-                        }
+                        DialogIcon::Error => draw_icon_error(
+                            &wdl,
+                            icon_cx,
+                            icon_cy,
+                            icon_size * 0.55,
+                            c32(colors.icon_error),
+                        ),
+                        DialogIcon::Info => draw_icon_info(
+                            &wdl,
+                            icon_cx,
+                            icon_cy,
+                            icon_size * 0.55,
+                            c32(colors.icon_info),
+                        ),
                         DialogIcon::Question => draw_icon_question(
                             &wdl,
                             icon_cx,
                             icon_cy,
                             icon_size * 0.55,
-                            c32(icon_col),
+                            c32(colors.icon_question),
                         ),
                         DialogIcon::None => {}
                     }
@@ -521,109 +345,4 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_config() {
-        let cfg = DialogConfig::default();
-        assert_eq!(cfg.width, 340.0);
-        assert_eq!(cfg.height, 160.0);
-        assert!(cfg.dim_background);
-        assert!(cfg.keyboard_shortcuts);
-        assert_eq!(cfg.icon, DialogIcon::Warning);
-        assert_eq!(cfg.confirm_style, ConfirmStyle::Destructive);
-    }
-
-    #[test]
-    fn builder_chain() {
-        let cfg = DialogConfig::new("Delete File", "This cannot be undone.")
-            .with_theme(crate::theme::Theme::Solarized)
-            .with_icon(DialogIcon::Error)
-            .with_confirm_label("Delete")
-            .with_cancel_label("Keep")
-            .with_confirm_style(ConfirmStyle::Destructive)
-            .with_width(400.0)
-            .with_height(180.0)
-            .with_rounding(8.0)
-            .without_dim()
-            .without_keyboard();
-
-        assert_eq!(cfg.title, "Delete File");
-        assert_eq!(cfg.message, "This cannot be undone.");
-        assert_eq!(cfg.confirm_label, "Delete");
-        assert_eq!(cfg.cancel_label, "Keep");
-        assert_eq!(cfg.icon, DialogIcon::Error);
-        assert_eq!(cfg.width, 400.0);
-        assert_eq!(cfg.height, 180.0);
-        assert_eq!(cfg.rounding, 8.0);
-        assert!(!cfg.dim_background);
-        assert!(!cfg.keyboard_shortcuts);
-    }
-
-    #[test]
-    fn all_builtin_themes_resolve() {
-        for &theme in crate::theme::Theme::ALL {
-            let c = theme.dialog();
-            assert!(c.bg.iter().all(|&v| (0.0..=1.0).contains(&v)));
-            assert!(c.overlay[3] > 0.0);
-            assert!(c.btn_confirm[3] > 0.0);
-            assert!(c.btn_cancel[3] > 0.0);
-        }
-    }
-
-    #[test]
-    fn dialog_result_not_open_returns_cancelled() {
-        assert_eq!(DialogResult::Confirmed, DialogResult::Confirmed);
-        assert_ne!(DialogResult::Open, DialogResult::Cancelled);
-    }
-
-    #[test]
-    fn icon_enum_variants() {
-        assert_eq!(DialogIcon::default(), DialogIcon::Warning);
-        assert_ne!(DialogIcon::None, DialogIcon::Error);
-        assert_ne!(DialogIcon::Info, DialogIcon::Question);
-    }
-
-    #[test]
-    fn builder_chain_applies_all_fields() {
-        let cfg = DialogConfig::new("Title", "Message")
-            .with_icon(DialogIcon::Error)
-            .with_confirm_label("Yes")
-            .with_cancel_label("No")
-            .with_confirm_style(ConfirmStyle::Normal)
-            .with_button_height(26.0)
-            .with_button_gap(40.0)
-            .with_border_thickness(0.5)
-            .with_rounding(10.0)
-            .with_padding(20.0);
-        assert_eq!(cfg.title, "Title");
-        assert_eq!(cfg.message, "Message");
-        assert_eq!(cfg.icon, DialogIcon::Error);
-        assert_eq!(cfg.confirm_label, "Yes");
-        assert_eq!(cfg.cancel_label, "No");
-        assert_eq!(cfg.confirm_style, ConfirmStyle::Normal);
-        assert_eq!(cfg.button_height, 26.0);
-        assert_eq!(cfg.button_gap, 40.0);
-        assert_eq!(cfg.border_thickness, 0.5);
-        assert_eq!(cfg.rounding, 10.0);
-        assert_eq!(cfg.padding, 20.0);
-    }
-
-    #[test]
-    fn closed_dialog_returns_cancelled() {
-        // `render_confirm_dialog(open=false)` short-circuits to Cancelled
-        // without touching ImGui. Logic-only test (we can't spin up a Ui here),
-        // but the early-return path is reachable via the same code:
-        let open = false;
-        // Mirror the exact branch from `render_confirm_dialog`'s top:
-        let result = if !open {
-            // (the function returns Cancelled immediately when open=false)
-            DialogResult::Cancelled
-        } else {
-            DialogResult::Open
-        };
-        assert_eq!(result, DialogResult::Cancelled);
-        assert!(!open);
-    }
-}
+mod tests;

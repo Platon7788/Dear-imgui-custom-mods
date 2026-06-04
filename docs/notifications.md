@@ -34,9 +34,8 @@ the visible stack.
 - **Custom accent color** per toast — override the severity default.
 - **Max-visible cap** with graceful overflow — older toasts fade out as new
   ones arrive.
-- **5 built-in themes** (Dark, Light, Midnight, Solarized, Monokai) via the
-  unified [`Theme`](theme.md) enum + per-instance `colors_override` for
-  fully custom palettes.
+- **Built-in themes** (Dark, Light) via the unified [`Theme`](theme.md) enum
+  + per-instance `colors_override` for fully custom palettes.
 - **Zero per-frame allocations** on the hot path beyond the Vec<Event>
   returned (typically empty).
 
@@ -90,7 +89,7 @@ let cfg = CenterConfig::new()
     .with_animation(AnimationKind::SlideIn)
     .with_animation_duration(0.25)
     .with_pause_on_hover(true)
-    .with_theme(Theme::Midnight);
+    .with_theme(Theme::Dark);
 
 let mut center = NotificationCenter::with_config(cfg);
 ```
@@ -154,9 +153,10 @@ palette. Individual toasts can override the accent via
 
 ## Themes
 
-Themes come from the unified [`Theme`](theme.md) enum — each variant has a
-matching `NotificationColors` palette tuned to the rest of the stack. For a
-fully custom look use `CenterConfig::with_colors(NotificationColors { .. })`.
+Themes come from the unified [`Theme`](theme.md) enum (`Dark`, `Light`) —
+each variant has a matching `NotificationColors` palette tuned to the rest of
+the stack. For a fully custom look use
+`CenterConfig::with_colors(NotificationColors { .. })`.
 
 ## API Reference
 
@@ -168,8 +168,9 @@ fully custom look use `CenterConfig::with_colors(NotificationColors { .. })`.
 | `with_config(cfg)` | Center with explicit `CenterConfig`. |
 | `push(n) -> u64` | Push a notification; returns its id. |
 | `dismiss(id)` | Start exit animation for a specific toast. |
-| `dismiss_all()` | Dismiss every active toast. |
-| `count()` | Active count (including fading-out). |
+| `dismiss_all() -> usize` | Dismiss every active toast; returns how many were newly dismissed. |
+| `count()` | Toasts on the stack, **including** ones fading out. |
+| `active_count()` | Toasts still counting down (excludes mid-exit fades). |
 | `config()` / `config_mut()` | Read / write configuration at runtime. |
 | `render(ui, dt) -> Vec<NotificationEvent>` | Advance state, draw stack, collect events. |
 
@@ -198,7 +199,7 @@ fully custom look use `CenterConfig::with_colors(NotificationColors { .. })`.
 | `animation_duration` | `f32` | `0.25` | Seconds for enter/exit anim. |
 | `pause_on_hover` | `bool` | `true` | Freeze timer while hovered. |
 | `theme` | `Theme` | `Dark` | Color theme. |
-| `colors_override` | `Option<Box<NotificationColors>>` | `None` | Custom palette. |
+| `colors_override` | `Option<NotificationColors>` | `None` | Custom palette (runtime-only; skipped by serde). |
 
 ### `Notification` Builder
 
@@ -268,10 +269,19 @@ manually. Continuous-render hosts ignore the demand entirely.
 
 ## Tests
 
-`notifications` ships with unit tests for:
-- `push` assigns monotonic unique ids
-- `dismiss` / `dismiss_all` set the exit flag
-- Builder methods (`sticky`, `with_custom_color`, `with_action`)
-- `Severity` labels and `Placement` orientation helpers
+`notifications` ships with unit tests (in `tests.rs`, all `Ui`-free) for:
+- `push` assigns monotonic unique ids, pre-formats ImGui id strings, and
+  skips ids already in flight after a counter wrap.
+- `dismiss` / `dismiss_all` set the exit flag; `count` / `active_count`
+  distinguish fading vs. live toasts.
+- Builder methods (`sticky`, `with_custom_color`, `with_action`).
+- Pure lifecycle helpers: animation ramps, hover-paused timer ticking,
+  reaping (with / without animation), and the **frame-demand** decision
+  (`needs_frame` — a settled sticky toast lets an event-driven host sleep;
+  animating or timed toasts keep it awake).
+- Easing-curve endpoints + monotonicity.
+- DDD config: ron defaults parse and a config round-trips through ron.
+- `Severity` / `Placement` / `AnimationKind` / `Duration` enum defaults and
+  `Placement` orientation helpers.
 
 Run `cargo test --features=notifications` to execute them.

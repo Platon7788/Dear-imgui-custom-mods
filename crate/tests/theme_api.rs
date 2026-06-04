@@ -11,16 +11,10 @@ use dear_imgui_custom_mod::theme::Theme;
 fn all_variants_are_iterable() {
     // `Theme::ALL` is the canonical iteration order — used by the theme
     // picker in demos. Size must match the enum; duplicates or omissions
-    // are public-API regressions. Catppuccin + Nord were added by the
-    // bundle-refactors session (decision 015).
-    assert_eq!(Theme::ALL.len(), 7, "Theme should have exactly 7 variants");
+    // are public-API regressions. The built-in set is exactly {Dark, Light}.
+    assert_eq!(Theme::ALL.len(), 2, "Theme should have exactly 2 variants");
     assert!(Theme::ALL.contains(&Theme::Dark));
     assert!(Theme::ALL.contains(&Theme::Light));
-    assert!(Theme::ALL.contains(&Theme::Midnight));
-    assert!(Theme::ALL.contains(&Theme::Solarized));
-    assert!(Theme::ALL.contains(&Theme::Monokai));
-    assert!(Theme::ALL.contains(&Theme::Catppuccin));
-    assert!(Theme::ALL.contains(&Theme::Nord));
 }
 
 #[test]
@@ -89,10 +83,8 @@ fn every_theme_resolves_all_sub_palettes() {
         let _sb = t.statusbar();
     }
 
-    // Not every theme has a visually distinct background from every other
-    // (Dark + Midnight may legitimately share a very dark bg), but at least
-    // two of the five should differ per component — otherwise something is
-    // wrong with the dispatch.
+    // Dark and Light must have visually distinct backgrounds per
+    // component — otherwise something is wrong with the dispatch.
     assert!(
         titlebar_bgs.windows(2).any(|w| w[0] != w[1]),
         "all titlebar bgs collapsed to one color"

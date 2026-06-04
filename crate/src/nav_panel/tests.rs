@@ -17,7 +17,7 @@ fn default_config() {
 #[test]
 fn builder_chain() {
     let cfg = NavPanelConfig::new(DockPosition::Right)
-        .with_theme(crate::theme::Theme::Solarized)
+        .with_theme(crate::theme::Theme::Dark)
         .with_width(48.0)
         .with_auto_hide(true)
         .with_toggle_button(true)

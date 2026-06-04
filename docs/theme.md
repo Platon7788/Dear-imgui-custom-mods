@@ -32,18 +32,13 @@ for theme in Theme::ALL {
 |---------|-------------|
 | `Theme::Dark` | NxT native dark palette (warm grey + blue accent). Default. |
 | `Theme::Light` | Readable light palette with visible borders. |
-| `Theme::Midnight` | Near-black, OLED-friendly (Tokyo Night accent). |
-| `Theme::Solarized` | Solarized Dark (Ethan Schoonover), warm teal surfaces. |
-| `Theme::Monokai` | Monokai Pro, warm charcoal + neon accents. |
-| `Theme::Catppuccin` | Catppuccin Mocha — soft pastel palette, low-contrast. |
-| `Theme::Nord` | Nord — cool, desaturated arctic minimalism. |
 
 ## Methods
 
 ```rust
 use dear_imgui_custom_mod::theme::Theme;
 
-let t = Theme::Solarized;
+let t = Theme::Dark;
 let tb    = t.titlebar();   // TitlebarColors
 let nv    = t.nav();        // NavColors
 let dlg   = t.dialog();     // DialogColors
@@ -86,21 +81,21 @@ Most consumer modules expose a `with_theme()` builder + `apply_theme()` setter. 
 
 ```rust
 // One-shot apply at construction:
-let cfg = DiffViewerConfig::default().with_theme(Theme::Nord);
-let cfg = TimelineConfig::default().with_theme(Theme::Catppuccin);
-let cfg = ToolbarConfig::default().with_theme(Theme::Solarized);
+let cfg = DiffViewerConfig::default().with_theme(Theme::Dark);
+let cfg = TimelineConfig::default().with_theme(Theme::Dark);
+let cfg = ToolbarConfig::default().with_theme(Theme::Dark);
 let cfg = InspectorConfig::default().with_theme(Theme::Dark);
 let cfg = NodeGraphConfig::default().with_theme(Theme::Light);
 
 // Hex/disasm — same pattern, palette tokens go through the config:
-let cfg = HexViewerConfig::default().with_theme(Theme::Midnight);
-let cfg = DisasmViewConfig::default().with_theme(Theme::Monokai);
+let cfg = HexViewerConfig::default().with_theme(Theme::Dark);
+let cfg = DisasmViewConfig::default().with_theme(Theme::Light);
 
 // Code editor — bridges crate Theme to the editor's own EditorTheme presets:
-let cfg = EditorConfig::default().with_crate_theme(Theme::Nord);
+let cfg = EditorConfig::default().with_crate_theme(Theme::Dark);
 
 // Force graph — ViewerConfig.theme is itself a crate::theme::Theme:
-let cfg = ViewerConfig::default().with_theme(Theme::Catppuccin);
+let cfg = ViewerConfig::default().with_theme(Theme::Light);
 ```
 
 When the host swaps themes at runtime, call the matching `apply_theme(...)` setter on the live config instead of replacing it (preserves any custom layout overrides).
@@ -203,18 +198,17 @@ A parallel `LIGHT_*` set mirrors the same tokens tuned for the Light theme.
 
 ```
 theme/
-  mod.rs        Theme enum, ALL, all *_colors() / *_config() accessors,
-                semantic helpers (accent/danger/success/warning), legacy tokens
-  palettes.rs   Cross-module palette types (TitlebarColors, NavColors,
-                DialogColors, NotificationColors, StatusBarColors,
-                HexViewerColors + tokens factory, DisasmViewColors + tokens)
-  dark.rs       NxT native dark stack
-  light.rs      Readable light stack
-  midnight.rs   Near-black OLED stack
-  solarized.rs  Solarized Dark stack
-  monokai.rs    Monokai Pro stack
-  catppuccin.rs Catppuccin Mocha stack
-  nord.rs       Nord stack
+  mod.rs           Theme enum, ALL, all *_colors() / *_config() accessors,
+                   semantic helpers (accent/danger/success/warning)
+  tokens.rs        Legacy semantic colour constants (re-exported from mod.rs)
+  tests.rs         Core enum / semantic / contrast tests
+  widget_tests.rs  Per-widget palette-resolution tests
+  palettes.rs      Cross-module palette types (TitlebarColors, NavColors,
+                   DialogColors, NotificationColors, StatusBarColors)
+  palettes/hex.rs     HexViewerColors + tokens factory
+  palettes/disasm.rs  DisasmFlowKind, DisasmViewColors + tokens factory
+  dark.rs          NxT native dark stack
+  light.rs         Readable light stack
 ```
 
 One theme = one file. Each per-theme module owns the full stack
