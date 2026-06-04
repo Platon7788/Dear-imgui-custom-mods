@@ -27,7 +27,7 @@ Inspired by DevExpress VirtualTreeList and Delphi VirtualStringTree.
 - **Per-node icons**: glyph, colored glyph, color swatch, or custom-rendered
 - **Badges** — optional text after node label (e.g. children count, status)
 - **Clip tooltips** — automatic tooltip when cell text is wider than column
-- **Lazy children loading** — enable `config.lazy_load = true`; the tree calls `has_children()` to show the expand arrow, then loads children on first expand
+- **Lazy children loading** — set `config.lazy_load = true` and register a loader via `tree.set_lazy_loader(|id| vec![..])`; `has_children()` shows the expand arrow, and children are materialized on first expand (once per branch)
 - **Keyboard navigation**: Up/Down (flat), Left (collapse/parent), Right (expand/child)
 - **Per-row and per-cell styling** (background color, text color)
 - **Context menus** — right-click with node tracking
@@ -171,9 +171,8 @@ TreeConfig {
     tree_line_color: [0.35, 0.35, 0.35, 0.6],
     expand_on_double_click: true, // double-click expands/collapses
     auto_expand_on_filter: true,  // auto-expand matching branches
-    lazy_load: false,             // lazy children loading
+    lazy_load: false,             // lazy children loading (see set_lazy_loader)
     drag_drop_enabled: false,     // drag-and-drop reparenting
-    multi_select_flat: true,      // Shift+Click range on flat view
     striped: true,                // alternating row backgrounds
 
     // Expand button style
@@ -229,6 +228,28 @@ VirtualTree::new(label: &str, columns: Vec<ColumnDef>, config: TreeConfig) -> Se
 | `is_expanded(id) -> bool` | Check expand state |
 | `ensure_visible(id)` | Expand all ancestors |
 | `scroll_to_node(id)` | Expand ancestors + scroll into view |
+
+### Lazy Loading
+
+| Method | Description |
+|--------|-------------|
+| `set_lazy_loader(\|id\| -> Vec<T>)` | Register an on-demand children loader |
+
+Enable with `config.lazy_load = true`, then register a loader. A branch
+node (`has_children() == true`) materializes its children the first time it
+is expanded, and only once per branch (`NodeSlot::children_loaded` latches it):
+
+```rust
+let mut tree = VirtualTree::new("##tree", columns, TreeConfig {
+    lazy_load: true,
+    ..Default::default()
+});
+let root = tree.insert_root(FsNode::dir("/")).unwrap(); // has_children() == true
+tree.set_lazy_loader(|parent_id| {
+    // Called on first expand of `parent_id`; return its children.
+    read_dir_children(parent_id)
+});
+```
 
 ### Selection
 
@@ -416,10 +437,22 @@ Pre-allocate with `TreeConfig::max_nodes` to size the arena upfront and avoid re
 
 ## Architecture
 
+Method `impl`s are split across files (each < 500 lines) but all extend the
+single `VirtualTree<T>` / `TreeArena<T>` types via `impl` blocks:
+
 ```
 virtual_tree/
-  mod.rs          VirtualTree<T> — widget struct, render loop, public API
-  arena.rs        TreeArena<T> — generational slab storage, parent/children links  (pub, 22 tests)
+  mod.rs          VirtualTree<T> struct, EditState, new()/set_lazy_loader        (8 tests)
+  api.rs          Public data API: insert/remove/access/expand/move/select/sort/filter/export
+  render.rs       Render entry points, table setup, header, sort handling
+  row.rs          Per-row rendering (selectable, drag-drop, data cells)
+  tree_cell.rs    Tree-column cell: indent, tree lines, expand glyph/arrow, icon
+  edit.rs         Inline cell-editor activation and rendering
+  input.rs        Selection, keyboard navigation, clipboard copy
+  arena/
+    mod.rs        TreeArena<T> — generational slab storage; alloc/insert/remove/access/expand  (pub)
+    ops.rs        Reparenting, sibling sort, iteration                            (pub)
+    tests.rs      Arena unit tests                                               (22 tests)
   node.rs         VirtualTreeNode trait, NodeIcon enum                              (pub)
   config.rs       TreeConfig (wraps TableConfig from virtual_table)                 (pub)
   flat_view.rs    FlatView, FlatRow — cached linearization via Vec<u32> index       (pub, 8 tests)
@@ -448,13 +481,14 @@ The following internal types are re-exported for advanced use (benchmarks, custo
 - **`Vec<u32>` index_map** — O(1) flat-index lookup by NodeId.index, no hashing overhead (40 MB at 10M vs 500 MB HashMap)
 - **`Vec<bool>` visibility set** — O(1) filter visibility check (10 MB at 10M vs 400 MB HashSet)
 - **continuation_mask: u64** — bitmask per row enables O(1) tree line rendering (supports up to 64 depth levels)
-- **Iterative DFS** — all tree traversals (remove, flatten, copy, collect_descendants) use explicit stacks — no recursion, no stack overflow
+- **Iterative DFS** — all tree traversals (remove, flatten, copy subtree, depth update) use explicit stacks — no recursion, no stack overflow
 - **Scoped borrows** — ComboBox `items` and Button `label` are borrowed within scoped blocks to avoid cloning `Vec<String>` per frame
 - **Shared utilities** — `EditorKind`, `alignment_pad`, clipboard helpers live in `virtual_table::column` / `utils::clipboard` to avoid duplication
 
 ## Unit Tests
 
 Run with `cargo test --lib`:
-- `arena.rs` — 22 tests: insert, remove, generational IDs, capacity, eviction, expand/collapse, move/reparent, sort
+- `arena/tests.rs` — 22 tests: insert, remove, generational IDs, capacity, eviction, expand/collapse, move/reparent, sort
 - `filter.rs` — 6 tests: match, auto-expand ancestors, clear, edge cases
 - `flat_view.rs` — 8 tests: rebuild, index_of, collapse/expand, deep tree, dirty flag, is_last_child
+- `mod.rs` — 8 tests: config parse, lazy loader, copy semantics (collapsed/leaf/dedup), NodeId-keyed edit, anchor stability

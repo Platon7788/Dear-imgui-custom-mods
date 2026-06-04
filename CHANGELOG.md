@@ -19,7 +19,21 @@
   for the migration recipe; `test-dear-imgui-rs` (sibling repo) is the
   end-to-end reference for the new pattern.
 
+- **`virtual_tree` audit cleanup** — removed two dead public surfaces:
+  `TreeConfig::multi_select_flat` (was never read; Shift+Click range
+  selection is always flat-view based) and `NodeSlot::visible` (was
+  always `true`; filtering uses `FilterState`'s own visibility set).
+  `Default` configs and `..Default::default()` constructions are
+  unaffected; only code that named these fields explicitly needs editing.
+
 ### Added
+
+- **`VirtualTree::set_lazy_loader(|id| -> Vec<T>)`** — on-demand children
+  loading is now functional (previously `config.lazy_load` was a no-op
+  flag). With `lazy_load = true`, a branch's children are materialized on
+  first expand and only once per branch (`NodeSlot::children_loaded`
+  latches it). Fills a real gap: hosts could not implement lazy expansion
+  themselves (arrow-click expansion emitted no public event).
 
 - **`chrome` module** — borderless-window helpers as stateless / explicit-
   state helpers (no runner). Exposes `render_titlebar()`,
@@ -45,6 +59,32 @@
   register-indirect operand).
 
 ### Fixed
+
+- **`virtual_tree` audit fixes** (correctness pass):
+  - **Panic** on out-of-range `TreeConfig::tree_column` — the tree-cell
+    clip-tooltip path indexed `columns[tree_column]` with the raw
+    (unclamped) value; now uses the clamped column index.
+  - **Stale selection anchor** — the range-selection / keyboard-nav
+    anchor was a flat-view index that silently pointed at the wrong row
+    after any expand/collapse/filter/sort rebuild. It is now a stable
+    `NodeId` resolved to a row on demand.
+  - **Inline edit committed into the wrong node** when the tree mutated
+    structurally mid-edit — the editor is now keyed by `NodeId`, not
+    flat-view row, and deactivates on `Delete`.
+  - **Ctrl+C dropped collapsed selected subtrees** — copy now emits each
+    selection-root's full subtree (even when collapsed) with no
+    duplicate emission when an ancestor is also selected.
+  - Tree connector lines now use the actual (density/override) row
+    height; removed an unnecessary `unsafe` raw-pointer slice in the
+    glyph expander; de-duplicated row-height math; `Ctrl+C` now gates on
+    window focus to match keyboard nav; dropped the double zebra
+    (ImGui `ROW_BG` + manual striping) when `striped`.
+  - Internal-only: `mod.rs` (1929 lines) and `arena.rs` (839) were split
+    into focused sub-files (`api`/`render`/`row`/`tree_cell`/`edit`/`input`
+    and `arena/{mod,ops,tests}`), each < 500 lines per the repo guideline.
+    No public API change beyond the two removed fields above. Added 8
+    unit tests covering the fixes (lazy load, copy semantics, edit/anchor
+    keying).
 
 - **`disasm_view` follow-at-cursor hit-zone widened + middle-click
   added** (session 043, follow-up audit #2). User reported that

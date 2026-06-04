@@ -12,7 +12,7 @@
         scroll_x: false,
         scroll_y: true,
         highlight_hovered: true,
-        flat_headers: false,
+        flat_headers: true,
         show_headers: true,
         context_menu: true,
         freeze_cols: 0,
@@ -29,6 +29,9 @@
         default_row_height: None,
         snap_last_row: false,
         default_clip_tooltip: true,
+        // VirtualTree calls `begin_table` directly, so this nested flag
+        // has no effect — keep `false` to signal "no inner card here".
+        card_border: false,
     ),
     tree_column: 0,
     indent_width: 20.0,
@@ -39,9 +42,9 @@
     auto_expand_on_filter: true,
     lazy_load: false,
     drag_drop_enabled: false,
-    multi_select_flat: true,
     striped: true,
-    flat_headers: false,
+    flat_headers: true,
     max_nodes: 10000000,
     evict_on_overflow: false,
+    card_border: true,
 )

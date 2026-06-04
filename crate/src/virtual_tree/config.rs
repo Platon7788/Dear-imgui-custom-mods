@@ -55,14 +55,14 @@ pub struct TreeConfig {
     /// Auto-expand matching branches when filter is active. Default: true.
     pub auto_expand_on_filter: bool,
 
-    /// Enable lazy children loading via callback. Default: false.
+    /// Enable on-demand children loading. When `true`, register a loader via
+    /// [`VirtualTree::set_lazy_loader`](super::VirtualTree::set_lazy_loader);
+    /// each branch's children are materialized the first time it is expanded
+    /// (and only once). Default: false.
     pub lazy_load: bool,
 
     /// Enable drag-and-drop node reparenting. Default: false.
     pub drag_drop_enabled: bool,
-
-    /// Shift+Click range selection uses flat view indices. Default: true.
-    pub multi_select_flat: bool,
 
     /// Alternate row background (zebra striping) for readability. Default: true.
     pub striped: bool,
@@ -77,7 +77,9 @@ pub struct TreeConfig {
     /// HeaderActive → transparent). The same colors are used by
     /// `Selectable` rows for the selection state, so the style stack
     /// is strictly scoped to the header call to keep row feedback
-    /// intact. Default: false.
+    /// intact. Default: `true` — keeps headers visually calm; flip to
+    /// `false` for trees where the user is expected to interact with
+    /// the header row (click-to-sort, drag-reorder, etc.).
     pub flat_headers: bool,
 
     /// Maximum number of nodes the tree can hold.
@@ -89,6 +91,22 @@ pub struct TreeConfig {
     /// removes the oldest root subtree (first root + all its descendants) to make room.
     /// When `false` (default), insert methods return `None` at capacity.
     pub evict_on_overflow: bool,
+
+    /// Wrap the whole tree render in a bordered child window so it reads
+    /// as a rounded card (uses the host's global `ChildRounding` /
+    /// `Border` theme colors). Wrapper uses `WindowPadding [0, 0]` so the
+    /// border sits flush against the inner table. Default: `true`.
+    ///
+    /// Note: `VirtualTree` calls `begin_table` directly (not
+    /// `VirtualTable::render`), so the nested `table.card_border` does
+    /// nothing here — only this top-level flag matters for tree
+    /// wrapping.
+    #[serde(default = "default_card_border_true")]
+    pub card_border: bool,
+}
+
+fn default_card_border_true() -> bool {
+    true
 }
 
 impl Default for TreeConfig {

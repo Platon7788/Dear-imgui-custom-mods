@@ -131,9 +131,6 @@ impl FlatView {
                 frame.cursor += 1;
 
                 if let Some(slot) = arena.get(child_id) {
-                    if !slot.visible {
-                        continue;
-                    }
                     if filter.active && !filter.is_visible(child_id) {
                         continue;
                     }
@@ -213,10 +210,7 @@ impl FlatView {
     ) -> usize {
         self.children_buf[start..end]
             .iter()
-            .filter(|&&id| {
-                arena.get(id).is_some_and(|s| s.visible)
-                    && (!filter.active || filter.is_visible(id))
-            })
+            .filter(|&&id| arena.get(id).is_some() && (!filter.active || filter.is_visible(id)))
             .count()
     }
 
