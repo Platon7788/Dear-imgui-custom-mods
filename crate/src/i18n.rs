@@ -101,6 +101,7 @@ pub mod hex_viewer {
         pub settings_show_offsets: &'static str,
         pub settings_show_column_headers: &'static str,
         pub settings_show_column_dividers: &'static str,
+        pub settings_show_group_dividers: &'static str,
         pub settings_show_splitter: &'static str,
         pub settings_format: &'static str,
         pub settings_uppercase: &'static str,
@@ -157,6 +158,7 @@ pub mod hex_viewer {
         settings_show_offsets: "Show offsets",
         settings_show_column_headers: "Show column headers",
         settings_show_column_dividers: "Show column dividers",
+        settings_show_group_dividers: "Show group dividers (dashed)",
         settings_show_splitter: "Show splitter",
         settings_format: "Format:",
         settings_uppercase: "Uppercase hex",
@@ -216,6 +218,7 @@ pub mod hex_viewer {
         settings_show_offsets: "Колонка адресов",
         settings_show_column_headers: "Заголовки колонок",
         settings_show_column_dividers: "Разделители колонок",
+        settings_show_group_dividers: "Пунктир между группами",
         settings_show_splitter: "Разделитель размера",
         settings_format: "Формат:",
         settings_uppercase: "Hex заглавными",
@@ -337,15 +340,15 @@ pub mod disasm_view {
         pub tooltip_comment_label: &'static str,
         pub tooltip_double_click_copy: &'static str,
         pub tooltip_double_click_follow: &'static str, // "Double-click / middle-click to follow"
-        pub tooltip_unit_bytes: &'static str, // "bytes" suffix in "Size: 4 bytes"
-        pub tooltip_explanation_label: &'static str, // "What it does: " / "Что делает: "
-        pub tooltip_idiom_label: &'static str,        // "Pattern: " / "Шаблон: "
-        pub tooltip_gotcha_label: &'static str,       // "Watch out: " / "Внимание: "
-        pub tooltip_operand_label: &'static str,      // "Operand: " / "Операнд: "
-        pub tooltip_compiler_label: &'static str,     // "Compiler: " / "Компилятор: "
-        pub tooltip_antidisasm_label: &'static str,   // "Anti-RE: " / "Анти-RE: "
-        pub tooltip_boundary_label: &'static str,     // "Boundary: " / "Граница: "
-        pub tooltip_branch_label: &'static str,       // "Branch: " / "Переход: "
+        pub tooltip_unit_bytes: &'static str,          // "bytes" suffix in "Size: 4 bytes"
+        pub tooltip_explanation_label: &'static str,   // "What it does: " / "Что делает: "
+        pub tooltip_idiom_label: &'static str,         // "Pattern: " / "Шаблон: "
+        pub tooltip_gotcha_label: &'static str,        // "Watch out: " / "Внимание: "
+        pub tooltip_operand_label: &'static str,       // "Operand: " / "Операнд: "
+        pub tooltip_compiler_label: &'static str,      // "Compiler: " / "Компилятор: "
+        pub tooltip_antidisasm_label: &'static str,    // "Anti-RE: " / "Анти-RE: "
+        pub tooltip_boundary_label: &'static str,      // "Boundary: " / "Граница: "
+        pub tooltip_branch_label: &'static str,        // "Branch: " / "Переход: "
 
         // Flow kinds
         pub flow_normal: &'static str,
@@ -578,10 +581,10 @@ pub mod timeline {
     /// `cfg.show_tooltip` is on.
     #[derive(Debug)]
     pub struct Strings {
-        pub category_label: &'static str, // "Category: "
-        pub source_label: &'static str,   // "Source: "
+        pub category_label: &'static str,     // "Category: "
+        pub source_label: &'static str,       // "Source: "
         pub start_end_template: &'static str, // "Start: {:.4}ms  End: {:.4}ms"
-        pub depth_label: &'static str,    // "Depth: "
+        pub depth_label: &'static str,        // "Depth: "
     }
 
     pub const EN: Strings = Strings {
@@ -628,8 +631,8 @@ pub mod diff_viewer {
     /// Toolbar button labels.
     #[derive(Debug)]
     pub struct Strings {
-        pub prev_button: &'static str,    // "Prev (Shift+F7)"
-        pub next_button: &'static str,    // "Next (F7)"
+        pub prev_button: &'static str, // "Prev (Shift+F7)"
+        pub next_button: &'static str, // "Next (F7)"
     }
 
     pub const EN: Strings = Strings {
@@ -665,8 +668,8 @@ pub mod nav_panel {
     /// each button means").
     #[derive(Debug)]
     pub struct Strings {
-        pub show_panel: &'static str,    // "Show panel"
-        pub toggle_panel: &'static str,  // "Toggle panel"
+        pub show_panel: &'static str,   // "Show panel"
+        pub toggle_panel: &'static str, // "Toggle panel"
     }
 
     pub const EN: Strings = Strings {
@@ -942,7 +945,7 @@ pub mod code_editor {
         pub tip_increase_font: &'static str,
 
         // Find / replace bar
-        pub find_hint: &'static str,    // "Find…" placeholder
+        pub find_hint: &'static str, // "Find…" placeholder
         pub no_matches: &'static str,
         pub tip_prev_match: &'static str,
         pub tip_next_match: &'static str,
@@ -1149,8 +1152,14 @@ mod tests {
 
     #[test]
     fn diff_viewer_strings_resolve() {
-        assert_eq!(diff_viewer::strings(Locale::En).prev_button, "Prev (Shift+F7)");
-        assert_eq!(diff_viewer::strings(Locale::Ru).prev_button, "Назад (Shift+F7)");
+        assert_eq!(
+            diff_viewer::strings(Locale::En).prev_button,
+            "Prev (Shift+F7)"
+        );
+        assert_eq!(
+            diff_viewer::strings(Locale::Ru).prev_button,
+            "Назад (Shift+F7)"
+        );
     }
 
     #[test]
@@ -1179,8 +1188,14 @@ mod tests {
     fn force_graph_strings_resolve() {
         assert_eq!(force_graph::strings(Locale::En).section_filters, "Filters");
         assert_eq!(force_graph::strings(Locale::Ru).section_filters, "Фильтры");
-        assert_eq!(force_graph::strings(Locale::En).btn_pause_resume, "Pause/Resume");
-        assert_eq!(force_graph::strings(Locale::Ru).btn_pause_resume, "Пауза/Возобн.");
+        assert_eq!(
+            force_graph::strings(Locale::En).btn_pause_resume,
+            "Pause/Resume"
+        );
+        assert_eq!(
+            force_graph::strings(Locale::Ru).btn_pause_resume,
+            "Пауза/Возобн."
+        );
     }
 
     #[test]

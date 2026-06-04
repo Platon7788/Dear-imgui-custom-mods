@@ -110,24 +110,29 @@ pub trait NodeGraphViewer<T> {
 
     /// Tooltip text when hovering a node. Return `None` for no tooltip.
     ///
-    /// **NOT WIRED YET (2026-04-30 audit):** the renderer's
-    /// `hover_time` / `prev_hovered` state machine tracks hover
-    /// timing but never paints the actual tooltip. Implement this
-    /// method to forward-prepare your tooltip text; it'll start
-    /// rendering once the hover-tooltip pass lands. Tracked as a
-    /// deferred fix.
+    /// Wired into the renderer: the tooltip appears once the mouse has
+    /// rested on the node for `config.tooltip_delay` seconds. It is
+    /// suppressed while dragging a node, drawing a wire, or
+    /// box-selecting. A hovered pin tooltip ([`Self::input_tooltip`] /
+    /// [`Self::output_tooltip`]) takes priority over the node tooltip.
     fn node_tooltip<'a>(&'a self, _node: &'a T) -> Option<&'a str> {
         None
     }
 
     /// Tooltip text when hovering an input pin.
-    /// See [`Self::node_tooltip`] for current rendering status.
+    ///
+    /// Same dwell-delay and interaction-suppression behavior as
+    /// [`Self::node_tooltip`]; takes priority over the node tooltip when
+    /// the cursor is over the pin.
     fn input_tooltip<'a>(&'a self, _node: &'a T, _input: u8) -> Option<&'a str> {
         None
     }
 
     /// Tooltip text when hovering an output pin.
-    /// See [`Self::node_tooltip`] for current rendering status.
+    ///
+    /// Same dwell-delay and interaction-suppression behavior as
+    /// [`Self::node_tooltip`]; takes priority over the node tooltip when
+    /// the cursor is over the pin.
     fn output_tooltip<'a>(&'a self, _node: &'a T, _output: u8) -> Option<&'a str> {
         None
     }

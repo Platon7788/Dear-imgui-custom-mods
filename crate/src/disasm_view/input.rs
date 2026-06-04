@@ -14,6 +14,18 @@ use crate::utils::hex::byte_hex;
 /// — same dwell as `hex_viewer::ADDRESS_FLASH_FRAMES`.
 pub(super) const ADDRESS_FLASH_FRAMES: u32 = 30;
 
+/// Visible-row count from window height. Guards against zero
+/// `line_height` (degenerate font load) so a divide doesn't yield
+/// `inf as usize` (UB-adjacent in debug, `0` in release on x86).
+#[inline]
+fn rows_in_window(window_h: f32, line_height: f32) -> usize {
+    if line_height > 0.0 {
+        (window_h / line_height) as usize
+    } else {
+        0
+    }
+}
+
 /// Reusable space-separated hex byte formatter — single-allocation
 /// `String` (3 chars/byte: two hex + one space, minus the trailing
 /// gap). Mirrors the per-row pattern in `draw::draw_instruction_row`.
@@ -86,16 +98,24 @@ impl DisasmView {
             }
         }
 
-        // Page Up/Down.
+        // Page Up/Down. `line_height` is guarded against zero — a
+        // degenerate font load would otherwise divide by zero and
+        // produce `inf as usize` (`0` in release, UB-adjacent in
+        // debug). One row fallback keeps the keystroke responsive
+        // even on a window that briefly reports 0 height.
+        let visible_rows = rows_in_window(ui.window_size()[1], self.line_height).max(1);
+        // `count - 1` previously relied on the `count == 0 { return; }`
+        // guard ~60 lines above; `saturating_sub(1)` removes that
+        // long-range coupling so future refactors that re-entry-point
+        // the function can't underflow.
+        let last_idx = count.saturating_sub(1);
         if ui.is_key_pressed(Key::PageUp) {
-            let visible = (ui.window_size()[1] / self.line_height) as usize;
-            let new = self.cursor_idx.unwrap_or(0).saturating_sub(visible);
+            let new = self.cursor_idx.unwrap_or(0).saturating_sub(visible_rows);
             move_cursor(self, new);
             self.scroll_to = Some(new);
         }
         if ui.is_key_pressed(Key::PageDown) {
-            let visible = (ui.window_size()[1] / self.line_height) as usize;
-            let new = (self.cursor_idx.unwrap_or(0) + visible).min(count - 1);
+            let new = (self.cursor_idx.unwrap_or(0) + visible_rows).min(last_idx);
             move_cursor(self, new);
             self.scroll_to = Some(new);
         }
@@ -107,8 +127,8 @@ impl DisasmView {
             self.scroll_to = Some(0);
         }
         if ui.is_key_pressed(Key::End) && !ctrl {
-            move_cursor(self, count - 1);
-            self.scroll_to = Some(count - 1);
+            move_cursor(self, last_idx);
+            self.scroll_to = Some(last_idx);
         }
 
         // ── Function-scope navigation (Ctrl+Up / Ctrl+Down / Ctrl+L) ──
@@ -265,12 +285,17 @@ impl DisasmView {
             return;
         }
 
-        // Mouse wheel scroll.
+        // Mouse wheel scroll. Compute in `f32` end-to-end — the
+        // previous `as isize` round-trip silently truncated fractional
+        // wheel deltas (high-resolution touchpads emit `0.10`-step
+        // values), so a slow touchpad pan stayed at zero rows and
+        // never scrolled. Three rows per notch matches Windows'
+        // SystemParametersInfo(SPI_GETWHEELSCROLLLINES) default.
         let wheel = ui.io().mouse_wheel();
         if wheel != 0.0 {
-            let rows = (-wheel * 3.0) as isize;
             let scroll_y = ui.scroll_y();
-            let new_scroll = (scroll_y + rows as f32 * self.line_height).max(0.0);
+            let delta_px = -wheel * 3.0 * self.line_height;
+            let new_scroll = (scroll_y + delta_px).max(0.0);
             ui.set_scroll_y(new_scroll);
         }
 
@@ -294,10 +319,7 @@ impl DisasmView {
                 crate::utils::tooltip::themed_tooltip(ui, || {
                     ui.text(format!("{}: {}", s.tooltip_double_click_copy, formatted));
                 });
-                if !shift
-                    && !ctrl
-                    && ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left)
-                {
+                if !shift && !ctrl && ui.is_mouse_double_clicked(dear_imgui_rs::MouseButton::Left) {
                     set_clipboard(&formatted);
                     self.address_flash = Some((row, ADDRESS_FLASH_FRAMES));
                     // Drop any drag-select origin a single click below
@@ -453,7 +475,7 @@ impl DisasmView {
             // cursor (default ImGui auto-position is `(0, 0)` when
             // BeginPopup runs outside any window context — see
             // hex_viewer::popup for the same pattern).
-            self.popup_open_pos = ui.io().mouse_pos();
+            self.popup_open_pos = Some(ui.io().mouse_pos());
         }
     }
 
@@ -462,23 +484,33 @@ impl DisasmView {
         ui: &dear_imgui_rs::Ui,
         provider: &dyn DisasmDataProvider,
     ) -> Option<usize> {
+        // Zero-`line_height` guard: a degenerate font load would feed
+        // `inf` into the `as usize` cast — `0` in release on x86, but
+        // UB-adjacent in debug. Fail open with `None` instead.
+        if self.line_height <= 0.0 {
+            return None;
+        }
         let [_mx, my] = ui.io().mouse_pos();
         let [_win_x, win_y] = ui.cursor_screen_pos();
-        let scroll_y = ui.scroll_y();
-        let origin_y = win_y + scroll_y;
         let header_h = if self.config.show_header {
             self.line_height
         } else {
             0.0
         };
 
-        let rel_y = my - origin_y - header_h;
-        if rel_y < 0.0 {
+        // Single combined division. The previous code did
+        // `floor((my - win_y - scroll_y - header_h)/lh) + floor(scroll_y/lh)`
+        // — two independent floors that don't compose at the row
+        // boundary, so a click on the very last pixel of a row could
+        // promote to the row above (audit M6). `cursor_screen_pos()`
+        // already accounts for the scroll offset (it returns the
+        // current draw position in screen pixels), so the `+scroll_y
+        // -scroll_y` round-trip cancels out cleanly.
+        let combined = (my - win_y - header_h) / self.line_height;
+        if combined < 0.0 {
             return None;
         }
-
-        let scroll_offset = (scroll_y / self.line_height) as usize;
-        let row = (rel_y / self.line_height) as usize + scroll_offset;
+        let row = combined as usize;
 
         if row < provider.instruction_count() {
             Some(row)

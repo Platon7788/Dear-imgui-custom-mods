@@ -55,11 +55,13 @@ pub use config::{
 // `AddressFormatter` is defined below in this file but re-exported
 // from the public surface so consumers can name the closure-trait type
 // without reaching into private paths.
-pub use nav_history::NavHistory;
-pub use provider::{ByteCategory, ColorRegion, HexDataProvider, VecDataProvider};
-pub use undo::{UndoEntry, UndoStack};
 pub use input::EditColumn;
+pub use nav_history::NavHistory;
+pub use provider::{
+    ArcVecDataProvider, ByteCategory, ColorRegion, HexDataProvider, VecDataProvider,
+};
 pub use search::{PatternByte, Selection};
+pub use undo::{UndoEntry, UndoStack};
 
 use std::sync::Arc;
 
@@ -80,6 +82,16 @@ use crate::utils::clipboard;
 /// sorted-by-address vector + binary search, not a linear scan.
 pub type AddressFormatter = Arc<dyn Fn(u64) -> Option<String> + Send + Sync>;
 
+/// Boxed host callback fired once per **committed** single-byte edit.
+///
+/// Arguments are `(va, old, new)`: the absolute address of the edited
+/// byte, its previous value, and the freshly committed value. See
+/// [`HexViewer::set_byte_edit_callback`] for the full contract.
+///
+/// `Send + Sync` so the boxed closure can move with the widget across
+/// threads.
+pub type ByteEditCallback = Box<dyn FnMut(u64, u8, u8) + Send + Sync>;
+
 // ── HexViewer ────────────────────────────────────────────────────────────────
 
 /// Standalone hex dump widget.
@@ -95,7 +107,18 @@ pub struct HexViewer {
     /// `splitter_id` / etc. strings below.
     #[allow(dead_code)]
     pub(super) id: String,
-    pub(super) data: Vec<u8>,
+    /// BUG-128 (2026-05-15) — `Arc<Vec<u8>>` instead of `Vec<u8>` so
+    /// hosts that already own an `Arc` (sliding-window debugger panes
+    /// that also feed the same bytes into a disassembler worker) can
+    /// hand off ownership without an O(N) memcpy. Internal mutations
+    /// (edit mode, undo/redo) still work — they go through
+    /// [`Arc::make_mut`], which is zero-cost when HexViewer is the sole
+    /// owner (the common case) and only clones when the host is holding
+    /// a parallel reference. Read-side accessors (`data()` returning
+    /// `&[u8]`) are unchanged for callers; the new
+    /// [`Self::set_data_arc`] / [`Self::data_arc`] surface lets
+    /// zero-copy-aware hosts opt into ownership-sharing semantics.
+    pub(super) data: Arc<Vec<u8>>,
     pub(super) reference: Vec<u8>,
     pub(super) regions: Vec<ColorRegion>,
     pub(super) config: HexViewerConfig,
@@ -197,6 +220,47 @@ pub struct HexViewer {
     /// expect it.
     pub(super) inner_content_w: f32,
 
+    /// BUG-128 (2026-05-15) — first/last row indices of the rows that
+    /// are currently visible inside the hex child-window. Populated
+    /// every frame inside `render()` from the same `scroll_y +
+    /// visible_h` math the virtualisation loop uses, so the public
+    /// `viewport_first_va` / `viewport_last_va` getters return the
+    /// REAL visible range (not the cursor row). Both fields are
+    /// `usize::MAX` when the viewer hasn't rendered yet — callers use
+    /// `viewport_first_va` / `viewport_last_va` which return `None`
+    /// in that case.
+    pub(super) viewport_first_row: usize,
+    pub(super) viewport_last_row: usize,
+
+    /// Phase 2 (provider-driven render): cached `usize`-projection of
+    /// the active provider's `len()` for the current frame. Set at the
+    /// top of [`Self::render_impl`] and consumed by layout / hit-test
+    /// helpers that historically read `self.data.len()` directly
+    /// (`offset_col_width`, `mouse_to_offset`, `mouse_to_address_row`).
+    ///
+    /// For the legacy [`Self::render`] entry point this equals
+    /// `self.data.len()`. For hosts using
+    /// [`Self::render_with_provider`] with a streaming provider this
+    /// is the provider's clamped length — so the address-gutter digit
+    /// count, partial-row hit-tests and total scrollbar extent reflect
+    /// the *provider's* view of the buffer, not the viewer's stale
+    /// internal `Arc<Vec<u8>>`. Outside the render frame this still
+    /// reads `self.data.len()` (no provider available between frames),
+    /// which is the right default for all the public getters
+    /// (`cursor_address`, `viewport_first_va`, etc.).
+    pub(super) effective_data_len: usize,
+
+    /// BUG-128 (M2) — pre-computed 256-entry foreground colour palette,
+    /// indexed by byte value. Rebuilt at the start of every `render()`
+    /// from `HexViewerConfig::byte_fg_color`. The per-visible-byte hot
+    /// path (`byte_fg_with_overrides`) reads this array instead of
+    /// dispatching to the method, which was the dominant cost when
+    /// `category_colors == true` (5-arm match per byte). Cost shifts
+    /// from `O(visible_bytes × match)` to `O(256)` per frame.
+    /// Pre-packed `u32` (not `[f32; 4]`) so the inner loop skips the
+    /// `col32` conversion as well.
+    pub(super) byte_palette: [u32; 256],
+
     /// Optional host-supplied Address-column formatter. When `Some`,
     /// invoked for every visible row's absolute address; if it returns
     /// `Some(string)` that string is rendered instead of the default
@@ -206,6 +270,30 @@ pub struct HexViewer {
     /// Excluded from RON round-trip — it's runtime payload, not
     /// configuration. See [`Self::set_address_formatter`].
     pub(super) address_formatter: Option<AddressFormatter>,
+
+    /// BUG-127 (2026-05-15) — host-supplied callback for VA-mode goto.
+    ///
+    /// When the user opens the goto popup (Ctrl+G) and enters an address
+    /// that lies OUTSIDE `[base_address, base_address + data.len())`, the
+    /// viewer's own `set_cursor` would clamp the offset to the last byte
+    /// of the buffer — useless for hosts that drive a sliding-window
+    /// view over a much larger address space (e.g. a debugger memory
+    /// pane). When this callback is set, the popup invokes it with the
+    /// parsed absolute VA instead, leaving the host free to re-anchor
+    /// its window, queue a memory read, and (next frame) place the
+    /// cursor at the new in-buffer offset.
+    ///
+    /// `None` keeps the legacy clamp-to-buffer behaviour, which is the
+    /// correct semantics for hosts that show a single static buffer
+    /// (binary editor, packet inspector, etc.).
+    pub(super) va_goto_callback: Option<Box<dyn FnMut(u64) + Send + Sync>>,
+    /// Host-supplied notification fired once per **committed** single-byte
+    /// edit — see [`Self::set_byte_edit_callback`] for the contract.
+    /// `None` keeps the legacy "local-only mutation" behaviour, which is
+    /// the right semantics for hosts editing a freestanding buffer with
+    /// no upstream backing store (binary file editor, packet inspector,
+    /// ROM viewer).
+    pub(super) byte_edit_callback: Option<ByteEditCallback>,
     // The active locale lives on `config.locale` so it round-trips
     // through `ron::to_string(&cfg)` / `ron::from_str` along with
     // every other display flag — see `with_locale` / `set_locale`.
@@ -222,7 +310,7 @@ impl HexViewer {
         let splitter_id = format!("##hv_splitter_{id}");
         Self {
             id,
-            data: Vec::new(),
+            data: Arc::new(Vec::new()),
             reference: Vec::new(),
             regions: Vec::new(),
             config: HexViewerConfig::default(),
@@ -265,7 +353,63 @@ impl HexViewer {
             popup_open_pos: [0.0, 0.0],
             component_center: [0.0, 0.0],
             address_formatter: None,
+            va_goto_callback: None,
+            byte_edit_callback: None,
+            viewport_first_row: usize::MAX,
+            viewport_last_row: usize::MAX,
+            effective_data_len: 0,
+            byte_palette: [0; 256],
         }
+    }
+
+    /// BUG-127: install a host callback invoked when the goto-popup
+    /// receives an address OUTSIDE the current buffer's
+    /// `[base_address, base_address + data.len())` range. Typical use:
+    /// hosts driving a sliding-window view (debugger memory pane) wire
+    /// this to their `re-anchor-window + queue-read` path.
+    ///
+    /// ```rust,no_run
+    /// # use dear_imgui_custom_mod::hex_viewer::HexViewer;
+    /// let mut hv = HexViewer::new("dump");
+    /// hv.set_va_goto_callback(Some(Box::new(|target_va: u64| {
+    ///     // host: re-anchor window at target_va, queue ReadMem
+    /// })));
+    /// ```
+    pub fn set_va_goto_callback(&mut self, f: Option<Box<dyn FnMut(u64) + Send + Sync>>) {
+        self.va_goto_callback = f;
+    }
+
+    /// Install (or clear with `None`) a host-supplied notification fired
+    /// once per **committed** single-byte edit — `(va, old_byte, new_byte)`.
+    /// "Committed" means the user finished typing a hex / ASCII change
+    /// (left the byte, pressed Tab/Enter, or moved the cursor); partial
+    /// nibbles in progress do **not** fire the callback.
+    ///
+    /// The viewer's internal buffer has *already* been mutated to
+    /// `new_byte` by the time the callback runs — the callback's job is
+    /// to propagate the change to whatever backs the viewer (a file on
+    /// disk, a debug-target's memory, a network packet under
+    /// composition, …). The callback is also a natural place to record
+    /// an external undo entry; the viewer's own undo stack is
+    /// independent and remains the authoritative `Ctrl+Z` source for
+    /// in-buffer rollback.
+    ///
+    /// Not invoked on:
+    ///   * `set_data` / `set_data_vec` / `set_data_arc` — buffer
+    ///     replacement, not user-driven editing.
+    ///   * `undo` / `redo` — those replay already-committed edits.
+    ///   * `stop_editing` — discards the pending nibble.
+    ///
+    /// ```rust,no_run
+    /// # use dear_imgui_custom_mod::hex_viewer::HexViewer;
+    /// let mut hv = HexViewer::new("mem");
+    /// hv.set_byte_edit_callback(Some(Box::new(|va, _old, new| {
+    ///     // host: queue WriteMem(va, &[new]) on its driver bus
+    ///     let _ = (va, new);
+    /// })));
+    /// ```
+    pub fn set_byte_edit_callback(&mut self, f: Option<ByteEditCallback>) {
+        self.byte_edit_callback = f;
     }
 
     /// Install (or clear with `None`) the host-supplied Address-column
@@ -323,15 +467,22 @@ impl HexViewer {
 
     // ── Data management ─────────────────────────────────────────────
 
+    /// Copy `data` into a fresh internal buffer. Existing API —
+    /// preserved for hosts that hand in a borrowed slice.
     pub fn set_data(&mut self, data: &[u8]) {
-        self.data = data.to_vec();
+        self.data = Arc::new(data.to_vec());
+        self.effective_data_len = self.data.len();
         self.clamp_cursor();
         self.selection = Selection::default();
         self.stop_editing();
     }
 
+    /// Take ownership of `data`. Wraps the `Vec` in a fresh `Arc`.
+    /// Preferred over [`Self::set_data`] when the host already owns
+    /// the bytes (avoids the `.to_vec()` copy).
     pub fn set_data_vec(&mut self, data: Vec<u8>) {
-        self.data = data;
+        self.data = Arc::new(data);
+        self.effective_data_len = self.data.len();
         self.clamp_cursor();
         self.selection = Selection::default();
         // Mirror set_data: cancel any in-progress edit so a stale layout
@@ -339,14 +490,43 @@ impl HexViewer {
         self.stop_editing();
     }
 
+    /// BUG-128 (2026-05-15) — zero-copy data swap. Hosts that already
+    /// own an `Arc<Vec<u8>>` (typical for debugger memory panes that
+    /// also feed the same bytes into a disassembler worker via
+    /// `Arc::clone`) call this to install the buffer without ANY
+    /// memcpy. The previous internal `Arc` is dropped; if HexViewer
+    /// was the sole owner the inner `Vec` is freed.
+    pub fn set_data_arc(&mut self, data: Arc<Vec<u8>>) {
+        self.data = data;
+        self.effective_data_len = self.data.len();
+        self.clamp_cursor();
+        self.selection = Selection::default();
+        self.stop_editing();
+    }
+
     pub fn data(&self) -> &[u8] {
         &self.data
     }
+
+    /// Mutable byte buffer. Triggers `Arc::make_mut` — if the host is
+    /// also holding an `Arc` clone (e.g. a parked disasm submission),
+    /// THIS path clones the inner `Vec` so the host's clone is left
+    /// untouched (copy-on-write semantics). When HexViewer is the sole
+    /// owner (the typical case while editing) this is zero-cost.
     pub fn data_mut(&mut self) -> &mut Vec<u8> {
-        &mut self.data
+        Arc::make_mut(&mut self.data)
     }
     pub fn data_len(&self) -> usize {
         self.data.len()
+    }
+
+    /// BUG-128 — return a cheap `Arc::clone` of the current data
+    /// buffer. Hosts can forward this directly to a worker (e.g.
+    /// `DisasmCmd::Decode { bytes: hex.data_arc(), .. }`) without
+    /// copying the bytes. Subsequent edits in HexViewer go through
+    /// `Arc::make_mut` so the worker's clone stays a stable snapshot.
+    pub fn data_arc(&self) -> Arc<Vec<u8>> {
+        Arc::clone(&self.data)
     }
 
     pub fn set_reference(&mut self, reference: &[u8]) {
@@ -384,7 +564,12 @@ impl HexViewer {
     pub fn set_cursor(&mut self, offset: usize) {
         self.commit_pending_edit();
         let old = self.cursor;
-        let new = offset.min(self.data.len().saturating_sub(1));
+        // Clamp against the larger of internal buffer and last-frame
+        // projection — keeps the cursor valid even mid-frame when the
+        // legacy `render()` path has moved `self.data` into its
+        // provider wrapper.
+        let len = self.data.len().max(self.effective_data_len);
+        let new = offset.min(len.saturating_sub(1));
         if new != old {
             self.nav.push(self.config.base_address + old as u64);
         }
@@ -413,11 +598,141 @@ impl HexViewer {
         self.set_cursor(offset);
     }
 
+    // ─── BUG-128 (2026-05-15): VA-native API parity with DisasmView ───
+    //
+    // The host previously had to repeat `(va - base_address) as usize`
+    // at every goto/contains/viewport callsite. These wrappers move
+    // that boilerplate into the library so:
+    //   * Hosts driving a sliding-window view get the same VA-first
+    //     mental model they already use with DisasmView.
+    //   * The base-address bookkeeping stays as a single source of truth
+    //     inside `HexViewerConfig`.
+    //   * Future changes to the base-address contract (paged buffers,
+    //     multi-segment maps) need to touch only this file.
+    //
+    // The legacy offset-based methods (`goto`, `cursor`, `data_len`)
+    // remain — file-editor / binary-dump hosts that don't care about VAs
+    // keep their pre-existing API.
+
+    /// Absolute virtual address of the current cursor byte.
+    /// Computed as `config.base_address + cursor`. When the buffer is
+    /// empty returns `base_address`.
+    pub fn cursor_address(&self) -> u64 {
+        self.config.base_address.saturating_add(self.cursor as u64)
+    }
+
+    /// `true` when `va` lies within `[base_address, base_address + buffer_len)`.
+    /// Empty-buffer or fully-zero range → always `false`.
+    ///
+    /// Phase 2: `buffer_len` is the larger of `self.data.len()` and the
+    /// last-frame provider projection (`effective_data_len`). That
+    /// keeps hosts using [`Self::render_with_provider`] honest — a
+    /// debugger memory pane streams bytes through the provider so its
+    /// `self.data` may be empty, but `contains_va` still has to answer
+    /// "yes, this VA is inside the currently-visible window".
+    pub fn contains_va(&self, va: u64) -> bool {
+        let effective = self.data.len().max(self.effective_data_len);
+        if effective == 0 {
+            return false;
+        }
+        let base = self.config.base_address;
+        let end = base.saturating_add(effective as u64);
+        va >= base && va < end
+    }
+
+    /// VA-native goto. If `va` is inside the current buffer the cursor
+    /// jumps to the corresponding byte. If outside AND a
+    /// `va_goto_callback` is installed, fires the callback so the host
+    /// can re-anchor the buffer. Without a callback and a VA outside
+    /// the buffer, clamps to the last byte (legacy behaviour).
+    pub fn goto_address(&mut self, va: u64) {
+        let base = self.config.base_address;
+        if self.contains_va(va) {
+            let offset = (va - base) as usize;
+            self.set_cursor(offset);
+        } else if let Some(cb) = self.va_goto_callback.as_mut() {
+            cb(va);
+        } else {
+            let offset = va.saturating_sub(base) as usize;
+            self.set_cursor(offset);
+        }
+    }
+
+    /// VA at the start of the FIRST currently-visible row in the
+    /// hex pane. Driven by `viewport_first_row` cached during the
+    /// last `render()` from `scroll_y / line_height` — same source
+    /// of truth as the virtualisation loop, so this never disagrees
+    /// with what the user actually sees. Returns `None` while the
+    /// buffer is empty or before the first render.
+    pub fn viewport_first_va(&self) -> Option<u64> {
+        let effective = self.data.len().max(self.effective_data_len);
+        if effective == 0 || self.viewport_first_row == usize::MAX {
+            return None;
+        }
+        let bpr = self.config.bytes_per_row.value() as u64;
+        Some(self.config.base_address + self.viewport_first_row as u64 * bpr)
+    }
+
+    /// VA at the start of the LAST currently-visible row (inclusive
+    /// of the partial bottom row). Same caching contract as
+    /// [`Self::viewport_first_va`]. Together they let hosts driving
+    /// a sliding-window view answer "is the user's current scroll
+    /// position still inside the buffer?" without dipping into
+    /// ImGui state.
+    pub fn viewport_last_va(&self) -> Option<u64> {
+        let effective = self.data.len().max(self.effective_data_len);
+        if effective == 0 || self.viewport_last_row == usize::MAX {
+            return None;
+        }
+        let bpr = self.config.bytes_per_row.value() as u64;
+        // `viewport_last_row` is the exclusive end (loop ran `..last_row`),
+        // so clamp to `len-1` row index for the address of the last
+        // VISIBLE row.
+        let total_rows = effective.div_ceil(self.config.bytes_per_row.value());
+        let last_row_idx = self
+            .viewport_last_row
+            .saturating_sub(1)
+            .min(total_rows.saturating_sub(1));
+        Some(self.config.base_address + last_row_idx as u64 * bpr)
+    }
+
+    /// **Scroll-only** sibling of [`Self::goto_address`]: pin the row
+    /// containing `va` to the top of the viewport on the next render
+    /// without touching `cursor` or `selection`. Use this when a sibling
+    /// pane (e.g. a disassembler) wants the hex view to *follow* its
+    /// cursor without grabbing input focus — clicking an instruction in
+    /// disasm should reframe the bytes around it, not steal the byte
+    /// cursor away from whatever the user was inspecting.
+    ///
+    /// If `va` is outside the loaded buffer AND a `va_goto_callback` is
+    /// installed, fires the callback so the host can re-anchor the
+    /// buffer (same fallback contract as `goto_address`); otherwise this
+    /// is a no-op.
+    pub fn set_viewport_first_va(&mut self, va: u64) {
+        let base = self.config.base_address;
+        if self.contains_va(va) {
+            let offset = (va - base) as usize;
+            let bpr = self.config.bytes_per_row.value();
+            // Round DOWN to the row that holds `va` — pinning that row
+            // (not the byte's row mid-line) is what "place at top" means.
+            self.scroll_to_row = Some(offset / bpr);
+        } else if let Some(cb) = self.va_goto_callback.as_mut() {
+            cb(va);
+        }
+    }
+
     pub fn nav_back(&mut self) {
         let current = self.config.base_address + self.cursor as u64;
         if let Some(addr) = self.nav.go_back(current) {
             let offset = addr.saturating_sub(self.config.base_address) as usize;
-            self.cursor = offset.min(self.data.len().saturating_sub(1));
+            // Clamp against the larger of `self.data.len()` and the
+            // last-frame projection. The legacy [`Self::render`] path
+            // temporarily moves `self.data` out into its provider
+            // wrapper, so during that frame `self.data.len()` is 0;
+            // `effective_data_len` keeps the cursor inside the visible
+            // window.
+            let len = self.data.len().max(self.effective_data_len);
+            self.cursor = offset.min(len.saturating_sub(1));
             self.scroll_to_cursor();
         }
     }
@@ -426,7 +741,8 @@ impl HexViewer {
         let current = self.config.base_address + self.cursor as u64;
         if let Some(addr) = self.nav.go_forward(current) {
             let offset = addr.saturating_sub(self.config.base_address) as usize;
-            self.cursor = offset.min(self.data.len().saturating_sub(1));
+            let len = self.data.len().max(self.effective_data_len);
+            self.cursor = offset.min(len.saturating_sub(1));
             self.scroll_to_cursor();
         }
     }
@@ -506,6 +822,83 @@ impl HexViewer {
     /// Equivalent to `set_inspector_height_px(0.0)`.
     pub fn reset_inspector_height(&mut self) {
         self.inspector_h = 0.0;
+    }
+
+    // ── Render entry points (Phase 2: provider-driven) ──────────────
+
+    /// Legacy render entry — keeps the zero-argument signature every
+    /// existing caller depends on. Wraps `self.data` in a read-only
+    /// [`ArcVecDataProvider`] (single `Arc::clone`, refcount bump)
+    /// and dispatches to the generic [`Self::render_impl`].
+    ///
+    /// Cost model:
+    ///   * **Reads** — every visible byte goes through `provider.read()`
+    ///     which copies one row at a time into a stack scratch buffer.
+    ///     Net: one extra per-row memcpy of `bpr` bytes (≤ 64 B / row)
+    ///     vs the pre-Phase-2 direct-slice path.
+    ///   * **Writes** — the wrapper returns `false` from `write()`, so
+    ///     in-frame edits (`Ctrl+Z`, hex/ASCII type, double-click +
+    ///     type) fall through to `Arc::make_mut(&mut self.data)`.
+    ///     Because the wrapper holds an additional `Arc::clone`, the
+    ///     refcount is ≥ 2 throughout the frame — `Arc::make_mut`
+    ///     therefore COW-clones the inner `Vec` once on the first
+    ///     in-frame edit. Subsequent edits in the same frame are
+    ///     zero-copy (the wrapper's clone now points at the OLD
+    ///     buffer, and `self.data` points at the new one which has
+    ///     refcount 1).
+    ///
+    /// The first-edit COW clone is a measurable regression for hosts
+    /// editing multi-megabyte buffers; those hosts should migrate to
+    /// [`Self::render_with_provider`] with a custom writable
+    /// provider (e.g. a `VecMutProvider` over their own `&mut Vec<u8>`).
+    ///
+    /// Use this when the host hands the viewer a static buffer via
+    /// `set_data*`. For sliding-window / streaming sources implement
+    /// [`HexDataProvider`] and call [`Self::render_with_provider`].
+    pub fn render(&mut self, ui: &dear_imgui_rs::Ui) {
+        let mut wrapper = provider::ArcVecDataProvider::from_arc(Arc::clone(&self.data));
+        self.render_impl(ui, &mut wrapper);
+    }
+
+    /// Provider-driven render entry. The viewer asks `provider` for
+    /// every visible byte (one batched `read()` per row + one for the
+    /// data inspector), routes hex/ASCII edits through `provider.write()`
+    /// when accepted, and treats `provider.len()` as the authoritative
+    /// buffer extent (incl. address-gutter digit count and scrollbar
+    /// thumb size). Hosts driving a debugger memory pane / raw-disk
+    /// view / network packet stream pass their own implementation —
+    /// `set_data*` calls become irrelevant (and `self.data` stays
+    /// empty), the provider IS the source of truth.
+    ///
+    /// Generic over `P: HexDataProvider`. For trait objects pass the
+    /// reference directly (`&mut *boxed_provider` or
+    /// `&mut **arc_mutex_guard`) — the impl dispatches through
+    /// `&mut dyn HexDataProvider` internally so the dyn-safety cost
+    /// is paid once at the call site.
+    ///
+    /// ```rust,ignore
+    /// // Custom streaming provider over a debug-target memory pane:
+    /// let mut my_provider = MemoryPaneProvider::new(window_base, length);
+    /// hex.render_with_provider(ui, &mut my_provider);
+    /// ```
+    pub fn render_with_provider<P: provider::HexDataProvider>(
+        &mut self,
+        ui: &dear_imgui_rs::Ui,
+        provider: &mut P,
+    ) {
+        self.render_impl(ui, provider);
+    }
+
+    /// Trait-object overload of [`Self::render_with_provider`]. Lets
+    /// callers pass a `&mut dyn HexDataProvider` directly (typical
+    /// when the provider is selected at runtime from several
+    /// candidate impls held in a `Box<dyn HexDataProvider>`).
+    pub fn render_with_dyn_provider(
+        &mut self,
+        ui: &dear_imgui_rs::Ui,
+        provider: &mut dyn provider::HexDataProvider,
+    ) {
+        self.render_impl(ui, provider);
     }
 
     /// Returns `true` exactly once each time the auto-refresh counter

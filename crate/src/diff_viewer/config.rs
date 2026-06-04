@@ -67,8 +67,7 @@ pub struct DiffViewerConfig {
 
 impl Default for DiffViewerConfig {
     fn default() -> Self {
-        ron::from_str(include_str!("config.ron"))
-            .expect("built-in diff_viewer/config.ron is valid")
+        ron::from_str(include_str!("config.ron")).expect("built-in diff_viewer/config.ron is valid")
     }
 }
 

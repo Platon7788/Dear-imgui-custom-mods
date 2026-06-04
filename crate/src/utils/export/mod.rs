@@ -35,155 +35,20 @@
 //! ```
 
 mod json;
+mod model;
 mod ron;
 mod txt;
 mod yaml;
 
 use std::path::Path;
 
-// ── Export Format ────────────────────────────────────────────────────────────
-
-/// Supported export/import formats.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExportFormat {
-    Json,
-    Yaml,
-    Ron,
-    Txt,
-}
-
-impl ExportFormat {
-    /// All supported formats.
-    pub const ALL: &'static [ExportFormat] = &[Self::Json, Self::Yaml, Self::Ron, Self::Txt];
-
-    /// File extension (without dot).
-    pub fn extension(self) -> &'static str {
-        match self {
-            Self::Json => "json",
-            Self::Yaml => "yaml",
-            Self::Ron => "ron",
-            Self::Txt => "txt",
-        }
-    }
-
-    /// Display name.
-    pub fn display_name(self) -> &'static str {
-        match self {
-            Self::Json => "JSON",
-            Self::Yaml => "YAML",
-            Self::Ron => "RON",
-            Self::Txt => "Text",
-        }
-    }
-
-    /// Detect format from file extension.
-    pub fn from_extension(ext: &str) -> Option<Self> {
-        match ext.to_ascii_lowercase().as_str() {
-            "json" => Some(Self::Json),
-            "yaml" | "yml" => Some(Self::Yaml),
-            "ron" => Some(Self::Ron),
-            "txt" | "text" | "tsv" | "csv" => Some(Self::Txt),
-            _ => None,
-        }
-    }
-
-    /// Detect format from file path.
-    pub fn from_path(path: &Path) -> Option<Self> {
-        path.extension()
-            .and_then(|e| e.to_str())
-            .and_then(Self::from_extension)
-    }
-}
-
-// ── Field Value ─────────────────────────────────────────────────────────────
-
-/// A typed field value for serialization.
-#[derive(Debug, Clone)]
-pub enum FieldValue {
-    Null,
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    Str(String),
-    /// RGBA color as [f32; 4].
-    Color([f32; 4]),
-}
-
-impl FieldValue {
-    /// Convert to display string.
-    pub fn to_string_lossy(&self) -> String {
-        match self {
-            Self::Null => String::new(),
-            Self::Bool(b) => b.to_string(),
-            Self::Int(i) => i.to_string(),
-            Self::Float(f) => format!("{}", f),
-            Self::Str(s) => s.clone(),
-            Self::Color(c) => format!("[{:.3}, {:.3}, {:.3}, {:.3}]", c[0], c[1], c[2], c[3]),
-        }
-    }
-}
-
-// ── Exportable Trait ────────────────────────────────────────────────────────
-
-/// Trait for types that can be exported to structured formats.
-///
-/// Implement on your row/node data type to enable export.
-pub trait Exportable {
-    /// Column/field names for the header row.
-    fn field_names() -> &'static [&'static str];
-
-    /// Get the value of field at `col` index.
-    fn field_value(&self, col: usize) -> FieldValue;
-
-    /// Number of fields.
-    fn field_count() -> usize {
-        Self::field_names().len()
-    }
-}
-
-// ── Importable Trait ────────────────────────────────────────────────────────
-
-/// Trait for types that can be imported (deserialized) from structured formats.
-///
-/// Implement on your row/node data type to enable import.
-pub trait Importable: Sized {
-    /// Create an instance from a map of field_name → FieldValue.
-    fn from_fields(fields: &[(&str, FieldValue)]) -> Option<Self>;
-}
-
-// ── Tree Export Node ────────────────────────────────────────────────────────
-
-/// Represents a tree node with its children for hierarchical export.
-#[derive(Debug, Clone)]
-pub struct TreeExportNode {
-    /// Field values for this node.
-    pub fields: Vec<(String, FieldValue)>,
-    /// Child nodes (recursive).
-    pub children: Vec<TreeExportNode>,
-}
-
-// ── Flat Row Export ─────────────────────────────────────────────────────────
-
-/// Holds a collection of flat rows ready for export.
-pub struct FlatExportData {
-    /// Column names.
-    pub columns: Vec<String>,
-    /// Rows: each row is a Vec of FieldValues matching columns.
-    pub rows: Vec<Vec<FieldValue>>,
-}
-
-impl FlatExportData {
-    pub fn new(columns: Vec<String>) -> Self {
-        Self {
-            columns,
-            rows: Vec::new(),
-        }
-    }
-
-    pub fn add_row(&mut self, row: Vec<FieldValue>) {
-        self.rows.push(row);
-    }
-}
+// Re-export the data model so external paths like
+// `crate::utils::export::Exportable` / `::FieldValue` stay valid after the
+// type/trait definitions moved into the `model` sibling (mod.rs < 500 lines).
+pub use model::{
+    ExportConfig, ExportFormat, ExportScope, Exportable, FieldValue, FlatExportData, Importable,
+    TreeExportNode,
+};
 
 // ── Format dispatch ─────────────────────────────────────────────────────────
 
@@ -248,48 +113,6 @@ pub fn import_flat_from_file(path: &Path) -> Option<FlatExportData> {
     let format = ExportFormat::from_path(path)?;
     let content = std::fs::read_to_string(path).ok()?;
     parse_flat(&content, format)
-}
-
-// ── Export config / scope ───────────────────────────────────────────────────
-
-/// Selection scope for export.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ExportScope {
-    /// Export only selected rows/nodes.
-    #[default]
-    Selected,
-    /// Export all rows/nodes.
-    All,
-}
-
-/// Configuration for optional export/import support.
-#[derive(Debug, Clone)]
-pub struct ExportConfig {
-    /// Whether export is enabled.
-    pub enable_export: bool,
-    /// Whether import is enabled.
-    pub enable_import: bool,
-    /// Default export format.
-    pub default_format: ExportFormat,
-    /// Available formats (user can choose).
-    pub formats: Vec<ExportFormat>,
-    /// Default scope (selected vs all).
-    pub default_scope: ExportScope,
-    /// Default export filename (without extension).
-    pub default_filename: String,
-}
-
-impl Default for ExportConfig {
-    fn default() -> Self {
-        Self {
-            enable_export: false,
-            enable_import: false,
-            default_format: ExportFormat::Json,
-            formats: ExportFormat::ALL.to_vec(),
-            default_scope: ExportScope::Selected,
-            default_filename: "export".to_string(),
-        }
-    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -537,6 +360,77 @@ mod tests {
             assert!(parsed.is_some(), "Failed to parse {:?} roundtrip", fmt);
             let parsed = parsed.unwrap();
             assert_eq!(parsed.rows.len(), 2, "Wrong row count for {:?}", fmt);
+        }
+    }
+
+    #[test]
+    fn extension_and_display_name_cover_all() {
+        // Extension and display name are 1:1 with the variant; round-trip
+        // each through `from_extension`.
+        for fmt in ExportFormat::ALL {
+            assert_eq!(ExportFormat::from_extension(fmt.extension()), Some(*fmt));
+            assert!(!fmt.display_name().is_empty());
+        }
+    }
+
+    #[test]
+    fn from_path_uses_extension() {
+        use std::path::Path;
+        assert_eq!(
+            ExportFormat::from_path(Path::new("/tmp/data.yaml")),
+            Some(ExportFormat::Yaml)
+        );
+        assert_eq!(
+            ExportFormat::from_path(Path::new("a/b/c.RON")),
+            Some(ExportFormat::Ron)
+        );
+        assert_eq!(ExportFormat::from_path(Path::new("noext")), None);
+    }
+
+    #[test]
+    fn export_then_import_file_round_trips() {
+        // Exercise the file-IO helpers end to end via a temp file.
+        let data = sample_flat();
+        let mut path = std::env::temp_dir();
+        let unique = format!(
+            "utils_export_test_{}_{:?}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        path.push(unique);
+
+        export_flat_to_file(&data, &path, None).expect("write");
+        let imported = import_flat_from_file(&path).expect("read");
+        assert_eq!(imported.columns, data.columns);
+        assert_eq!(imported.rows.len(), 2);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn parse_flat_rejects_garbage_for_structured_formats() {
+        assert!(parse_flat("not json", ExportFormat::Json).is_none());
+        assert!(parse_flat("not ron", ExportFormat::Ron).is_none());
+    }
+
+    #[test]
+    fn malformed_input_never_panics() {
+        // Fuzz-lite: a handful of broken payloads must return cleanly,
+        // never panic (regression for the slice-underflow / OOB bugs).
+        let broken = [
+            "[{\"a\": [1, 2, 3", // unterminated array
+            "[{\"a\": \"unterminated",
+            "[(x: (0.1, 0.2", // unterminated RON color
+            "[(name: \"oops", // unterminated RON string
+        ];
+        for s in broken {
+            for fmt in ExportFormat::ALL {
+                // Just must not panic; result is don't-care.
+                let _ = parse_flat(s, *fmt);
+            }
         }
     }
 }

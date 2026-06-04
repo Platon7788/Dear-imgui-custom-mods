@@ -98,26 +98,93 @@ fn default_disasm_colors() -> DisasmColors {
     DisasmColors::default()
 }
 
+// Forward-compat helpers for the older field set — every public
+// `pub` field on `DisasmViewConfig` ships with `#[serde(default =
+// "fn")]` so older saved `config.ron` files that pre-date a field
+// keep parsing. The values match `config.ron`; keep them in sync.
+fn default_columns() -> ColumnWidths {
+    ColumnWidths::default()
+}
+fn default_show_bytes() -> bool {
+    true
+}
+fn default_show_comments() -> bool {
+    true
+}
+fn default_show_arrows() -> bool {
+    true
+}
+fn default_show_breakpoints() -> bool {
+    true
+}
+fn default_show_bookmarks() -> bool {
+    true
+}
+fn default_icons_available() -> bool {
+    true
+}
+fn default_show_block_tints() -> bool {
+    false
+}
+fn default_show_header() -> bool {
+    true
+}
+fn default_show_column_dividers() -> bool {
+    true
+}
+fn default_uppercase() -> bool {
+    true
+}
+fn default_address_width_64() -> bool {
+    true
+}
+fn default_byte_category_colors() -> bool {
+    true
+}
+fn default_editable() -> bool {
+    false
+}
+fn default_follow_execution() -> bool {
+    false
+}
+fn default_base_address() -> u64 {
+    0
+}
+fn default_max_arrows() -> usize {
+    256
+}
+
 // ── Disasm View Config ──────────────────────────────────────────────────────
 
 /// Configuration for the disassembly view widget.
+///
+/// Every `pub` field carries `#[serde(default = "...")]` so older
+/// saved `config.ron` files (pre-dating a field) still parse — the
+/// migration default matches `config.ron`. Keep the helpers in sync
+/// when changing a default on the value side.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DisasmViewConfig {
     // ── Layout ──────────────────────────────────────────────
     /// Column widths.
+    #[serde(default = "default_columns")]
     pub columns: ColumnWidths,
     /// Show raw hex bytes column.
+    #[serde(default = "default_show_bytes")]
     pub show_bytes: bool,
     /// Show comment column.
+    #[serde(default = "default_show_comments")]
     pub show_comments: bool,
     /// Show branch arrows.
+    #[serde(default = "default_show_arrows")]
     pub show_arrows: bool,
     /// Show breakpoint markers in margin.
+    #[serde(default = "default_show_breakpoints")]
     pub show_breakpoints: bool,
     /// Show bookmark markers in the margin gutter for any row whose
     /// address is in [`crate::disasm_view::DisasmView::bookmarks`].
     /// Default `true`. Bookmarks coexist with breakpoints — both can be
     /// drawn on the same row (filled BP dot + bookmark glyph overlay).
+    #[serde(default = "default_show_bookmarks")]
     pub show_bookmarks: bool,
     /// Whether the active ImGui font carries the MDI glyph range
     /// (U+F0000–U+FFFFF) used by [`crate::icons`]. When `true`
@@ -126,24 +193,30 @@ pub struct DisasmViewConfig {
     /// it falls back to a ring outline so the marker still reads on
     /// hosts that haven't registered the icon font (`?`-box would
     /// appear otherwise).
+    #[serde(default = "default_icons_available")]
     pub icons_available: bool,
     /// Show alternating per-block background tinting (semantic hues
     /// at low alpha, rotated by `block_index`). Default **`false`**
     /// — the tint reads as visual noise during normal browsing /
     /// editing; turn it on only when a block-boundary cue is
     /// explicitly desired (e.g. CFG-aware reverse-engineering view).
+    #[serde(default = "default_show_block_tints")]
     pub show_block_tints: bool,
     /// Show column header.
+    #[serde(default = "default_show_header")]
     pub show_header: bool,
     /// Show thin vertical dividers between the address / bytes /
     /// instruction / comment columns. Default: `true`. Mirrors
     /// `HexViewerConfig::show_column_dividers` — uses
     /// `colors.separator` with alpha 0.40 so the lines read as a
     /// gentle visual cue, not heavy borders.
+    #[serde(default = "default_show_column_dividers")]
     pub show_column_dividers: bool,
     /// Address format: true for uppercase hex.
+    #[serde(default = "default_uppercase")]
     pub uppercase: bool,
     /// Address width: 32-bit (8 chars) or 64-bit (16 chars).
+    #[serde(default = "default_address_width_64")]
     pub address_width_64: bool,
     /// Per-byte category colouring in the Bytes column. When `true`
     /// (default), each byte is tinted by `ByteCategory` (zero /
@@ -151,21 +224,26 @@ pub struct DisasmViewConfig {
     /// `hex_viewer` uses, so the same buffer reads identically
     /// across both widgets. When `false`, every byte uses the flat
     /// [`DisasmColors::bytes`] colour.
+    #[serde(default = "default_byte_category_colors")]
     pub byte_category_colors: bool,
 
     // ── Behavior ────────────────────────────────────────────
     /// Allow inline instruction editing.
+    #[serde(default = "default_editable")]
     pub editable: bool,
     /// Auto-scroll to follow current execution point.
+    #[serde(default = "default_follow_execution")]
     pub follow_execution: bool,
     /// Base address offset (for relative display).
+    #[serde(default = "default_base_address")]
     pub base_address: u64,
     /// Maximum visible arrows per render (for performance).
+    #[serde(default = "default_max_arrows")]
     pub max_arrows: usize,
 
     /// Show the educational "What it does: …" line at the bottom of
     /// the instruction hover tooltip. Resolves the mnemonic against
-    /// [`crate::disasm_view::mnemonic`] and emits a one-line plain-
+    /// [`disasm_knowledge::mnemonic`] and emits a one-line plain-
     /// language description in the active locale. Default `true` —
     /// the line is helpful to beginners and a no-op for the ~5 % of
     /// uncommon mnemonics that aren't catalogued. Set `false` for
@@ -178,7 +256,7 @@ pub struct DisasmViewConfig {
     /// Show the multi-instruction idiom hint at the bottom of the
     /// tooltip ("Pattern: function prologue", "Pattern: cmp+Jcc",
     /// "Pattern: NULL check", …). Pulls from
-    /// [`crate::disasm_view::idiom`] which inspects the previous /
+    /// [`disasm_knowledge::idiom`] which inspects the previous /
     /// current / next instructions. Default `true`.
     #[serde(default = "default_show_idiom")]
     pub show_idiom: bool,
@@ -194,7 +272,7 @@ pub struct DisasmViewConfig {
     /// Show the operand-pattern decoder line in the tooltip — turns
     /// `[rcx+rax*8+8]` into "Array indexing: rcx is base, rax is
     /// element index ×8 (qword elements), then add 0x8". Pulls
-    /// register-role hints from [`crate::disasm_view::abi`] so
+    /// register-role hints from [`disasm_knowledge::abi`] so
     /// `[rcx]` says "dereferences the 1st argument under Win64".
     /// Default `true`.
     #[serde(default = "default_show_operand_hint")]
@@ -204,7 +282,7 @@ pub struct DisasmViewConfig {
     /// labels Win64-leaf frames, `__chkstk` probes, vtable indirect
     /// calls, MSVC `/GS` security cookies, atomic CAS / RMW, IAT
     /// thunks, PEB / TEB / TIB accesses via `gs:` / `fs:`. Pulls
-    /// from [`crate::disasm_view::compiler`]. Default `true`.
+    /// from [`disasm_knowledge::compiler`]. Default `true`.
     #[serde(default = "default_show_compiler_pattern")]
     pub show_compiler_pattern: bool,
 
@@ -213,7 +291,7 @@ pub struct DisasmViewConfig {
     /// predicates, self-modifying code, anti-VM CPUID checks,
     /// trap-flag debugger probes, jump-into-next-byte tricks,
     /// `rdtsc`-delta timing measurements. Pulls from
-    /// [`crate::disasm_view::antidisasm`]. Default `true` — these
+    /// [`disasm_knowledge::antidisasm`]. Default `true` — these
     /// are the patterns analysts most need flagged when poking at
     /// protected code.
     #[serde(default = "default_show_antidisasm")]
@@ -224,7 +302,7 @@ pub struct DisasmViewConfig {
     /// CET `endbr64` landing pad), epilogues (`leave; ret`,
     /// `pop rbp; ret`, `add rsp, N; ret`), bare returns, and
     /// block-level terminators (unconditional `jmp`, conditional
-    /// `Jcc` forks). Pulls from [`crate::disasm_view::boundary`].
+    /// `Jcc` forks). Pulls from [`disasm_knowledge::boundary`].
     /// Default `true`.
     #[serde(default = "default_show_boundary")]
     pub show_boundary: bool,
@@ -233,19 +311,19 @@ pub struct DisasmViewConfig {
     /// resolved branch target — labels forward jumps as typical
     /// `if` / `match` / `switch` skip-overs, backward jumps as
     /// loops, and self-targeting jumps as anti-RE spin / `jmp $`
-    /// traps. Pulls from [`crate::disasm_view::branch`]. Default
+    /// traps. Pulls from [`disasm_knowledge::branch`]. Default
     /// `true`.
     #[serde(default = "default_show_branch_direction")]
     pub show_branch_direction: bool,
 
     /// Target calling convention. Drives the
-    /// [`crate::disasm_view::abi::role`] table that powers register-
+    /// [`disasm_knowledge::abi::role`] table that powers register-
     /// role hints in the tooltip and the idiom detector. Default
     /// [`Abi::Win64`] — the most common modern Windows reverse-
     /// engineering target. Switch to [`Abi::SysVAmd64`] for Linux
     /// / macOS x64 binaries; pick a 32-bit variant for x86 code.
     #[serde(default)]
-    pub abi: crate::disasm_view::abi::Abi,
+    pub abi: disasm_knowledge::abi::Abi,
 
     /// User-visible language for labels, popups, tooltips, and menu
     /// items rendered by the disassembler view. Default
@@ -257,6 +335,23 @@ pub struct DisasmViewConfig {
     /// the locale field deserialise cleanly (falling back to English).
     #[serde(default)]
     pub locale: crate::i18n::Locale,
+
+    /// Verbosity tier applied uniformly to every educational tooltip
+    /// line (`show_explanation` / `show_idiom` / `show_gotcha` /
+    /// `show_operand_hint` / `show_compiler_pattern` /
+    /// `show_antidisasm` / `show_boundary` / `show_branch_direction`).
+    /// Default [`disasm_knowledge::HintVerbosity::Standard`] — the
+    /// one-to-two-sentence wording the catalogue shipped with through
+    /// v0.11.x. `Compact` strips to a telegraphic single clause;
+    /// `Educational` expands to three-to-five-sentence context for
+    /// learners using RE as study material.
+    ///
+    /// `#[serde(default)]` keeps older saved configs parseable. Lives
+    /// in the headless `disasm-knowledge` crate (ADR-030) so other
+    /// consumers — CLI tools, IDA plugins — can pick the same tier
+    /// without depending on the UI library.
+    #[serde(default)]
+    pub verbosity: disasm_knowledge::HintVerbosity,
 
     // ── Colors ──────────────────────────────────────────────
     /// Full color theme.

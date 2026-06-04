@@ -3,7 +3,10 @@
 //! Run with:
 //!   cargo run --example demo_nav_panel
 
-use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow, Position};
+use std::sync::{Arc, Mutex};
+
+use dear_app::{AppBuilder, DockingConfig, RunnerConfig};
+use dear_imgui_custom_mod::chrome::{Chrome, TitlebarConfig};
 use dear_imgui_custom_mod::confirm_dialog::{
     DialogConfig, DialogIcon, DialogResult, render_confirm_dialog,
 };
@@ -11,6 +14,7 @@ use dear_imgui_custom_mod::nav_panel::*;
 use dear_imgui_custom_mod::status_bar::{Indicator, StatusBar, StatusBarConfig, StatusItem};
 use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_rs::{StyleColor, StyleVar, Ui};
+use winit::window::Window;
 
 // ── Application state ────────────────────────────────────────────────────────
 
@@ -47,6 +51,13 @@ struct DemoApp {
     active_ring_alpha: f32,
     active_ring_thickness: f32,
     active_ring_padding: f32,
+    // ── Chrome bridge state ─────────────────────────────────────────────
+    /// Set when the user picks a new theme via the demo's UI. The harness
+    /// (main loop) drains this each frame and forwards to `Chrome::set_theme`.
+    pending_theme: Option<Theme>,
+    /// Set when the user confirms the close dialog. The harness reads this
+    /// after `render` and `process::exit(0)`s when true.
+    pending_exit: bool,
 }
 
 impl DemoApp {
@@ -97,6 +108,8 @@ impl DemoApp {
             active_ring_alpha: 1.0,
             active_ring_thickness: 1.5,
             active_ring_padding: 4.0,
+            pending_theme: None,
+            pending_exit: false,
         }
     }
 
@@ -177,20 +190,39 @@ impl DemoApp {
         *t
     }
 
-    fn cycle_theme(&mut self, state: &mut AppState) {
+    fn cycle_theme(&mut self) {
         // `Theme::next()` walks every built-in variant — Catppuccin / Nord
-        // join the rotation automatically.
+        // join the rotation automatically. The chrome bridge in `main`
+        // forwards `pending_theme` to `Chrome::set_theme` after render.
         let next = self.current_theme.next();
         self.current_theme = next;
-        state.set_theme(next);
+        self.pending_theme = Some(next);
         self.push_log(format!("Theme -> {:?}", self.current_theme));
+    }
+
+    /// Drain the pending theme switch. Called by the harness once per frame
+    /// after `render`.
+    pub fn take_pending_theme(&mut self) -> Option<Theme> {
+        self.pending_theme.take()
+    }
+
+    /// Returns `true` once the user confirmed the close dialog. The harness
+    /// `process::exit(0)`s when this fires.
+    pub fn should_exit(&self) -> bool {
+        self.pending_exit
+    }
+
+    /// Called by the harness when the chrome reports a close request. We
+    /// surface the confirm dialog instead of exiting.
+    pub fn on_close_clicked(&mut self) {
+        self.show_confirm = true;
     }
 }
 
-// ── AppHandler ───────────────────────────────────────────────────────────────
+// ── Render entry-point (called by the chrome harness) ───────────────────────
 
-impl AppHandler for DemoApp {
-    fn render(&mut self, ui: &Ui, state: &mut AppState) {
+impl DemoApp {
+    pub fn render(&mut self, ui: &Ui) {
         let [avail_w, avail_h] = ui.content_region_avail();
         let is_vertical = self.position_idx <= 1; // Left=0, Right=1
         let is_left = self.position_idx == 0;
@@ -468,7 +500,7 @@ impl AppHandler for DemoApp {
                 NavEvent::SubMenuClicked(_btn, item) => {
                     self.push_log(format!("Submenu: {item}"));
                     match item.as_ref() {
-                        "theme" => self.cycle_theme(state),
+                        "theme" => self.cycle_theme(),
                         "about" => self.push_log("NavPanel Demo v0.6.1".to_string()),
                         _ => {}
                     }
@@ -491,30 +523,84 @@ impl AppHandler for DemoApp {
                 .with_theme(Self::to_dialog_theme(&self.current_theme));
             if let DialogResult::Confirmed = render_confirm_dialog(ui, &cfg, &mut self.show_confirm)
             {
-                state.exit();
+                self.pending_exit = true;
             }
         }
-    }
-
-    fn on_close_requested(&mut self, _state: &mut AppState) {
-        self.show_confirm = true;
-    }
-
-    fn on_theme_changed(&mut self, theme: &Theme, _state: &mut AppState) {
-        self.current_theme = *theme;
-        self.push_log(format!("Theme: {:?}", theme));
     }
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 fn main() {
-    let config = AppConfig::main("NavPanel Demo", 1100.0, 700.0)
-        .with_min_size(800.0, 500.0)
-        .with_position(Position::ScreenCenter)
-        .with_theme(Theme::Dark);
+    let chrome = Arc::new(Mutex::new(
+        Chrome::new(TitlebarConfig::default().with_close_confirm())
+            .with_title("NavPanel Demo")
+            .with_theme(Theme::Dark),
+    ));
+    let app = Arc::new(Mutex::new(DemoApp::new()));
+    let win_stash: Arc<Mutex<Option<Arc<Window>>>> = Arc::new(Mutex::new(None));
 
-    AppWindow::new(config)
-        .run(DemoApp::new())
+    let runner_cfg = RunnerConfig {
+        window_title: "NavPanel Demo".to_string(),
+        window_size: (1100.0, 700.0),
+        // CRITICAL: dear-app's auto-dockspace would absorb every click
+        // before chrome / nav panel / status bar see it — disable.
+        docking: DockingConfig {
+            enable: false,
+            auto_dockspace: false,
+            ..DockingConfig::default()
+        },
+        ..RunnerConfig::default()
+    };
+
+    AppBuilder::new()
+        .with_config(runner_cfg)
+        .on_gpu_init({
+            let chrome = chrome.clone();
+            let win_stash = win_stash.clone();
+            move |window, _, _, _| {
+                chrome.lock().unwrap().on_setup(window);
+                *win_stash.lock().unwrap() = Some(window.clone());
+            }
+        })
+        .on_event({
+            let chrome = chrome.clone();
+            let win_stash = win_stash.clone();
+            move |event, _, ctx| {
+                if let Some(w) = win_stash.lock().unwrap().as_ref() {
+                    chrome.lock().unwrap().on_event(event, w, ctx);
+                }
+            }
+        })
+        .on_frame({
+            let chrome = chrome.clone();
+            let app = app.clone();
+            let win_stash = win_stash.clone();
+            move |ui, _| {
+                let Some(window) = win_stash.lock().unwrap().clone() else {
+                    return;
+                };
+
+                {
+                    let mut c = chrome.lock().unwrap();
+                    let app = app.clone();
+                    c.render(ui, &window, |ui, _area| {
+                        app.lock().unwrap().render(ui);
+                    });
+                }
+
+                // Bridge demo state ↔ chrome.
+                if let Some(theme) = app.lock().unwrap().take_pending_theme() {
+                    chrome.lock().unwrap().set_theme(theme);
+                }
+                if chrome.lock().unwrap().take_close_request().is_some() {
+                    app.lock().unwrap().on_close_clicked();
+                }
+                if app.lock().unwrap().should_exit() {
+                    std::process::exit(0);
+                }
+            }
+        })
+        .run()
         .expect("event loop error");
 }

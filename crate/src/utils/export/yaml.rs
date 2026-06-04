@@ -4,6 +4,34 @@ use super::{FieldValue, FlatExportData, TreeExportNode};
 
 // ── Formatter ────────────────────────────────────────────────────────────────
 
+/// True when a `Str` payload must be double-quoted so the parser reads it
+/// back as a string rather than mis-typing it (bool / null / number /
+/// array) or breaking the line-oriented scanner.
+fn yaml_needs_quotes(s: &str) -> bool {
+    if s.is_empty() {
+        return true;
+    }
+    // Structural / indicator characters and leading whitespace that the
+    // line parser or `parse_yaml_value` would otherwise misinterpret.
+    if s.contains('\n')
+        || s.contains(':')
+        || s.contains('#')
+        || s.starts_with(' ')
+        || s.ends_with(' ')
+        || s.starts_with('"')
+        || s.starts_with('[')
+        || s.starts_with([
+            '-', '&', '*', '!', '|', '>', '@', '`', '\'', '%', '{', '}', ',',
+        ])
+    {
+        return true;
+    }
+    // Scalars that would round-trip to a non-string type.
+    matches!(s, "true" | "false" | "null" | "~")
+        || s.parse::<i64>().is_ok()
+        || s.parse::<f64>().is_ok()
+}
+
 fn field_value_yaml(v: &FieldValue) -> String {
     match v {
         FieldValue::Null => "~".into(),
@@ -11,13 +39,7 @@ fn field_value_yaml(v: &FieldValue) -> String {
         FieldValue::Int(i) => i.to_string(),
         FieldValue::Float(f) => format!("{}", f),
         FieldValue::Str(s) => {
-            if s.contains('\n')
-                || s.contains(':')
-                || s.contains('#')
-                || s.starts_with(' ')
-                || s.starts_with('"')
-                || s.is_empty()
-            {
+            if yaml_needs_quotes(s) {
                 format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
             } else {
                 s.clone()
@@ -179,4 +201,69 @@ fn parse_yaml_value(s: &str) -> FieldValue {
     }
 
     FieldValue::Str(s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn round_trip_first(s: &str) -> FieldValue {
+        let mut d = FlatExportData::new(vec!["v".into()]);
+        d.add_row(vec![FieldValue::Str(s.into())]);
+        let yaml = format_flat(&d);
+        let parsed = parse_flat(&yaml).expect("parse");
+        parsed.rows[0][0].clone()
+    }
+
+    fn round_trip_str(s: &str) -> String {
+        match round_trip_first(s) {
+            FieldValue::Str(out) => out,
+            other => panic!("expected Str for {s:?}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn type_confusable_strings_stay_strings() {
+        // Regression: a `Str` payload that looks like a scalar of another
+        // type must be quoted so it round-trips as a string, not an
+        // Int/Float/Bool/Null.
+        assert_eq!(round_trip_str("123"), "123");
+        assert_eq!(round_trip_str("3.14"), "3.14");
+        assert_eq!(round_trip_str("true"), "true");
+        assert_eq!(round_trip_str("false"), "false");
+        assert_eq!(round_trip_str("null"), "null");
+        assert_eq!(round_trip_str("~"), "~");
+    }
+
+    #[test]
+    fn indicator_leading_strings_stay_strings() {
+        // Leading YAML indicators / structural chars must be quoted.
+        assert_eq!(round_trip_str("- dash"), "- dash");
+        assert_eq!(round_trip_str("[bracketish"), "[bracketish");
+        assert_eq!(round_trip_str("@at"), "@at");
+        assert_eq!(round_trip_str("key: value"), "key: value");
+        assert_eq!(round_trip_str("has # hash"), "has # hash");
+    }
+
+    #[test]
+    fn quoting_predicate_leaves_plain_words_bare() {
+        // A plain word should NOT be quoted (keeps output readable).
+        let mut d = FlatExportData::new(vec!["v".into()]);
+        d.add_row(vec![FieldValue::Str("Alice".into())]);
+        let yaml = format_flat(&d);
+        assert!(yaml.contains("v: Alice"));
+        assert!(!yaml.contains("\"Alice\""));
+    }
+
+    #[test]
+    fn backslash_and_quote_escaping_round_trips() {
+        assert_eq!(round_trip_str("a\\b"), "a\\b");
+        assert_eq!(round_trip_str("a\"b"), "a\"b");
+        assert_eq!(round_trip_str("a\\\"b"), "a\\\"b");
+    }
+
+    #[test]
+    fn empty_string_round_trips() {
+        assert_eq!(round_trip_str(""), "");
+    }
 }

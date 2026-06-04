@@ -66,9 +66,15 @@ pub struct DialogConfig {
     pub height: f32,
     /// Window padding inside the dialog (px). Default: `16.0`.
     pub padding: f32,
-    /// Button height (px). Default: `30.0`.
+    /// Button height (px). Default: `27.0`.
     pub button_height: f32,
-    /// Gap between buttons (px). Default: `12.0`.
+    /// Fixed button width (px). `0.0` auto-sizes each button to its content
+    /// (label + icon + [`button_padding_x`](Self::button_padding_x)); any
+    /// value `> 0.0` forces both buttons to exactly that width.
+    /// Default: `75.0`.
+    #[serde(default)]
+    pub button_width: f32,
+    /// Gap between buttons (px). Default: `60.0`.
     pub button_gap: f32,
     /// Draw a dim overlay behind the dialog. Default: `true`.
     pub dim_background: bool,
@@ -99,6 +105,18 @@ pub struct DialogConfig {
     /// button cells, expressed as a fraction of [`padding`](Self::padding).
     /// Default: `0.35`.
     pub button_bottom_factor: f32,
+    /// In-button icon radius as a fraction of the button height (the ✕ /
+    /// power / check glyph). Smaller values draw more compact glyphs.
+    /// Default: `0.16`.
+    #[serde(default = "default_button_icon_scale")]
+    pub button_icon_scale: f32,
+}
+
+/// Serde fallback for [`DialogConfig::button_icon_scale`] when an older saved
+/// ron predates the field — keeps glyphs visible instead of collapsing to a
+/// zero-radius (invisible) icon.
+fn default_button_icon_scale() -> f32 {
+    0.16
 }
 
 impl Default for DialogConfig {
@@ -168,6 +186,17 @@ impl DialogConfig {
     }
     pub fn with_button_gap(mut self, g: f32) -> Self {
         self.button_gap = g;
+        self
+    }
+    /// Fixed button width (px). `0.0` restores content auto-sizing.
+    pub fn with_button_width(mut self, w: f32) -> Self {
+        self.button_width = w;
+        self
+    }
+    /// In-button icon radius as a fraction of button height. Smaller = more
+    /// compact glyph.
+    pub fn with_button_icon_scale(mut self, s: f32) -> Self {
+        self.button_icon_scale = s;
         self
     }
     /// Horizontal padding inside each button cell (px each side).

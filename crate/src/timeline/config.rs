@@ -143,8 +143,7 @@ pub struct TimelineConfig {
 
 impl Default for TimelineConfig {
     fn default() -> Self {
-        ron::from_str(include_str!("config.ron"))
-            .expect("built-in timeline/config.ron is valid")
+        ron::from_str(include_str!("config.ron")).expect("built-in timeline/config.ron is valid")
     }
 }
 

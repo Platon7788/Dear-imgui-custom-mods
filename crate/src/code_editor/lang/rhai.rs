@@ -1,8 +1,6 @@
 //! Rhai scripting language tokenizer.
 
-use super::{
-    NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start,
-};
+use super::{NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -411,10 +409,7 @@ mod tests {
             (r"let c = '\n';", r"'\n'"),
         ] {
             let toks = tok(input);
-            let chars: Vec<_> = toks
-                .iter()
-                .filter(|t| t.0 == TokenKind::CharLit)
-                .collect();
+            let chars: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::CharLit).collect();
             assert_eq!(chars.len(), 1, "input {input:?} produced {toks:?}");
             assert_eq!(chars[0].1, want_lit);
         }
@@ -434,10 +429,7 @@ mod tests {
             ("let a = 1.5e10;", "1.5e10"),
         ] {
             let toks = tok(line);
-            let nums: Vec<_> = toks
-                .iter()
-                .filter(|t| t.0 == TokenKind::Number)
-                .collect();
+            let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
             assert_eq!(nums.len(), 1, "input {line:?} produced {nums:?}");
             assert_eq!(nums[0].1, want_lit, "input: {line:?}");
         }

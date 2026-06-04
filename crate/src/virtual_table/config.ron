@@ -11,7 +11,7 @@
     scroll_x: false,
     scroll_y: true,
     highlight_hovered: true,
-    flat_headers: false,
+    flat_headers: true,
     show_headers: true,
     context_menu: true,
     freeze_cols: 0,
@@ -28,4 +28,5 @@
     default_row_height: None,
     snap_last_row: false,
     default_clip_tooltip: true,
+    card_border: true,
 )

@@ -193,9 +193,9 @@ pub fn compute_arrows_clipped(
     // before high-priority ones.
     arrows.sort_by_key(|a| {
         let priority: u8 = match (a.clipped_from, a.clipped_to) {
-            (false, false) => 0, // anchored
+            (false, false) => 0,                // anchored
             (false, true) | (true, false) => 1, // half-clipped
-            (true, true) => 2, // pass-through
+            (true, true) => 2,                  // pass-through
         };
         let lo = a.from_idx.min(a.to_idx);
         let hi = a.from_idx.max(a.to_idx);

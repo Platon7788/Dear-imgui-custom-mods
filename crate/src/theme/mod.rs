@@ -157,7 +157,9 @@ use dear_imgui_rs::Style;
 /// let tb = Theme::Dark.titlebar();
 /// let cols = Theme::default().nav();
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum Theme {
     /// NxT native dark palette (warm grey + blue accent).
     #[default]
@@ -711,7 +713,6 @@ mod tests {
     // — many popular dark themes flunk strict AA but read well in practice)
     // for everything else. Catches accidental black-on-black regressions.
 
-
     fn relative_luminance(c: [f32; 4]) -> f32 {
         // sRGB → linear conversion per WCAG 2.x.
         fn lin(c: f32) -> f32 {
@@ -727,14 +728,12 @@ mod tests {
         0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-
     fn contrast_ratio(a: [f32; 4], b: [f32; 4]) -> f32 {
         let la = relative_luminance(a);
         let lb = relative_luminance(b);
         let (l1, l2) = if la >= lb { (la, lb) } else { (lb, la) };
         (l1 + 0.05) / (l2 + 0.05)
     }
-
 
     #[test]
     fn primary_text_meets_minimum_contrast() {
@@ -753,7 +752,6 @@ mod tests {
             );
         }
     }
-
 
     #[test]
     fn button_glyphs_pop_against_titlebar_bg() {
@@ -1016,7 +1014,10 @@ mod tests {
         for &theme in Theme::ALL {
             let cfg = theme.timeline_config();
             assert!(cfg.color_bg[3] > 0.0, "{theme:?}: bg alpha = 0");
-            assert!(cfg.color_span_text[3] > 0.0, "{theme:?}: span_text alpha = 0");
+            assert!(
+                cfg.color_span_text[3] > 0.0,
+                "{theme:?}: span_text alpha = 0"
+            );
             // `span_palette` is theme-independent; pin that
             // `apply_theme` doesn't accidentally clear it.
             assert!(

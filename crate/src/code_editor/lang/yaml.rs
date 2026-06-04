@@ -400,10 +400,7 @@ mod tests {
             ("a: 3.14", "3.14"),
         ] {
             let toks = tok(line);
-            let nums: Vec<_> = toks
-                .iter()
-                .filter(|t| t.0 == TokenKind::Number)
-                .collect();
+            let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
             assert_eq!(nums.len(), 1, "input {line:?} produced {nums:?}");
             assert_eq!(nums[0].1, want_lit);
         }
@@ -416,10 +413,7 @@ mod tests {
         let toks = tok("time: 2:30");
         // `2:30` should NOT produce a Number token (no whitespace
         // terminator after `2`, `:` is not a number-terminating punct).
-        let nums: Vec<_> = toks
-            .iter()
-            .filter(|t| t.0 == TokenKind::Number)
-            .collect();
+        let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
         assert!(
             nums.is_empty(),
             "expected no number tokens for bare-string `2:30`, got {nums:?}"

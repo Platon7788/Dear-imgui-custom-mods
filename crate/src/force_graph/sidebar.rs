@@ -217,10 +217,7 @@ fn render_color_groups(
 }
 
 /// Return a short static hint describing a [`ColorGroupQuery`] variant.
-fn query_hint(
-    query: &ColorGroupQuery,
-    s: &crate::i18n::force_graph::Strings,
-) -> &'static str {
+fn query_hint(query: &ColorGroupQuery, s: &crate::i18n::force_graph::Strings) -> &'static str {
     match query {
         ColorGroupQuery::Label(_) => s.query_label,
         ColorGroupQuery::Tag(_) => s.query_tag,

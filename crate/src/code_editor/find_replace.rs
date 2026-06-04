@@ -224,14 +224,7 @@ mod tests {
     /// ADR-027 phase 4.
     #[test]
     fn lowercase_helper_ascii_matches_unicode_path() {
-        let cases = [
-            "hello",
-            "HELLO",
-            "MiXeD CaSe",
-            "1234 ABC",
-            "",
-            "  spaces  ",
-        ];
+        let cases = ["hello", "HELLO", "MiXeD CaSe", "1234 ABC", "", "  spaces  "];
         for s in &cases {
             assert_eq!(
                 lowercase_with_ascii_fast_path(s),

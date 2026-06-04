@@ -817,7 +817,11 @@ impl CodeEditor {
                                     [origin_x + gutter_width * 0.2, y + self.line_height * 0.5];
                                 let radius = self.line_height * 0.3;
                                 draw_list
-                                    .add_circle(center, radius, col32(self.config.colors.breakpoint))
+                                    .add_circle(
+                                        center,
+                                        radius,
+                                        col32(self.config.colors.breakpoint),
+                                    )
                                     .filled(true)
                                     .build();
                             }
@@ -1870,7 +1874,11 @@ impl CodeEditor {
                             let cx = x + ch_w * 0.5;
                             let cy = y + self.line_height * 0.5;
                             draw_list
-                                .add_circle([cx, cy], 1.0, col32(self.config.colors.whitespace_marker))
+                                .add_circle(
+                                    [cx, cy],
+                                    1.0,
+                                    col32(self.config.colors.whitespace_marker),
+                                )
                                 .filled(true)
                                 .build();
                         } else if ch == '\t' {
@@ -2235,8 +2243,7 @@ impl CodeEditor {
                     // (Cyrillic, CJK, emoji) made the badge drift
                     // by N bytes for any non-ASCII source line.
                     // Same fix for `badge_w` below.
-                    let badge_x =
-                        text_x + line_str.chars().count() as f32 * self.char_advance;
+                    let badge_x = text_x + line_str.chars().count() as f32 * self.char_advance;
                     let badge_y = y;
                     let badge_w = badge.chars().count() as f32 * self.char_advance;
 
@@ -2414,7 +2421,12 @@ impl CodeEditor {
 
         // ── Clipboard ────────────────────────────────────────────────────────
         if cm.show_clipboard {
-            if ui.menu_item_enabled_selected_with_shortcut(s.menu_cut, "Ctrl+X", false, has_sel && !ro) {
+            if ui.menu_item_enabled_selected_with_shortcut(
+                s.menu_cut,
+                "Ctrl+X",
+                false,
+                has_sel && !ro,
+            ) {
                 let text = self.buffer.selected_text();
                 if !text.is_empty() {
                     set_clipboard(&text);
@@ -2481,7 +2493,12 @@ impl CodeEditor {
 
         // ── Code actions ─────────────────────────────────────────────────────
         if cm.show_code_actions {
-            if ui.menu_item_enabled_selected_with_shortcut(s.menu_toggle_comment, "Ctrl+/", false, !ro) {
+            if ui.menu_item_enabled_selected_with_shortcut(
+                s.menu_toggle_comment,
+                "Ctrl+/",
+                false,
+                !ro,
+            ) {
                 self.snapshot_undo(true);
                 let (start, end) = if let Some(sel) = self.buffer.selection() {
                     let (s, e) = sel.ordered();
@@ -2595,7 +2612,10 @@ impl CodeEditor {
             }
             toggle!(s.view_word_wrap, self.config.word_wrap);
             toggle!(s.view_line_numbers, self.config.show_line_numbers);
-            toggle!(s.view_highlight_current_line, self.config.highlight_current_line);
+            toggle!(
+                s.view_highlight_current_line,
+                self.config.highlight_current_line
+            );
             toggle!(s.view_show_whitespace, self.config.show_whitespace);
             toggle!(s.view_color_swatches, self.config.show_color_swatches);
             toggle!(s.view_smooth_scrolling, self.config.smooth_scrolling);
@@ -3611,16 +3631,28 @@ mod tests {
         assert_eq!(cfg.context_menu.show_clipboard, canonical.show_clipboard);
         assert_eq!(cfg.context_menu.show_select_all, canonical.show_select_all);
         assert_eq!(cfg.context_menu.show_undo_redo, canonical.show_undo_redo);
-        assert_eq!(cfg.context_menu.show_code_actions, canonical.show_code_actions);
+        assert_eq!(
+            cfg.context_menu.show_code_actions,
+            canonical.show_code_actions
+        );
         assert_eq!(cfg.context_menu.show_transform, canonical.show_transform);
         assert_eq!(cfg.context_menu.show_find, canonical.show_find);
-        assert_eq!(cfg.context_menu.show_view_toggles, canonical.show_view_toggles);
+        assert_eq!(
+            cfg.context_menu.show_view_toggles,
+            canonical.show_view_toggles
+        );
         assert_eq!(
             cfg.context_menu.show_language_selector,
             canonical.show_language_selector,
         );
-        assert_eq!(cfg.context_menu.show_theme_selector, canonical.show_theme_selector);
+        assert_eq!(
+            cfg.context_menu.show_theme_selector,
+            canonical.show_theme_selector
+        );
         assert_eq!(cfg.context_menu.show_font_size, canonical.show_font_size);
-        assert_eq!(cfg.context_menu.show_cursor_info, canonical.show_cursor_info);
+        assert_eq!(
+            cfg.context_menu.show_cursor_info,
+            canonical.show_cursor_info
+        );
     }
 }

@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use super::types::{InPinId, NodeId, OutPinId, Wire};
+use super::types::{Comment, InPinId, NodeId, OutPinId, Wire};
 
 // ─── Node wrapper ────────────────────────────────────────────────────────────
 
@@ -36,6 +36,9 @@ pub struct Graph<T> {
     free_head: Option<u32>,
     node_count: u32,
     wires: HashSet<Wire>,
+    /// Free-floating annotation rectangles drawn behind nodes.
+    /// Addressed by index; independent of the node slab and `T`.
+    comments: Vec<Comment>,
 }
 
 impl<T> Default for Graph<T> {
@@ -52,6 +55,7 @@ impl<T> Graph<T> {
             free_head: None,
             node_count: 0,
             wires: HashSet::with_capacity(64),
+            comments: Vec::new(),
         }
     }
 
@@ -230,12 +234,52 @@ impl<T> Graph<T> {
         })
     }
 
+    // ── Comment operations ───────────────────────────────────────────────
+
+    /// Add a comment box. Returns its index in the comment list.
+    pub fn add_comment(&mut self, comment: Comment) -> usize {
+        let index = self.comments.len();
+        self.comments.push(comment);
+        index
+    }
+
+    /// All comment boxes, in index order.
+    #[inline]
+    pub fn comments(&self) -> &[Comment] {
+        &self.comments
+    }
+
+    /// Mutable access to the comment list (for bulk load + by-index edit).
+    ///
+    /// Note: removing or reordering elements here shifts the indices used by
+    /// [`GraphAction::CommentChanged`](super::GraphAction::CommentChanged) and
+    /// [`GraphAction::CommentMenu`](super::GraphAction::CommentMenu).
+    #[inline]
+    pub fn comments_mut(&mut self) -> &mut Vec<Comment> {
+        &mut self.comments
+    }
+
+    /// Remove a comment box by index. No-op if the index is out of range.
+    ///
+    /// Subsequent comments shift down by one index.
+    pub fn remove_comment(&mut self, index: usize) {
+        if index < self.comments.len() {
+            self.comments.remove(index);
+        }
+    }
+
+    /// Remove all comment boxes.
+    pub fn clear_comments(&mut self) {
+        self.comments.clear();
+    }
+
     /// Clear the entire graph.
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.wires.clear();
         self.free_head = None;
         self.node_count = 0;
+        self.clear_comments();
     }
 }
 
@@ -408,5 +452,79 @@ mod tests {
         assert!(g.remove_node(id).is_some());
         assert!(g.remove_node(id).is_none());
         assert_eq!(g.node_count(), 0);
+    }
+
+    // ── Comments ─────────────────────────────────────────────────────────
+
+    fn sample_comment(text: &str) -> Comment {
+        Comment {
+            pos: [10.0, 20.0],
+            size: [200.0, 120.0],
+            text: text.to_string(),
+            color: [0x5b, 0x9b, 0xd5],
+        }
+    }
+
+    #[test]
+    fn add_comment_returns_index() {
+        let mut g: Graph<i32> = Graph::new();
+        assert!(g.comments().is_empty());
+        let a = g.add_comment(sample_comment("a"));
+        let b = g.add_comment(sample_comment("b"));
+        assert_eq!(a, 0);
+        assert_eq!(b, 1);
+        assert_eq!(g.comments().len(), 2);
+        assert_eq!(g.comments()[0].text, "a");
+        assert_eq!(g.comments()[1].text, "b");
+    }
+
+    #[test]
+    fn remove_comment_shifts_indices() {
+        let mut g: Graph<i32> = Graph::new();
+        g.add_comment(sample_comment("a"));
+        g.add_comment(sample_comment("b"));
+        g.add_comment(sample_comment("c"));
+        g.remove_comment(1); // remove "b"
+        assert_eq!(g.comments().len(), 2);
+        assert_eq!(g.comments()[0].text, "a");
+        assert_eq!(g.comments()[1].text, "c");
+    }
+
+    #[test]
+    fn remove_comment_out_of_range_is_noop() {
+        let mut g: Graph<i32> = Graph::new();
+        g.add_comment(sample_comment("a"));
+        g.remove_comment(99); // out of range
+        assert_eq!(g.comments().len(), 1);
+    }
+
+    #[test]
+    fn comments_mut_bulk_edit() {
+        let mut g: Graph<i32> = Graph::new();
+        g.add_comment(sample_comment("a"));
+        g.comments_mut().push(sample_comment("loaded"));
+        g.comments_mut()[0].text = "edited".to_string();
+        assert_eq!(g.comments().len(), 2);
+        assert_eq!(g.comments()[0].text, "edited");
+        assert_eq!(g.comments()[1].text, "loaded");
+    }
+
+    #[test]
+    fn clear_comments_empties_list() {
+        let mut g: Graph<i32> = Graph::new();
+        g.add_comment(sample_comment("a"));
+        g.add_comment(sample_comment("b"));
+        g.clear_comments();
+        assert!(g.comments().is_empty());
+    }
+
+    #[test]
+    fn clear_also_clears_comments() {
+        let mut g: Graph<i32> = Graph::new();
+        g.insert_node(1, [0.0, 0.0]);
+        g.add_comment(sample_comment("a"));
+        g.clear();
+        assert_eq!(g.node_count(), 0);
+        assert!(g.comments().is_empty());
     }
 }

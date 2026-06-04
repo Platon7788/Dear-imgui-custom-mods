@@ -264,8 +264,7 @@ pub(super) fn consume_number(i: &mut usize, bytes: &[u8], opts: NumberOpts) -> b
         // syntax doesn't get its dots eaten.
         if *i + 1 < len && bytes[*i] == b'.' && bytes[*i + 1].is_ascii_digit() {
             *i += 1;
-            while *i < len
-                && (bytes[*i].is_ascii_digit() || (opts.underscore && bytes[*i] == b'_'))
+            while *i < len && (bytes[*i].is_ascii_digit() || (opts.underscore && bytes[*i] == b'_'))
             {
                 *i += 1;
             }
@@ -276,8 +275,7 @@ pub(super) fn consume_number(i: &mut usize, bytes: &[u8], opts: NumberOpts) -> b
             if *i < len && (bytes[*i] == b'+' || bytes[*i] == b'-') {
                 *i += 1;
             }
-            while *i < len
-                && (bytes[*i].is_ascii_digit() || (opts.underscore && bytes[*i] == b'_'))
+            while *i < len && (bytes[*i].is_ascii_digit() || (opts.underscore && bytes[*i] == b'_'))
             {
                 *i += 1;
             }

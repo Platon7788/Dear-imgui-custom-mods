@@ -25,9 +25,7 @@ impl TabStrings {
             cancel: String::from("Cancel"),
             close: String::from("Close"),
             close_confirm: String::from("Close this tab?"),
-            close_confirm_dirty: String::from(
-                "This tab has unsaved changes. Discard and close?",
-            ),
+            close_confirm_dirty: String::from("This tab has unsaved changes. Discard and close?"),
             no_tabs: String::from("No tabs"),
             empty_hint: String::from("Add a tab to begin\u{2026}"),
             overflow_tooltip: String::from("All tabs"),

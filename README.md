@@ -80,7 +80,9 @@ src/
     color.rs                        RGBA packing helpers
     text.rs                         CalcTextSize wrapper
   chrome/
-    mod.rs                          render_titlebar() + Chrome wrapper (stateful), public API
+    mod.rs                          Public types, Chrome struct, monitor-clamp math
+    render.rs                       render_titlebar(), whole_window_resize() (stateless)
+    state.rs                        impl Chrome — builders, on_setup/on_event/render
     config.rs                       TitlebarConfig, Buttons, TitleAlign, CloseMode
     edge.rs                         ResizeEdge, edge_at(), cursor_for_edge()
     glyph.rs                        Vector glyphs (DPI-crisp min / max / restore / close)
@@ -144,7 +146,11 @@ src/
     favorites.rs                    Favorites sidebar
     history.rs                      Back/forward navigation stack
   virtual_table/
-    mod.rs                          VirtualTable<T> struct, rendering, selection
+    mod.rs                          VirtualTable<T> struct, new()/push(), helper re-exports
+    api.rs                          Public data/column/selection/editing API + export/import
+    render.rs / row_render.rs       Render entry points + editable/read-only row rendering
+    editor.rs / input.rs            Inline editing; keyboard nav, scroll, selection
+    helpers.rs                      Copy text, row-stride / snap-height math
     config.rs                       TableConfig, SelectionMode, EditTrigger (+ config.ron)
     column.rs                       ColumnDef, CellEditor variants, clip tooltip
     row.rs                          VirtualTableRow trait, CellValue, CellStyle
@@ -152,9 +158,12 @@ src/
     sort.rs                         Sort state (multi-column)
     ring_buffer.rs                  Fixed-capacity O(1) ring buffer
   virtual_tree/
-    mod.rs                          VirtualTree<T> widget, render loop, public API
+    mod.rs                          VirtualTree<T> struct, EditState, new()/set_lazy_loader
+    api.rs                          Public data API (insert/remove/expand/select/sort/filter/export)
+    render.rs / row.rs / tree_cell.rs   Render loop, per-row + tree-column rendering
+    edit.rs / input.rs              Inline editing; selection, keyboard, clipboard copy
     config.rs                       TreeConfig (+ config.ron)
-    arena.rs                        TreeArena<T> — slab storage, NodeId, parent/children
+    arena/                          TreeArena<T> — slab storage (mod.rs + ops.rs + tests.rs)
     node.rs                         VirtualTreeNode trait, NodeIcon
     flat_view.rs                    FlatView — cached linearization for ListClipper
     sort.rs                         Sibling-scoped sort state
@@ -209,6 +218,7 @@ src/
     config.rs                       StatusBarConfig, Alignment (+ config.ron)
 
 examples/
+  demo_chrome.rs                    Chrome + dear-app — borderless titlebar, theme switch, close-confirm flow
   demo_nav_panel.rs                 NavPanel + StatusBar — full config panel, all dock positions
   demo_code_editor.rs               CodeEditor — syntax highlighting, themes, MDI fonts
   demo_tab_control.rs               TabControl — styles, pinned tabs, badges, nested tabs
@@ -419,6 +429,7 @@ diff.set_texts("old text...", "new text...");
 ## Running the Demos
 
 ```bash
+cargo run -p examples-app --example demo_chrome --release
 cargo run -p examples-app --example demo_nav_panel --release
 cargo run -p examples-app --example demo_code_editor --release
 cargo run -p examples-app --example demo_tab_control --release

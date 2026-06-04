@@ -320,8 +320,7 @@ pub struct NodeGraphConfig {
 
 impl Default for NodeGraphConfig {
     fn default() -> Self {
-        ron::from_str(include_str!("config.ron"))
-            .expect("built-in node_graph/config.ron is valid")
+        ron::from_str(include_str!("config.ron")).expect("built-in node_graph/config.ron is valid")
     }
 }
 

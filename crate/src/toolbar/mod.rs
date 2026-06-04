@@ -17,179 +17,38 @@
 //! toolbar.add(ToolbarItem::button("Settings", "Open settings"));
 //! // In render loop: let events = toolbar.render(ui);
 //! ```
+//!
+//! ## Module layout
+//!
+//! - [`item`] — [`ToolbarItem`] / [`ToolbarItemKind`] data + builders.
+//! - [`events`] — [`ToolbarEvent`] emitted per frame.
+//! - [`layout`] — pure (context-free) width / spacer math.
+//! - [`render`] — the per-frame [`Toolbar::render`] implementation.
+//!
+//! ## Localization
+//!
+//! The toolbar draws **only host-supplied** strings — button/toggle
+//! labels, tooltips, and dropdown option text all come from the caller.
+//! It owns no user-visible vocabulary of its own, so (per the crate i18n
+//! policy) it carries no `Locale` field and no string catalogue: the
+//! host translates the labels it passes in.
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod config;
+pub mod events;
+pub mod item;
+mod layout;
+mod render;
 
 pub use config::ToolbarConfig;
-
-use dear_imgui_rs::{MouseButton, Ui};
+pub use events::ToolbarEvent;
+pub use item::{ToolbarItem, ToolbarItemKind};
 
 use crate::utils::color::rgba_f32;
-use crate::utils::text::calc_text_size;
 
-fn col32(c: [f32; 4]) -> u32 {
+/// Pack an RGBA float color into ImGui's packed `u32`.
+pub(crate) fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
-}
-
-// ── Toolbar item types ──────────────────────────────────────────────────────
-
-/// Toolbar item variant.
-#[derive(Debug, Clone)]
-pub enum ToolbarItemKind {
-    /// Clickable button.
-    Button,
-    /// Toggle button (on/off state).
-    Toggle { on: bool },
-    /// Visual separator line.
-    Separator,
-    /// Flexible spacer (pushes items to the right).
-    Spacer,
-    /// Dropdown (click → emits event, dropdown menu is handled externally).
-    Dropdown {
-        options: Vec<String>,
-        selected: usize,
-    },
-}
-
-/// A single toolbar item.
-#[derive(Debug, Clone)]
-pub struct ToolbarItem {
-    /// Display label.
-    pub label: String,
-    /// Unicode icon text (empty = no icon).
-    pub icon: String,
-    /// Kind of item.
-    pub kind: ToolbarItemKind,
-    /// Tooltip text (shown on hover).
-    pub tooltip: String,
-    /// Whether this item is enabled.
-    pub enabled: bool,
-}
-
-impl ToolbarItem {
-    /// Create a button.
-    pub fn button(label: impl Into<String>, tooltip: impl Into<String>) -> Self {
-        Self {
-            label: label.into(),
-            icon: String::new(),
-            kind: ToolbarItemKind::Button,
-            tooltip: tooltip.into(),
-            enabled: true,
-        }
-    }
-
-    /// Create a toggle button.
-    pub fn toggle(label: impl Into<String>, on: bool, tooltip: impl Into<String>) -> Self {
-        Self {
-            label: label.into(),
-            icon: String::new(),
-            kind: ToolbarItemKind::Toggle { on },
-            tooltip: tooltip.into(),
-            enabled: true,
-        }
-    }
-
-    /// Create a separator.
-    pub fn separator() -> Self {
-        Self {
-            label: String::new(),
-            icon: String::new(),
-            kind: ToolbarItemKind::Separator,
-            tooltip: String::new(),
-            enabled: true,
-        }
-    }
-
-    /// Create a spacer.
-    pub fn spacer() -> Self {
-        Self {
-            label: String::new(),
-            icon: String::new(),
-            kind: ToolbarItemKind::Spacer,
-            tooltip: String::new(),
-            enabled: true,
-        }
-    }
-
-    /// Create a dropdown.
-    pub fn dropdown(
-        label: impl Into<String>,
-        options: Vec<String>,
-        selected: usize,
-        tooltip: impl Into<String>,
-    ) -> Self {
-        let clamped = if options.is_empty() {
-            0
-        } else {
-            selected.min(options.len() - 1)
-        };
-        Self {
-            label: label.into(),
-            icon: String::new(),
-            kind: ToolbarItemKind::Dropdown {
-                options,
-                selected: clamped,
-            },
-            tooltip: tooltip.into(),
-            enabled: true,
-        }
-    }
-
-    /// Builder: set enabled state.
-    pub fn with_enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
-    }
-
-    /// Builder: set icon text (Unicode glyph).
-    pub fn with_icon(mut self, icon: impl Into<String>) -> Self {
-        self.icon = icon.into();
-        self
-    }
-}
-
-// ── Events ──────────────────────────────────────────────────────────────────
-
-/// Event emitted by toolbar interaction.
-#[derive(Debug, Clone)]
-pub enum ToolbarEvent {
-    /// A button was clicked.
-    ButtonClicked { index: usize, label: String },
-    /// A toggle was toggled (new state).
-    Toggled {
-        index: usize,
-        label: String,
-        on: bool,
-    },
-    /// A dropdown selection changed.
-    DropdownChanged {
-        index: usize,
-        label: String,
-        selected: usize,
-    },
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-/// Build the display string by combining icon and label.
-///
-/// Returns a `Cow<str>` to avoid allocation when only one part is present.
-fn display_text(item: &ToolbarItem) -> std::borrow::Cow<'_, str> {
-    display_text_ref(&item.icon, &item.label)
-}
-
-/// Build the display string from icon and label references.
-///
-/// Zero-alloc when only icon or label is present.
-fn display_text_ref<'a>(icon: &'a str, label: &'a str) -> std::borrow::Cow<'a, str> {
-    if icon.is_empty() {
-        std::borrow::Cow::Borrowed(label)
-    } else if label.is_empty() {
-        std::borrow::Cow::Borrowed(icon)
-    } else {
-        std::borrow::Cow::Owned(format!("{} {}", icon, label))
-    }
 }
 
 // ── Toolbar widget ──────────────────────────────────────────────────────────
@@ -208,6 +67,11 @@ impl Toolbar {
             items: Vec::new(),
             config: ToolbarConfig::default(),
         }
+    }
+
+    /// The toolbar's ImGui id string.
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     /// Add an item to the toolbar.
@@ -235,9 +99,16 @@ impl Toolbar {
         self.items.get_mut(index)
     }
 
-    /// Remove an item by index. Returns the removed item.
-    pub fn remove(&mut self, index: usize) -> ToolbarItem {
-        self.items.remove(index)
+    /// Remove an item by index, returning it.
+    ///
+    /// Returns `None` (and leaves the toolbar unchanged) when `index` is
+    /// out of range, so a stale index from the caller can never panic.
+    pub fn remove(&mut self, index: usize) -> Option<ToolbarItem> {
+        if index < self.items.len() {
+            Some(self.items.remove(index))
+        } else {
+            None
+        }
     }
 
     /// Number of items.
@@ -254,274 +125,13 @@ impl Toolbar {
     pub fn clear(&mut self) {
         self.items.clear();
     }
-
-    /// Render the toolbar. Returns events for this frame.
-    pub fn render(&mut self, ui: &Ui) -> Vec<ToolbarEvent> {
-        let mut events = Vec::new();
-        let cfg = self.config;
-
-        let _id_tok = ui.push_id(&self.id);
-
-        let avail_w = ui.content_region_avail()[0];
-        let bar_h = cfg.height;
-        let cursor = ui.cursor_screen_pos();
-        let draw = ui.get_window_draw_list();
-
-        // Background
-        draw.add_rect(
-            cursor,
-            [cursor[0] + avail_w, cursor[1] + bar_h],
-            col32(cfg.color_bg),
-        )
-        .filled(true)
-        .build();
-
-        // Bottom border
-        draw.add_line(
-            [cursor[0], cursor[1] + bar_h - 1.0],
-            [cursor[0] + avail_w, cursor[1] + bar_h - 1.0],
-            col32(cfg.color_border),
-        )
-        .build();
-
-        let mouse_pos = ui.io().mouse_pos();
-        let window_hovered = ui.is_window_hovered();
-        let btn_h = bar_h - 6.0;
-        let btn_y = cursor[1] + 3.0;
-
-        // First pass: compute spacer width
-        let mut fixed_w = 0.0_f32;
-        let mut spacer_count = 0;
-        for item in &self.items {
-            match &item.kind {
-                ToolbarItemKind::Spacer => spacer_count += 1,
-                ToolbarItemKind::Separator => {
-                    fixed_w += cfg.separator_margin * 2.0 + cfg.separator_width;
-                }
-                ToolbarItemKind::Dropdown { options, selected } => {
-                    let base = display_text(item);
-                    let label = if *selected < options.len() {
-                        format!("{} [{}]", base, options[*selected])
-                    } else {
-                        base.into_owned()
-                    };
-                    fixed_w +=
-                        calc_text_size(&label)[0] + cfg.button_padding * 2.0 + cfg.item_spacing;
-                }
-                _ => {
-                    let text = display_text(item);
-                    fixed_w +=
-                        calc_text_size(&text)[0] + cfg.button_padding * 2.0 + cfg.item_spacing;
-                }
-            }
-        }
-
-        let spacer_w = if spacer_count > 0 {
-            ((avail_w - fixed_w) / spacer_count as f32).max(0.0)
-        } else {
-            0.0
-        };
-
-        // Second pass: render
-        let mut x = cursor[0] + cfg.item_spacing;
-
-        for (idx, item) in self.items.iter_mut().enumerate() {
-            // Separator and Spacer have no display text — handle them first.
-            match &mut item.kind {
-                ToolbarItemKind::Separator => {
-                    x += cfg.separator_margin;
-                    draw.add_line(
-                        [x, btn_y + 2.0],
-                        [x, btn_y + btn_h - 2.0],
-                        col32(cfg.color_separator),
-                    )
-                    .build();
-                    x += cfg.separator_width + cfg.separator_margin;
-                    continue;
-                }
-                ToolbarItemKind::Spacer => {
-                    x += spacer_w;
-                    continue;
-                }
-                _ => {}
-            }
-
-            // Shared pre-computation for Button / Toggle / Dropdown
-            let base_display = display_text_ref(&item.icon, &item.label);
-            let full_display: std::borrow::Cow<'_, str> = match &item.kind {
-                ToolbarItemKind::Dropdown { options, selected } => {
-                    if *selected < options.len() {
-                        std::borrow::Cow::Owned(format!(
-                            "{} [{}]",
-                            base_display, options[*selected]
-                        ))
-                    } else {
-                        base_display.clone()
-                    }
-                }
-                _ => base_display.clone(),
-            };
-            let text_sz = calc_text_size(&full_display);
-            let text_w = text_sz[0];
-            let btn_w = text_w + cfg.button_padding * 2.0;
-
-            let hovered = item.enabled
-                && window_hovered
-                && mouse_pos[0] >= x
-                && mouse_pos[0] < x + btn_w
-                && mouse_pos[1] >= btn_y
-                && mouse_pos[1] < btn_y + btn_h;
-
-            let text_color = if item.enabled {
-                cfg.color_text
-            } else {
-                cfg.color_disabled
-            };
-
-            match &mut item.kind {
-                ToolbarItemKind::Button if hovered => {
-                    let bg = if ui.is_mouse_down(MouseButton::Left) {
-                        cfg.color_active
-                    } else {
-                        cfg.color_hover
-                    };
-                    draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
-                        .rounding(cfg.button_rounding)
-                        .filled(true)
-                        .build();
-
-                    // Hover underline
-                    let uy = btn_y + btn_h - 1.0;
-                    draw.add_line(
-                        [x + 2.0, uy],
-                        [x + btn_w - 2.0, uy],
-                        col32(cfg.color_hover_underline),
-                    )
-                    .thickness(cfg.hover_underline_thickness)
-                    .build();
-
-                    if ui.is_mouse_clicked(MouseButton::Left) {
-                        events.push(ToolbarEvent::ButtonClicked {
-                            index: idx,
-                            label: item.label.clone(), // clone only on event (not per-frame)
-                        });
-                    }
-
-                    if !item.tooltip.is_empty() {
-                        crate::utils::themed_tooltip(ui, || ui.text(&item.tooltip));
-                    }
-                }
-                ToolbarItemKind::Button => {}
-
-                ToolbarItemKind::Toggle { on } => {
-                    // Toggle background
-                    if *on {
-                        draw.add_rect(
-                            [x, btn_y],
-                            [x + btn_w, btn_y + btn_h],
-                            col32(cfg.color_toggled),
-                        )
-                        .rounding(cfg.button_rounding)
-                        .filled(true)
-                        .build();
-                    }
-
-                    if hovered {
-                        let bg = if ui.is_mouse_down(MouseButton::Left) {
-                            cfg.color_active
-                        } else {
-                            cfg.color_hover
-                        };
-                        draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
-                            .rounding(cfg.button_rounding)
-                            .filled(true)
-                            .build();
-
-                        // Hover underline
-                        let uy = btn_y + btn_h - 1.0;
-                        draw.add_line(
-                            [x + 2.0, uy],
-                            [x + btn_w - 2.0, uy],
-                            col32(cfg.color_hover_underline),
-                        )
-                        .thickness(cfg.hover_underline_thickness)
-                        .build();
-
-                        if ui.is_mouse_clicked(MouseButton::Left) {
-                            *on = !*on;
-                            events.push(ToolbarEvent::Toggled {
-                                index: idx,
-                                label: item.label.clone(), // clone only on event (not per-frame)
-                                on: *on,
-                            });
-                        }
-
-                        if !item.tooltip.is_empty() {
-                            crate::utils::themed_tooltip(ui, || ui.text(&item.tooltip));
-                        }
-                    }
-                }
-
-                ToolbarItemKind::Dropdown { options, selected } if hovered => {
-                    let bg = if ui.is_mouse_down(MouseButton::Left) {
-                        cfg.color_active
-                    } else {
-                        cfg.color_hover
-                    };
-                    draw.add_rect([x, btn_y], [x + btn_w, btn_y + btn_h], col32(bg))
-                        .rounding(cfg.button_rounding)
-                        .filled(true)
-                        .build();
-
-                    // Hover underline
-                    let uy = btn_y + btn_h - 1.0;
-                    draw.add_line(
-                        [x + 2.0, uy],
-                        [x + btn_w - 2.0, uy],
-                        col32(cfg.color_hover_underline),
-                    )
-                    .thickness(cfg.hover_underline_thickness)
-                    .build();
-
-                    if ui.is_mouse_clicked(MouseButton::Left) && !options.is_empty() {
-                        *selected = (*selected + 1) % options.len();
-                        events.push(ToolbarEvent::DropdownChanged {
-                            index: idx,
-                            label: item.label.clone(), // clone only on event (not per-frame)
-                            selected: *selected,
-                        });
-                    }
-
-                    if !item.tooltip.is_empty() {
-                        crate::utils::themed_tooltip(ui, || ui.text(&item.tooltip));
-                    }
-                }
-                ToolbarItemKind::Dropdown { .. } => {}
-
-                // Separator/Spacer already handled above via `continue`.
-                _ => {}
-            }
-
-            // Draw the display text (shared across all interactive item types).
-            let tx = x + (btn_w - text_sz[0]) * 0.5;
-            let ty = btn_y + (btn_h - text_sz[1]) * 0.5;
-            draw.add_text([tx, ty], col32(text_color), &full_display);
-
-            x += btn_w + cfg.item_spacing;
-        }
-
-        // Advance cursor past the toolbar
-        ui.set_cursor_pos([ui.cursor_pos()[0], ui.cursor_pos()[1] + bar_h]);
-        ui.dummy([0.0, 0.0]);
-
-        events
-    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
+    use super::item::{display_text, display_text_ref};
     use super::*;
 
     #[test]
@@ -561,10 +171,41 @@ mod tests {
         assert!(matches!(item.kind, ToolbarItemKind::Dropdown { .. }));
     }
 
+    /// Regression: an out-of-range `selected` must be clamped at
+    /// construction so the renderer never indexes past `options`.
+    #[test]
+    fn dropdown_clamps_out_of_range_selected() {
+        let item = ToolbarItem::dropdown("Mode", vec!["A".into(), "B".into()], 99, "");
+        match item.kind {
+            ToolbarItemKind::Dropdown { selected, .. } => assert_eq!(selected, 1),
+            _ => panic!("expected dropdown"),
+        }
+    }
+
+    /// Regression: an empty option list must not underflow
+    /// `options.len() - 1` and must clamp `selected` to `0`.
+    #[test]
+    fn dropdown_empty_options_selected_is_zero() {
+        let item = ToolbarItem::dropdown("Mode", Vec::new(), 5, "");
+        match item.kind {
+            ToolbarItemKind::Dropdown { selected, options } => {
+                assert_eq!(selected, 0);
+                assert!(options.is_empty());
+            }
+            _ => panic!("expected dropdown"),
+        }
+    }
+
     #[test]
     fn disabled_item() {
         let item = ToolbarItem::button("X", "").with_enabled(false);
         assert!(!item.enabled);
+    }
+
+    #[test]
+    fn with_icon_sets_icon() {
+        let item = ToolbarItem::button("Save", "").with_icon("\u{F0193}");
+        assert_eq!(item.icon, "\u{F0193}");
     }
 
     #[test]
@@ -579,10 +220,74 @@ mod tests {
     }
 
     #[test]
+    fn toolbar_id_round_trips() {
+        let tb = Toolbar::new("##my_bar");
+        assert_eq!(tb.id(), "##my_bar");
+    }
+
+    #[test]
+    fn toolbar_len_and_empty() {
+        let mut tb = Toolbar::new("##t");
+        assert!(tb.is_empty());
+        assert_eq!(tb.len(), 0);
+        tb.add(ToolbarItem::button("A", ""));
+        assert_eq!(tb.len(), 1);
+        assert!(!tb.is_empty());
+    }
+
+    /// Regression: out-of-range `remove` returns `None` instead of
+    /// panicking (`Vec::remove` would panic).
+    #[test]
+    fn remove_out_of_range_is_none() {
+        let mut tb = Toolbar::new("##t");
+        tb.add(ToolbarItem::button("A", ""));
+        assert!(tb.remove(5).is_none());
+        assert_eq!(tb.len(), 1);
+    }
+
+    #[test]
+    fn remove_in_range_returns_item() {
+        let mut tb = Toolbar::new("##t");
+        tb.add(ToolbarItem::button("A", ""));
+        tb.add(ToolbarItem::button("B", ""));
+        let removed = tb.remove(0).expect("index 0 in range");
+        assert_eq!(removed.label, "A");
+        assert_eq!(tb.len(), 1);
+        assert_eq!(tb.items()[0].label, "B");
+    }
+
+    #[test]
+    fn get_and_get_mut() {
+        let mut tb = Toolbar::new("##t");
+        tb.add(ToolbarItem::button("A", ""));
+        assert_eq!(tb.get(0).map(|i| i.label.as_str()), Some("A"));
+        assert!(tb.get(1).is_none());
+        tb.get_mut(0).unwrap().label = "Z".into();
+        assert_eq!(tb.items()[0].label, "Z");
+    }
+
+    #[test]
     fn config_defaults() {
         let cfg = ToolbarConfig::default();
         assert_eq!(cfg.height, 30.0);
         assert_eq!(cfg.button_rounding, 3.0);
+    }
+
+    /// The config schema lives in `config.rs`; the values live in
+    /// `config.ron`. `Default` must load the ron, and the whole struct
+    /// must round-trip through ron (DDD config pattern guard).
+    #[test]
+    fn config_round_trips_through_ron() {
+        let cfg = ToolbarConfig::default();
+        let serialized = ron::to_string(&cfg).expect("serialize");
+        let restored: ToolbarConfig = ron::from_str(&serialized).expect("deserialize");
+        assert_eq!(cfg.height, restored.height);
+        assert_eq!(cfg.item_spacing, restored.item_spacing);
+        assert_eq!(cfg.color_bg, restored.color_bg);
+        assert_eq!(
+            cfg.hover_underline_thickness,
+            restored.hover_underline_thickness
+        );
     }
 
     #[test]
@@ -590,5 +295,29 @@ mod tests {
         let a = ToolbarItem::button("a", "");
         let b = ToolbarItem::button("b", "");
         assert_ne!(a.label, b.label);
+    }
+
+    // ── display-text helper behaviour (zero-alloc Cow paths) ──────────
+
+    #[test]
+    fn display_text_label_only_borrows() {
+        let item = ToolbarItem::button("Save", "");
+        let s = display_text(&item);
+        assert!(matches!(s, std::borrow::Cow::Borrowed(_)));
+        assert_eq!(s, "Save");
+    }
+
+    #[test]
+    fn display_text_icon_only_borrows() {
+        let s = display_text_ref("\u{F0193}", "");
+        assert!(matches!(s, std::borrow::Cow::Borrowed(_)));
+        assert_eq!(s, "\u{F0193}");
+    }
+
+    #[test]
+    fn display_text_icon_and_label_joins() {
+        let s = display_text_ref("I", "Save");
+        assert!(matches!(s, std::borrow::Cow::Owned(_)));
+        assert_eq!(s, "I Save");
     }
 }

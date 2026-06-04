@@ -115,6 +115,70 @@ impl HexDataProvider for VecDataProvider {
     }
 }
 
+// ── ArcVecDataProvider ──────────────────────────────────────────────────────
+//
+// `Arc<Vec<u8>>` wrapper that implements [`HexDataProvider`] over the
+// shared-ownership buffer used internally by [`crate::hex_viewer::HexViewer`].
+// Owns the held `Arc` so `write()` can route through `Arc::make_mut`
+// on its own clone — that keeps reads in the same frame consistent
+// with writes (the inner `Vec` is mutated in-place once the wrapper
+// becomes the sole owner via the COW step).
+//
+// The legacy [`crate::hex_viewer::HexViewer::render`] entry point
+// constructs this with [`Self::from_arc`] (a normal `Arc::clone`).
+// Writes mirror through `Arc::make_mut`, so the wrapper's view stays
+// in sync with what the user has typed — immediate visual feedback
+// during a hex / ASCII edit. The viewer's internal `self.data` is
+// NOT mutated by this provider; the legacy edit path's fallback in
+// `commit_pending_edit_with` / `handle_hex_input` still patches
+// `self.data` via its own `Arc::make_mut` so the buffer the host
+// sees through `data()` / `data_arc()` matches what the user typed.
+//
+// Hosts that want true write-through to an external backing store
+// (debugger memory pane, ROM patcher) should implement
+// `HexDataProvider` directly and call [`HexViewer::render_with_provider`].
+pub struct ArcVecDataProvider {
+    data: std::sync::Arc<Vec<u8>>,
+}
+
+impl ArcVecDataProvider {
+    pub fn from_arc(data: std::sync::Arc<Vec<u8>>) -> Self {
+        Self { data }
+    }
+}
+
+impl HexDataProvider for ArcVecDataProvider {
+    fn len(&self) -> u64 {
+        self.data.len() as u64
+    }
+    fn read(&self, offset: u64, buf: &mut [u8]) -> usize {
+        let off = offset as usize;
+        if off >= self.data.len() {
+            return 0;
+        }
+        let end = (off + buf.len()).min(self.data.len());
+        let n = end - off;
+        buf[..n].copy_from_slice(&self.data[off..end]);
+        n
+    }
+    fn write(&mut self, offset: u64, data: &[u8]) -> bool {
+        let off = offset as usize;
+        if off + data.len() > self.data.len() {
+            return false;
+        }
+        // `Arc::make_mut` is COW: on the first in-frame write the
+        // inner `Vec` gets cloned (because the viewer's `self.data`
+        // still holds a parallel `Arc`); subsequent writes in the
+        // same frame are zero-copy. The caller — the legacy edit
+        // path in `input.rs` — also patches `self.data` via its
+        // own `Arc::make_mut` so the *next* frame's wrapper starts
+        // from the post-edit bytes again.
+        let buf = std::sync::Arc::make_mut(&mut self.data);
+        buf[off..off + data.len()].copy_from_slice(data);
+        true
+    }
+}
+
 // ── Color Region ────────────────────────────────────────────────────────────
 
 /// Color region — maps a byte range to a color and label for struct overlays.

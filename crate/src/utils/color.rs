@@ -58,6 +58,7 @@ pub fn with_alpha(c: [f32; 4], a: f32) -> [f32; 4] {
 
 /// Convenience alias for [`pack_color_f32`] — matches the `col32`
 /// shorthand used across the draw paths throughout the crate.
+#[allow(dead_code)]
 #[inline]
 pub(crate) fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
@@ -157,6 +158,84 @@ pub fn wgpu_clear_color(rgba: [f32; 4], fmt: wgpu::TextureFormat) -> wgpu::Color
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rgba_packs_abgr_layout() {
+        // ImColor32 ABGR: alpha bits 24-31, blue 16-23, green 8-15, red 0-7.
+        let c = rgba(0x11, 0x22, 0x33, 0x44);
+        assert_eq!(c & 0xFF, 0x11, "red in low byte");
+        assert_eq!((c >> 8) & 0xFF, 0x22, "green in bits 8-15");
+        assert_eq!((c >> 16) & 0xFF, 0x33, "blue in bits 16-23");
+        assert_eq!((c >> 24) & 0xFF, 0x44, "alpha in bits 24-31");
+    }
+
+    #[test]
+    fn rgb_is_opaque() {
+        assert_eq!(rgb(0x10, 0x20, 0x30), rgba(0x10, 0x20, 0x30, 0xFF));
+        assert_eq!(rgb(0, 0, 0) >> 24, 0xFF, "alpha forced to 0xFF");
+    }
+
+    #[test]
+    fn rgb_arr_matches_rgba() {
+        assert_eq!(rgb_arr([1, 2, 3], 4), rgba(1, 2, 3, 4));
+    }
+
+    #[test]
+    fn rgba_f32_round_trips_endpoints() {
+        // 1.0 -> 255, 0.0 -> 0 on every channel.
+        assert_eq!(rgba_f32(1.0, 1.0, 1.0, 1.0), rgba(255, 255, 255, 255));
+        assert_eq!(rgba_f32(0.0, 0.0, 0.0, 0.0), 0);
+    }
+
+    #[test]
+    fn rgba_f32_clamps_out_of_range() {
+        // Out-of-gamut inputs must not wrap/panic; clamp to the byte ends.
+        assert_eq!(
+            rgba_f32(2.0, -1.0, 0.5, 1.0) & 0xFF,
+            255,
+            "over-range -> 255"
+        );
+        assert_eq!(
+            (rgba_f32(2.0, -1.0, 0.5, 1.0) >> 8) & 0xFF,
+            0,
+            "under-range -> 0"
+        );
+    }
+
+    #[test]
+    fn pack_color_f32_matches_rgba_f32() {
+        let arr = [0.2, 0.4, 0.6, 0.8];
+        assert_eq!(pack_color_f32(arr), rgba_f32(0.2, 0.4, 0.6, 0.8));
+        assert_eq!(col32(arr), rgba_f32(0.2, 0.4, 0.6, 0.8));
+    }
+
+    #[test]
+    fn blend_color_endpoints_and_midpoint() {
+        let a = [0.0, 0.0, 0.0, 1.0];
+        let b = [1.0, 0.5, 0.0, 0.0];
+        assert_eq!(blend_color(a, b, 0.0), a);
+        assert_eq!(blend_color(a, b, 1.0), b);
+        let mid = blend_color(a, b, 0.5);
+        assert!((mid[0] - 0.5).abs() < 1e-6);
+        assert!((mid[1] - 0.25).abs() < 1e-6);
+        assert!((mid[3] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn blend_color_clamps_t() {
+        let a = [0.0, 0.0, 0.0, 0.0];
+        let b = [1.0, 1.0, 1.0, 1.0];
+        // t outside 0..=1 clamps (no extrapolation past the endpoints).
+        assert_eq!(blend_color(a, b, -1.0), a);
+        assert_eq!(blend_color(a, b, 2.0), b);
+    }
+
+    #[test]
+    fn with_alpha_scales_only_alpha() {
+        let out = with_alpha([0.2, 0.4, 0.6, 0.8], 0.5);
+        assert_eq!([out[0], out[1], out[2]], [0.2, 0.4, 0.6]);
+        assert!((out[3] - 0.4).abs() < 1e-6);
+    }
 
     #[test]
     fn srgb_to_linear_endpoints() {

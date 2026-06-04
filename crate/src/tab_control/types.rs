@@ -13,7 +13,9 @@ pub type TabId = u64;
 // ─── Tab status ─────────────────────────────────────────────────────────────
 
 /// Visual status of a tab — controls the small indicator dot drawn on the tab.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum TabStatus {
     /// Green dot (default — normal/healthy).
     #[default]
@@ -74,7 +76,9 @@ impl Badge {
 /// Visual style of the per-tab close button. All variants render through
 /// the draw list (`add_line` / `add_rect`) and therefore work even when
 /// [`TabControlConfig::icons_available`] is `false`.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Default, Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum CloseGlyph {
     /// Plain diagonal cross. Lightweight, default.
     #[default]
@@ -90,7 +94,9 @@ pub enum CloseGlyph {
 // ─── Tab style ──────────────────────────────────────────────────────────────
 
 /// Visual style for the tabs.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Default, Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum TabStyle {
     /// Fully rounded pill (default).
     #[default]

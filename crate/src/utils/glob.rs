@@ -105,4 +105,58 @@ mod tests {
         let pat = "*".repeat(50) + "a";
         assert!(glob_match(&pat, &txt));
     }
+
+    #[test]
+    fn wildcard_pattern_is_anchored() {
+        // With a wildcard the match is anchored at both ends (unlike the
+        // no-wildcard `contains` fast path). `f?o` must match the WHOLE text.
+        assert!(glob_match("f?o", "foo"));
+        assert!(!glob_match("f?o", "xfooy"));
+        assert!(glob_match("*f?o*", "xfooy"));
+    }
+
+    #[test]
+    fn question_does_not_match_empty() {
+        assert!(!glob_match("a?", "a"));
+        assert!(glob_match("a?", "ab"));
+    }
+
+    #[test]
+    fn leading_star_matches_prefix() {
+        assert!(glob_match("*bar", "foobar"));
+        assert!(glob_match("*bar", "bar"));
+        assert!(!glob_match("*bar", "barx"));
+    }
+
+    #[test]
+    fn lone_star_matches_everything_including_empty() {
+        assert!(glob_match("*", ""));
+        assert!(glob_match("*", "anything at all"));
+    }
+
+    #[test]
+    fn empty_pattern_only_matches_empty_under_wildcard_rules() {
+        // No-wildcard empty pattern uses `contains("")` which is always true.
+        assert!(glob_match("", "nonempty"));
+    }
+
+    #[test]
+    fn exact_match_with_wildcard_present() {
+        // A wildcard pattern with no `*`/`?` after lowering still anchors.
+        assert!(glob_match("a*", "a"));
+        assert!(!glob_match("a*b", "a"));
+    }
+
+    #[test]
+    fn case_insensitive_with_wildcards() {
+        assert!(glob_match("FU*ION", "function"));
+        assert!(glob_match("Node?", "node7"));
+    }
+
+    #[test]
+    fn bytes_helper_matches_directly() {
+        // Direct byte-slice entry point (callers may pre-lowercase).
+        assert!(glob_match_bytes(b"a*c", b"abbbc"));
+        assert!(!glob_match_bytes(b"a*c", b"abbbd"));
+    }
 }

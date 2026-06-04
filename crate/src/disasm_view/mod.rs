@@ -99,16 +99,23 @@
 //! tend to disable layers 1, 3, 5–8 and keep just the raw fields).
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
-pub mod abi;
-pub mod antidisasm;
+
+// ── Knowledge-layer re-exports (ADR-030) ────────────────────────────────────
+//
+// The catalogue / detector layer lives in the headless
+// `disasm-knowledge` crate (sibling workspace `useful-lib/`). Re-export
+// the 9 modules under their historic names so external consumers that
+// import `dear_imgui_custom_mod::disasm_view::mnemonic::lookup` keep
+// compiling without churn. New code can use either path —
+// `disasm_knowledge::mnemonic::lookup` is the canonical one.
+pub use disasm_knowledge::{HintTiers, HintVerbosity};
+pub use disasm_knowledge::{
+    abi, antidisasm, boundary, branch, compiler, hint_verbosity, idiom, mnemonic, operand,
+};
+
+// UI-only modules (rendering, layout, host data contract) stay here.
 pub mod arrows;
-pub mod boundary;
-pub mod branch;
-pub mod compiler;
 pub mod config;
-pub mod idiom;
-pub mod mnemonic;
-pub mod operand;
 pub mod provider;
 
 mod draw;
@@ -118,7 +125,28 @@ mod tokens;
 
 pub use arrows::{BranchArrow, MAX_ARROW_DEPTH, compute_arrows, compute_arrows_clipped};
 pub use config::{ColumnWidths, DisasmColors, DisasmViewConfig};
-pub use provider::{DisasmDataProvider, FlowKind, Instruction, InstructionEntry, VecDisasmProvider};
+pub use provider::{
+    DisasmDataProvider, FlowKind, Instruction, InstructionEntry, VecDisasmProvider,
+};
+
+// ── Locale bridge (ADR-030) ─────────────────────────────────────────────────
+//
+// The UI crate carries its own `crate::i18n::Locale` (lives alongside
+// per-widget string catalogues for hex_viewer / code_editor / etc.); the
+// headless knowledge crate carries `disasm_knowledge::Locale` with the
+// same shape (En / Ru). Only the UI→knowledge direction is needed —
+// every call site sits inside the UI crate and uses `cfg.locale.into()`
+// to hand the knowledge-side function the matching variant. The
+// reverse direction has no caller and is omitted; consumers that
+// genuinely need it can implement it in their own crate trivially.
+impl From<crate::i18n::Locale> for disasm_knowledge::Locale {
+    fn from(l: crate::i18n::Locale) -> Self {
+        match l {
+            crate::i18n::Locale::En => disasm_knowledge::Locale::En,
+            crate::i18n::Locale::Ru => disasm_knowledge::Locale::Ru,
+        }
+    }
+}
 
 use crate::utils::text::calc_text_size;
 
@@ -154,15 +182,15 @@ pub(super) const ORIGIN_STRIPE_WIDTH: f32 = 3.0;
 /// double-click-to-edit on three semantic regions:
 ///
 /// - [`Self::Bytes`] — patch raw instruction bytes; commit path goes
-///   through [`super::config::DisasmDataProvider::write_bytes`].
+///   through [`super::provider::DisasmDataProvider::write_bytes`].
 /// - [`Self::Mnemonic`] — re-assemble the instruction from text;
 ///   commit path goes through
-///   [`super::config::DisasmDataProvider::assemble`]. Reserved for
+///   [`super::provider::DisasmDataProvider::assemble`]. Reserved for
 ///   a future editor that exposes the mnemonic+operands as a single
 ///   editable string. **Not** triggered by the UI yet.
 /// - [`Self::Comment`] — set / clear the per-instruction comment;
 ///   commit path goes through
-///   [`super::config::DisasmDataProvider::set_comment`]. Wired in
+///   [`super::provider::DisasmDataProvider::set_comment`]. Wired in
 ///   2026-04-29.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum EditColumn {
@@ -293,8 +321,21 @@ pub struct DisasmView {
     /// lands on the same address it would set as origin
     /// (no breadcrumb-on-self).
     pub(super) origin_addr: Option<u64>,
-    /// Cached arrows for current frame.
+    /// Cached arrows for the visible window. Key is the triple
+    /// `(first_row, last_row, instruction_count)` — if the user
+    /// hasn't scrolled and the provider hasn't grown, the previous
+    /// `Vec` is reused intact. Audit H3: the field was previously
+    /// called "cached" in the docstring but rebuilt unconditionally
+    /// every frame, which on a 10k-instruction provider walked the
+    /// full instruction list per frame just to populate the visible
+    /// arrow slice. Cache invalidation also covers the
+    /// `config.max_arrows` knob so toggling it at runtime takes
+    /// effect on the next frame.
     cached_arrows: Vec<BranchArrow>,
+    /// `(first_row, last_row, instruction_count, max_arrows)` — the
+    /// inputs `compute_arrows_clipped` depends on. `None` means the
+    /// cache is dirty and must be rebuilt next render.
+    cached_arrows_key: Option<(usize, usize, usize, usize)>,
     /// Position for InputText widget (set by draw_row, consumed by render).
     edit_render_pos: std::cell::Cell<Option<[f32; 2]>>,
     /// Width for the InputText widget.
@@ -304,9 +345,15 @@ pub struct DisasmView {
     /// the visual middle. Mirrors the pattern used by `hex_viewer`.
     pub(super) component_center: [f32; 2],
     /// Screen-space anchor for the right-click context menu — set by
-    /// the right-click handler to the cursor position so the menu
-    /// spawns where the user clicked.
-    pub(super) popup_open_pos: [f32; 2],
+    /// the right-click handler (`input::handle_mouse`) to the cursor
+    /// position so the menu spawns where the user clicked.
+    ///
+    /// `Option` (audit M7): the previous `[f32; 2]` initialised to
+    /// `[0.0, 0.0]`, which let an early popup open (e.g. via the
+    /// toolbar before any right-click happened) anchor at screen
+    /// origin. `None` means "not yet captured" and the popup falls
+    /// back to ImGui's default cursor-based anchor.
+    pub(super) popup_open_pos: Option<[f32; 2]>,
     /// Per-frame comment-column X (screen space). Computed in
     /// `render()` from a one-pass scan over visible rows: when the
     /// widest instruction text would collide with the default
@@ -394,10 +441,11 @@ impl DisasmView {
             search_idx: 0,
             origin_addr: None,
             cached_arrows: Vec::new(),
+            cached_arrows_key: None,
             edit_render_pos: std::cell::Cell::new(None),
             edit_render_width: std::cell::Cell::new(0.0),
             component_center: [0.0, 0.0],
-            popup_open_pos: [0.0, 0.0],
+            popup_open_pos: None,
             frame_comment_x: std::cell::Cell::new(None),
             frame_comment_w: std::cell::Cell::new(None),
             bookmarks: BTreeSet::new(),
@@ -427,6 +475,41 @@ impl DisasmView {
     /// Currently-active locale (mirror of `self.config.locale`).
     pub fn locale(&self) -> crate::i18n::Locale {
         self.config.locale
+    }
+
+    /// Builder: replace the entire configuration in one call (audit
+    /// M2). Restoring a saved [`DisasmViewConfig`] is the canonical
+    /// use case — fewer touch-points than mutating ~20 individual
+    /// `config.*` fields by hand.
+    #[must_use]
+    pub fn with_config(mut self, cfg: DisasmViewConfig) -> Self {
+        self.config = cfg;
+        self.cached_arrows_key = None;
+        self
+    }
+
+    /// Replace the entire configuration at runtime. Like
+    /// [`Self::with_config`] but for `&mut self` flows.
+    pub fn set_config(&mut self, cfg: DisasmViewConfig) {
+        self.config = cfg;
+        self.cached_arrows_key = None;
+    }
+
+    /// Read-only access to the underlying [`DisasmViewConfig`].
+    /// Symmetric with the public `pub config` field — host code is
+    /// free to use either; the accessor exists so future migration
+    /// to a private field doesn't break callers.
+    pub fn config(&self) -> &DisasmViewConfig {
+        &self.config
+    }
+
+    /// Mutable access. Use to flip individual flags at runtime
+    /// (toggle bytes column, change ABI, …). Any change to
+    /// `show_arrows` / `max_arrows` invalidates the arrow cache on
+    /// the next render via the in-render key compare; no manual
+    /// invalidation needed.
+    pub fn config_mut(&mut self) -> &mut DisasmViewConfig {
+        &mut self.config
     }
 
     /// Static catalogue lookup for the current locale. Convenience
@@ -607,6 +690,22 @@ impl DisasmView {
     pub fn clear_selection(&mut self) {
         self.selection.clear();
         self.sel_anchor = None;
+    }
+
+    /// Scroll the viewport so the row at `addr` becomes visible —
+    /// WITHOUT mutating cursor / selection / nav-history / origin
+    /// breadcrumb. Companion to [`Self::goto_address`] for callers
+    /// that want a "soft" navigation (host placing an initial anchor
+    /// at entry-point, viewport re-centring on pause, etc.) — the
+    /// user keeps whatever they had clicked previously (or no
+    /// selection at all on a fresh tab).
+    ///
+    /// No-op when `addr` doesn't resolve through
+    /// [`DisasmDataProvider::index_of_address`].
+    pub fn scroll_to_address(&mut self, addr: u64, provider: &dyn DisasmDataProvider) {
+        if let Some(idx) = provider.index_of_address(addr) {
+            self.scroll_to = Some(idx);
+        }
     }
 
     // ── Convenience selectors (host toolbar helpers) ─────────────────
@@ -805,6 +904,23 @@ impl DisasmView {
     /// Drop every bookmark.
     pub fn clear_bookmarks(&mut self) {
         self.bookmarks.clear();
+    }
+
+    /// Bulk-restore the bookmark set in one call (audit M1). Replaces
+    /// the entire set with the input addresses, silently capped at
+    /// [`Self::MAX_BOOKMARKS`] (oldest-by-sort-order win — `BTreeSet`
+    /// iteration is sorted ascending). Returns the count actually
+    /// stored, which equals `input.len()` when below the cap.
+    ///
+    /// Use case: the host saved bookmarks via [`Self::bookmarks`] in
+    /// a previous session and now wants to restore them on startup
+    /// without making 64 individual [`Self::add_bookmark`] calls.
+    pub fn set_bookmarks<I: IntoIterator<Item = u64>>(&mut self, addrs: I) -> usize {
+        self.bookmarks.clear();
+        for addr in addrs.into_iter().take(Self::MAX_BOOKMARKS) {
+            self.bookmarks.insert(addr);
+        }
+        self.bookmarks.len()
     }
 
     /// Drain the goto-address request emitted by the popup so the host
@@ -1036,7 +1152,10 @@ impl DisasmView {
 
         if let Some(target) = branch {
             return if try_goto(self, target, provider) {
-                FollowOutcome::Followed { from: from_addr, to: target }
+                FollowOutcome::Followed {
+                    from: from_addr,
+                    to: target,
+                }
             } else {
                 FollowOutcome::TargetOutsideProvider(target)
             };
@@ -1072,7 +1191,10 @@ impl DisasmView {
                 && let Some(addr) = parse_operand_number(tok.text)
                 && try_goto(self, addr, provider)
             {
-                return FollowOutcome::Followed { from: from_addr, to: addr };
+                return FollowOutcome::Followed {
+                    from: from_addr,
+                    to: addr,
+                };
             }
         }
         FollowOutcome::NoTargetAndNoNumber
@@ -1214,14 +1336,23 @@ impl DisasmView {
                 // dropped long-range jumps when the source or
                 // target scrolled offscreen.
                 if self.config.show_arrows {
-                    self.cached_arrows = compute_arrows_clipped(
-                        provider as &dyn DisasmDataProvider,
-                        first_row,
-                        last_row - first_row,
-                    );
-                    if self.cached_arrows.len() > self.config.max_arrows {
-                        self.cached_arrows.truncate(self.config.max_arrows);
+                    let key = (first_row, last_row, count, self.config.max_arrows);
+                    if self.cached_arrows_key != Some(key) {
+                        self.cached_arrows = compute_arrows_clipped(
+                            provider as &dyn DisasmDataProvider,
+                            first_row,
+                            last_row - first_row,
+                        );
+                        if self.cached_arrows.len() > self.config.max_arrows {
+                            self.cached_arrows.truncate(self.config.max_arrows);
+                        }
+                        self.cached_arrows_key = Some(key);
                     }
+                } else if !self.cached_arrows.is_empty() {
+                    // Arrows toggled off — drop the cache so a
+                    // subsequent flip back doesn't paint stale data.
+                    self.cached_arrows.clear();
+                    self.cached_arrows_key = None;
                 }
 
                 // ── Dynamic comment X ─────────────────────────
@@ -1287,8 +1418,7 @@ impl DisasmView {
                 // smaller than its configured min — prevents the
                 // edit cell from becoming unusably narrow when the
                 // host window is shrunk below the layout total.
-                let comment_w =
-                    (origin_x + avail[0] - comment_x).max(cols.comment);
+                let comment_w = (origin_x + avail[0] - comment_x).max(cols.comment);
                 self.frame_comment_w.set(Some(comment_w));
 
                 // ── Column header ─────────────────────────────
@@ -1329,18 +1459,8 @@ impl DisasmView {
                         let prev_instr = row.checked_sub(1).and_then(|i| provider.instruction(i));
                         let next_instr = provider.instruction(row + 1);
                         self.draw_instruction_row(
-                            ui,
-                            &draw_list,
-                            origin_x,
-                            y,
-                            row,
-                            instr,
-                            prev_instr,
-                            next_instr,
-                            mouse_pos,
-                            avail[0],
-                            comment_x,
-                            provider,
+                            ui, &draw_list, origin_x, y, row, instr, prev_instr, next_instr,
+                            mouse_pos, avail[0], comment_x, provider,
                         );
                     }
                 }
@@ -1398,9 +1518,19 @@ impl DisasmView {
                             .build();
 
                         if entered {
-                            // Enter pressed — commit.
-                            let edit_data = self.edit.take().unwrap();
-                            self.commit_edit(edit_data, provider);
+                            // Enter pressed — commit. The `take()` /
+                            // `if let` pattern (instead of `take().unwrap()`)
+                            // is intentional: a sibling module
+                            // (`input::handle_keyboard`, focus-loss guard
+                            // above) can clear `self.edit` in the same frame
+                            // by future refactors. The outer `if let
+                            // Some(edit) = &mut self.edit` borrow keeps
+                            // that safe today, but the `unwrap` was the
+                            // only production-code panic surface in the
+                            // module — removing it removes the footgun.
+                            if let Some(edit_data) = self.edit.take() {
+                                self.commit_edit(edit_data, provider);
+                            }
                         } else if !ui.is_item_active() && edit.frames > 2 {
                             // Lost focus (clicked elsewhere, Tab, etc.) — cancel.
                             self.edit = None;
@@ -2412,23 +2542,17 @@ mod tests {
     fn three_function_provider() -> VecDisasmProvider {
         let mut p = VecDisasmProvider::new();
         // func A
-        p.push(InstructionEntry::new(0x1000, vec![0x55], "push", "rbp")
-            .with_flow(FlowKind::Stack));
+        p.push(InstructionEntry::new(0x1000, vec![0x55], "push", "rbp").with_flow(FlowKind::Stack));
         p.push(InstructionEntry::new(0x1001, vec![0x90], "nop", ""));
-        p.push(InstructionEntry::new(0x1002, vec![0xC3], "ret", "")
-            .with_flow(FlowKind::Return));
+        p.push(InstructionEntry::new(0x1002, vec![0xC3], "ret", "").with_flow(FlowKind::Return));
         // func B
-        p.push(InstructionEntry::new(0x1003, vec![0x55], "push", "rbp")
-            .with_flow(FlowKind::Stack));
+        p.push(InstructionEntry::new(0x1003, vec![0x55], "push", "rbp").with_flow(FlowKind::Stack));
         p.push(InstructionEntry::new(0x1004, vec![0x90], "nop", ""));
-        p.push(InstructionEntry::new(0x1005, vec![0xC3], "ret", "")
-            .with_flow(FlowKind::Return));
+        p.push(InstructionEntry::new(0x1005, vec![0xC3], "ret", "").with_flow(FlowKind::Return));
         // func C
-        p.push(InstructionEntry::new(0x1006, vec![0x55], "push", "rbp")
-            .with_flow(FlowKind::Stack));
+        p.push(InstructionEntry::new(0x1006, vec![0x55], "push", "rbp").with_flow(FlowKind::Stack));
         p.push(InstructionEntry::new(0x1007, vec![0x90], "nop", ""));
-        p.push(InstructionEntry::new(0x1008, vec![0xC3], "ret", "")
-            .with_flow(FlowKind::Return));
+        p.push(InstructionEntry::new(0x1008, vec![0xC3], "ret", "").with_flow(FlowKind::Return));
         p
     }
 
@@ -2549,7 +2673,12 @@ mod tests {
         // which matches the address of an existing instruction.
         // `mov rax, [0x500]` → follow_at_cursor should jump there.
         let mut p = VecDisasmProvider::new();
-        p.push(InstructionEntry::new(0x100, vec![0x48, 0x8B, 0x05], "mov", "rax, [0x500]"));
+        p.push(InstructionEntry::new(
+            0x100,
+            vec![0x48, 0x8B, 0x05],
+            "mov",
+            "rax, [0x500]",
+        ));
         p.push(InstructionEntry::new(0x500, vec![0x90], "nop", ""));
         let mut view = DisasmView::new("test_follow_op");
         view.cursor_idx = Some(0);
@@ -2563,7 +2692,12 @@ mod tests {
         // Operand contains a number but it doesn't resolve to any
         // known instruction → no navigation.
         let mut p = VecDisasmProvider::new();
-        p.push(InstructionEntry::new(0x100, vec![0xB8, 0x10, 0x00, 0x00, 0x00], "mov", "eax, 0x10"));
+        p.push(InstructionEntry::new(
+            0x100,
+            vec![0xB8, 0x10, 0x00, 0x00, 0x00],
+            "mov",
+            "eax, 0x10",
+        ));
         let mut view = DisasmView::new("test_no_follow");
         view.cursor_idx = Some(0);
         assert!(!view.follow_at_cursor(&mut p));
@@ -2673,9 +2807,14 @@ mod tests {
         // opaque `false` — host can show a status hint.
         let mut p = VecDisasmProvider::new();
         p.push(
-            InstructionEntry::new(0x401000, vec![0xE8, 0x00, 0x00, 0x00, 0x00], "call", "0x4011A0")
-                .with_flow(FlowKind::Call)
-                .with_target(0x4011A0),
+            InstructionEntry::new(
+                0x401000,
+                vec![0xE8, 0x00, 0x00, 0x00, 0x00],
+                "call",
+                "0x4011A0",
+            )
+            .with_flow(FlowKind::Call)
+            .with_target(0x4011A0),
         );
         // Note: NO row at 0x4011A0 in the provider.
 
@@ -2740,7 +2879,10 @@ mod tests {
         view.cursor_idx = Some(0);
         assert_eq!(
             view.follow_at_cursor_diagnostic(&mut p),
-            FollowOutcome::Followed { from: 0x500, to: 0x510 },
+            FollowOutcome::Followed {
+                from: 0x500,
+                to: 0x510
+            },
         );
     }
 
@@ -2937,9 +3079,7 @@ mod tests {
             );
             addr += 1;
             // body
-            p.push(
-                InstructionEntry::new(addr, vec![0x90], "nop", "").with_block(f),
-            );
+            p.push(InstructionEntry::new(addr, vec![0x90], "nop", "").with_block(f));
             addr += 1;
             // ret
             p.push(
@@ -2971,9 +3111,14 @@ mod tests {
         // Typical x32 binary: jmp from 0x401000 → 0x401005.
         let mut p = VecDisasmProvider::new();
         p.push(
-            InstructionEntry::new(0x00401000, vec![0xE9, 0x00, 0x00, 0x00, 0x00], "jmp", "0x00401005")
-                .with_flow(FlowKind::Jump)
-                .with_target(0x00401005),
+            InstructionEntry::new(
+                0x00401000,
+                vec![0xE9, 0x00, 0x00, 0x00, 0x00],
+                "jmp",
+                "0x00401005",
+            )
+            .with_flow(FlowKind::Jump)
+            .with_target(0x00401005),
         );
         p.push(InstructionEntry::new(0x00401005, vec![0x90], "nop", ""));
         let mut view = DisasmView::new("x32_follow");
@@ -3050,11 +3195,11 @@ mod tests {
     #[test]
     fn parse_operand_number_handles_full_u64_range() {
         // Verify the parser doesn't truncate to u32 anywhere.
+        assert_eq!(parse_operand_number("0xFFFFFFFFFFFFFFFF"), Some(u64::MAX));
         assert_eq!(
-            parse_operand_number("0xFFFFFFFFFFFFFFFF"),
-            Some(u64::MAX)
+            parse_operand_number("0x7FF612345678"),
+            Some(0x7FF6_1234_5678)
         );
-        assert_eq!(parse_operand_number("0x7FF612345678"), Some(0x7FF6_1234_5678));
     }
 
     // ── Origin breadcrumb + nav history ───────────────────────────────────
@@ -3219,12 +3364,8 @@ mod tests {
         }
         fn decode_range(&mut self, start_addr: u64, _max_count: usize) {
             if self.pending.remove(&start_addr) {
-                self.decoded.push(InstructionEntry::new(
-                    start_addr,
-                    vec![0x90],
-                    "nop",
-                    "",
-                ));
+                self.decoded
+                    .push(InstructionEntry::new(start_addr, vec![0x90], "nop", ""));
             }
         }
         fn index_of_address(&self, addr: u64) -> Option<usize> {
@@ -3239,9 +3380,14 @@ mod tests {
         // lazy-decode, follow would silently fail.
         let mut decoded = VecDisasmProvider::new();
         decoded.push(
-            InstructionEntry::new(0x401000, vec![0xE8, 0x9B, 0x01, 0x00, 0x00], "call", "0x4011A0")
-                .with_flow(FlowKind::Call)
-                .with_target(0x4011A0),
+            InstructionEntry::new(
+                0x401000,
+                vec![0xE8, 0x9B, 0x01, 0x00, 0x00],
+                "call",
+                "0x4011A0",
+            )
+            .with_flow(FlowKind::Call)
+            .with_target(0x4011A0),
         );
         let mut p = LazyDecodeProvider {
             decoded,
@@ -3261,9 +3407,14 @@ mod tests {
         // Lazy provider has no pending decodes — target stays unknown.
         let mut decoded = VecDisasmProvider::new();
         decoded.push(
-            InstructionEntry::new(0x401000, vec![0xE8, 0x00, 0x00, 0x00, 0x00], "call", "0xDEAD")
-                .with_flow(FlowKind::Call)
-                .with_target(0xDEAD),
+            InstructionEntry::new(
+                0x401000,
+                vec![0xE8, 0x00, 0x00, 0x00, 0x00],
+                "call",
+                "0xDEAD",
+            )
+            .with_flow(FlowKind::Call)
+            .with_target(0xDEAD),
         );
         let mut p = LazyDecodeProvider {
             decoded,
@@ -3297,7 +3448,12 @@ mod tests {
         // (per `NavHistory::new(64)` in DisasmView::new).
         let mut p = VecDisasmProvider::new();
         for i in 0..101 {
-            p.push(InstructionEntry::new(0x1000 + i as u64, vec![0x90], "nop", ""));
+            p.push(InstructionEntry::new(
+                0x1000 + i as u64,
+                vec![0x90],
+                "nop",
+                "",
+            ));
         }
         let mut view = DisasmView::new("nav_capacity");
         view.cursor_idx = Some(0);
@@ -3435,11 +3591,19 @@ mod tests {
         // doesn't accidentally make it required.
         struct ReadOnly;
         impl DisasmDataProvider for ReadOnly {
-            fn instruction_count(&self) -> usize { 0 }
-            fn instruction(&self, _idx: usize) -> Option<&dyn Instruction> { None }
-            fn toggle_breakpoint(&mut self, _addr: u64) -> bool { false }
+            fn instruction_count(&self) -> usize {
+                0
+            }
+            fn instruction(&self, _idx: usize) -> Option<&dyn Instruction> {
+                None
+            }
+            fn toggle_breakpoint(&mut self, _addr: u64) -> bool {
+                false
+            }
             fn decode_range(&mut self, _start_addr: u64, _max_count: usize) {}
-            fn index_of_address(&self, _addr: u64) -> Option<usize> { None }
+            fn index_of_address(&self, _addr: u64) -> Option<usize> {
+                None
+            }
         }
         let mut ro = ReadOnly;
         assert!(!ro.toggle_watchpoint(0x1000));
@@ -3552,5 +3716,872 @@ mod tests {
         )
         .expect("disasm_view config without `locale` field must still parse");
         assert_eq!(cfg.locale, crate::i18n::Locale::En);
+    }
+
+    #[test]
+    fn config_empty_ron_falls_back_to_per_field_defaults() {
+        // Forward-compat regression: an empty `()` (the smallest
+        // possible ron file the host could save against this schema)
+        // must deserialise — every field is `#[serde(default = "fn")]`
+        // since the audit pass, and each helper returns the
+        // `config.ron`-canonical value.
+        let cfg: DisasmViewConfig =
+            ron::from_str("()").expect("empty config must deserialise via field defaults");
+        let canon = DisasmViewConfig::default();
+        assert_eq!(cfg.show_bytes, canon.show_bytes);
+        assert_eq!(cfg.show_comments, canon.show_comments);
+        assert_eq!(cfg.show_arrows, canon.show_arrows);
+        assert_eq!(cfg.show_breakpoints, canon.show_breakpoints);
+        assert_eq!(cfg.show_bookmarks, canon.show_bookmarks);
+        assert_eq!(cfg.icons_available, canon.icons_available);
+        assert_eq!(cfg.show_block_tints, canon.show_block_tints);
+        assert_eq!(cfg.show_header, canon.show_header);
+        assert_eq!(cfg.show_column_dividers, canon.show_column_dividers);
+        assert_eq!(cfg.uppercase, canon.uppercase);
+        assert_eq!(cfg.address_width_64, canon.address_width_64);
+        assert_eq!(cfg.byte_category_colors, canon.byte_category_colors);
+        assert_eq!(cfg.editable, canon.editable);
+        assert_eq!(cfg.follow_execution, canon.follow_execution);
+        assert_eq!(cfg.base_address, canon.base_address);
+        assert_eq!(cfg.max_arrows, canon.max_arrows);
+        assert_eq!(cfg.columns.margin, canon.columns.margin);
+        assert_eq!(cfg.locale, canon.locale);
+    }
+
+    #[test]
+    fn config_partial_ron_keeps_explicit_overrides_per_field() {
+        // Belt-and-braces: a partial config that overrides only a
+        // few fields keeps those overrides and fills the rest from
+        // the per-field helpers.
+        let cfg: DisasmViewConfig =
+            ron::from_str(r#"(show_bytes: false, max_arrows: 1024, uppercase: false)"#)
+                .expect("partial config must deserialise");
+        assert!(!cfg.show_bytes, "explicit override kept");
+        assert!(!cfg.uppercase);
+        assert_eq!(cfg.max_arrows, 1024);
+        // Fallback for the rest.
+        assert!(cfg.show_arrows);
+        assert!(cfg.show_breakpoints);
+        assert_eq!(cfg.columns.margin, 26.0);
+    }
+
+    #[test]
+    fn set_bookmarks_bulk_restore_caps_at_max() {
+        // M1 from the audit — bulk restore replaces and caps.
+        let mut v = DisasmView::new("test");
+        let stored = v.set_bookmarks(0..(DisasmView::MAX_BOOKMARKS as u64 + 8));
+        assert_eq!(stored, DisasmView::MAX_BOOKMARKS);
+        assert_eq!(v.bookmark_count(), DisasmView::MAX_BOOKMARKS);
+        // Replace with a smaller set — must drop the old contents.
+        let stored2 = v.set_bookmarks([0x1000_u64, 0x2000, 0x3000]);
+        assert_eq!(stored2, 3);
+        assert_eq!(v.bookmark_count(), 3);
+        assert!(v.is_bookmarked(0x2000));
+        assert!(!v.is_bookmarked(0x0));
+    }
+
+    #[test]
+    fn with_config_replaces_entire_config() {
+        // M2 from the audit — builder symmetry for the whole config.
+        let cfg = DisasmViewConfig {
+            show_arrows: false,
+            max_arrows: 4,
+            ..DisasmViewConfig::default()
+        };
+        let v = DisasmView::new("test").with_config(cfg);
+        assert!(!v.config().show_arrows);
+        assert_eq!(v.config().max_arrows, 4);
+    }
+
+    #[test]
+    fn config_mut_round_trips() {
+        let mut v = DisasmView::new("test");
+        assert!(v.config().show_bytes);
+        v.config_mut().show_bytes = false;
+        assert!(!v.config().show_bytes);
+    }
+
+    // ── HintVerbosity integration ───────────────────────────────
+
+    #[test]
+    fn config_default_verbosity_is_standard() {
+        let cfg = DisasmViewConfig::default();
+        assert_eq!(cfg.verbosity, super::HintVerbosity::Standard);
+    }
+
+    #[test]
+    fn config_verbosity_round_trips_through_ron() {
+        let cfg = DisasmViewConfig {
+            verbosity: super::HintVerbosity::Educational,
+            ..DisasmViewConfig::default()
+        };
+        let s = ron::ser::to_string(&cfg).unwrap();
+        let restored: DisasmViewConfig = ron::from_str(&s).unwrap();
+        assert_eq!(restored.verbosity, super::HintVerbosity::Educational);
+    }
+
+    #[test]
+    fn config_verbosity_field_optional_in_ron() {
+        // Forward-compat: older saved configs without `verbosity:`
+        // still parse via `#[serde(default)]` and inherit Standard.
+        let cfg: DisasmViewConfig = ron::from_str("()").expect("empty config");
+        assert_eq!(cfg.verbosity, super::HintVerbosity::Standard);
+    }
+
+    /// Walk every catalogue entry of the given recogniser and assert
+    /// that all four tier slots (`compact_en`/`compact_ru`/
+    /// `educational_en`/`educational_ru`) are non-empty. The
+    /// closure-driven probe pattern lets each recogniser test re-use
+    /// the same accept-each pattern (they live in different modules).
+    fn assert_tiers_authored<H>(
+        label: &str,
+        probes: &[(&str, H)],
+        tiers_of: impl Fn(&H) -> &crate::disasm_view::HintTiers,
+    ) {
+        for (tag, hit) in probes {
+            let t = tiers_of(hit);
+            assert!(
+                !t.compact_en.is_empty(),
+                "{label}::{tag}: compact_en still empty"
+            );
+            assert!(
+                !t.compact_ru.is_empty(),
+                "{label}::{tag}: compact_ru still empty"
+            );
+            assert!(
+                !t.educational_en.is_empty(),
+                "{label}::{tag}: educational_en still empty"
+            );
+            assert!(
+                !t.educational_ru.is_empty(),
+                "{label}::{tag}: educational_ru still empty"
+            );
+        }
+    }
+
+    #[test]
+    fn idiom_compact_and_educational_authored_for_every_entry() {
+        // Catalogue-completeness guard: every IDIOM_ in the
+        // catalogue must have authored Compact + Educational tiers.
+        // Each probe is a representative `InstructionContext` for
+        // ONE catalogue constant — adding an idiom requires adding
+        // a probe here. The guard fires (panic) if any tier slot
+        // is still empty.
+        use crate::disasm_view::idiom;
+        let probes: Vec<(&str, idiom::Idiom)> = vec![
+            // IDIOM_PROLOGUE
+            (
+                "prologue",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("push", "rbp"),
+                    next: Some(("mov", "rbp, rsp")),
+                })
+                .unwrap(),
+            ),
+            // IDIOM_EPILOGUE_LEAVE_RET
+            (
+                "epilogue-leave-ret",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("leave", ""),
+                    next: Some(("ret", "")),
+                })
+                .unwrap(),
+            ),
+            // IDIOM_EPILOGUE_POP_RET
+            (
+                "epilogue-pop-ret",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("pop", "rbp"),
+                    next: Some(("ret", "")),
+                })
+                .unwrap(),
+            ),
+            // IDIOM_STACK_ALLOC
+            (
+                "stack-alloc",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("sub", "rsp, 0x20"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_STACK_FREE
+            (
+                "stack-free",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("add", "rsp, 0x20"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_ZERO_REG
+            (
+                "zero-reg",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("xor", "eax, eax"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_NULL_CHECK
+            (
+                "null-check",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("test", "rax, rax"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_CMP_BRANCH
+            (
+                "cmp-branch",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("cmp", "rax, 0"),
+                    next: Some(("je", "0x401000")),
+                })
+                .unwrap(),
+            ),
+            // IDIOM_GET_IP
+            (
+                "get-ip",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("call", "$+5"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_SBB_MASK
+            (
+                "sbb-mask",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("sbb", "eax, eax"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_ROP_GADGET
+            (
+                "rop-gadget",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("pop", "rax"),
+                    next: Some(("ret", "")),
+                })
+                .unwrap(),
+            ),
+            // IDIOM_PUSH_ARG_CALL
+            (
+                "push-arg-call",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("push", "0x1234"),
+                    next: Some(("call", "foo")),
+                })
+                .unwrap(),
+            ),
+            // IDIOM_REG_ARG_CALL — mov rcx, ...; call ...
+            (
+                "reg-arg-call",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("mov", "rcx, 0x1234"),
+                    next: Some(("call", "foo")),
+                })
+                .unwrap(),
+            ),
+            // IDIOM_RDTSC_PAIR
+            (
+                "rdtsc-pair",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: Some(("rdtsc", "")),
+                    current: ("rdtsc", ""),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_INT3_BP
+            (
+                "int3",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("int", "3"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_INT2D
+            (
+                "int2d",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("int", "2D"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_LEA_SELF_NOP
+            (
+                "lea-self-nop",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("lea", "rax, [rax+0]"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_MOV_SELF_NOP
+            (
+                "mov-self-nop",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("mov", "rax, rax"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_ROTATE_BY_ZERO_NOP
+            (
+                "rotate-zero-nop",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("rol", "eax, 0"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // IDIOM_XCHG_EAX_NOP
+            (
+                "xchg-eax-nop",
+                idiom::detect(&idiom::InstructionContext {
+                    prev: None,
+                    current: ("xchg", "eax, eax"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+        ];
+        let pairs: Vec<(&str, idiom::Idiom)> = probes;
+        let refs: Vec<(&str, idiom::Idiom)> = pairs;
+        assert_tiers_authored("idiom", &refs, |i| &i.tiers);
+    }
+
+    #[test]
+    fn boundary_tiers_authored_for_every_entry() {
+        use crate::disasm_view::boundary;
+        let probes: Vec<(&str, boundary::Boundary)> = vec![
+            // BOUNDARY_FUNCTION_START_FRAMED
+            (
+                "framed",
+                boundary::detect(&boundary::BoundaryContext {
+                    prev: None,
+                    current: ("push", "rbp"),
+                    next: Some(("mov", "rbp, rsp")),
+                })
+                .unwrap(),
+            ),
+            // BOUNDARY_FUNCTION_START_CET
+            (
+                "cet",
+                boundary::detect(&boundary::BoundaryContext {
+                    prev: None,
+                    current: ("endbr64", ""),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // BOUNDARY_EPILOGUE_LEAVE_RET
+            (
+                "leave-ret",
+                boundary::detect(&boundary::BoundaryContext {
+                    prev: None,
+                    current: ("leave", ""),
+                    next: Some(("ret", "")),
+                })
+                .unwrap(),
+            ),
+            // BOUNDARY_EPILOGUE_POP_RET
+            (
+                "pop-ret",
+                boundary::detect(&boundary::BoundaryContext {
+                    prev: Some(("pop", "rbp")),
+                    current: ("ret", ""),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // BOUNDARY_EPILOGUE_LEAF_RET
+            (
+                "leaf-ret",
+                boundary::detect(&boundary::BoundaryContext {
+                    prev: Some(("add", "rsp, 0x28")),
+                    current: ("ret", ""),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // BOUNDARY_FUNCTION_END (bare ret w/o recognised prelude)
+            (
+                "function-end",
+                boundary::detect(&boundary::BoundaryContext {
+                    prev: None,
+                    current: ("ret", ""),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // BOUNDARY_BLOCK_END_JMP
+            (
+                "block-end",
+                boundary::detect(&boundary::BoundaryContext {
+                    prev: None,
+                    current: ("jmp", "0x401000"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // BOUNDARY_BLOCK_FORK_JCC
+            (
+                "block-fork",
+                boundary::detect(&boundary::BoundaryContext {
+                    prev: None,
+                    current: ("je", "0x401000"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+        ];
+        assert_tiers_authored("boundary", &probes, |b| &b.tiers);
+    }
+
+    #[test]
+    fn antidisasm_tiers_authored_for_every_entry() {
+        use crate::disasm_view::antidisasm;
+        let probes: Vec<(&str, antidisasm::AntiDisasmTrick)> = vec![
+            // TRICK_PUSH_RET_CFG
+            (
+                "push-ret",
+                antidisasm::detect(&antidisasm::AntiDisasmContext {
+                    prev: None,
+                    current: ("push", "0x401000"),
+                    next: Some(("ret", "")),
+                })
+                .unwrap(),
+            ),
+            // TRICK_OPAQUE_AFTER_MOV
+            (
+                "opaque-mov",
+                antidisasm::detect(&antidisasm::AntiDisasmContext {
+                    prev: Some(("mov", "eax, 5")),
+                    current: ("cmp", "eax, 5"),
+                    next: Some(("jne", "0x401000")),
+                })
+                .unwrap(),
+            ),
+            // TRICK_SMC_RIP_WRITE
+            (
+                "smc-rip",
+                antidisasm::detect(&antidisasm::AntiDisasmContext {
+                    prev: None,
+                    current: ("xor", "[rip+0x100], eax"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // TRICK_HYPERVISOR_BIT
+            (
+                "hv-bit",
+                antidisasm::detect(&antidisasm::AntiDisasmContext {
+                    prev: Some(("cpuid", "")),
+                    current: ("bt", "ecx, 31"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // TRICK_HYPERVISOR_VENDOR
+            (
+                "hv-vendor",
+                antidisasm::detect(&antidisasm::AntiDisasmContext {
+                    prev: Some(("mov", "eax, 0x40000000")),
+                    current: ("cpuid", ""),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // TRICK_TRAP_FLAG_ARM
+            (
+                "trap-flag",
+                antidisasm::detect(&antidisasm::AntiDisasmContext {
+                    prev: Some(("or", "[rsp], 0x100")),
+                    current: ("popf", ""),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // TRICK_JMP_INTO_INSTRUCTION
+            (
+                "jmp-into-next",
+                antidisasm::detect(&antidisasm::AntiDisasmContext {
+                    prev: None,
+                    current: ("jmp", "short $+2"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+            // TRICK_RDTSC_DELTA
+            (
+                "rdtsc-delta",
+                antidisasm::detect(&antidisasm::AntiDisasmContext {
+                    prev: Some(("rdtsc", "")),
+                    current: ("sub", "eax, [rsp+8]"),
+                    next: None,
+                })
+                .unwrap(),
+            ),
+        ];
+        assert_tiers_authored("antidisasm", &probes, |t| &t.tiers);
+    }
+
+    #[test]
+    fn compiler_tiers_authored_for_every_entry() {
+        use crate::disasm_view::abi::Abi;
+        use crate::disasm_view::compiler;
+        let probes: Vec<(&str, compiler::CompilerPattern)> = vec![
+            // PATTERN_PEB_WIN64
+            (
+                "peb-win64",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("mov", "rax, gs:[0x60]"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_PEB_WIN32
+            (
+                "peb-win32",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("mov", "eax, fs:[0x30]"),
+                    next: None,
+                    abi: Abi::Cdecl,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_TEB_SELF_WIN64
+            (
+                "teb-win64",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("mov", "rax, gs:[0x30]"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_TIB_SELF_WIN32
+            (
+                "tib-win32",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("mov", "eax, fs:[0x18]"),
+                    next: None,
+                    abi: Abi::Cdecl,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_CHKSTK
+            (
+                "chkstk",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("call", "__chkstk"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_WIN64_LEAF_FRAME
+            (
+                "leaf-frame",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("sub", "rsp, 0x28"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_VTABLE_CALL
+            (
+                "vtable-call",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("call", "qword ptr [rax+0x10]"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_VTABLE_CALL_SLOT0
+            (
+                "vtable-slot0",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("call", "qword ptr [rcx]"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_SEH_INSTALL_WIN32
+            (
+                "seh-install",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("mov", "dword ptr fs:[0], esp"),
+                    next: None,
+                    abi: Abi::Cdecl,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_SECURITY_COOKIE
+            (
+                "security-cookie",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("mov", "rax, [__security_cookie]"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_ATOMIC_CAS
+            (
+                "atomic-cas",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("cmpxchg", "[rax], rdx"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_ATOMIC_RMW
+            (
+                "atomic-rmw",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("lock", ""),
+                    next: Some(("xadd", "[rax], rdx")),
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_CPUID_DETECT
+            (
+                "cpuid-detect",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("cpuid", ""),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_INDIRECT_TAIL_JMP
+            (
+                "indirect-tail",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("jmp", "rax"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+            // PATTERN_IAT_THUNK
+            (
+                "iat-thunk",
+                compiler::detect(&compiler::CompilerContext {
+                    prev: None,
+                    current: ("jmp", "qword ptr [rip+0x1234]"),
+                    next: None,
+                    abi: Abi::Win64,
+                })
+                .unwrap(),
+            ),
+        ];
+        assert_tiers_authored("compiler", &probes, |p| &p.tiers);
+    }
+
+    #[test]
+    fn mnemonic_top_30_tiers_authored() {
+        // Top-30 most-common mnemonics were upgraded to entry_t /
+        // entry_gt — assert each of those has Compact + Educational
+        // description tiers populated.
+        use crate::disasm_view::mnemonic;
+        let top_30 = [
+            "mov", "lea", "xchg", "push", "pop", "call", "ret", "jmp", "je", "jne", "jz", "jnz",
+            "jg", "jl", "ja", "jb", "jae", "jbe", "cmp", "test", "add", "sub", "inc", "dec", "xor",
+            "and", "or", "mul", "imul", "div",
+        ];
+        for mn in top_30 {
+            let info = mnemonic::lookup(mn)
+                .unwrap_or_else(|| panic!("top-30 mnemonic {mn:?} missing from catalogue"));
+            assert!(
+                !info.description_tiers.compact_en.is_empty(),
+                "mnemonic::{mn}: description compact_en empty"
+            );
+            assert!(
+                !info.description_tiers.compact_ru.is_empty(),
+                "mnemonic::{mn}: description compact_ru empty"
+            );
+            assert!(
+                !info.description_tiers.educational_en.is_empty(),
+                "mnemonic::{mn}: description educational_en empty"
+            );
+            assert!(
+                !info.description_tiers.educational_ru.is_empty(),
+                "mnemonic::{mn}: description educational_ru empty"
+            );
+        }
+    }
+
+    #[test]
+    fn branch_description_for_returns_distinct_text_per_verbosity() {
+        // BranchHint::description_for is format!()-based, not
+        // catalogue-driven — confirm each of the three verbosity
+        // tiers produces distinct text for each direction.
+        use crate::disasm_view::branch;
+        for direction_probe in [
+            branch::classify(0x401000, 0x401040), // forward
+            branch::classify(0x401040, 0x401000), // backward
+            branch::classify(0x401000, 0x401000), // self
+        ] {
+            let compact = direction_probe.description_for(
+                crate::i18n::Locale::En.into(),
+                super::HintVerbosity::Compact,
+            );
+            let standard = direction_probe.description_for(
+                crate::i18n::Locale::En.into(),
+                super::HintVerbosity::Standard,
+            );
+            let educational = direction_probe.description_for(
+                crate::i18n::Locale::En.into(),
+                super::HintVerbosity::Educational,
+            );
+            assert_ne!(
+                compact, standard,
+                "{direction_probe:?}: compact == standard"
+            );
+            assert!(
+                educational.len() >= standard.len(),
+                "{direction_probe:?}: educational shorter than standard"
+            );
+            // RU side same shape.
+            let compact_ru = direction_probe.description_for(
+                crate::i18n::Locale::Ru.into(),
+                super::HintVerbosity::Compact,
+            );
+            let standard_ru = direction_probe.description_for(
+                crate::i18n::Locale::Ru.into(),
+                super::HintVerbosity::Standard,
+            );
+            assert_ne!(
+                compact_ru, standard_ru,
+                "RU {direction_probe:?}: compact == standard"
+            );
+        }
+    }
+
+    #[test]
+    fn description_for_returns_tier_strings_when_authored() {
+        use crate::disasm_view::idiom;
+        let ctx = idiom::InstructionContext {
+            prev: None,
+            current: ("xor", "eax, eax"),
+            next: None,
+        };
+        let hit = idiom::detect(&ctx).expect("zero-reg idiom");
+        let compact_en = hit.description_for(
+            crate::i18n::Locale::En.into(),
+            super::HintVerbosity::Compact,
+        );
+        let standard_en = hit.description_for(
+            crate::i18n::Locale::En.into(),
+            super::HintVerbosity::Standard,
+        );
+        let educational_en = hit.description_for(
+            crate::i18n::Locale::En.into(),
+            super::HintVerbosity::Educational,
+        );
+        // Standard always returns the en field directly.
+        assert_eq!(standard_en, hit.en);
+        // Compact must differ from Standard for an authored entry
+        // (shorter, tightly-worded telegram).
+        assert_ne!(
+            compact_en, standard_en,
+            "compact tier should be distinct from standard when authored"
+        );
+        // Educational must be at least as long as Standard for an
+        // authored entry (3-5 sentences vs 1-2).
+        assert!(
+            educational_en.len() >= standard_en.len(),
+            "educational tier should not be shorter than standard"
+        );
+    }
+
+    #[test]
+    fn description_for_falls_back_when_tier_unauthored() {
+        // Construct a manual Idiom with EMPTY tiers — fallback
+        // must return the Standard `en` / `ru`.
+        let test_idiom = crate::disasm_view::idiom::Idiom {
+            en: "Standard EN text",
+            ru: "Standard RU text",
+            tiers: crate::disasm_view::HintTiers::EMPTY,
+        };
+        // All three tiers must return the standard strings.
+        for v in [
+            super::HintVerbosity::Compact,
+            super::HintVerbosity::Standard,
+            super::HintVerbosity::Educational,
+        ] {
+            assert_eq!(
+                test_idiom.description_for(crate::i18n::Locale::En.into(), v),
+                "Standard EN text"
+            );
+            assert_eq!(
+                test_idiom.description_for(crate::i18n::Locale::Ru.into(), v),
+                "Standard RU text"
+            );
+        }
+    }
+
+    #[test]
+    fn backwards_compat_old_description_method_unchanged() {
+        // Guard: the pre-verbosity `.description(locale)` method
+        // must always return the Standard tier (`en`/`ru`) so
+        // downstream callers that haven't adopted
+        // `description_for` see no behaviour change.
+        use crate::disasm_view::idiom;
+        let ctx = idiom::InstructionContext {
+            prev: None,
+            current: ("xor", "eax, eax"),
+            next: None,
+        };
+        let hit = idiom::detect(&ctx).unwrap();
+        assert_eq!(hit.description(crate::i18n::Locale::En.into()), hit.en);
+        assert_eq!(hit.description(crate::i18n::Locale::Ru.into()), hit.ru);
     }
 }

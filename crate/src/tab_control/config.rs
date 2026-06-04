@@ -149,8 +149,7 @@ pub struct TabControlConfig {
 
 impl Default for TabControlConfig {
     fn default() -> Self {
-        ron::from_str(include_str!("config.ron"))
-            .expect("built-in tab_control/config.ron is valid")
+        ron::from_str(include_str!("config.ron")).expect("built-in tab_control/config.ron is valid")
     }
 }
 

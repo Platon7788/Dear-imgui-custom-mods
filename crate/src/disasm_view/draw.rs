@@ -121,7 +121,6 @@ impl DisasmView {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)] // tooltip needs prev/next neighbours for idiom detection
     pub(super) fn draw_instruction_row(
         &self,
@@ -366,8 +365,7 @@ impl DisasmView {
                         colors.bp_color(bp_num.max(1))
                     };
                     let text_w = label.len() as f32 * self.char_advance;
-                    let cx =
-                        x + GUTTER_EDGE_PAD + half + GUTTER_CENTRE_GAP + half * 0.5;
+                    let cx = x + GUTTER_EDGE_PAD + half + GUTTER_CENTRE_GAP + half * 0.5;
                     let tx = cx - text_w * 0.5;
                     let text_h = self.line_height - 4.0;
                     let ty = y + (lh - text_h) * 0.5;
@@ -414,8 +412,7 @@ impl DisasmView {
             && flash_row == idx
             && frames > 0
         {
-            let fade = (frames as f32 / super::input::ADDRESS_FLASH_FRAMES as f32)
-                .clamp(0.0, 1.0);
+            let fade = (frames as f32 / super::input::ADDRESS_FLASH_FRAMES as f32).clamp(0.0, 1.0);
             let c = colors.selection_bg;
             let pad_x = self.char_advance * 0.5;
             let bg_left = x - pad_x;
@@ -513,11 +510,7 @@ impl DisasmView {
         // ── Mnemonic ──────────────────────────────────────────
         // Same COL_INNER_PAD treatment as Bytes: keep mnemonic/operand
         // text off the left divider.
-        let bytes_end_x = if cfg.show_bytes {
-            x + cols.bytes
-        } else {
-            x
-        };
+        let bytes_end_x = if cfg.show_bytes { x + cols.bytes } else { x };
         let instr_data_x = bytes_end_x + COL_INNER_PAD;
         let mnemonic = instr.mnemonic();
         let mnemonic_color = colors.mnemonic_color(instr.flow_kind());
@@ -585,11 +578,7 @@ impl DisasmView {
                 // commented instruction. The "; " prefix advances
                 // the cursor by `2 * char_advance` (monospace).
                 let prefix_x = comment_x + COMMENT_LEFT_PAD;
-                draw_list.add_text(
-                    [prefix_x, y],
-                    col32(colors.comment),
-                    "; ",
-                );
+                draw_list.add_text([prefix_x, y], col32(colors.comment), "; ");
                 draw_list.add_text(
                     [prefix_x + 2.0 * self.char_advance, y],
                     col32(colors.comment),
@@ -664,10 +653,18 @@ impl DisasmView {
 
                 if let Some(target) = instr.branch_target() {
                     let target_str = match (upper, is_64) {
-                        (true, true) => format!("{}0x{:016X}", strings.tooltip_target_label, target),
-                        (false, true) => format!("{}0x{:016x}", strings.tooltip_target_label, target),
-                        (true, false) => format!("{}0x{:08X}", strings.tooltip_target_label, target),
-                        (false, false) => format!("{}0x{:08x}", strings.tooltip_target_label, target),
+                        (true, true) => {
+                            format!("{}0x{:016X}", strings.tooltip_target_label, target)
+                        }
+                        (false, true) => {
+                            format!("{}0x{:016x}", strings.tooltip_target_label, target)
+                        }
+                        (true, false) => {
+                            format!("{}0x{:08X}", strings.tooltip_target_label, target)
+                        }
+                        (false, false) => {
+                            format!("{}0x{:08x}", strings.tooltip_target_label, target)
+                        }
                     };
                     ui.text(target_str);
                     let off = target as i64 - addr as i64;
@@ -730,14 +727,31 @@ impl DisasmView {
                 // strip the tooltip down to the raw fields.
                 let info = super::mnemonic::lookup(instr.mnemonic());
 
+                // Single accumulator (audit H2/draw): each detector
+                // emits its own separator only on the first actual
+                // emission. The previous code chained a growing
+                // disjunction `!(cfg.show_X || cfg.show_Y || ...)`
+                // through every block — by the branch-direction
+                // block it had **7** disjuncts. Adding a new
+                // educational toggle silently broke older arms
+                // (drift bug). The new pattern is O(1) per block
+                // and adding a block touches only its own scope.
+                let mut emitted_any = false;
+                let maybe_separator = |emitted_any: &mut bool, ui: &dear_imgui_rs::Ui| {
+                    if !*emitted_any {
+                        ui.separator();
+                        *emitted_any = true;
+                    }
+                };
+
                 if cfg.show_explanation
                     && let Some(info) = info
                 {
-                    ui.separator();
+                    maybe_separator(&mut emitted_any, ui);
                     ui.text(format!(
                         "{}{}",
                         strings.tooltip_explanation_label,
-                        info.description(cfg.locale),
+                        info.description_for(cfg.locale.into(), cfg.verbosity),
                     ));
                 }
 
@@ -750,28 +764,20 @@ impl DisasmView {
                         next: next_pair,
                     };
                     if let Some(idiom) = super::idiom::detect(&ctx) {
-                        // Reuse the explanation separator if it was
-                        // already drawn; if not, add one now so the
-                        // educational lines visually break away from
-                        // the technical fields above.
-                        if !cfg.show_explanation || info.is_none() {
-                            ui.separator();
-                        }
+                        maybe_separator(&mut emitted_any, ui);
                         ui.text(format!(
                             "{}{}",
                             strings.tooltip_idiom_label,
-                            idiom.description(cfg.locale),
+                            idiom.description_for(cfg.locale.into(), cfg.verbosity),
                         ));
                     }
                 }
 
                 if cfg.show_gotcha
                     && let Some(info) = info
-                    && let Some(gotcha) = info.gotcha(cfg.locale)
+                    && let Some(gotcha) = info.gotcha_for(cfg.locale.into(), cfg.verbosity)
                 {
-                    if !(cfg.show_explanation || cfg.show_idiom) {
-                        ui.separator();
-                    }
+                    maybe_separator(&mut emitted_any, ui);
                     ui.text(format!("{}{}", strings.tooltip_gotcha_label, gotcha));
                 }
 
@@ -784,46 +790,27 @@ impl DisasmView {
                 // segment base, etc.) — the rest are skipped to keep
                 // the tooltip from spamming "RBX = general-purpose"
                 // for every plain reg/reg move.
-                let mut emitted_any = false;
                 if cfg.show_operand_hint {
                     for raw in split_operand_list(instr.operands()) {
                         match super::operand::parse(raw) {
                             super::operand::OperandKind::Memory(mem) => {
                                 let line = super::operand::explain_memory(
-                                    &mem, cfg.abi, cfg.locale,
+                                    &mem,
+                                    cfg.abi,
+                                    cfg.locale.into(),
                                 );
                                 if !line.is_empty() {
-                                    if !(emitted_any
-                                        || cfg.show_explanation
-                                        || cfg.show_idiom
-                                        || cfg.show_gotcha)
-                                    {
-                                        ui.separator();
-                                    }
-                                    emitted_any = true;
-                                    ui.text(format!(
-                                        "{}{}",
-                                        strings.tooltip_operand_label, line,
-                                    ));
+                                    maybe_separator(&mut emitted_any, ui);
+                                    ui.text(format!("{}{}", strings.tooltip_operand_label, line));
                                 }
                             }
                             super::operand::OperandKind::Register(reg) => {
                                 let role = super::abi::role(reg, cfg.abi);
-                                if let Some(desc) = super::abi::role_description(
-                                    role, reg, cfg.locale,
-                                ) {
-                                    if !(emitted_any
-                                        || cfg.show_explanation
-                                        || cfg.show_idiom
-                                        || cfg.show_gotcha)
-                                    {
-                                        ui.separator();
-                                    }
-                                    emitted_any = true;
-                                    ui.text(format!(
-                                        "{}{}",
-                                        strings.tooltip_operand_label, desc,
-                                    ));
+                                if let Some(desc) =
+                                    super::abi::role_description(role, reg, cfg.locale.into())
+                                {
+                                    maybe_separator(&mut emitted_any, ui);
+                                    ui.text(format!("{}{}", strings.tooltip_operand_label, desc));
                                 }
                             }
                             _ => {}
@@ -845,19 +832,11 @@ impl DisasmView {
                         abi: cfg.abi,
                     };
                     if let Some(pat) = super::compiler::detect(&cctx) {
-                        if !(emitted_any
-                            || cfg.show_explanation
-                            || cfg.show_idiom
-                            || cfg.show_gotcha
-                            || cfg.show_operand_hint)
-                        {
-                            ui.separator();
-                        }
-                        emitted_any = true;
+                        maybe_separator(&mut emitted_any, ui);
                         ui.text(format!(
                             "{}{}",
                             strings.tooltip_compiler_label,
-                            pat.description(cfg.locale),
+                            pat.description_for(cfg.locale.into(), cfg.verbosity),
                         ));
                     }
                 }
@@ -876,20 +855,11 @@ impl DisasmView {
                         next: next_pair,
                     };
                     if let Some(trick) = super::antidisasm::detect(&actx) {
-                        if !(emitted_any
-                            || cfg.show_explanation
-                            || cfg.show_idiom
-                            || cfg.show_gotcha
-                            || cfg.show_operand_hint
-                            || cfg.show_compiler_pattern)
-                        {
-                            ui.separator();
-                        }
-                        emitted_any = true;
+                        maybe_separator(&mut emitted_any, ui);
                         ui.text(format!(
                             "{}{}",
                             strings.tooltip_antidisasm_label,
-                            trick.description(cfg.locale),
+                            trick.description_for(cfg.locale.into(), cfg.verbosity),
                         ));
                     }
                 }
@@ -912,21 +882,11 @@ impl DisasmView {
                         next: next_pair,
                     };
                     if let Some(b) = super::boundary::detect(&bctx) {
-                        if !(emitted_any
-                            || cfg.show_explanation
-                            || cfg.show_idiom
-                            || cfg.show_gotcha
-                            || cfg.show_operand_hint
-                            || cfg.show_compiler_pattern
-                            || cfg.show_antidisasm)
-                        {
-                            ui.separator();
-                        }
-                        emitted_any = true;
+                        maybe_separator(&mut emitted_any, ui);
                         ui.text(format!(
                             "{}{}",
                             strings.tooltip_boundary_label,
-                            b.description(cfg.locale),
+                            b.description_for(cfg.locale.into(), cfg.verbosity),
                         ));
                     }
                 }
@@ -942,21 +902,11 @@ impl DisasmView {
                     && let Some(target) = instr.branch_target()
                 {
                     let hint = super::branch::classify(addr, target);
-                    if !(emitted_any
-                        || cfg.show_explanation
-                        || cfg.show_idiom
-                        || cfg.show_gotcha
-                        || cfg.show_operand_hint
-                        || cfg.show_compiler_pattern
-                        || cfg.show_antidisasm
-                        || cfg.show_boundary)
-                    {
-                        ui.separator();
-                    }
+                    maybe_separator(&mut emitted_any, ui);
                     ui.text(format!(
                         "{}{}",
                         strings.tooltip_branch_label,
-                        hint.description(cfg.locale),
+                        hint.description_for(cfg.locale.into(), cfg.verbosity),
                     ));
                 }
             });

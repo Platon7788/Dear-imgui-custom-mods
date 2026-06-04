@@ -196,8 +196,15 @@ fn parse_ron_tuple(s: &str) -> Vec<(String, FieldValue)> {
 fn parse_ron_value(s: &str) -> (FieldValue, &str) {
     let s = s.trim();
     if let Some(rest) = s.strip_prefix('"') {
-        // String.
-        let mut end = 0;
+        // String. `close` is the byte index of the terminating quote, or
+        // `None` when unterminated (malformed input) — consume the rest
+        // in that case instead of slicing at byte 1, which could split a
+        // multi-byte UTF-8 char and panic.
+        //
+        // Only `\\` and `\"` are emitted by the formatter, so the
+        // two-pass `replace` is order-safe (unlike JSON, there is no
+        // two-char `\n`/`\t` escape to collide with a doubled backslash).
+        let mut close: Option<usize> = None;
         let mut escape = false;
         for (i, b) in rest.bytes().enumerate() {
             if escape {
@@ -209,22 +216,34 @@ fn parse_ron_value(s: &str) -> (FieldValue, &str) {
                 continue;
             }
             if b == b'"' {
-                end = i;
+                close = Some(i);
                 break;
             }
         }
-        let val = rest[..end].replace("\\\"", "\"").replace("\\\\", "\\");
-        (FieldValue::Str(val), &rest[end + 1..])
+        let (raw, rem) = match close {
+            Some(end) => (&rest[..end], &rest[end + 1..]),
+            None => (rest, ""),
+        };
+        // Quote-unescape before backslash-unescape: the formatter only
+        // doubles `\` and escapes `"`, so this order round-trips every
+        // combination (verified against `\`, `"`, `\"`, `\\"` etc.).
+        let val = raw.replace("\\\"", "\"").replace("\\\\", "\\");
+        (FieldValue::Str(val), rem)
     } else if let Some(rest) = s.strip_prefix("None") {
         (FieldValue::Null, rest)
     } else if let Some(rest) = s.strip_prefix("true") {
         (FieldValue::Bool(true), rest)
     } else if let Some(rest) = s.strip_prefix("false") {
         (FieldValue::Bool(false), rest)
-    } else if s.starts_with('(') {
-        // Color tuple (r, g, b, a).
-        let close = s.find(')').unwrap_or(s.len());
-        let inner = &s[1..close];
+    } else if let Some(body) = s.strip_prefix('(') {
+        // Color tuple (r, g, b, a). When the `)` is missing (malformed
+        // input) treat the rest of the slice as the tuple body and leave
+        // no remainder — `s.len()` for the close index would make
+        // `close + 1` index past the end and panic.
+        let (inner, after) = match body.find(')') {
+            Some(close) => (&body[..close], &body[close + 1..]),
+            None => (body, ""),
+        };
         let nums: Vec<f32> = inner
             .split(',')
             .filter_map(|n| n.trim().parse::<f32>().ok())
@@ -232,10 +251,13 @@ fn parse_ron_value(s: &str) -> (FieldValue, &str) {
         if nums.len() == 4 {
             (
                 FieldValue::Color([nums[0], nums[1], nums[2], nums[3]]),
-                &s[close + 1..],
+                after,
             )
         } else {
-            (FieldValue::Str(s[..close + 1].to_string()), &s[close + 1..])
+            // Not a 4-tuple colour — surface the raw text up to (and
+            // including, when present) the closing paren as a string.
+            let raw_end = s.len() - after.len();
+            (FieldValue::Str(s[..raw_end].to_string()), after)
         }
     } else {
         // Number.
@@ -248,5 +270,74 @@ fn parse_ron_value(s: &str) -> (FieldValue, &str) {
             let i = num_str.parse::<i64>().unwrap_or(0);
             (FieldValue::Int(i), &s[end..])
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn round_trip_str(s: &str) -> String {
+        let mut d = FlatExportData::new(vec!["v".into()]);
+        d.add_row(vec![FieldValue::Str(s.into())]);
+        let ron = format_flat(&d);
+        let parsed = parse_flat(&ron).expect("parse");
+        match &parsed.rows[0][0] {
+            FieldValue::Str(out) => out.clone(),
+            other => panic!("expected Str, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn escaping_round_trips() {
+        // RON only escapes `\` and `"`; the two-pass unescape must be
+        // order-safe across every backslash/quote combination.
+        assert_eq!(round_trip_str("plain"), "plain");
+        assert_eq!(round_trip_str("a\\b"), "a\\b");
+        assert_eq!(round_trip_str("a\"b"), "a\"b");
+        assert_eq!(round_trip_str("a\\\"b"), "a\\\"b");
+        assert_eq!(round_trip_str("back\\slash"), "back\\slash");
+        assert_eq!(round_trip_str("trailing\\"), "trailing\\");
+    }
+
+    #[test]
+    fn parse_unterminated_string_does_not_panic() {
+        // Multi-byte first char + missing closing quote: must consume the
+        // remainder instead of slicing mid-codepoint.
+        let (val, rest) = parse_ron_value("\"\u{00e9}abc");
+        assert_eq!(rest, "");
+        match val {
+            FieldValue::Str(s) => assert_eq!(s, "\u{00e9}abc"),
+            other => panic!("expected Str, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_unterminated_color_tuple_does_not_panic() {
+        // Regression: missing `)` set `close == s.len()`, and `&s[close + 1..]`
+        // indexed past the end and panicked.
+        let (_val, rest) = parse_ron_value("(0.1, 0.2, 0.3");
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn color_tuple_round_trips() {
+        let mut d = FlatExportData::new(vec!["c".into()]);
+        d.add_row(vec![FieldValue::Color([0.25, 0.5, 0.75, 1.0])]);
+        let ron = format_flat(&d);
+        let parsed = parse_flat(&ron).unwrap();
+        match &parsed.rows[0][0] {
+            FieldValue::Color(c) => {
+                assert!((c[0] - 0.25).abs() < 1e-3);
+                assert!((c[2] - 0.75).abs() < 1e-3);
+            }
+            other => panic!("expected Color, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn none_parses_as_null() {
+        let parsed = parse_flat("[\n  (x: None),\n]").unwrap();
+        assert!(matches!(parsed.rows[0][0], FieldValue::Null));
     }
 }

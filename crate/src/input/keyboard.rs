@@ -258,9 +258,10 @@ pub fn reinforce_physical_key_state(io: &mut Io, event: &KeyEvent) {
 /// }
 /// ```
 ///
-/// `app_window` and `app_window` already wire the same logic
-/// internally, so applications that build on those frameworks do not
-/// need this helper.
+/// **For `dear-app` users** see [`dispatch_dear_app_event`] — `dear-app`
+/// does not expose a consumed-flag return from `on_event`, so it cannot
+/// fully replicate this dispatcher; the lighter helper installs only the
+/// non-destructive injections.
 pub fn dispatch_window_event(
     context: &mut dear_imgui_rs::Context,
     platform: &mut dear_imgui_winit::WinitPlatform,
@@ -290,155 +291,73 @@ pub fn dispatch_window_event(
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn letters_map_to_imgui_keys() {
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyA)),
-            Some(Key::A)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyC)),
-            Some(Key::C)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::KeyZ)),
-            Some(Key::Z)
-        );
-    }
-
-    #[test]
-    fn function_keys_map() {
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::F1)),
-            Some(Key::F1)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::F5)),
-            Some(Key::F5)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::F12)),
-            Some(Key::F12)
-        );
-    }
-
-    #[test]
-    fn digit_keys_map_to_key_variants() {
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit0)),
-            Some(Key::Key0)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit5)),
-            Some(Key::Key5)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit9)),
-            Some(Key::Key9)
-        );
-    }
-
-    #[test]
-    fn numpad_digits_map_to_keypad_variants() {
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Numpad0)),
-            Some(Key::Keypad0)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Numpad9)),
-            Some(Key::Keypad9)
-        );
-        // Distinct from top-row Key0..9.
-        assert_ne!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Numpad5)),
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Digit5))
-        );
-    }
-
-    #[test]
-    fn numpad_operators_map() {
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadAdd)),
-            Some(Key::KeypadAdd)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadSubtract)),
-            Some(Key::KeypadSubtract)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadMultiply)),
-            Some(Key::KeypadMultiply)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadDivide)),
-            Some(Key::KeypadDivide)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadDecimal)),
-            Some(Key::KeypadDecimal)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadEnter)),
-            Some(Key::KeypadEnter)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::NumpadEqual)),
-            Some(Key::KeypadEqual)
-        );
-    }
-
-    #[test]
-    fn navigation_keys_map() {
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Escape)),
-            Some(Key::Escape)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::ArrowLeft)),
-            Some(Key::LeftArrow)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Home)),
-            Some(Key::Home)
-        );
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::Delete)),
-            Some(Key::Delete)
-        );
-    }
-
-    #[test]
-    fn unmapped_key_returns_none() {
-        // PrintScreen is not in the covered set.
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Code(KeyCode::PrintScreen)),
-            None
-        );
-    }
-
-    #[test]
-    fn unidentified_returns_none() {
-        use winit::keyboard::NativeKeyCode;
-        assert_eq!(
-            physical_key_to_imgui(PhysicalKey::Unidentified(NativeKeyCode::Unidentified)),
-            None
-        );
-    }
-
-    #[test]
-    fn numpad_control_key_detection() {
-        use winit::keyboard::Key as WKey;
-        assert!(is_numpad_control_key(&WKey::Named(NamedKey::Enter)));
-        assert!(is_numpad_control_key(&WKey::Named(NamedKey::ArrowUp)));
-        assert!(is_numpad_control_key(&WKey::Named(NamedKey::PageDown)));
-        // Character keys are NOT control keys — they produce text.
-        assert!(!is_numpad_control_key(&WKey::Character("1".into())));
-        assert!(!is_numpad_control_key(&WKey::Character("+".into())));
+/// Layout-independent shortcut fix for [`dear-app`]-style hosts.
+///
+/// `dear-app::AppBuilder::on_event` does not allow the callback to suppress
+/// the subsequent `platform.handle_event` call, so the [full
+/// dispatcher][`dispatch_window_event`] cannot be used there. This helper
+/// installs only the **non-destructive** half of the fix:
+///
+/// - On `WindowEvent::KeyboardInput`, when Ctrl or Alt is held, injects
+///   `Key::C` / `Key::V` / `Key::X` / `Key::A` / `Key::Z` / … based on the
+///   **physical scan code** so Dear ImGui recognises the shortcut on RU /
+///   DE / FR / any non-Latin keyboard layout.
+///
+/// This is safe to call alongside `dear-imgui-winit`'s own keyboard
+/// handler — `io.add_key_event` is idempotent against the same (key, state)
+/// pair, and the Cyrillic / dead-key logical key falls through
+/// `winit_key_to_imgui_key` as `None`, so there is no competing key event.
+///
+/// `try_inject_numpad_text` is **not** called here: `dear-imgui-winit` 0.11
+/// already adds numpad digit characters via `event.text`, so calling it
+/// would double-inject the digit. Hosts who roll their own winit loop and
+/// suppress the platform forward should use [`dispatch_window_event`]
+/// instead — that path is structurally safe.
+///
+/// ### Known residual quirk
+///
+/// On non-Latin layouts the Cyrillic character ("с" for Ctrl+C, "в" for
+/// Ctrl+V, …) is still added to the input character queue by
+/// `dear-imgui-winit::handle_keyboard_input` because it does not filter
+/// `event.text` against `io.key_ctrl`. The shortcut fires (Ctrl+C copies,
+/// Ctrl+V pastes, etc.), but a stray Cyrillic letter may also land in the
+/// focused `InputText`. Fixing this requires either an upstream patch in
+/// `dear-imgui-winit` or a `consumed: bool` return from
+/// `dear-app::on_event`. Tracked in `_CONTEXT.md` (session 044+).
+///
+/// ### Wiring
+///
+/// ```rust,ignore
+/// AppBuilder::new()
+///     .on_event(move |event, _window, ctx| {
+///         dear_imgui_custom_mod::input::keyboard::dispatch_dear_app_event(ctx, event);
+///         // … your own per-event handling …
+///     })
+///     .run().unwrap();
+/// ```
+///
+/// `chrome::Chrome::on_event` already calls this internally, so apps using
+/// the chrome wrapper do not need to wire it manually.
+///
+/// [`dear-app`]: https://crates.io/crates/dear-app
+pub fn dispatch_dear_app_event(
+    context: &mut dear_imgui_rs::Context,
+    event: &winit::event::Event<()>,
+) {
+    let winit::event::Event::WindowEvent { event: we, .. } = event else {
+        return;
+    };
+    if let winit::event::WindowEvent::KeyboardInput { event: ke, .. } = we {
+        let _ = try_inject_ctrl_alt_shortcut(context.io_mut(), ke);
     }
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+//
+// The test suite lives in a sibling file to keep this module under the
+// 500-line cap (CLAUDE.md). `tests` is still a child of `keyboard`, so its
+// `use super::*` reaches the private `is_numpad_control_key` helper directly.
+
+#[cfg(test)]
+#[path = "keyboard_tests.rs"]
+mod tests;

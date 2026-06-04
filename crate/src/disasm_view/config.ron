@@ -44,4 +44,5 @@
     show_branch_direction: true,
     abi: Win64,
     locale: En,
+    verbosity: Standard,
 )

@@ -104,21 +104,23 @@ pub fn nav_colors() -> NavColors {
 
 /// Confirm-dialog colors for this theme.
 ///
-/// The dialog background is deliberately one step lighter than the titlebar
-/// bg so the modal "floats" above the window content. Confirm / Cancel
-/// buttons use semantic colors (red / green) so severity stays obvious.
+/// The dialog background is deliberately lifted well above the titlebar bg
+/// so the modal clearly "floats" above the window content instead of melting
+/// into it. The dim overlay is kept moderate (0.45) so the surroundings stay
+/// readable rather than going fully black. Confirm / Cancel buttons use
+/// semantic colors (red / green) so severity stays obvious.
 pub fn dialog_colors() -> DialogColors {
     let bg = hex(BG_CHILD, 1.0);
     let bg_float = [
-        (bg[0] + 0.04).min(1.0),
-        (bg[1] + 0.04).min(1.0),
-        (bg[2] + 0.04).min(1.0),
+        (bg[0] + 0.09).min(1.0),
+        (bg[1] + 0.09).min(1.0),
+        (bg[2] + 0.09).min(1.0),
         1.0,
     ];
     let confirm_red = [0.70, 0.22, 0.22, 1.0];
     let cancel_green = [0.18, 0.52, 0.35, 1.0];
     DialogColors {
-        overlay: [0.0, 0.0, 0.0, 0.55],
+        overlay: [0.0, 0.0, 0.0, 0.45],
         bg: bg_float,
         border: hex(BORDER, 1.0),
         title: hex(FG, 1.0),

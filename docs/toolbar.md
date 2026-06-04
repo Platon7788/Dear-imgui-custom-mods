@@ -58,6 +58,7 @@ for event in events {
 | Method | Description |
 |--------|-------------|
 | `new(id)` | Create a new toolbar |
+| `id() -> &str` | The toolbar's ImGui id string |
 
 ### Items
 
@@ -66,6 +67,10 @@ for event in events {
 | `add(item)` | Add an item to the toolbar |
 | `items() -> &[ToolbarItem]` | Read-only access to items |
 | `items_mut() -> &mut Vec<ToolbarItem>` | Mutable access (e.g. update toggle states) |
+| `get(i) -> Option<&ToolbarItem>` | Item by index |
+| `get_mut(i) -> Option<&mut ToolbarItem>` | Mutable item by index |
+| `remove(i) -> Option<ToolbarItem>` | Remove by index; `None` if out of range (never panics) |
+| `len() -> usize` / `is_empty() -> bool` | Item count helpers |
 | `clear()` | Remove all items |
 
 ### Rendering
@@ -152,10 +157,37 @@ cfg.hover_underline_thickness = 2.0;
 | `color_border` | Bottom border line |
 | `color_hover_underline` | Hover underline accent color |
 
+## Theming
+
+Colors derive from the crate-wide `Theme`:
+
+```rust
+use dear_imgui_custom_mod::theme::Theme;
+
+let mut toolbar = Toolbar::new("##toolbar");
+toolbar.config = Theme::Nord.toolbar_config();
+// or, in place:
+toolbar.config.apply_theme(Theme::Solarized);
+```
+
+Layout fields (`height`, paddings, `*_thickness`) are left untouched by
+theming.
+
+## Localization
+
+The toolbar draws **only host-supplied** strings — item labels,
+tooltips, and dropdown option text all come from the caller. It owns no
+user-visible vocabulary of its own, so it carries no `Locale` field and
+no string catalogue; translate the labels you pass in.
+
 ## Architecture
 
 ```
 toolbar/
-  mod.rs      Toolbar struct, ToolbarItem, ToolbarEvent, rendering
-  config.rs   ToolbarConfig with colors and layout
+  mod.rs      Toolbar struct + item-collection methods, tests
+  item.rs     ToolbarItem / ToolbarItemKind data + builders
+  events.rs   ToolbarEvent
+  layout.rs   pure (context-free) width / spacer math + tests
+  render.rs   per-frame Toolbar::render
+  config.rs   ToolbarConfig schema (values in config.ron)
 ```

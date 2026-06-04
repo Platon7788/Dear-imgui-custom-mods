@@ -10,8 +10,8 @@ use super::config::{BytesPerRow, HexSearchMode, StringEncoding};
 use super::search::parse_address;
 use crate::i18n;
 use crate::utils::popup::{
-    action_row_labeled, anchor_next_popup_centred, anchor_next_popup_topleft,
-    compact_popup_body, selected_button, themed_popup_style,
+    action_row_labeled, anchor_next_popup_centred, anchor_next_popup_topleft, compact_popup_body,
+    selected_button, themed_popup_style,
 };
 
 // Approximate body width used for centring / right-anchoring the
@@ -87,8 +87,33 @@ impl HexViewer {
                     }
                     if go_clicked {
                         if let Some(addr) = parse_address(&self.goto_buf) {
-                            let offset = addr.saturating_sub(self.config.base_address) as usize;
-                            self.goto(offset);
+                            // BUG-127 (2026-05-15): VA-aware goto.
+                            //
+                            // If the parsed address lies inside the buffer,
+                            // jump there directly (legacy in-buffer goto).
+                            // Otherwise — and only if the host installed a
+                            // `va_goto_callback` — defer to the host so it
+                            // can re-anchor the window. Without a callback
+                            // we fall back to the legacy clamp behaviour
+                            // for binary-editor-style hosts.
+                            // Use `effective_data_len` so streaming
+                            // providers (whose `self.data` may be
+                            // empty / lagging) still resolve "is the
+                            // typed VA inside the current visible
+                            // window?" correctly.
+                            let base = self.config.base_address;
+                            let buf_end = base.saturating_add(self.effective_data_len as u64);
+                            let in_buffer = addr >= base && addr < buf_end;
+                            if in_buffer {
+                                let offset = (addr - base) as usize;
+                                self.goto(offset);
+                            } else if let Some(cb) = self.va_goto_callback.as_mut() {
+                                cb(addr);
+                            } else {
+                                // No callback: clamp into buffer (legacy).
+                                let offset = addr.saturating_sub(base) as usize;
+                                self.goto(offset);
+                            }
                         }
                         ui.close_current_popup();
                     }
@@ -223,8 +248,7 @@ impl HexViewer {
                 //  - U+2026 `…`                  (General Punctuation)
                 let s = self.strings();
                 {
-                    let _c = ui
-                        .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
                     if ui.menu_item(s.menu_goto) {
                         self.show_goto = true;
                         self.goto_buf.clear();
@@ -253,8 +277,7 @@ impl HexViewer {
                     } else {
                         None
                     };
-                    let _c = ui
-                        .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
                     if ui.menu_item(s.menu_step_back) && can_back {
                         self.nav_back();
                         ui.close_current_popup();
@@ -270,8 +293,7 @@ impl HexViewer {
                     } else {
                         None
                     };
-                    let _c = ui
-                        .push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
                     if ui.menu_item(s.menu_step_forward) && can_fwd {
                         self.nav_forward();
                         ui.close_current_popup();
@@ -367,6 +389,10 @@ impl HexViewer {
                     ui.checkbox(
                         s.settings_show_column_dividers,
                         &mut self.config.show_column_dividers,
+                    );
+                    ui.checkbox(
+                        s.settings_show_group_dividers,
+                        &mut self.config.show_group_dividers,
                     );
                     ui.checkbox(s.settings_show_splitter, &mut self.config.show_splitter);
 

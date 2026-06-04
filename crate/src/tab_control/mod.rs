@@ -59,16 +59,16 @@
 
 pub mod colors;
 pub mod config;
-pub mod strings;
-pub mod types;
 pub(crate) mod layout;
 pub(crate) mod render;
+pub mod strings;
+pub mod types;
 
 #[cfg(test)]
 mod tests;
 
-pub use config::*;
 pub use colors::TabColors;
+pub use config::*;
 pub use strings::TabStrings;
 pub use types::*;
 

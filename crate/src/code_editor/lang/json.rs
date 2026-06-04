@@ -253,10 +253,7 @@ mod tests {
     fn no_underscore_separators() {
         let toks = tok("1_000");
         // First token: Number "1"
-        let nums: Vec<_> = toks
-            .iter()
-            .filter(|t| t.0 == TokenKind::Number)
-            .collect();
+        let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
         assert_eq!(nums.len(), 1);
         assert_eq!(nums[0].1, "1");
         // The `_000` lands in an identifier-ish bucket (TokenKind::Identifier).
@@ -267,10 +264,7 @@ mod tests {
     #[test]
     fn no_radix_prefixes() {
         let toks = tok("0x10");
-        let nums: Vec<_> = toks
-            .iter()
-            .filter(|t| t.0 == TokenKind::Number)
-            .collect();
+        let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
         // Only `0` parses as a number.
         assert_eq!(nums.len(), 1);
         assert_eq!(nums[0].1, "0");
@@ -280,10 +274,7 @@ mod tests {
     #[test]
     fn decimal_with_exponent() {
         let toks = tok("-3.14e+2");
-        let nums: Vec<_> = toks
-            .iter()
-            .filter(|t| t.0 == TokenKind::Number)
-            .collect();
+        let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
         assert_eq!(nums.len(), 1);
         assert_eq!(nums[0].1, "-3.14e+2");
     }

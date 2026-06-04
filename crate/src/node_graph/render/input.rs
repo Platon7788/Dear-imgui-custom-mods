@@ -4,9 +4,12 @@ use dear_imgui_rs::{Key, MouseButton, Ui};
 
 use super::super::config::NodeGraphConfig;
 use super::super::graph::Graph;
-use super::super::state::{HoveredElement, InteractionState, NewWire, NodeDrag, RectSelect};
+use super::super::state::{
+    CommentDrag, CommentDragKind, HoveredElement, InteractionState, NewWire, NodeDrag, RectSelect,
+};
 use super::super::types::*;
 use super::super::viewer::NodeGraphViewer;
+use super::comments;
 use super::math;
 use super::overlays;
 
@@ -184,6 +187,34 @@ pub(super) fn handle_input<T>(
                         }
                     }
                 }
+                HoveredElement::CommentTitle(index) => {
+                    // Begin moving the comment: grab offset from its top-left.
+                    if let Some(comment) = graph.comments().get(index) {
+                        let rect = comments::screen_rect(state, comment.pos, comment.size);
+                        state.comment_drag = Some(CommentDrag {
+                            index,
+                            kind: CommentDragKind::Move,
+                            offset: [mouse[0] - rect[0], mouse[1] - rect[1]],
+                            moved: false,
+                        });
+                    }
+                }
+                HoveredElement::CommentResize(index) => {
+                    // Begin resizing: grab offset from its bottom-right corner.
+                    if let Some(comment) = graph.comments().get(index) {
+                        let rect = comments::screen_rect(state, comment.pos, comment.size);
+                        state.comment_drag = Some(CommentDrag {
+                            index,
+                            kind: CommentDragKind::Resize,
+                            offset: [mouse[0] - rect[2], mouse[1] - rect[3]],
+                            moved: false,
+                        });
+                    }
+                }
+                HoveredElement::CommentBody(_) => {
+                    // Clicking a comment body is inert (no move, no rect-select,
+                    // no deselect) — it only matters for right-click menus.
+                }
                 HoveredElement::None => {
                     if config.rect_select {
                         state.rect_select = Some(RectSelect {
@@ -281,6 +312,11 @@ pub(super) fn handle_input<T>(
             actions.push(GraphAction::NodeMoved(drag.node));
         }
 
+        // Complete comment move/resize. The per-frame mutation + CommentChanged
+        // action are emitted by NodeGraph::apply_comment_drag while the drag is
+        // active; here we just end the gesture.
+        state.comment_drag = None;
+
         // Complete rectangle selection
         if let Some(rect_sel) = state.rect_select.take() {
             let r = rect_sel.rect();
@@ -333,6 +369,11 @@ pub(super) fn handle_input<T>(
             }
             HoveredElement::Wire(out_pin, in_pin) => {
                 actions.push(GraphAction::Disconnected(Wire { out_pin, in_pin }));
+            }
+            HoveredElement::CommentTitle(index)
+            | HoveredElement::CommentResize(index)
+            | HoveredElement::CommentBody(index) => {
+                actions.push(GraphAction::CommentMenu(index));
             }
             _ => {}
         }
@@ -444,6 +485,54 @@ fn hit_test<T>(
         }
     }
 
+    // Comments are the lowest-priority hit target: only reached when no node,
+    // pin, or wire was hit. Iterate in reverse index order so the last-added
+    // (top-most) comment wins when they overlap.
+    comment_hit_test(graph, state, config, mouse)
+}
+
+// ─── Comment hit testing ──────────────────────────────────────────────────────
+
+/// Hit-test comment boxes. Returns the most specific element under the cursor:
+/// resize handle > title bar > body. Comments are checked only after nodes,
+/// pins, and wires miss, so they never steal interaction from nodes.
+fn comment_hit_test<T>(
+    graph: &Graph<T>,
+    state: &InteractionState,
+    config: &NodeGraphConfig,
+    mouse: [f32; 2],
+) -> HoveredElement {
+    let zoom = state.viewport.zoom;
+    for (index, comment) in graph.comments().iter().enumerate().rev() {
+        let rect = comments::screen_rect(state, comment.pos, comment.size);
+        // Outside the comment rectangle entirely.
+        if mouse[0] < rect[0] || mouse[0] >= rect[2] || mouse[1] < rect[1] || mouse[1] >= rect[3] {
+            continue;
+        }
+
+        // Resize handle (bottom-right) takes priority.
+        let handle = comments::resize_handle_rect(rect, zoom);
+        if mouse[0] >= handle[0]
+            && mouse[1] >= handle[1]
+            && mouse[0] < handle[2]
+            && mouse[1] < handle[3]
+        {
+            // Suppress resizing when zoomed out far enough that labels hide,
+            // matching node LOD behaviour and avoiding a fiddly tiny handle.
+            if config.lod_hide_labels_zoom <= zoom {
+                return HoveredElement::CommentResize(index);
+            }
+        }
+
+        // Title bar → move target.
+        let title_bottom = rect[1] + comments::title_bar_height(state);
+        if mouse[1] < title_bottom {
+            return HoveredElement::CommentTitle(index);
+        }
+
+        // Body → context-menu target only (no drag).
+        return HoveredElement::CommentBody(index);
+    }
     HoveredElement::None
 }
 

@@ -30,6 +30,10 @@ fn default_table_flags() -> TableFlags {
     TableFlags::NONE
 }
 
+fn default_card_border() -> bool {
+    true
+}
+
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
 /// Row selection mode.
@@ -135,7 +139,9 @@ pub struct TableConfig {
     /// HeaderActive → transparent). The same colors are used elsewhere
     /// for the row selection highlight, so the style stack is strictly
     /// scoped to the individual header call to keep row feedback
-    /// intact. Default: false.
+    /// intact. Default: `true` — keeps headers visually calm; flip to
+    /// `false` for tables where the user is expected to interact with
+    /// the header row (click-to-sort, drag-reorder, etc.).
     pub flat_headers: bool,
     /// Render the header row at all. When `false`, [`Self::freeze_rows`]
     /// is implicitly clamped to 0 (a frozen non-existent header would
@@ -197,6 +203,19 @@ pub struct TableConfig {
     ///
     /// Default: `true`.
     pub default_clip_tooltip: bool,
+
+    /// Wrap the whole table render in a bordered child window so it
+    /// reads as a rounded card (using the host's global `ChildRounding`
+    /// / `Border` theme colors). The wrapper uses `WindowPadding [0, 0]`
+    /// so the border sits flush against the table's outer cells — no
+    /// extra inner gap, just the rounded corners. Default: `true`.
+    ///
+    /// Set to `false` for callers that already wrap the table in their
+    /// own bordered child / panel, or for tables that should remain
+    /// "flush" with the surrounding chrome (e.g. an embedded inline
+    /// table inside a settings dialog).
+    #[serde(default = "default_card_border")]
+    pub card_border: bool,
 }
 
 impl Default for TableConfig {

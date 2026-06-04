@@ -19,6 +19,7 @@
     show_offsets: true,
     show_column_headers: true,
     show_column_dividers: true,
+    show_group_dividers: false,
     show_splitter: false,
     address_width: Auto,
     uppercase: true,

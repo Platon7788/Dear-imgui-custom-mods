@@ -25,6 +25,9 @@ dear-imgui-custom-mod = { path = "../crate", features = ["full", "force_graph"] 
 dear-imgui-rs = "0.11.0"
 dear-imgui-wgpu = "0.11.0"
 dear-imgui-winit = "0.11.0"
+# `demo_chrome` (and any chrome-using demo) wires through dear-app's runner
+# instead of spinning up its own winit / wgpu loop.
+dear-app = "0.11.0"
 pollster = "0.4.0"
 wgpu = "29.0.1"
 winit = "0.30.13"
@@ -91,6 +94,10 @@ path = "examples/demo_property_inspector.rs"
 [[example]]
 name = "demo_status_toolbar"
 path = "examples/demo_status_toolbar.rs"
+
+[[example]]
+name = "demo_chrome"
+path = "examples/demo_chrome.rs"
 
 [[example]]
 name = "demo_nav_panel"

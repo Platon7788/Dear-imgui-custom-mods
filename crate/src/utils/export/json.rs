@@ -20,6 +20,56 @@ fn json_escape(s: &str) -> String {
     out
 }
 
+/// Reverse of [`json_escape`]: decode the escape sequences `\"` `\\` `\/`
+/// `\n` `\r` `\t` `\b` `\f` `\uXXXX` in a single left-to-right pass.
+///
+/// A single pass is mandatory — the previous implementation chained
+/// `String::replace` calls (`\\"` → `\n` → `\t` → `\\`), which corrupted
+/// any string containing a literal backslash followed by `n`/`t` (the
+/// `\n` replace fired inside the *doubled* backslash sequence) and never
+/// decoded `\r` or `\uXXXX` at all.
+fn json_unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some('/') => out.push('/'),
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some('b') => out.push('\u{0008}'),
+            Some('f') => out.push('\u{000C}'),
+            Some('u') => {
+                let hex: String = chars.by_ref().take(4).collect();
+                match u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
+                    Some(ch) => out.push(ch),
+                    // Malformed \u escape — keep it verbatim rather than
+                    // dropping data.
+                    None => {
+                        out.push('\\');
+                        out.push('u');
+                        out.push_str(&hex);
+                    }
+                }
+            }
+            // Unknown escape — preserve the backslash and the next char.
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            // Trailing lone backslash.
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
 fn field_value_json(v: &FieldValue) -> String {
     match v {
         FieldValue::Null => "null".into(),
@@ -225,8 +275,12 @@ fn parse_json_object(s: &str) -> Vec<(String, FieldValue)> {
 fn parse_json_value(s: &str) -> (FieldValue, &str) {
     let s = s.trim();
     if let Some(rest) = s.strip_prefix('"') {
-        // String value.
-        let mut end = 0;
+        // String value. `close` is the byte index of the terminating
+        // quote, or `None` when the string is unterminated (malformed
+        // input) — in which case we consume the remainder rather than
+        // slicing at byte 1, which could split a multi-byte char and
+        // panic.
+        let mut close: Option<usize> = None;
         let mut escape = false;
         for (i, b) in rest.bytes().enumerate() {
             if escape {
@@ -238,16 +292,17 @@ fn parse_json_value(s: &str) -> (FieldValue, &str) {
                 continue;
             }
             if b == b'"' {
-                end = i;
+                close = Some(i);
                 break;
             }
         }
-        let val = rest[..end]
-            .replace("\\\"", "\"")
-            .replace("\\n", "\n")
-            .replace("\\t", "\t")
-            .replace("\\\\", "\\");
-        (FieldValue::Str(val), &rest[end + 1..])
+        match close {
+            Some(end) => (
+                FieldValue::Str(json_unescape(&rest[..end])),
+                &rest[end + 1..],
+            ),
+            None => (FieldValue::Str(json_unescape(rest)), ""),
+        }
     } else if let Some(rest) = s.strip_prefix("null") {
         (FieldValue::Null, rest)
     } else if let Some(rest) = s.strip_prefix("true") {
@@ -257,7 +312,10 @@ fn parse_json_value(s: &str) -> (FieldValue, &str) {
     } else if s.starts_with('[') {
         // Skip arrays (colors, children).
         let mut depth = 0i32;
-        let mut end = 0;
+        // Default to the whole slice when the array is unterminated, so a
+        // missing `]` consumes the rest instead of underflowing `end - 1`
+        // (which panicked on malformed input before this guard).
+        let mut end = s.len();
         for (i, b) in s.bytes().enumerate() {
             if b == b'[' {
                 depth += 1;
@@ -270,7 +328,8 @@ fn parse_json_value(s: &str) -> (FieldValue, &str) {
                 }
             }
         }
-        // Try parse as color [f32; 4].
+        // Try parse as color [f32; 4]. `end >= 1` here (we matched `[`),
+        // so `end - 1 >= 0` and the slice is always in bounds.
         let arr_str = &s[1..end - 1];
         let nums: Vec<f32> = arr_str
             .split(',')
@@ -295,5 +354,111 @@ fn parse_json_value(s: &str) -> (FieldValue, &str) {
             let i = num_str.parse::<i64>().unwrap_or(0);
             (FieldValue::Int(i), &s[end..])
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn one_row(s: &str) -> FlatExportData {
+        let mut d = FlatExportData::new(vec!["v".into()]);
+        d.add_row(vec![FieldValue::Str(s.into())]);
+        d
+    }
+
+    fn round_trip_str(s: &str) -> String {
+        let data = one_row(s);
+        let json = format_flat(&data);
+        let parsed = parse_flat(&json).expect("parse");
+        match &parsed.rows[0][0] {
+            FieldValue::Str(out) => out.clone(),
+            other => panic!("expected Str, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unescape_backslash_then_letter_n_not_corrupted() {
+        // Regression: chained `.replace("\\n", ...)` used to fire inside the
+        // doubled-backslash escape, turning `\` + 'n' into `\` + newline.
+        assert_eq!(round_trip_str("a\\nb"), "a\\nb");
+        assert_eq!(round_trip_str("a\\tb"), "a\\tb");
+        assert_eq!(round_trip_str("path\\to\\nowhere"), "path\\to\\nowhere");
+    }
+
+    #[test]
+    fn unescape_real_control_chars_round_trip() {
+        assert_eq!(round_trip_str("new\nline"), "new\nline");
+        assert_eq!(round_trip_str("tab\there"), "tab\there");
+        // Regression: `\r` was escaped on write but never decoded on read.
+        assert_eq!(round_trip_str("cr\rret"), "cr\rret");
+        assert_eq!(round_trip_str("quote\"q"), "quote\"q");
+        assert_eq!(round_trip_str("bs\\bs"), "bs\\bs");
+    }
+
+    #[test]
+    fn unescape_decodes_u_escape() {
+        // `` control char is emitted via `\uXXXX` and must decode.
+        assert_eq!(round_trip_str("ctrl\u{0001}x"), "ctrl\u{0001}x");
+        assert_eq!(json_unescape("\\u0041"), "A");
+    }
+
+    #[test]
+    fn unescape_keeps_unknown_escape_verbatim() {
+        assert_eq!(json_unescape("\\q"), "\\q");
+        assert_eq!(json_unescape("trailing\\"), "trailing\\");
+        // Malformed \u (short / non-hex) preserved rather than dropped.
+        assert_eq!(json_unescape("\\uZZZZ"), "\\uZZZZ");
+    }
+
+    #[test]
+    fn parse_unterminated_array_does_not_panic() {
+        // Regression: missing `]` left `end == 0`, and `&s[1..end - 1]`
+        // underflowed `usize` and panicked.
+        let (val, _rest) = parse_json_value("[1, 2, 3");
+        // Three numbers != 4, so falls back to a string — the point is no panic.
+        assert!(matches!(val, FieldValue::Str(_)));
+    }
+
+    #[test]
+    fn parse_unterminated_string_does_not_panic() {
+        // Multi-byte first char + no closing quote previously risked slicing
+        // mid-codepoint. Must consume the rest instead.
+        let (val, rest) = parse_json_value("\"\u{00e9}abc");
+        assert_eq!(rest, "");
+        match val {
+            FieldValue::Str(s) => assert_eq!(s, "\u{00e9}abc"),
+            other => panic!("expected Str, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn color_round_trips_through_array() {
+        let mut d = FlatExportData::new(vec!["c".into()]);
+        d.add_row(vec![FieldValue::Color([0.1, 0.2, 0.3, 1.0])]);
+        let json = format_flat(&d);
+        let parsed = parse_flat(&json).unwrap();
+        match &parsed.rows[0][0] {
+            FieldValue::Color(c) => {
+                assert!((c[0] - 0.1).abs() < 1e-3);
+                assert!((c[3] - 1.0).abs() < 1e-3);
+            }
+            other => panic!("expected Color, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_empty_array_yields_no_rows() {
+        let parsed = parse_flat("[]").unwrap();
+        assert!(parsed.rows.is_empty());
+    }
+
+    #[test]
+    fn nan_and_infinite_floats_serialize_as_null() {
+        let mut d = FlatExportData::new(vec!["f".into()]);
+        d.add_row(vec![FieldValue::Float(f64::NAN)]);
+        d.add_row(vec![FieldValue::Float(f64::INFINITY)]);
+        let json = format_flat(&d);
+        assert_eq!(json.matches("null").count(), 2);
     }
 }

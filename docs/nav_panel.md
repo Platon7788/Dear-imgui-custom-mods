@@ -22,7 +22,7 @@ Modern navigation panel (activity bar) for Rust + Dear ImGui.
 - **Custom icon colors** per button
 - **5 built-in themes** via the unified [`Theme`](theme.md) enum + per-instance custom palette via `colors_override`
 - **content_offset_y** for correct edge detection with borderless titlebar
-- **Overlay variant** — `render_nav_panel_overlay` draws through the foreground draw list without a host ImGui window
+- **Overlay variants** — `render_nav_panel_overlay` (background draw list, below popups) and `render_nav_panel_overlay_foreground` (foreground draw list, above popups) draw without a host ImGui window
 
 ## Quick Start
 
@@ -122,20 +122,30 @@ from regular ImGui windows and you want the panel to flow with them.
 
 ### `render_nav_panel_overlay(ui, cfg, state, origin, size) -> NavPanelResult`
 
-Overlay variant: draws through `ui.get_foreground_draw_list()` at an
+Overlay variant: draws through `ui.get_background_draw_list()` at an
 explicit screen-space position without requiring a host ImGui window.
 
 - `origin` — top-left of the panel region in **screen** coordinates.
 - `size` — `[width, height]` of the region reserved for the panel.
 
 The submenu flyout still spawns its own ImGui window (it needs input focus),
-but the panel surface itself draws on the foreground draw list so content
-windows behind it remain clickable.
+but the panel surface itself draws on the background draw list. The
+background list sits **below** ImGui popups, so tooltips, context menus and
+modals raised by other widgets stay visible above the panel — the right
+default for a chrome-style nav strip.
 
 Use this variant when you already have regular content windows in the frame
 and you do not want a fullscreen host ImGui window sitting above them and
 swallowing mouse clicks — the typical case when you roll your own event loop
 and layout rather than using [`app_window::AppWindow`](app_window.md).
+
+### `render_nav_panel_overlay_foreground(ui, cfg, state, origin, size) -> NavPanelResult`
+
+Same as `render_nav_panel_overlay` but paints into
+`ui.get_foreground_draw_list()`, which sits **above** every ImGui popup.
+Use only for kiosk-style HUDs that must obscure tooltips and menus, or when
+a full-window host (such as `app_window::AppWindow`) is drawn behind every
+frame and would otherwise hide a background-list overlay.
 
 ## Integration with StatusBar
 

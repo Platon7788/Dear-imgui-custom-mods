@@ -228,6 +228,17 @@ pub enum CopyFormat {
     Ascii,
 }
 
+// ── Forward-compat helpers ──────────────────────────────────────────────────
+//
+// Per-field `#[serde(default = "fn")]` so older saved `.ron` files
+// (pre-dating a field) still parse. Add a helper here whenever you
+// introduce a new field with serde-default — see `show_group_dividers`
+// for the canonical case.
+
+fn default_show_group_dividers() -> bool {
+    false
+}
+
 // ── Hex Viewer Config ───────────────────────────────────────────────────────
 
 /// Configuration for the hex viewer widget.
@@ -250,6 +261,16 @@ pub struct HexViewerConfig {
     /// Default: `true` — improves visual scan-ability of the three
     /// regions without competing with the byte text.
     pub show_column_dividers: bool,
+    /// Show dashed vertical dividers between byte groups inside the
+    /// hex column (every `grouping` bytes). Off by default — the
+    /// natural extra-space gap between groups is usually enough; flip
+    /// this on for dense layouts (32 bpr / group=4) where the eye
+    /// loses track of group boundaries. Dashes are drawn 4 px on /
+    /// 3 px off through the row strip so they read as a calm guide
+    /// rather than a solid divider that would compete with column
+    /// boundaries.
+    #[serde(default = "default_show_group_dividers")]
+    pub show_group_dividers: bool,
     /// Show a draggable horizontal splitter between the hex area and
     /// the data inspector. Default: `false` — the inspector uses its
     /// natural fixed height. Enable for memory-explorer style UIs

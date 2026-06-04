@@ -530,6 +530,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
+name = "dear-app"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed7cc1622d91fc0939c7a48caa8519397de70736d2449c245ab172ae3470e027"
+dependencies = [
+ "dear-imgui-rs",
+ "dear-imgui-wgpu",
+ "dear-imgui-winit",
+ "pollster",
+ "thiserror 2.0.18",
+ "tracing",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "dear-imgui-build-support"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -543,6 +559,7 @@ dependencies = [
  "dear-imgui-rs",
  "dear-imgui-wgpu",
  "dear-imgui-winit",
+ "disasm-knowledge",
  "foldhash 0.2.0",
  "pollster",
  "proptest",
@@ -609,6 +626,13 @@ dependencies = [
  "web-sys",
  "web-time",
  "winit",
+]
+
+[[package]]
+name = "disasm-knowledge"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -683,6 +707,7 @@ dependencies = [
 name = "examples-app"
 version = "0.0.0"
 dependencies = [
+ "dear-app",
  "dear-imgui-custom-mod",
  "dear-imgui-rs",
  "dear-imgui-wgpu",

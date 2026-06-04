@@ -6,13 +6,13 @@
 //! `format_bytes`, …) are imported from their respective sub-modules.
 
 use super::config::AddressWidth;
-use crate::utils::color::col32;
 use super::input::EditColumn;
 use super::search::{
     PatternByte, base64_encode, find_pattern_masked, format_bytes, parse_address,
     parse_ascii_pattern, parse_hex_pattern_masked,
 };
 use super::*;
+use crate::utils::color::col32;
 
 #[test]
 fn test_new_viewer() {
@@ -266,6 +266,49 @@ fn test_vec_data_provider() {
     assert_eq!(buf, [0x20, 0x30]);
     assert!(p.write(2, &[0xFF]));
     assert_eq!(p.data()[2], 0xFF);
+}
+
+#[test]
+fn test_arc_vec_data_provider_read() {
+    use std::sync::Arc;
+    let arc = Arc::new(vec![0x10u8, 0x20, 0x30, 0x40]);
+    let p = ArcVecDataProvider::from_arc(arc);
+    assert_eq!(p.len(), 4);
+    assert!(!p.is_empty());
+    let mut buf = [0u8; 4];
+    assert_eq!(p.read(0, &mut buf), 4);
+    assert_eq!(buf, [0x10, 0x20, 0x30, 0x40]);
+    // Partial read at the tail.
+    let mut buf2 = [0u8; 3];
+    assert_eq!(p.read(2, &mut buf2), 2);
+    assert_eq!(&buf2[..2], &[0x30, 0x40]);
+    // Read past end returns 0.
+    let mut buf3 = [0u8; 4];
+    assert_eq!(p.read(4, &mut buf3), 0);
+    assert_eq!(p.read(100, &mut buf3), 0);
+}
+
+#[test]
+fn test_arc_vec_data_provider_write_cow() {
+    use std::sync::Arc;
+    let arc = Arc::new(vec![0x10u8, 0x20, 0x30, 0x40]);
+    let original = Arc::clone(&arc);
+    let mut p = ArcVecDataProvider::from_arc(arc);
+    // Sharing two Arcs at this point — write triggers `Arc::make_mut`
+    // COW which clones the inner `Vec`.
+    assert!(p.write(1, &[0xAA, 0xBB]));
+    let mut buf = [0u8; 4];
+    p.read(0, &mut buf);
+    assert_eq!(buf, [0x10, 0xAA, 0xBB, 0x40]);
+    // Original Arc still has the pre-write bytes — COW left it
+    // untouched, which is the contract for the legacy `render()`
+    // path: the wrapper's clone diverges so the wrapper's view
+    // shows the just-typed bytes, while the viewer's own
+    // `self.data` is patched separately by the input handler.
+    assert_eq!(*original, vec![0x10, 0x20, 0x30, 0x40]);
+    // OOB write refuses.
+    assert!(!p.write(10, &[0xFF]));
+    assert!(!p.write(3, &[0xFF, 0xFF])); // straddles end
 }
 
 #[test]

@@ -409,7 +409,9 @@ impl HexViewerColors {
 /// palette factory below can build per-flow mnemonic / arrow colours
 /// without pulling in the whole `disasm_view` module. Mirrors
 /// [`crate::disasm_view::FlowKind`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum DisasmFlowKind {
     /// Normal sequential instruction (mov, add, lea, etc.).
     #[default]
@@ -931,19 +933,19 @@ impl NotificationColors {
     /// pastel tone.
     pub fn catppuccin() -> Self {
         Self {
-            bg: [0.118, 0.118, 0.180, 0.97],   // base
+            bg: [0.118, 0.118, 0.180, 0.97],    // base
             border: [0.196, 0.196, 0.275, 1.0], // surface0
-            title: [0.804, 0.839, 0.957, 1.0], // text
-            body: [0.651, 0.678, 0.784, 1.0],  // subtext1
-            close: [0.486, 0.510, 0.612, 1.0], // overlay1
+            title: [0.804, 0.839, 0.957, 1.0],  // text
+            body: [0.651, 0.678, 0.784, 1.0],   // subtext1
+            close: [0.486, 0.510, 0.612, 1.0],  // overlay1
             close_hover: [0.804, 0.839, 0.957, 1.0],
             progress_bg: [0.196, 0.196, 0.275, 0.8],
 
-            info: [0.537, 0.706, 0.980, 1.0],     // sapphire
-            success: [0.651, 0.890, 0.631, 1.0],  // green
-            warning: [0.980, 0.886, 0.643, 1.0],  // yellow
-            error: [0.953, 0.545, 0.659, 1.0],    // red/maroon
-            debug: [0.541, 0.557, 0.643, 1.0],    // overlay2
+            info: [0.537, 0.706, 0.980, 1.0],    // sapphire
+            success: [0.651, 0.890, 0.631, 1.0], // green
+            warning: [0.980, 0.886, 0.643, 1.0], // yellow
+            error: [0.953, 0.545, 0.659, 1.0],   // red/maroon
+            debug: [0.541, 0.557, 0.643, 1.0],   // overlay2
 
             btn_action: [0.196, 0.196, 0.275, 1.0],
             btn_action_hover: [0.251, 0.251, 0.345, 1.0],
@@ -958,19 +960,19 @@ impl NotificationColors {
     /// Night share a hue family but Nord runs notably cooler).
     pub fn nord() -> Self {
         Self {
-            bg: [0.180, 0.204, 0.251, 0.97],   // nord0
+            bg: [0.180, 0.204, 0.251, 0.97],    // nord0
             border: [0.231, 0.259, 0.322, 1.0], // nord1
-            title: [0.925, 0.937, 0.957, 1.0], // nord4
-            body: [0.847, 0.871, 0.914, 1.0],  // nord5 / 6
-            close: [0.392, 0.439, 0.522, 1.0], // mid
+            title: [0.925, 0.937, 0.957, 1.0],  // nord4
+            body: [0.847, 0.871, 0.914, 1.0],   // nord5 / 6
+            close: [0.392, 0.439, 0.522, 1.0],  // mid
             close_hover: [0.925, 0.937, 0.957, 1.0],
             progress_bg: [0.231, 0.259, 0.322, 0.8],
 
-            info: [0.506, 0.631, 0.757, 1.0],     // nord9 (frost-blue)
-            success: [0.639, 0.745, 0.549, 1.0],  // nord14 (aurora-green)
-            warning: [0.922, 0.796, 0.545, 1.0],  // nord13 (aurora-yellow)
-            error: [0.749, 0.380, 0.416, 1.0],    // nord11 (aurora-red)
-            debug: [0.631, 0.671, 0.749, 1.0],    // nord4-mute
+            info: [0.506, 0.631, 0.757, 1.0], // nord9 (frost-blue)
+            success: [0.639, 0.745, 0.549, 1.0], // nord14 (aurora-green)
+            warning: [0.922, 0.796, 0.545, 1.0], // nord13 (aurora-yellow)
+            error: [0.749, 0.380, 0.416, 1.0], // nord11 (aurora-red)
+            debug: [0.631, 0.671, 0.749, 1.0], // nord4-mute
 
             btn_action: [0.231, 0.259, 0.322, 1.0],
             btn_action_hover: [0.298, 0.337, 0.416, 1.0],

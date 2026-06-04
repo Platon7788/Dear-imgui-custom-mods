@@ -10,12 +10,16 @@
 //!   - Drag-reorder, scroll, overflow dropdown, close confirmation
 //!   - Add (+) button hooked up to spawn new tabs
 
-use dear_imgui_custom_mod::app_window::{AppConfig, AppHandler, AppState, AppWindow};
+use std::sync::{Arc, Mutex};
+
+use dear_app::{AppBuilder, DockingConfig, RunnerConfig};
+use dear_imgui_custom_mod::chrome::{Chrome, TitlebarConfig};
 use dear_imgui_custom_mod::icons;
 use dear_imgui_custom_mod::tab_control::{
     Badge, CloseGlyph, TabAction, TabControl, TabControlConfig, TabItem, TabStatus, TabStyle,
 };
 use dear_imgui_rs::Ui;
+use winit::window::Window;
 
 // ─── Tab variants ───────────────────────────────────────────────────────────
 
@@ -464,8 +468,8 @@ impl Default for DemoApp {
     }
 }
 
-impl AppHandler for DemoApp {
-    fn render(&mut self, ui: &Ui, _state: &mut AppState) {
+impl DemoApp {
+    pub fn render(&mut self, ui: &Ui) {
         // Apply the style chosen in SettingsTab to both outer and inner controllers
         let outer_style = current_style(&self.tc);
         self.tc.config.tab_style = outer_style;
@@ -568,6 +572,63 @@ fn propagate_style_to_nested(tc: &mut TabControl<OuterTab>, style: TabStyle) {
 
 // ─── Entry point ────────────────────────────────────────────────────────────
 
-fn main() -> Result<(), winit::error::EventLoopError> {
-    AppWindow::new(AppConfig::main("TabControl Demo", 1100.0, 720.0)).run(DemoApp::default())
+fn main() {
+    let chrome = Arc::new(Mutex::new(
+        Chrome::new(TitlebarConfig::default()).with_title("TabControl Demo"),
+    ));
+    let app = Arc::new(Mutex::new(DemoApp::default()));
+    let win_stash: Arc<Mutex<Option<Arc<Window>>>> = Arc::new(Mutex::new(None));
+
+    let runner_cfg = RunnerConfig {
+        window_title: "TabControl Demo".to_string(),
+        window_size: (1100.0, 720.0),
+        docking: DockingConfig {
+            enable: false,
+            auto_dockspace: false,
+            ..DockingConfig::default()
+        },
+        ..RunnerConfig::default()
+    };
+
+    AppBuilder::new()
+        .with_config(runner_cfg)
+        .on_gpu_init({
+            let chrome = chrome.clone();
+            let win_stash = win_stash.clone();
+            move |window, _, _, _| {
+                chrome.lock().unwrap().on_setup(window);
+                *win_stash.lock().unwrap() = Some(window.clone());
+            }
+        })
+        .on_event({
+            let chrome = chrome.clone();
+            let win_stash = win_stash.clone();
+            move |event, _, ctx| {
+                if let Some(w) = win_stash.lock().unwrap().as_ref() {
+                    chrome.lock().unwrap().on_event(event, w, ctx);
+                }
+            }
+        })
+        .on_frame({
+            let chrome = chrome.clone();
+            let app = app.clone();
+            let win_stash = win_stash.clone();
+            move |ui, _| {
+                let Some(window) = win_stash.lock().unwrap().clone() else {
+                    return;
+                };
+                {
+                    let mut c = chrome.lock().unwrap();
+                    let app = app.clone();
+                    c.render(ui, &window, |ui, _area| {
+                        app.lock().unwrap().render(ui);
+                    });
+                }
+                if chrome.lock().unwrap().take_close_request().is_some() {
+                    std::process::exit(0);
+                }
+            }
+        })
+        .run()
+        .expect("event loop error");
 }

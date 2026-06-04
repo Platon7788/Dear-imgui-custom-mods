@@ -1492,9 +1492,7 @@ fn render_overflow_popup_body<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
         // the codepoint renders as a `?` box. Layout / on-tab drawing
         // already check this; the popup was missed (M3 from session
         // 035 audit, visible in user screenshot).
-        if icons_available
-            && let Some(icon) = tab.item.icon()
-        {
+        if icons_available && let Some(icon) = tab.item.icon() {
             let _ = write!(pc.fmt_buf, "{} ", icon);
         }
         let _ = write!(pc.fmt_buf, "{}", tab.item.title());

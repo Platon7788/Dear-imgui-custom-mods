@@ -500,11 +500,7 @@ impl Timeline {
                         let track_col = col32(cfg.color_track_label);
                         draw.add_text([arrow_x, text_y], track_col, arrow);
                         let arrow_w = calc_text_size(arrow)[0] + 4.0;
-                        draw.add_text(
-                            [arrow_x + arrow_w, text_y],
-                            track_col,
-                            track.name.as_str(),
-                        );
+                        draw.add_text([arrow_x + arrow_w, text_y], track_col, track.name.as_str());
                     }
 
                     // Track header separator
@@ -597,7 +593,10 @@ impl Timeline {
                                         ));
                                         if !span.category.is_empty() && span.category != span.label
                                         {
-                                            ui.text(format!("{}{}", s.category_label, span.category));
+                                            ui.text(format!(
+                                                "{}{}",
+                                                s.category_label, span.category
+                                            ));
                                         }
                                         if let Some(ref src) = span.source {
                                             ui.text(format!("{}{}", s.source_label, src));

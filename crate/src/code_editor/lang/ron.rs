@@ -16,9 +16,7 @@
 //! - `#![enable(...)]` extension attributes render as a single
 //!   [`TokenKind::Attribute`] block.
 
-use super::{
-    NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start,
-};
+use super::{NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -256,9 +254,7 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             || ((b == b'-' || b == b'+')
                 && i + 1 < len
                 && (bytes[i + 1].is_ascii_digit()
-                    || (bytes[i + 1] == b'.'
-                        && i + 2 < len
-                        && bytes[i + 2].is_ascii_digit())))
+                    || (bytes[i + 1] == b'.' && i + 2 < len && bytes[i + 2].is_ascii_digit())))
             || (b == b'.' && i + 1 < len && bytes[i + 1].is_ascii_digit())
         {
             let start = i;

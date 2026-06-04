@@ -1,8 +1,6 @@
 //! Rust / RON syntax tokenizer.
 
-use super::{
-    NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start,
-};
+use super::{NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -683,10 +681,7 @@ mod tests {
             (r"'\u{1F600}'", r"'\u{1F600}'"),
         ] {
             let toks = tok(input);
-            let chars: Vec<_> = toks
-                .iter()
-                .filter(|t| t.0 == TokenKind::CharLit)
-                .collect();
+            let chars: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::CharLit).collect();
             assert_eq!(chars.len(), 1, "input {input:?} produced {toks:?}");
             assert_eq!(chars[0].1, want_lit);
         }

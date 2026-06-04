@@ -14,7 +14,7 @@
 //!   - Full event log (all GraphEvent variants)
 //!   - Regenerate button, node/edge stats, sidebar
 //!
-//! Run: cargo run --example demo_force_graph --features force_graph,app_window
+//! Run: cargo run --example demo_force_graph --features force_graph
 
 use dear_imgui_custom_mod::force_graph::{
     GraphViewer,

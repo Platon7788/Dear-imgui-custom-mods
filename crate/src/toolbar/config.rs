@@ -41,8 +41,7 @@ pub struct ToolbarConfig {
 
 impl Default for ToolbarConfig {
     fn default() -> Self {
-        ron::from_str(include_str!("config.ron"))
-            .expect("built-in toolbar/config.ron is valid")
+        ron::from_str(include_str!("config.ron")).expect("built-in toolbar/config.ron is valid")
     }
 }
 

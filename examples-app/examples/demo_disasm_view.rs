@@ -504,6 +504,33 @@ impl DemoState {
 
         ui.spacing();
         ui.separator();
+        // ── Tooltip verbosity (HintVerbosity) ────────────────────
+        // Applies to every educational line in the hover tooltip
+        // (mnemonic explanation, idiom, gotcha, operand hint,
+        // compiler pattern, anti-disasm trick, boundary, branch).
+        // Compact = telegraphic 1-clause for senior REs.
+        // Standard = pre-v0.12 wording (1-2 sentences).
+        // Educational = expanded 3-5 sentence context for learners
+        // (cites compiler conventions, anti-RE intent, source-level
+        // mapping).
+        ui.text("Tooltip Verbosity");
+        use dear_imgui_custom_mod::disasm_view::HintVerbosity;
+        let mut v = self.view.config.verbosity;
+        if ui.radio_button_bool("Compact", v == HintVerbosity::Compact) {
+            v = HintVerbosity::Compact;
+        }
+        ui.same_line();
+        if ui.radio_button_bool("Standard", v == HintVerbosity::Standard) {
+            v = HintVerbosity::Standard;
+        }
+        ui.same_line();
+        if ui.radio_button_bool("Educational", v == HintVerbosity::Educational) {
+            v = HintVerbosity::Educational;
+        }
+        self.view.config.verbosity = v;
+
+        ui.spacing();
+        ui.separator();
         ui.text("Color Legend");
         let c = &self.view.config.colors;
         ui.text_colored(c.mnemonic_normal, "Normal (mov, add)");

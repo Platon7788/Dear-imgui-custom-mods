@@ -10,8 +10,8 @@ use super::{DisasmView, parse_address};
 use crate::i18n;
 use crate::utils::clipboard::set_clipboard;
 use crate::utils::popup::{
-    action_row_labeled, anchor_next_popup_centred, anchor_next_popup_topleft,
-    compact_popup_body, themed_popup_style,
+    action_row_labeled, anchor_next_popup_centred, anchor_next_popup_topleft, compact_popup_body,
+    themed_popup_style,
 };
 
 /// Reference width for the goto popup body (input + action row).
@@ -50,8 +50,7 @@ impl DisasmView {
                         self.goto_focus_pending = false;
                     }
                     ui.set_next_item_width(POPUP_INPUT_WIDTH);
-                    ui.input_text("##dv_goto_input", &mut self.goto_buf)
-                        .build();
+                    ui.input_text("##dv_goto_input", &mut self.goto_buf).build();
 
                     let (go_clicked, cancel_clicked) =
                         action_row_labeled(ui, POPUP_INPUT_WIDTH, s.action_go, s.action_cancel);
@@ -110,7 +109,14 @@ impl DisasmView {
         provider: &mut dyn DisasmDataProvider,
     ) {
         if self.show_context_menu {
-            anchor_next_popup_topleft(self.popup_open_pos);
+            // Anchor only when the right-click handler captured a
+            // position this session — `None` means the popup was
+            // triggered without a mouse anchor (toolbar / keyboard
+            // shortcut, hypothetical) and ImGui's default cursor
+            // anchor is the right fallback (audit M7).
+            if let Some(pos) = self.popup_open_pos {
+                anchor_next_popup_topleft(pos);
+            }
             ui.open_popup(&self.ctx_popup_id);
             self.show_context_menu = false;
         }
@@ -151,8 +157,7 @@ impl DisasmView {
                 let locale = self.config.locale;
 
                 {
-                    let _c =
-                        ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
                     if ui.menu_item(s.menu_goto_address) {
                         self.show_goto = true;
                         self.goto_buf.clear();
@@ -167,8 +172,7 @@ impl DisasmView {
                 }
 
                 {
-                    let _c =
-                        ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, nav_col);
                     if ui.menu_item(s.menu_copy_address) {
                         if let Some(addr) = instr_addr {
                             set_clipboard(&self.format_address_literal(addr));
@@ -196,8 +200,7 @@ impl DisasmView {
                     } else {
                         None
                     };
-                    let _c = ui
-                        .push_style_color(dear_imgui_rs::StyleColor::Text, call_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, call_col);
                     if ui.menu_item(s.menu_follow) {
                         self.cursor_idx = Some(idx);
                         self.follow_at_cursor(provider);
@@ -208,8 +211,7 @@ impl DisasmView {
 
                 // Function navigation — amber.
                 {
-                    let _c = ui
-                        .push_style_color(dear_imgui_rs::StyleColor::Text, jump_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, jump_col);
                     if ui.menu_item(s.menu_jump_func_start) {
                         self.cursor_idx = Some(idx);
                         self.jump_to_function_start(provider);
@@ -229,8 +231,7 @@ impl DisasmView {
 
                 // Breakpoint — red.
                 {
-                    let _c =
-                        ui.push_style_color(dear_imgui_rs::StyleColor::Text, bp_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, bp_col);
                     if ui.menu_item(s.menu_toggle_breakpoint) {
                         if let Some(addr) = instr_addr {
                             provider.toggle_breakpoint(addr);
@@ -239,8 +240,7 @@ impl DisasmView {
                     }
                 }
                 {
-                    let _c = ui
-                        .push_style_color(dear_imgui_rs::StyleColor::Text, watch_col);
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, watch_col);
                     if ui.menu_item(s.menu_toggle_watchpoint) {
                         if let Some(addr) = instr_addr {
                             provider.toggle_watchpoint(addr);
@@ -255,10 +255,7 @@ impl DisasmView {
                 // `\u{25CB}` ring fallback otherwise. Keeps the
                 // popup ↔ gutter visual breadcrumb consistent.
                 {
-                    let _c = ui.push_style_color(
-                        dear_imgui_rs::StyleColor::Text,
-                        bookmark_col,
-                    );
+                    let _c = ui.push_style_color(dear_imgui_rs::StyleColor::Text, bookmark_col);
                     let bookmarked = instr_addr.is_some_and(|a| self.is_bookmarked(a));
                     let glyph = if self.config.icons_available {
                         crate::icons::BOOKMARK_CHECK_OUTLINE
@@ -328,9 +325,15 @@ impl DisasmView {
                     ui.checkbox(s.settings_show_bytes, &mut self.config.show_bytes);
                     ui.checkbox(s.settings_show_comments, &mut self.config.show_comments);
                     ui.checkbox(s.settings_show_branch_arrows, &mut self.config.show_arrows);
-                    ui.checkbox(s.settings_show_breakpoints, &mut self.config.show_breakpoints);
+                    ui.checkbox(
+                        s.settings_show_breakpoints,
+                        &mut self.config.show_breakpoints,
+                    );
                     ui.checkbox(s.settings_show_bookmarks, &mut self.config.show_bookmarks);
-                    ui.checkbox(s.settings_show_block_tints, &mut self.config.show_block_tints);
+                    ui.checkbox(
+                        s.settings_show_block_tints,
+                        &mut self.config.show_block_tints,
+                    );
                     ui.checkbox(s.settings_show_header, &mut self.config.show_header);
                     ui.checkbox(
                         s.settings_show_column_dividers,
@@ -340,7 +343,10 @@ impl DisasmView {
                     ui.separator();
                     ui.text(s.settings_format);
                     ui.checkbox(s.settings_uppercase, &mut self.config.uppercase);
-                    ui.checkbox(s.settings_address_width_64, &mut self.config.address_width_64);
+                    ui.checkbox(
+                        s.settings_address_width_64,
+                        &mut self.config.address_width_64,
+                    );
                     ui.checkbox(
                         s.settings_byte_category_colors,
                         &mut self.config.byte_category_colors,
@@ -349,11 +355,20 @@ impl DisasmView {
                     ui.separator();
                     ui.text(s.settings_behavior);
                     ui.checkbox(s.settings_editable, &mut self.config.editable);
-                    ui.checkbox(s.settings_follow_execution, &mut self.config.follow_execution);
-                    ui.checkbox(s.settings_show_explanation, &mut self.config.show_explanation);
+                    ui.checkbox(
+                        s.settings_follow_execution,
+                        &mut self.config.follow_execution,
+                    );
+                    ui.checkbox(
+                        s.settings_show_explanation,
+                        &mut self.config.show_explanation,
+                    );
                     ui.checkbox(s.settings_show_idiom, &mut self.config.show_idiom);
                     ui.checkbox(s.settings_show_gotcha, &mut self.config.show_gotcha);
-                    ui.checkbox(s.settings_show_operand_hint, &mut self.config.show_operand_hint);
+                    ui.checkbox(
+                        s.settings_show_operand_hint,
+                        &mut self.config.show_operand_hint,
+                    );
                     ui.checkbox(
                         s.settings_show_compiler_pattern,
                         &mut self.config.show_compiler_pattern,
@@ -426,8 +441,7 @@ impl DisasmView {
                     // first. Empty when buffer is empty (no need to
                     // prod the user as they start typing).
                     let parsed_len =
-                        crate::hex_viewer::search::parse_hex_pattern_masked(&self.search_buf)
-                            .len();
+                        crate::hex_viewer::search::parse_hex_pattern_masked(&self.search_buf).len();
                     if !self.search_buf.trim().is_empty() {
                         if parsed_len < super::SEARCH_MIN_BYTES {
                             ui.text(i18n::disasm_view::pattern_too_short(

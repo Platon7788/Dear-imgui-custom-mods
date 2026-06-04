@@ -9,8 +9,9 @@
     width: 340.0,
     height: 160.0,
     padding: 16.0,
-    button_height: 30.0,
-    button_gap: 20.0,
+    button_height: 27.0,
+    button_width: 75.0,
+    button_gap: 60.0,
     dim_background: true,
     keyboard_shortcuts: true,
     rounding: 6.0,
@@ -21,4 +22,5 @@
     header_icon_size: 16.0,
     button_padding_x: 22.0,
     button_bottom_factor: 0.35,
+    button_icon_scale: 0.16,
 )

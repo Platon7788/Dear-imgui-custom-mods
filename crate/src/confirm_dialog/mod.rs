@@ -203,6 +203,7 @@ fn icon_button(
     bg_act: [f32; 4],
     text_col: [f32; 4],
     rounding: f32,
+    icon_scale: f32,
 ) -> bool {
     let pos = ui.cursor_screen_pos();
     let pressed = ui.invisible_button(id, size);
@@ -230,7 +231,7 @@ fn icon_button(
         let ty = pos[1] + (size[1] - text_size[1]) * 0.5;
         draw.add_text([tx, ty], text_col_u32, label);
     } else {
-        let icon_r = size[1] * 0.22;
+        let icon_r = size[1] * icon_scale;
         let gap = 8.0;
         let group_w = icon_r * 2.0 + gap + text_size[0];
         let group_x = pos[0] + (size[0] - group_w) * 0.5;
@@ -436,14 +437,21 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
 
             // Width = label + icon + horizontal padding; both buttons share max width.
             let icon_extra = if cfg.show_button_icons {
-                btn_h * 0.22 * 2.0 + 8.0 // icon diameter + gap
+                btn_h * cfg.button_icon_scale * 2.0 + 8.0 // icon diameter + gap
             } else {
                 0.0
             };
             let h_pad = cfg.button_padding_x;
-            let cancel_w = calc_text_size(cfg.cancel_label.as_str())[0] + icon_extra + h_pad;
-            let confirm_w = calc_text_size(cfg.confirm_label.as_str())[0] + icon_extra + h_pad;
-            let btn_w = cancel_w.max(confirm_w);
+            // A non-zero `button_width` pins both cells to a fixed width;
+            // `0.0` falls back to content auto-sizing (label + icon + pad),
+            // with both buttons sharing the wider of the two.
+            let btn_w = if cfg.button_width > 0.0 {
+                cfg.button_width
+            } else {
+                let cancel_w = calc_text_size(cfg.cancel_label.as_str())[0] + icon_extra + h_pad;
+                let confirm_w = calc_text_size(cfg.confirm_label.as_str())[0] + icon_extra + h_pad;
+                cancel_w.max(confirm_w)
+            };
 
             // `button_gap` is the visible pixel gap between the two buttons —
             // no implicit multiplier. (Pre-0.9 we silently scaled by 1.6 here,
@@ -465,6 +473,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
                 colors.btn_cancel_active,
                 colors.btn_cancel_text,
                 4.0,
+                cfg.button_icon_scale,
             ) {
                 result = DialogResult::Cancelled;
             }
@@ -496,6 +505,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
                 act,
                 text_col,
                 4.0,
+                cfg.button_icon_scale,
             ) {
                 result = DialogResult::Confirmed;
             }

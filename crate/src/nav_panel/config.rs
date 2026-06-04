@@ -148,8 +148,7 @@ pub struct NavPanelConfig {
 
 impl Default for NavPanelConfig {
     fn default() -> Self {
-        ron::from_str(include_str!("config.ron"))
-            .expect("built-in nav_panel/config.ron is valid")
+        ron::from_str(include_str!("config.ron")).expect("built-in nav_panel/config.ron is valid")
     }
 }
 

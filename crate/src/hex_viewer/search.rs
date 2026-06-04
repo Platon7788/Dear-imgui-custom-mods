@@ -152,15 +152,25 @@ pub(super) fn format_bytes(bytes: &[u8], format: CopyFormat, uppercase: bool) ->
         CopyFormat::HexSpaced => {
             let mut s = String::with_capacity(bytes.len().saturating_mul(3));
             for (i, b) in bytes.iter().enumerate() {
-                if i > 0 { s.push(' '); }
-                if uppercase { write!(s, "{b:02X}").unwrap(); } else { write!(s, "{b:02x}").unwrap(); }
+                if i > 0 {
+                    s.push(' ');
+                }
+                if uppercase {
+                    write!(s, "{b:02X}").unwrap();
+                } else {
+                    write!(s, "{b:02x}").unwrap();
+                }
             }
             s
         }
         CopyFormat::HexCompact => {
             let mut s = String::with_capacity(bytes.len().saturating_mul(2));
             for b in bytes {
-                if uppercase { write!(s, "{b:02X}").unwrap(); } else { write!(s, "{b:02x}").unwrap(); }
+                if uppercase {
+                    write!(s, "{b:02X}").unwrap();
+                } else {
+                    write!(s, "{b:02x}").unwrap();
+                }
             }
             s
         }
@@ -168,8 +178,14 @@ pub(super) fn format_bytes(bytes: &[u8], format: CopyFormat, uppercase: bool) ->
             let mut s = String::with_capacity(bytes.len().saturating_mul(6).saturating_add(4));
             s.push_str("{ ");
             for (i, b) in bytes.iter().enumerate() {
-                if i > 0 { s.push_str(", "); }
-                if uppercase { write!(s, "0x{b:02X}").unwrap(); } else { write!(s, "0x{b:02x}").unwrap(); }
+                if i > 0 {
+                    s.push_str(", ");
+                }
+                if uppercase {
+                    write!(s, "0x{b:02X}").unwrap();
+                } else {
+                    write!(s, "0x{b:02x}").unwrap();
+                }
             }
             s.push_str(" }");
             s
@@ -178,8 +194,14 @@ pub(super) fn format_bytes(bytes: &[u8], format: CopyFormat, uppercase: bool) ->
             let mut s = String::with_capacity(bytes.len().saturating_mul(6).saturating_add(2));
             s.push('[');
             for (i, b) in bytes.iter().enumerate() {
-                if i > 0 { s.push_str(", "); }
-                if uppercase { write!(s, "0x{b:02X}").unwrap(); } else { write!(s, "0x{b:02x}").unwrap(); }
+                if i > 0 {
+                    s.push_str(", ");
+                }
+                if uppercase {
+                    write!(s, "0x{b:02X}").unwrap();
+                } else {
+                    write!(s, "0x{b:02x}").unwrap();
+                }
             }
             s.push(']');
             s

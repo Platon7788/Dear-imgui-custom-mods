@@ -7,6 +7,7 @@
 //! - [`input`] — mouse/keyboard input handling
 //! - [`overlays`] — stats overlay and minimap
 
+pub(crate) mod comments;
 mod grid;
 mod input;
 mod math;
@@ -142,6 +143,18 @@ pub(crate) fn render_graph<T>(
         let wire_layer = config.wire_layer;
         let draw_wires = config.show_wires;
 
+        // ── Comment boxes (drawn behind nodes and wires) ──────────────
+        comments::render_comments(
+            &draw,
+            graph,
+            state,
+            config,
+            canvas_pos,
+            canvas_size,
+            font,
+            base_font_size,
+        );
+
         // ── Pre-pass: compute pin positions for ALL nodes ─────────────
         // Pin positions are needed for wire rendering.  Wires can connect
         // a visible node to an off-screen node, so we must compute
@@ -270,5 +283,73 @@ pub(crate) fn render_graph<T>(
         }
     }
 
+    // ── Tooltip painting (gated by hover dwell time) ─────────────────
+    paint_tooltip(graph, state, config, viewer, ui);
+
     actions
+}
+
+/// Paint a hover tooltip for the currently hovered element once the
+/// dwell time has exceeded `config.tooltip_delay`.
+///
+/// The hover dwell time (`state.hover_time`) is advanced by the hover
+/// tracking block above using the frame `delta_time`; it resets to `0`
+/// whenever the hovered element changes. So this gate fires only after
+/// the mouse has rested on the *same* element for `tooltip_delay`
+/// seconds — matching the standard ImGui tooltip feel.
+///
+/// Tooltips are suppressed while any interaction is active (dragging a
+/// node, drawing a wire, box-selecting, or dragging the minimap) so they
+/// never flicker over an in-progress gesture. Pin tooltips take priority
+/// over the node tooltip: hit testing already classifies a hovered pin as
+/// `InputPin` / `OutputPin` (pins are checked before nodes), so the
+/// `match` below naturally prefers the pin text.
+///
+/// Allocation-light: no per-frame heap work — the tooltip text is
+/// borrowed straight from the viewer and forwarded to ImGui.
+fn paint_tooltip<T>(
+    graph: &Graph<T>,
+    state: &InteractionState,
+    config: &NodeGraphConfig,
+    viewer: &dyn NodeGraphViewer<T>,
+    ui: &Ui,
+) {
+    // Delay gate.
+    if state.hover_time < config.tooltip_delay {
+        return;
+    }
+
+    // Suppress during active interactions.
+    if state.node_drag.is_some()
+        || state.comment_drag.is_some()
+        || state.new_wire.is_some()
+        || state.rect_select.is_some()
+        || state.minimap_dragging
+    {
+        return;
+    }
+
+    // Resolve the tooltip text for the hovered element. Pins win over
+    // nodes because hit testing reports a pin (not its parent node) when
+    // the cursor is over a pin.
+    let text: Option<&str> = match state.hovered {
+        HoveredElement::InputPin(pin) => graph
+            .get_node(pin.node)
+            .and_then(|node| viewer.input_tooltip(&node.value, pin.input)),
+        HoveredElement::OutputPin(pin) => graph
+            .get_node(pin.node)
+            .and_then(|node| viewer.output_tooltip(&node.value, pin.output)),
+        HoveredElement::Node(nid) => graph
+            .get_node(nid)
+            .and_then(|node| viewer.node_tooltip(&node.value)),
+        HoveredElement::None
+        | HoveredElement::Wire(..)
+        | HoveredElement::CommentTitle(_)
+        | HoveredElement::CommentResize(_)
+        | HoveredElement::CommentBody(_) => None,
+    };
+
+    if let Some(text) = text {
+        crate::utils::themed_tooltip(ui, || ui.text(text));
+    }
 }

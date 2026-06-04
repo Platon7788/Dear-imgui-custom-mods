@@ -89,6 +89,30 @@ pub(crate) struct NodeDrag {
     pub moved: bool,
 }
 
+// ─── Comment drag ────────────────────────────────────────────────────────────
+
+/// What gesture is being performed on a comment box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommentDragKind {
+    /// Dragging the title bar — moves the comment (mutates `pos`).
+    Move,
+    /// Dragging the bottom-right handle — resizes the comment (mutates `size`).
+    Resize,
+}
+
+/// State for dragging (moving or resizing) a comment box.
+pub(crate) struct CommentDrag {
+    /// Index of the comment being dragged.
+    pub index: usize,
+    /// What gesture is active.
+    pub kind: CommentDragKind,
+    /// For `Move`: screen-space offset from mouse to comment top-left at drag start.
+    /// For `Resize`: screen-space offset from mouse to comment bottom-right at drag start.
+    pub offset: [f32; 2],
+    /// Whether the drag has actually moved (vs. just a click).
+    pub moved: bool,
+}
+
 // ─── Rectangle selection ─────────────────────────────────────────────────────
 
 /// State for rectangle / marquee selection.
@@ -121,6 +145,13 @@ pub(crate) enum HoveredElement {
     InputPin(InPinId),
     OutputPin(OutPinId),
     Wire(OutPinId, InPinId),
+    /// Hovering a comment box title bar (move target). Carries the comment index.
+    CommentTitle(usize),
+    /// Hovering a comment box bottom-right resize handle. Carries the comment index.
+    CommentResize(usize),
+    /// Hovering a comment box body (not the title bar or resize handle).
+    /// Used for right-click menus; does not start a drag.
+    CommentBody(usize),
 }
 
 // ─── Composite interaction state ─────────────────────────────────────────────
@@ -137,6 +168,8 @@ pub struct InteractionState {
     pub(crate) draw_order_set: std::collections::HashSet<NodeId>,
     /// Node currently being dragged.
     pub(crate) node_drag: Option<NodeDrag>,
+    /// Comment box currently being moved or resized.
+    pub(crate) comment_drag: Option<CommentDrag>,
     /// Wire currently being dragged from a pin.
     pub(crate) new_wire: Option<NewWire>,
     /// Active rectangle selection.
@@ -177,6 +210,7 @@ impl Default for InteractionState {
             draw_order: Vec::with_capacity(32),
             draw_order_set: std::collections::HashSet::with_capacity(32),
             node_drag: None,
+            comment_drag: None,
             new_wire: None,
             rect_select: None,
             hovered: HoveredElement::None,
