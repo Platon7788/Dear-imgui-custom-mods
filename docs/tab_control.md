@@ -294,7 +294,7 @@ hover/active lifts, status indicator hues):
 ```rust
 use dear_imgui_custom_mod::theme::Theme;
 
-let theme = Theme::Nord;
+let theme = Theme::Dark;
 tc.config.colors = theme.tab_colors();   // synthesised from theme.nav() + statusbar_colors()
 ```
 

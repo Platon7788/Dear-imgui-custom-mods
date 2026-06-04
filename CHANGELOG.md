@@ -4,6 +4,15 @@
 
 ### Removed (BREAKING)
 
+- **Theme palette set reduced to `Dark` + `Light`.** The global `Theme` enum
+  dropped `Midnight`, `Solarized`, `Monokai`, `Catppuccin`, and `Nord` (and
+  their palette files). `Theme::ALL` is now `[Dark, Light]`; all `*_colors()`
+  resolvers and every call site (code_editor, disasm_view, hex_viewer,
+  nav_panel, confirm_dialog, demos, integration tests) were updated. Code-editor
+  **syntax** themes (`EditorTheme`: OneDark / Monokai / Solarized / Catppuccin /
+  Nord) are a SEPARATE enum and are unaffected. Migrate any `Theme::Solarized`-
+  style references to `Theme::Dark` / `Theme::Light`.
+
 - **`app_window` module deleted entirely** (session 044, 2026-05-06,
   ADR-029). The runner machinery (event loop, wgpu surface lifecycle,
   ImGui platform / renderer init, font atlas, frame scheduler, proxy)
@@ -67,6 +76,29 @@
   register-indirect operand).
 
 ### Fixed
+
+- **Module audit + hardening campaign** (parallel-subagent passes; every
+  audited module also split so each `.rs` file is < 500 lines per CLAUDE.md):
+  - **`utils/export`** — JSON un-escape corruption (`\\n` → backslash+newline)
+    and parser **panics** on malformed input (unterminated array subtract-
+    overflow; mid-UTF-8 slice); RON tuple/string parser panics; YAML scalar
+    type-confusion; TSV cell tab/newline spill. (HIGH/MED)
+  - **`code_editor`** — nested block comments `/* /* */ */` closing at the
+    first `*/` (Rust/RON/Rhai); JSONC `/* */` never highlighting; XML CDATA
+    UTF-8 slice panic; selection silently discarded on bracket auto-skip;
+    case-insensitive find degrading to case-sensitive on freshly-loaded docs;
+    dead error/warning marker colours wired up; per-frame `clone_style` removed.
+  - **`notifications`** — `needs_frame` pinned event-driven hosts at full
+    refresh forever on a settled Sticky toast.
+  - **`toolbar`** — spacer-width overshoot pushed right-aligned items off-edge;
+    `remove()` panicked on out-of-range index (now returns `Option`).
+  - **`nav_panel`** — submenu flyout misaligned (dropped `button_spacing`).
+  - **`status_bar`** — double per-row text measurement.
+  - **`confirm_dialog`** — dead `unreachable!()` icon-match panic arm.
+  - **`icons`** — audited 7448 constants (0 dup names/codepoints/invalid).
+  - Repo hygiene: restored an accidentally-deleted `LICENSE`; removed empty
+    stray files created by subagents' shell. Added ~250 unit tests across the
+    audited modules.
 
 - **`virtual_table` audit fixes** (correctness pass):
   - **CRITICAL — `RingBuffer::remove` double-free / use-after-free** for

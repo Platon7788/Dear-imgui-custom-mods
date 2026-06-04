@@ -10,10 +10,10 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 | Component | Description | Docs |
 |-----------|-------------|------|
-| **`chrome`** | Borderless-window helpers (stateless / explicit-state) — custom Dear ImGui titlebar (min/max/close/drag, double-click maximize, hover zoom, 5 themes), 8-direction edge resize, vector glyphs, Win32 helpers (DWM dark mode, rounded corners, opacity, Win10 region sync). A `Chrome` convenience wrapper plugs into any `winit`-based runner — typically [`dear-app`](https://crates.io/crates/dear-app) — via `on_gpu_init` + `on_event` + `on_frame` callbacks. Replaces the removed `app_window` runner module (see CHANGELOG / ADR-029). | [docs/chrome.md](docs/chrome.md) |
-| **`nav_panel`** | Modern navigation panel (activity bar) — 3 docking positions (Left/Right/Top), flyout submenus, auto-hide with slide animation, toggle arrow, badges, button spacing/separators, per-button tooltip control, 5 unified themes, overlay variant (`render_nav_panel_overlay`) | [docs/nav_panel.md](docs/nav_panel.md) |
-| **`confirm_dialog`** | Reusable modal confirmation dialog — 5 unified themes + `colors_override`, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
-| **`notifications`** | Modern toast-notification center — 5 severity levels (Info/Success/Warning/Error/Debug) with draw-list icons, 6 stack placements (4 corners + top/bottom center), auto-dismiss timer with bottom progress bar, pause-on-hover, Fade/SlideIn/None animations, action buttons with caller-defined ids, manual `×` close, per-toast custom accent override, max-visible cap, 5 unified themes + `colors_override` | [docs/notifications.md](docs/notifications.md) |
+| **`chrome`** | Borderless-window helpers (stateless / explicit-state) — custom Dear ImGui titlebar (min/max/close/drag, double-click maximize, hover zoom), 8-direction edge resize, vector glyphs, Win32 helpers (DWM dark mode, rounded corners, opacity, Win10 region sync), Dark/Light themes. A `Chrome` convenience wrapper plugs into any `winit`-based runner — typically [`dear-app`](https://crates.io/crates/dear-app) — via `on_gpu_init` + `on_event` + `on_frame` callbacks. Replaces the removed `app_window` runner module (see CHANGELOG / ADR-029). | [docs/chrome.md](docs/chrome.md) |
+| **`nav_panel`** | Modern navigation panel (activity bar) — 3 docking positions (Left/Right/Top), flyout submenus, auto-hide with slide animation, toggle arrow, badges, button spacing/separators, per-button tooltip control, Dark/Light themes, overlay variant (`render_nav_panel_overlay`) | [docs/nav_panel.md](docs/nav_panel.md) |
+| **`confirm_dialog`** | Reusable modal confirmation dialog — Dark/Light themes + `colors_override`, 4 draw-list icon types (Warning/Error/Info/Question), dim overlay, Esc/Enter keyboard shortcuts, green Cancel / red Confirm buttons, builder-pattern `DialogConfig` | [docs/confirm_dialog.md](docs/confirm_dialog.md) |
+| **`notifications`** | Modern toast-notification center — 5 severity levels (Info/Success/Warning/Error/Debug) with draw-list icons, 6 stack placements (4 corners + top/bottom center), auto-dismiss timer with bottom progress bar, pause-on-hover, Fade/SlideIn/None animations, action buttons with caller-defined ids, manual `×` close, per-toast custom accent override, max-visible cap, Dark/Light themes + `colors_override` | [docs/notifications.md](docs/notifications.md) |
 
 ### UI Widgets
 
@@ -34,7 +34,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 | **`toolbar`** | Configurable horizontal toolbar — buttons, toggles, separators, dropdowns, spacers, builder API, icon support, hover underline accent, window-hovered guard, flexible spacer layout | [docs/toolbar.md](docs/toolbar.md) |
 | **`status_bar`** | Composable bottom status bar — left/center/right sections, status indicators (Success/Warning/Error/Info), progress bars, clickable items with events, tooltips, icon support, hover highlights, overlay variant (`render_overlay`) | [docs/status_bar.md](docs/status_bar.md) |
 | **`icons`** | Material Design Icons v7.4 codepoint constants (7400+ icons) | |
-| **`theme`** | Unified `Theme` enum — 5 built-in palettes (Dark/Light/Midnight/Solarized/Monokai), each owning the full stack (titlebar/nav/dialog/statusbar/ImGui style); legacy semantic color tokens retained | [docs/theme.md](docs/theme.md) |
+| **`theme`** | Unified `Theme` enum — 2 built-in palettes (Dark/Light), each owning the full stack (titlebar/nav/dialog/statusbar/ImGui style); legacy semantic color tokens retained | [docs/theme.md](docs/theme.md) |
 | **`utils`** | Color packing (RGB/RGBA to u32), `calc_text_size` wrapper, clipboard helpers (copy/paste), SVG/DOT/Mermaid export utilities (`force_graph`), glob pattern matching (file manager) | |
 
 ## Stack
@@ -106,13 +106,17 @@ src/
     state.rs                        NavPanelState — active, visible, animation, submenu
     theme.rs                        NavColors
   theme/
-    mod.rs                          Theme enum, ALL, sub-palette resolvers, legacy tokens
-    palettes.rs                     Palette structs for each theme
-    dark.rs | light.rs | midnight.rs | solarized.rs | monokai.rs
+    mod.rs                          Theme enum (Dark/Light), ALL, sub-palette resolvers
+    palettes.rs                     Shared palette structs (titlebar/nav/dialog/status/…)
+    palettes/disasm.rs | hex.rs     DisasmView / HexViewer colour types
+    tokens.rs                       Legacy semantic colour constants
+    dark.rs | light.rs              The two built-in palettes
   code_editor/
-    mod.rs                          CodeEditor widget — render, input, drawing
+    mod.rs + api/render/draw/...    CodeEditor widget — render, input, drawing (split <500)
+    buffer/                         TextBuffer — lines, cursor, selection, editing
     config.rs                       EditorConfig, ContextMenuConfig (+ config.ron)
-    syntax_colors.rs                EditorTheme, SyntaxColors (8 colour palettes)
+    syntax_colors.rs                EditorTheme, SyntaxColors (8 syntax palettes)
+    lang/                           Per-language tokenizers (rust/, asm/, ron/, json, …)
     font_setup.rs                   CODE_EDITOR_FONT_PTR, font install helpers
     buffer.rs                       TextBuffer — lines, cursor, selection, editing
     token.rs                        Token + TokenKind types

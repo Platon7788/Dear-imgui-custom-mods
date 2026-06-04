@@ -100,9 +100,6 @@ palette that does not fit any built-in theme, use `.with_colors(NavColors)`
 |---------|-------------|
 | `Theme::Dark` | Deep navy (default) |
 | `Theme::Light` | Clean white / light-grey |
-| `Theme::Midnight` | Near-black, high-contrast |
-| `Theme::Solarized` | Solarized dark |
-| `Theme::Monokai` | Monokai Pro |
 
 ## Events
 

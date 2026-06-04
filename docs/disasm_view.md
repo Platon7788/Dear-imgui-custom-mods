@@ -358,10 +358,10 @@ built-in theme exposes a fully-themed `DisasmViewColors` palette:
 use dear_imgui_custom_mod::theme::Theme;
 
 // One-shot apply at construction:
-let cfg = DisasmViewConfig::default().with_theme(Theme::Nord);
+let cfg = DisasmViewConfig::default().with_theme(Theme::Dark);
 
 // Or update an existing config when the host swaps themes:
-view.config.apply_theme_colors(&Theme::Catppuccin.disasm_view_colors());
+view.config.apply_theme_colors(&Theme::Light.disasm_view_colors());
 ```
 
 Available accessor on `Theme`: `Theme::disasm_view_colors() ->

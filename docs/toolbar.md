@@ -165,9 +165,9 @@ Colors derive from the crate-wide `Theme`:
 use dear_imgui_custom_mod::theme::Theme;
 
 let mut toolbar = Toolbar::new("##toolbar");
-toolbar.config = Theme::Nord.toolbar_config();
+toolbar.config = Theme::Dark.toolbar_config();
 // or, in place:
-toolbar.config.apply_theme(Theme::Solarized);
+toolbar.config.apply_theme(Theme::Dark);
 ```
 
 Layout fields (`height`, paddings, `*_thickness`) are left untouched by

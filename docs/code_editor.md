@@ -42,25 +42,32 @@ Built entirely on ImGui's DrawList API (no `InputTextMultiline`), giving full co
 
 ## Architecture
 
+Method `impl`s are split across files (each < 500 lines) but all extend the
+single `CodeEditor` / `TextBuffer` types via `impl` blocks.
+
 ```text
 code_editor/
-├── mod.rs          CodeEditor widget — render, input, drawing
-├── buffer.rs       TextBuffer — lines, cursor, selection, editing
-├── tokenizer.rs    Rust/TOML/RON/Hex tokenizer (legacy, used as fallback)
-├── config.rs       EditorConfig, SyntaxColors, Language, EditorTheme, BuiltinFont
-├── token.rs        Token and TokenKind types
-├── undo.rs         UndoStack with VecDeque and action grouping
-└── lang/           Per-language tokenizer modules
-    ├── mod.rs      Language dispatch
-    ├── rust.rs     Rust tokenizer
-    ├── toml.rs     TOML tokenizer
-    ├── json.rs     JSON tokenizer
-    ├── yaml.rs     YAML tokenizer
-    ├── xml.rs      XML tokenizer
-    ├── rhai.rs     Rhai tokenizer
-    ├── hex.rs      Hex byte tokenizer
-    └── asm.rs      ASM tokenizer (x86/ARM/RISC-V, AT&T + Intel + NASM)
+├── mod.rs          CodeEditor struct, new(), types, tests
+├── api/render/draw/draw_lines/input/input_mouse/input_text/
+│   layout/cache/find_glue/find_chrome   editor engine (split out of mod.rs)
+├── buffer/         TextBuffer — {mod,edit,multi,nav,select,tests}
+├── find_replace.rs / undo.rs / fold.rs / wrap.rs / helpers.rs
+├── config.rs       EditorConfig, ContextMenuConfig (+ config.ron)
+├── syntax_colors.rs  EditorTheme, SyntaxColors (8 syntax palettes)
+├── token.rs        Token / TokenKind types
+└── lang/           Per-language tokenizers (stable Language/TokenKind API)
+    ├── mod.rs      Language dispatch (+ common.rs shared scanners)
+    ├── rust/       Rust  (mod/keywords/tokenize/tests)
+    ├── asm/        x86/ARM/RISC-V (mod/tables/tokenize/tests)
+    ├── ron/        RON   (mod/tokenize)
+    ├── xml/        XML   (mod/tests)
+    └── toml.rs · json.rs · yaml.rs · rhai.rs · hex.rs
 ```
+
+Recent hardening (2026-06): nested block comments (`/* /* */ */`), JSONC block
+comments, Rust byte/raw-byte literals, UTF-8-safe XML CDATA detection,
+selection-replace on bracket auto-skip, and case-insensitive find on
+freshly-loaded documents — all covered by new unit tests.
 
 ### Key Optimizations
 
