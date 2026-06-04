@@ -1,86 +1,22 @@
-//! RON (Rusty Object Notation) tokenizer.
-//!
-//! RON is a data-only configuration format with Rust-flavoured syntax. This
-//! tokenizer is similar to [`super::rust`] but tuned for RON semantics:
-//!
-//! - `//` line comments and `/* */` block comments (multi-line state).
-//! - String, raw-string (`r"..."`, `r#"..."#`) and char literals.
-//! - Hex / octal / binary / decimal numbers with `_` separators; optional
-//!   leading sign.
-//! - `true` / `false` keywords (RON has no other reserved words).
-//! - Identifiers starting with an uppercase letter render as
-//!   [`TokenKind::TypeName`] — matches the struct / enum-variant convention
-//!   (`Some`, `None`, `Foo`).
-//! - Identifiers (and quoted strings) immediately followed by `:` render as
-//!   [`TokenKind::Attribute`] — the field-key / map-key role.
-//! - `#![enable(...)]` extension attributes render as a single
-//!   [`TokenKind::Attribute`] block.
+//! RON line tokenizer.
 
-use super::{NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start};
-use crate::code_editor::config::SyntaxDefinition;
-use crate::code_editor::token::{Token, TokenKind};
+use super::*;
 
-const KEYWORDS: &[&str] = &["true", "false"];
-
-// ── Language definition ─────────────────────────────────────────────────────
-
-pub struct RonLang;
-
-impl SyntaxDefinition for RonLang {
-    fn name(&self) -> &str {
-        "RON"
-    }
-
-    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
-        tokenize(line, in_block_comment)
-    }
-
-    fn line_comment_prefix(&self) -> Option<&str> {
-        Some("//")
-    }
-    fn block_comment_delimiters(&self) -> Option<(&str, &str)> {
-        Some(("/*", "*/"))
-    }
-
-    fn bracket_pairs(&self) -> &[(char, char)] {
-        &[('(', ')'), ('{', '}'), ('[', ']')]
-    }
-
-    fn auto_indent_after(&self) -> &[char] {
-        &['(', '{', '[']
-    }
-    fn auto_dedent_on(&self) -> &[char] {
-        &[')', '}', ']']
-    }
-
-    fn auto_close_pairs(&self) -> &[(&str, &str)] {
-        &[("(", ")"), ("{", "}"), ("[", "]"), ("\"", "\""), ("'", "'")]
-    }
-}
-
-// ── Tokenizer ───────────────────────────────────────────────────────────────
-
-fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
+pub(in crate::code_editor::lang) fn tokenize(
+    line: &str,
+    in_block_comment: bool,
+) -> (Vec<Token>, bool) {
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut tokens = Vec::with_capacity(16);
     let mut i = 0;
+    let mut depth: u32 = u32::from(in_block_comment);
 
     while i < len {
-        // ── Inside block comment ─────────────────────────────────────────
-        if in_block_comment {
+        // ── Inside a (possibly nested) block comment ─────────────────────
+        if depth > 0 {
             let start = i;
-            loop {
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
-                if i >= len {
-                    break;
-                }
-            }
+            depth = scan_block_comment(&mut i, bytes, depth);
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start,
@@ -112,25 +48,14 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                 start: i,
                 len: len - i,
             });
-            return (tokens, in_block_comment);
+            return (tokens, false);
         }
 
-        // ── Block comment start ──────────────────────────────────────────
+        // ── Block comment start (nesting-aware) ──────────────────────────
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
             let start = i;
             i += 2;
-            in_block_comment = true;
-            loop {
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
-                if i >= len {
-                    break;
-                }
-            }
+            depth = scan_block_comment(&mut i, bytes, 1);
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start,
@@ -142,13 +67,13 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         // ── Extension attribute: #![enable(...)] ─────────────────────────
         if b == b'#' && i + 1 < len && bytes[i + 1] == b'!' {
             let start = i;
-            let mut depth = 0u32;
+            let mut bracket_depth = 0u32;
             while i < len {
                 match bytes[i] {
-                    b'[' => depth += 1,
+                    b'[' => bracket_depth += 1,
                     b']' => {
-                        depth = depth.saturating_sub(1);
-                        if depth == 0 {
+                        bracket_depth = bracket_depth.saturating_sub(1);
+                        if bracket_depth == 0 {
                             i += 1;
                             break;
                         }
@@ -351,7 +276,7 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         i += ch_len;
     }
 
-    (tokens, in_block_comment)
+    (tokens, depth > 0)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -386,12 +311,10 @@ mod tests {
     #[test]
     fn struct_with_field_keys() {
         let toks = tok("GameConfig(width: 1920, title: \"Hi\")");
-        // Struct name → TypeName
         assert!(
             toks.iter()
                 .any(|t| t.0 == TokenKind::TypeName && t.1 == "GameConfig")
         );
-        // Field keys → Attribute
         assert!(
             toks.iter()
                 .any(|t| t.0 == TokenKind::Attribute && t.1 == "width")
@@ -400,7 +323,6 @@ mod tests {
             toks.iter()
                 .any(|t| t.0 == TokenKind::Attribute && t.1 == "title")
         );
-        // Number / string still classified
         assert!(
             toks.iter()
                 .any(|t| t.0 == TokenKind::Number && t.1 == "1920")
@@ -428,7 +350,6 @@ mod tests {
     #[test]
     fn map_with_string_keys() {
         let toks = tok("\"key\": 42");
-        // Quoted key → Attribute
         assert_eq!(toks[0].0, TokenKind::Attribute);
         assert_eq!(toks[0].1, "\"key\"");
     }
@@ -461,33 +382,28 @@ mod tests {
         assert_eq!(toks2[0].kind, TokenKind::Comment);
     }
 
-    /// RON allows leading `+` on float literals (`+1.5`). Before
-    /// ADR-027 phase 0 the dispatch fell back to `RustLang`, which
-    /// classified `+` as a separate `Operator` and `1.5` as a
-    /// `Number` — two tokens. With the dedicated `RonLang` we
-    /// recognise `+1.5` as one `Number` token. Pinning this so a
-    /// future refactor doesn't silently regress.
+    /// RON inherits Rust's nested block comments.
+    #[test]
+    fn nested_block_comment() {
+        let (_, still_in) = tokenize_line("/* a /* b */ c */", &Language::Ron, false);
+        assert!(!still_in, "balanced nest closes");
+        let (_, still_in2) = tokenize_line("/* a /* b */", &Language::Ron, false);
+        assert!(still_in2, "one level still open");
+    }
+
     #[test]
     fn leading_plus_on_float_is_single_number() {
         let toks = tok("a: +1.5");
         let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
         assert_eq!(nums.len(), 1);
         assert_eq!(nums[0].1, "+1.5");
-        // No stray `Operator(+)` should leak into the stream.
         let plus_ops: Vec<_> = toks
             .iter()
             .filter(|t| t.0 == TokenKind::Operator && t.1 == "+")
             .collect();
-        assert!(
-            plus_ops.is_empty(),
-            "expected `+` to be folded into the number, got Operator tokens: {plus_ops:?}"
-        );
+        assert!(plus_ops.is_empty());
     }
 
-    /// Sign + radix prefix combinations. RON inherits Rust's
-    /// integer-literal grammar via `consume_number(RUST_LIKE)`.
-    /// The caller eats the sign first, then the helper handles the
-    /// radix body — net result is a single Number token covering both.
     #[test]
     fn signed_radix_combinations() {
         for (input, want_lit) in [
@@ -544,8 +460,6 @@ mod tests {
         );
     }
 
-    /// Multi-byte char literals classify as a single `CharLit`, not
-    /// fragment. Regression for ADR-027 phase 3.
     #[test]
     fn char_literal_unicode() {
         for (input, want_lit) in [
@@ -567,7 +481,6 @@ mod tests {
         let line = "#![enable(implicit_some)]";
         let toks = tok(line);
         assert_eq!(toks[0].0, TokenKind::Attribute);
-        // Single token spans the entire attribute.
         assert_eq!(toks[0].1, line);
     }
 
@@ -579,9 +492,7 @@ mod tests {
 
     #[test]
     fn covers_full_line() {
-        let line = "Foo(name: \"v\", count: 42, // tail\n";
-        // Strip the trailing newline for a single-line tokenizer call.
-        let line = line.trim_end_matches('\n');
+        let line = "Foo(name: \"v\", count: 42, // tail";
         let (toks, _) = tokenize_line(line, &Language::Ron, false);
         let total: usize = toks.iter().map(|t| t.len).sum();
         assert_eq!(total, line.len());

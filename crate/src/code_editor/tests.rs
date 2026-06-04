@@ -1,0 +1,480 @@
+//! `CodeEditor` integration tests.
+//!
+//! Extracted from mod.rs (500-line rule). Declared as a `#[cfg(test)]`
+//! submodule so it reaches the editor's private fields and methods.
+
+use super::*;
+
+#[test]
+fn test_new_editor() {
+    let editor = CodeEditor::new("test");
+    assert_eq!(editor.line_count(), 1);
+    assert!(!editor.is_modified());
+    assert!(!editor.is_read_only());
+}
+
+#[test]
+fn test_set_get_text() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("fn main() {\n    println!(\"hi\");\n}");
+    assert_eq!(editor.line_count(), 3);
+    let text = editor.get_text();
+    assert!(text.contains("fn main()"));
+    assert!(text.contains("println!"));
+}
+
+#[test]
+fn test_language() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_language(Language::Toml);
+    assert_eq!(editor.config().language, Language::Toml);
+}
+
+#[test]
+fn test_read_only() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_read_only(true);
+    assert!(editor.is_read_only());
+}
+
+#[test]
+fn test_goto_line() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("line1\nline2\nline3\nline4\nline5");
+    editor.goto_line(3);
+    assert_eq!(editor.cursor().line, 3);
+}
+
+#[test]
+fn test_modified_flag() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("hello");
+    assert!(!editor.is_modified());
+    editor.buffer.insert_char('x');
+    assert!(editor.is_modified());
+    editor.clear_modified();
+    assert!(!editor.is_modified());
+}
+
+#[test]
+fn test_error_markers() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_error_markers(vec![LineMarker {
+        line: 5,
+        message: "error here".into(),
+        is_error: true,
+    }]);
+    assert_eq!(editor.error_markers.len(), 1);
+}
+
+// digit_count moved to helpers.rs with its own tests.
+// hash_line likewise moved to helpers.rs.
+// find_replace tests (test_find_matches, test_find_case_insensitive)
+// moved to find_replace.rs.
+// test_fold_regions moved to fold.rs.
+
+#[test]
+fn test_block_comment_states() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("/* start\nmiddle\nend */ code");
+    editor.update_block_comment_states();
+    assert_eq!(editor.block_comment_states, vec![false, true, true]);
+}
+
+#[test]
+fn test_closing_bracket() {
+    assert_eq!(closing_bracket('('), Some(')'));
+    assert_eq!(closing_bracket('{'), Some('}'));
+    assert_eq!(closing_bracket('['), Some(']'));
+    assert_eq!(closing_bracket('a'), None);
+}
+
+#[test]
+fn test_duplicate_line() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("line1\nline2\nline3");
+    editor.buffer.set_cursor(CursorPos::new(1, 0));
+    editor.buffer.duplicate_line();
+    assert_eq!(editor.line_count(), 4);
+    assert_eq!(editor.buffer.line(1), "line2");
+    assert_eq!(editor.buffer.line(2), "line2");
+}
+
+#[test]
+fn test_move_line_up() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("aaa\nbbb\nccc");
+    editor.buffer.set_cursor(CursorPos::new(1, 0));
+    editor.buffer.move_line_up();
+    assert_eq!(editor.buffer.line(0), "bbb");
+    assert_eq!(editor.buffer.line(1), "aaa");
+}
+
+#[test]
+fn test_move_line_down() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("aaa\nbbb\nccc");
+    editor.buffer.set_cursor(CursorPos::new(1, 0));
+    editor.buffer.move_line_down();
+    assert_eq!(editor.buffer.line(1), "ccc");
+    assert_eq!(editor.buffer.line(2), "bbb");
+}
+
+#[test]
+fn test_toggle_comment() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("fn main() {\n    let x = 1;\n}");
+    editor.buffer.toggle_line_comment(1..2);
+    assert_eq!(editor.buffer.line(1), "    // let x = 1;");
+    // Toggle again to uncomment
+    editor.buffer.toggle_line_comment(1..2);
+    assert_eq!(editor.buffer.line(1), "    let x = 1;");
+}
+
+#[test]
+fn test_sub_row_col_range_stale_wrap_cols() {
+    // Reproduces the packet-editor panic: when the buffer shrinks but
+    // wrap_cols is still sized for the old content (the in-frame window
+    // between handle_keyboard editing the buffer and update_wrap_cache
+    // refreshing the cache), sub_row_col_range can return start > end.
+    // handle_mouse then computes `end - start` as a usize subtraction and
+    // panics with attempt-to-subtract-with-overflow.
+    let mut editor = CodeEditor::new("test");
+    editor.config_mut().word_wrap = true;
+
+    // Pretend the cache reflects a long wrapped line that has since been
+    // cleared — wrap_cols still has 5 wrap points, but buffer.line(0) is
+    // now empty.
+    editor.wrap_cols = vec![vec![10, 20, 30, 40, 50]];
+    editor.wrap_row_offsets = vec![0, 6];
+    // buffer is empty (default state — one empty line).
+
+    // sub_row = wraps.len() falls off the end: wraps.get(sub_row) is None
+    // so `end = buffer.line(0).chars().count() = 0`, while `start =
+    // wraps.get(sub_row - 1) = 50`. Before the fix this returned (50, 0).
+    let (start, end) = editor.sub_row_col_range(0, 5);
+    assert!(
+        start <= end,
+        "sub_row_col_range returned start={start} > end={end}"
+    );
+}
+
+#[test]
+fn test_nxt_hex_editor_select_all_delete() {
+    // Reproduces NxT packet-editor crash: select-all + delete on a
+    // hex editor configured like packet_monitor's send buffer.
+    let mut editor = CodeEditor::new("##hex_editor");
+    {
+        let cfg = editor.config_mut();
+        cfg.language = Language::Hex;
+        cfg.hex_auto_uppercase = true;
+        cfg.hex_auto_space = true;
+        cfg.word_wrap = true;
+        cfg.force_english_on_focus = true;
+        cfg.smooth_scrolling = false;
+        cfg.show_fold_indicators = false;
+        cfg.max_lines = 999;
+        cfg.max_line_length = 65000;
+    }
+    // Simulate 50 captured packets.
+    let mut text = String::new();
+    for _ in 0..50 {
+        text.push_str("AA BB CC DD EE FF 01 02 03 04\n");
+    }
+    editor.set_text(&text);
+    assert!(editor.line_count() > 10);
+
+    // Ctrl+A
+    editor.buffer.select_all();
+    // Delete — the same path the editor takes for Delete/Backspace.
+    editor.snapshot_undo(true);
+    editor.buffer.delete();
+    editor.invalidate_token_cache_from(editor.buffer.cursor().line);
+
+    assert_eq!(editor.line_count(), 1);
+    assert_eq!(editor.get_text(), "");
+}
+
+#[test]
+fn test_delete_line() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("aaa\nbbb\nccc");
+    editor.buffer.set_cursor(CursorPos::new(1, 0));
+    editor.buffer.delete_line();
+    assert_eq!(editor.line_count(), 2);
+    assert_eq!(editor.buffer.line(0), "aaa");
+    assert_eq!(editor.buffer.line(1), "ccc");
+}
+
+// ── Find / Replace regression tests (audit) ───────────────────────────
+
+/// `replace_all` must replace every match without index drift, even when
+/// the replacement is a different length than the query (the bottom-to-top
+/// ordering is what keeps earlier match columns valid).
+#[test]
+fn test_replace_all_no_index_drift() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("foo foo foo\nbar foo\nfoo");
+    editor.find_replace.query = "foo".to_string();
+    editor.find_replace.replacement = "longer_word".to_string();
+    editor.update_find_matches();
+    assert_eq!(editor.find_replace.matches.len(), 5);
+    editor.replace_all();
+    assert_eq!(
+        editor.get_text(),
+        "longer_word longer_word longer_word\nbar longer_word\nlonger_word"
+    );
+    // All matches consumed.
+    assert_eq!(editor.find_replace.matches.len(), 0);
+}
+
+/// Replacing with a shorter string must not leave stale columns behind —
+/// catches the inverse drift direction.
+#[test]
+fn test_replace_all_shorter_replacement() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("aXa Xa aaX");
+    editor.find_replace.query = "X".to_string();
+    editor.find_replace.replacement = "".to_string();
+    editor.update_find_matches();
+    assert_eq!(editor.find_replace.matches.len(), 3);
+    editor.replace_all();
+    assert_eq!(editor.get_text(), "aa a aa");
+}
+
+/// Case-insensitive find then replace preserves the document's original
+/// casing everywhere except the replaced ranges.
+#[test]
+fn test_replace_all_case_insensitive() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("Hello HELLO hello");
+    editor.find_replace.case_sensitive = false;
+    editor.find_replace.query = "hello".to_string();
+    editor.find_replace.replacement = "hi".to_string();
+    editor.update_find_matches();
+    assert_eq!(editor.find_replace.matches.len(), 3);
+    editor.replace_all();
+    assert_eq!(editor.get_text(), "hi hi hi");
+}
+
+/// `replace_all` on UTF-8 text must slice on char boundaries (would panic
+/// otherwise) and replace the correct ranges.
+#[test]
+fn test_replace_all_multibyte() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("café café");
+    editor.find_replace.query = "café".to_string();
+    editor.find_replace.replacement = "tea".to_string();
+    editor.update_find_matches();
+    assert_eq!(editor.find_replace.matches.len(), 2);
+    editor.replace_all();
+    assert_eq!(editor.get_text(), "tea tea");
+}
+
+/// `replace_current` replaces only the active match and re-scans, so the
+/// next `find_next` lands on a fresh match (no stale index into a shrunk
+/// match list).
+#[test]
+fn test_replace_current_then_navigate() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("x x x");
+    editor.find_replace.query = "x".to_string();
+    editor.find_replace.replacement = "y".to_string();
+    editor.update_find_matches();
+    assert_eq!(editor.find_replace.matches.len(), 3);
+    editor.replace_current();
+    // One replaced, two remain.
+    assert_eq!(editor.find_replace.matches.len(), 2);
+    assert_eq!(editor.get_text(), "y x x");
+    editor.replace_current();
+    assert_eq!(editor.get_text(), "y y x");
+}
+
+/// Find-in-selection scope must ignore matches outside the active selection.
+#[test]
+fn test_find_in_selection_scope() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("foo\nfoo\nfoo");
+    // Select only the middle line.
+    editor
+        .buffer
+        .set_selection(CursorPos::new(1, 0), CursorPos::new(1, 3));
+    editor.find_replace.scope = FindScope::Selection;
+    editor.find_replace.query = "foo".to_string();
+    editor.update_find_matches();
+    assert_eq!(editor.find_replace.matches.len(), 1);
+    assert_eq!(editor.find_replace.matches[0].0, 1); // line 1 only
+}
+
+// ── Undo / redo through the editor (audit) ────────────────────────────
+
+/// Full undo/redo round-trip through the editor restores text and cursor,
+/// keeps the modified flag set, and re-enables redo after undo.
+#[test]
+fn test_editor_undo_redo_round_trip() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("hello");
+    editor.buffer.set_cursor(CursorPos::new(0, 5));
+
+    // Force a discrete edit with its own undo snapshot.
+    editor.snapshot_undo(true);
+    editor.buffer.insert_text(" world");
+    assert_eq!(editor.get_text(), "hello world");
+    assert!(editor.can_undo());
+
+    editor.undo();
+    assert_eq!(editor.get_text(), "hello");
+    assert!(
+        editor.is_modified(),
+        "undo leaves buffer differing from disk"
+    );
+    assert!(editor.can_redo());
+
+    editor.redo();
+    assert_eq!(editor.get_text(), "hello world");
+}
+
+/// `set_text` must clear the undo history (loading a fresh document is not
+/// undoable back to the previous document).
+#[test]
+fn test_set_text_clears_undo() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_text("first");
+    editor.snapshot_undo(true);
+    editor.buffer.insert_char('!');
+    assert!(editor.can_undo());
+    editor.set_text("second");
+    assert!(!editor.can_undo(), "set_text must reset the undo stack");
+}
+
+// ── Marker colour honours config (audit: dead-field fix) ──────────────
+
+/// `set_error_markers` populates both the line set and the marker list so
+/// the draw path can distinguish error vs warning (colour comes from the
+/// theme, not a hardcoded value).
+#[test]
+fn test_error_and_warning_markers_tracked() {
+    let mut editor = CodeEditor::new("test");
+    editor.set_error_markers(vec![
+        LineMarker {
+            line: 2,
+            message: "err".into(),
+            is_error: true,
+        },
+        LineMarker {
+            line: 5,
+            message: "warn".into(),
+            is_error: false,
+        },
+    ]);
+    assert!(editor.error_lines.contains(&2));
+    assert!(editor.error_lines.contains(&5));
+    // Theme colours must be distinct so error/warning render differently.
+    assert_ne!(
+        editor.config().colors.error_underline,
+        editor.config().colors.warning_underline
+    );
+}
+
+// ── Config round-trip (DDD settings) ──────────────────────────────────
+
+/// `EditorConfig` must survive a RON serialize → deserialize round-trip
+/// with every (serializable) knob preserved. Guards the DDD config pattern.
+#[test]
+fn test_config_ron_round_trip() {
+    let mut cfg = EditorConfig::default();
+    cfg.tab_size = 2;
+    cfg.word_wrap = true;
+    cfg.max_lines = 1000;
+    cfg.max_line_length = 120;
+    cfg.smooth_scrolling = false;
+    cfg.font_size_scale = 1.5;
+    let s = ron::to_string(&cfg).expect("serialize EditorConfig");
+    let back: EditorConfig = ron::from_str(&s).expect("deserialize EditorConfig");
+    assert_eq!(back.tab_size, 2);
+    assert!(back.word_wrap);
+    assert_eq!(back.max_lines, 1000);
+    assert_eq!(back.max_line_length, 120);
+    assert!(!back.smooth_scrolling);
+    assert!((back.font_size_scale - 1.5).abs() < f32::EPSILON);
+}
+
+/// The built-in `config.ron` must parse via `Default` (the DDD schema =
+/// .ron values contract). Failure here means the schema and values drifted.
+#[test]
+fn test_default_config_loads_from_ron() {
+    let cfg = EditorConfig::default();
+    // Spot-check a few values that live only in config.ron.
+    assert_eq!(cfg.tab_size, 4);
+    assert!(cfg.insert_spaces);
+    assert!(cfg.show_line_numbers);
+    assert_eq!(cfg.language, Language::Rust); // set in EditorConfig::default()
+}
+
+// ── Property-based tests ─────────────────────────────────────────────
+
+use proptest::prelude::*;
+
+proptest! {
+    /// `parse_hex_color` accepts arbitrary strings without panicking.
+    /// Any Some(rgba) must be a 4-element array with values in [0,1].
+    #[test]
+    fn prop_parse_hex_color_never_panics(s in ".{0,16}") {
+        if let Some(rgba) = parse_hex_color(&s) {
+            for c in rgba {
+                prop_assert!((0.0..=1.0).contains(&c));
+            }
+        }
+    }
+
+    /// `#RRGGBB` strings (6 hex digits) must decode successfully and
+    /// the decoded RGBA must have alpha == 1.0, with each channel
+    /// matching the input byte.
+    #[test]
+    fn prop_parse_hex_color_6_digit_decodes(
+        r in any::<u8>(), g in any::<u8>(), b in any::<u8>(),
+    ) {
+        let s = format!("#{r:02X}{g:02X}{b:02X}");
+        let rgba = parse_hex_color(&s).expect("valid 6-digit hex must parse");
+        prop_assert!((rgba[3] - 1.0).abs() < f32::EPSILON);
+        prop_assert_eq!((rgba[0] * 255.0).round() as u8, r);
+        prop_assert_eq!((rgba[1] * 255.0).round() as u8, g);
+        prop_assert_eq!((rgba[2] * 255.0).round() as u8, b);
+    }
+}
+
+#[test]
+fn context_menu_inline_in_config_ron_matches_canonical() {
+    // `code_editor/config.ron` inlines `context_menu:(...)`; this
+    // drift-test catches the case where one is updated without
+    // the other.
+    let canonical = ContextMenuConfig::default();
+    let cfg = EditorConfig::default();
+    assert_eq!(cfg.context_menu.enabled, canonical.enabled);
+    assert_eq!(cfg.context_menu.show_clipboard, canonical.show_clipboard);
+    assert_eq!(cfg.context_menu.show_select_all, canonical.show_select_all);
+    assert_eq!(cfg.context_menu.show_undo_redo, canonical.show_undo_redo);
+    assert_eq!(
+        cfg.context_menu.show_code_actions,
+        canonical.show_code_actions
+    );
+    assert_eq!(cfg.context_menu.show_transform, canonical.show_transform);
+    assert_eq!(cfg.context_menu.show_find, canonical.show_find);
+    assert_eq!(
+        cfg.context_menu.show_view_toggles,
+        canonical.show_view_toggles
+    );
+    assert_eq!(
+        cfg.context_menu.show_language_selector,
+        canonical.show_language_selector,
+    );
+    assert_eq!(
+        cfg.context_menu.show_theme_selector,
+        canonical.show_theme_selector
+    );
+    assert_eq!(cfg.context_menu.show_font_size, canonical.show_font_size);
+    assert_eq!(
+        cfg.context_menu.show_cursor_info,
+        canonical.show_cursor_info
+    );
+}

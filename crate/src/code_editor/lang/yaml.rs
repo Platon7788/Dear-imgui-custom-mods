@@ -278,10 +278,16 @@ fn tokenize(line: &str) -> Vec<Token> {
             while end > start && (bytes[end - 1] == b' ' || bytes[end - 1] == b'\t') {
                 end -= 1;
             }
+            // The bare-string scan stops at a `: ` mapping separator — when
+            // it did, this token is a mapping *key*, so colour it as an
+            // Attribute (key role) rather than a plain bare scalar.
+            let stopped_at_key_colon = i < len && bytes[i] == b':';
             if end > start {
                 let word = &line[start..end];
                 let kind = if KEYWORDS.contains(&word) {
                     TokenKind::Keyword
+                } else if stopped_at_key_colon {
+                    TokenKind::Attribute
                 } else {
                     TokenKind::Identifier
                 };
@@ -323,18 +329,52 @@ mod tests {
     #[test]
     fn key_value() {
         let toks = tok("name: hello");
+        // `name` is a mapping key → Attribute.
         assert!(
             toks.iter()
-                .any(|t| t.0 == TokenKind::Identifier && t.1 == "name")
+                .any(|t| t.0 == TokenKind::Attribute && t.1 == "name")
         );
         assert!(
             toks.iter()
                 .any(|t| t.0 == TokenKind::Operator && t.1 == ":")
         );
+        // `hello` is a bare scalar value → Identifier.
         assert!(
             toks.iter()
                 .any(|t| t.0 == TokenKind::Identifier && t.1 == "hello")
         );
+    }
+
+    /// Indented (nested) keys are also Attributes.
+    #[test]
+    fn nested_key_is_attribute() {
+        let toks = tok("  port: 8080");
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Attribute && t.1 == "port")
+        );
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Number && t.1 == "8080")
+        );
+    }
+
+    /// A bare scalar with no following `:` stays an Identifier (not a key).
+    #[test]
+    fn bare_scalar_value_is_identifier() {
+        let toks = tok("- plain_value");
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Identifier && t.1 == "plain_value")
+        );
+        assert!(!toks.iter().any(|t| t.0 == TokenKind::Attribute));
+    }
+
+    /// Unterminated quoted string runs to EOL without panic.
+    #[test]
+    fn unterminated_quoted_no_panic() {
+        let toks = tok(r#"key: "unclosed"#);
+        assert!(toks.iter().any(|t| t.0 == TokenKind::String));
     }
 
     #[test]

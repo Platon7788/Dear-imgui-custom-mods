@@ -9,6 +9,9 @@ use super::{is_ident_continue, is_ident_start};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
+#[cfg(test)]
+mod tests;
+
 // ── Language definition ─────────────────────────────────────────────────────
 
 pub struct XmlLang;
@@ -134,7 +137,10 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         }
 
         // ── CDATA <![CDATA[...]]> ────────────────────────────────────────
-        if b == b'<' && i + 8 < len && &line[i..i + 9] == "<![CDATA[" {
+        // Byte-compare (not `&line[i..i+9]`) so a multi-byte codepoint
+        // straddling the window can never trigger a non-char-boundary
+        // slicing panic.
+        if b == b'<' && i + 9 <= len && &bytes[i..i + 9] == b"<![CDATA[" {
             let start = i;
             i += 9;
             loop {
@@ -364,113 +370,4 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
     }
 
     (tokens, in_block_comment)
-}
-
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use crate::code_editor::config::Language;
-    use crate::code_editor::lang::tokenize_line;
-    use crate::code_editor::token::TokenKind;
-
-    fn tok(line: &str) -> Vec<(TokenKind, String)> {
-        let (tokens, _) = tokenize_line(line, &Language::Xml, false);
-        tokens
-            .iter()
-            .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
-            .collect()
-    }
-
-    #[test]
-    fn tag_with_attributes() {
-        let toks = tok(r#"<div class="main">"#);
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Keyword && t.1 == "div")
-        );
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::TypeName && t.1 == "class")
-        );
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::String && t.1 == r#""main""#)
-        );
-    }
-
-    #[test]
-    fn self_closing() {
-        let toks = tok("<br/>");
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Keyword && t.1 == "br")
-        );
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Punctuation && t.1 == "/>")
-        );
-    }
-
-    #[test]
-    fn closing_tag() {
-        let toks = tok("</div>");
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Punctuation && t.1 == "</")
-        );
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Keyword && t.1 == "div")
-        );
-    }
-
-    #[test]
-    fn comment_multiline() {
-        let (_, still_in) = tokenize_line("<!-- start", &Language::Xml, false);
-        assert!(still_in);
-        let (toks, done) = tokenize_line("end --> text", &Language::Xml, true);
-        assert!(!done);
-        assert_eq!(toks[0].kind, TokenKind::Comment);
-    }
-
-    #[test]
-    fn comment_single_line() {
-        let (toks, bc) = tokenize_line("<!-- full comment -->", &Language::Xml, false);
-        assert!(!bc);
-        assert_eq!(toks[0].kind, TokenKind::Comment);
-    }
-
-    #[test]
-    fn entity() {
-        let toks = tok("&amp;");
-        assert_eq!(toks[0].0, TokenKind::MacroCall);
-        assert_eq!(toks[0].1, "&amp;");
-    }
-
-    #[test]
-    fn processing_instruction() {
-        let toks = tok(r#"<?xml version="1.0"?>"#);
-        assert_eq!(toks[0].0, TokenKind::Attribute);
-    }
-
-    #[test]
-    fn cdata() {
-        let toks = tok("<![CDATA[some data]]>");
-        assert_eq!(toks[0].0, TokenKind::String);
-    }
-
-    #[test]
-    fn mixed_content() {
-        let toks = tok("Hello &amp; <b>world</b>");
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Identifier && t.1 == "Hello ")
-        );
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::MacroCall && t.1 == "&amp;")
-        );
-        assert!(toks.iter().any(|t| t.0 == TokenKind::Keyword && t.1 == "b"));
-    }
 }

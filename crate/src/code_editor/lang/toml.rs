@@ -103,13 +103,16 @@ fn tokenize(line: &str) -> Vec<Token> {
             continue;
         }
 
-        // String (double or single quote, including triple-quoted)
+        // String (double or single quote, including triple-quoted).
+        // Backslash escapes apply only to basic (double-quoted) strings;
+        // TOML literal (single-quoted) strings treat `\` verbatim.
         if b == b'"' || b == b'\'' {
             let quote = b;
+            let escapes = quote == b'"';
             let start = i;
             i += 1;
             while i < len && bytes[i] != quote {
-                if bytes[i] == b'\\' && i + 1 < len {
+                if escapes && bytes[i] == b'\\' && i + 1 < len {
                     i += 1;
                 }
                 i += 1;
@@ -144,15 +147,24 @@ fn tokenize(line: &str) -> Vec<Token> {
             continue;
         }
 
-        // Identifier / keyword (bare keys can contain `-`)
+        // Identifier / keyword / bare key (bare keys can contain `-`).
+        // A bare identifier followed (past whitespace) by `=` is a key —
+        // classify it as Attribute to match the section-header / key role.
         if is_ident_start(b) {
             let start = i;
             while i < len && (is_ident_continue(bytes[i]) || bytes[i] == b'-') {
                 i += 1;
             }
             let word = &line[start..i];
+            let mut j = i;
+            while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            let followed_by_eq = j < len && bytes[j] == b'=';
             let kind = if KEYWORDS.contains(&word) {
                 TokenKind::Keyword
+            } else if followed_by_eq {
+                TokenKind::Attribute
             } else {
                 TokenKind::Identifier
             };
@@ -224,9 +236,42 @@ mod tests {
     #[test]
     fn key_value() {
         let (toks, _) = tokenize_line("name = \"hello\"", &Language::Toml, false);
-        assert!(toks.iter().any(|t| t.kind == TokenKind::Identifier));
+        // `name` is a key → Attribute.
+        assert!(toks.iter().any(|t| t.kind == TokenKind::Attribute
+            && &"name = \"hello\""[t.start..t.start + t.len] == "name"));
         assert!(toks.iter().any(|t| t.kind == TokenKind::String));
         assert!(toks.iter().any(|t| t.kind == TokenKind::Operator));
+    }
+
+    /// A bare key before `=` is an Attribute; a bare value after `=`
+    /// stays an Identifier.
+    #[test]
+    fn bare_value_is_identifier() {
+        let line = "color = red";
+        let (toks, _) = tokenize_line(line, &Language::Toml, false);
+        assert!(
+            toks.iter()
+                .any(|t| t.kind == TokenKind::Attribute
+                    && &line[t.start..t.start + t.len] == "color")
+        );
+        assert!(
+            toks.iter().any(
+                |t| t.kind == TokenKind::Identifier && &line[t.start..t.start + t.len] == "red"
+            )
+        );
+    }
+
+    /// TOML literal (single-quoted) strings do not process `\` escapes:
+    /// the backslash is part of the value and the string still closes at
+    /// the single quote.
+    #[test]
+    fn literal_string_no_escape() {
+        let line = r"path = 'C:\temp\new'";
+        let (toks, _) = tokenize_line(line, &Language::Toml, false);
+        assert!(
+            toks.iter().any(|t| t.kind == TokenKind::String
+                && &line[t.start..t.start + t.len] == r"'C:\temp\new'")
+        );
     }
 
     #[test]
@@ -237,8 +282,14 @@ mod tests {
 
     #[test]
     fn bare_key_with_dash() {
-        let (toks, _) = tokenize_line("my-key = 42", &Language::Toml, false);
-        assert!(toks.iter().any(|t| t.kind == TokenKind::Identifier));
+        let line = "my-key = 42";
+        let (toks, _) = tokenize_line(line, &Language::Toml, false);
+        // The dashed key before `=` is an Attribute spanning `my-key`.
+        assert!(
+            toks.iter()
+                .any(|t| t.kind == TokenKind::Attribute
+                    && &line[t.start..t.start + t.len] == "my-key")
+        );
     }
 
     /// Sign + radix combinations. TOML accepts `+` and `-` as

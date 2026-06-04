@@ -111,9 +111,11 @@ pub enum Language {
     Ron,
     /// Hex byte stream — each line is a sequence of `XX` byte pairs separated
     /// by spaces. `//` comments are supported. Bytes are colored by value:
-    /// `00` = null (dim), `01–1F`/`7F` = control (red), `20–7E` = printable
-    /// (cyan), `80–FF` = high (purple). Invalid non-hex characters use
-    /// [`TokenKind::Operator`].
+    /// `00` → [`TokenKind::HexNull`], `FF` → [`TokenKind::HexFF`],
+    /// printable ASCII `20–7E` → [`TokenKind::HexPrintable`], everything else
+    /// (control bytes and high bytes) → [`TokenKind::HexDefault`]. A lone hex
+    /// nibble renders as [`TokenKind::Attribute`] (amber warning), and invalid
+    /// non-hex characters use [`TokenKind::Operator`].
     ///
     /// Pair this with [`EditorConfig::hex_auto_space`] and
     /// [`EditorConfig::hex_auto_uppercase`] for a full hex-editing experience.
@@ -173,193 +175,12 @@ pub use super::token::{Token, TokenKind};
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
-/// ASCII letter or `_`.
-#[inline]
-pub(crate) fn is_ident_start(b: u8) -> bool {
-    b.is_ascii_alphabetic() || b == b'_'
-}
+mod common;
 
-/// ASCII alphanumeric or `_`.
-#[inline]
-pub(crate) fn is_ident_continue(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-
-/// Number-literal parsing options. Each language picks the combo
-/// matching its specification — see the `*_LIKE` constants.
-#[derive(Clone, Copy)]
-pub(super) struct NumberOpts {
-    /// Allow `_` between digits as a visual separator.
-    pub(super) underscore: bool,
-    /// Allow `0x` / `0b` / `0o` radix prefixes.
-    pub(super) radix: bool,
-    /// Allow `.` decimal point and `e`/`E` exponent — applies only to
-    /// non-radix decimals (radix literals are integer-only).
-    pub(super) float: bool,
-}
-
-impl NumberOpts {
-    /// JSON spec: decimal only, no underscores, float OK.
-    pub(super) const JSON: Self = Self {
-        underscore: false,
-        radix: false,
-        float: true,
-    };
-    /// Rust / RON / TOML / YAML 1.1 / Rhai: full radix + `_` + float.
-    pub(super) const RUST_LIKE: Self = Self {
-        underscore: true,
-        radix: true,
-        float: true,
-    };
-}
-
-/// Consume a numeric literal at `bytes[*i..]`, advancing `*i` past it.
-/// Returns `true` if any byte was consumed.
-///
-/// `*i` should already point at the first body digit (or at `0` for a
-/// radix prefix, or at a leading `.` for a `.5`-style float). The
-/// caller is responsible for any leading sign.
-///
-/// Type-suffix handling (e.g. Rust's `42_u8`) is **not** part of this
-/// helper — the caller appends an `is_ident_start` / `is_ident_continue`
-/// run after the call if its language supports suffixes.
-pub(super) fn consume_number(i: &mut usize, bytes: &[u8], opts: NumberOpts) -> bool {
-    let len = bytes.len();
-    let start = *i;
-
-    // ── Radix prefix (0x / 0b / 0o) ──────────────────────────────────────
-    if opts.radix && *i + 1 < len && bytes[*i] == b'0' {
-        let radix = match bytes[*i + 1] {
-            b'x' | b'X' => Some(b'x'),
-            b'b' | b'B' => Some(b'b'),
-            b'o' | b'O' => Some(b'o'),
-            _ => None,
-        };
-        if let Some(k) = radix {
-            *i += 2;
-            while *i < len {
-                let c = bytes[*i];
-                let valid = match k {
-                    b'x' => c.is_ascii_hexdigit(),
-                    b'b' => c == b'0' || c == b'1',
-                    b'o' => (b'0'..=b'7').contains(&c),
-                    _ => false,
-                };
-                if !(valid || (opts.underscore && c == b'_')) {
-                    break;
-                }
-                *i += 1;
-            }
-            return *i > start;
-        }
-    }
-
-    // ── Decimal body ─────────────────────────────────────────────────────
-    while *i < len && (bytes[*i].is_ascii_digit() || (opts.underscore && bytes[*i] == b'_')) {
-        *i += 1;
-    }
-
-    if opts.float {
-        // Decimal point — only when followed by a digit, so `1..2` range
-        // syntax doesn't get its dots eaten.
-        if *i + 1 < len && bytes[*i] == b'.' && bytes[*i + 1].is_ascii_digit() {
-            *i += 1;
-            while *i < len && (bytes[*i].is_ascii_digit() || (opts.underscore && bytes[*i] == b'_'))
-            {
-                *i += 1;
-            }
-        }
-        // Exponent
-        if *i < len && (bytes[*i] == b'e' || bytes[*i] == b'E') {
-            *i += 1;
-            if *i < len && (bytes[*i] == b'+' || bytes[*i] == b'-') {
-                *i += 1;
-            }
-            while *i < len && (bytes[*i].is_ascii_digit() || (opts.underscore && bytes[*i] == b'_'))
-            {
-                *i += 1;
-            }
-        }
-    }
-
-    *i > start
-}
-
-/// Try to consume a char literal at `line[i..]`.
-///
-/// Returns `Some(end_byte_index)` on success — the byte position
-/// **after** the closing `'`. Returns `None` if the construct doesn't
-/// look like a complete char literal (the caller falls back to the
-/// next applicable branch — e.g. Rust lifetime, Rhai punctuation).
-///
-/// The helper advances by full UTF-8 code points (via
-/// [`char::len_utf8`]), so non-ASCII chars like `'é'`, `'你'`, `'😀'`
-/// classify as a single token rather than fragmenting into the
-/// fallback bucket.
-///
-/// Recognised escape sequences:
-/// - Single-character: `\n`, `\r`, `\t`, `\0`, `\\`, `\'`, `\"` etc.
-///   (any byte after `\`).
-/// - Hex: `\xHH` (one or two hex digits).
-/// - Unicode: `\u{HHHHHH}` (1–6 hex digits in braces).
-pub(super) fn consume_char_literal(line: &str, i: usize) -> Option<usize> {
-    let bytes = line.as_bytes();
-    let len = bytes.len();
-
-    // Must start with single quote and have at least one body byte.
-    if i + 1 >= len || bytes[i] != b'\'' {
-        return None;
-    }
-
-    let mut p = i + 1;
-
-    if bytes[p] == b'\\' {
-        // Escape sequence.
-        p += 1;
-        if p >= len {
-            return None;
-        }
-        match bytes[p] {
-            b'x' => {
-                // \xHH — up to 2 hex digits.
-                p += 1;
-                let mut count = 0;
-                while count < 2 && p < len && bytes[p].is_ascii_hexdigit() {
-                    p += 1;
-                    count += 1;
-                }
-            }
-            b'u' => {
-                // \u{HHHHHH} — up to 6 hex digits in braces.
-                p += 1;
-                if p < len && bytes[p] == b'{' {
-                    p += 1;
-                    while p < len && bytes[p].is_ascii_hexdigit() {
-                        p += 1;
-                    }
-                    if p < len && bytes[p] == b'}' {
-                        p += 1;
-                    }
-                }
-            }
-            _ => {
-                // Single-byte escape (\n, \r, \t, \\, \', etc.).
-                p += 1;
-            }
-        }
-    } else {
-        // Non-escape body — consume one full UTF-8 codepoint.
-        let c = line[p..].chars().next()?;
-        p += c.len_utf8();
-    }
-
-    // Closing quote.
-    if p < len && bytes[p] == b'\'' {
-        Some(p + 1)
-    } else {
-        None
-    }
-}
+pub(in crate::code_editor::lang) use common::{
+    NumberOpts, consume_char_literal, consume_number, scan_block_comment,
+};
+pub(crate) use common::{is_ident_continue, is_ident_start};
 
 // ── Plain text "language" ───────────────────────────────────────────────────
 
@@ -551,5 +372,88 @@ mod tests {
         let (toks, _) = tokenize_line(line, &Language::Rust, false);
         let total: usize = toks.iter().map(|t| t.len).sum();
         assert_eq!(total, line.len());
+    }
+
+    const ALL_LANGS: &[Language] = &[
+        Language::None,
+        Language::Rust,
+        Language::Ron,
+        Language::Rhai,
+        Language::Toml,
+        Language::Json,
+        Language::Yaml,
+        Language::Xml,
+        Language::Hex,
+        Language::Asm,
+    ];
+
+    /// Adversarial inputs must never panic and must always produce tokens
+    /// whose byte spans exactly tile the line (contiguous, no gaps, no
+    /// overlaps, total == line length). This is the single most important
+    /// invariant: the renderer slices the line by these spans, so any gap
+    /// or overlap is a UTF-8 panic waiting to happen.
+    #[test]
+    fn all_langs_no_panic_full_coverage_both_states() {
+        let samples = [
+            "",
+            " ",
+            "\t\t",
+            "/* unterminated",
+            "*/ stray close",
+            "\"unterminated string",
+            "'unterminated char",
+            "r#\"unterminated raw",
+            "你好世界 — 多字节",
+            "😀😀😀",
+            "0x 0b 0o 1_2_3 1.2e+3 .5 1..2 1..=3",
+            "#![attr(unclosed",
+            "<!-- xml unclosed",
+            "<![CDATA[ unclosed",
+            "key: value # comment",
+            "DE AD BE EF GG",
+            "&amp; <b>x</b>",
+            "let x = b'\\x41'; // mix",
+            "\\\\\\ stray backslashes",
+            ":::,,,...===!!!",
+        ];
+        for lang in ALL_LANGS {
+            for &in_bc in &[false, true] {
+                for s in &samples {
+                    let (toks, _) = tokenize_line(s, lang, in_bc);
+                    let mut pos = 0usize;
+                    for t in &toks {
+                        assert_eq!(
+                            t.start, pos,
+                            "non-contiguous span in {lang:?} (bc={in_bc}) on {s:?}: {toks:?}"
+                        );
+                        // Spans must land on char boundaries so the renderer
+                        // can slice without panicking.
+                        assert!(
+                            s.is_char_boundary(t.start) && s.is_char_boundary(t.start + t.len),
+                            "span not on char boundary in {lang:?} on {s:?}"
+                        );
+                        pos += t.len;
+                    }
+                    assert_eq!(
+                        pos,
+                        s.len(),
+                        "span total != line len in {lang:?} (bc={in_bc}) on {s:?}: {toks:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Block-comment carry state must be idempotent in the sense that a
+    /// language advertising no block comments never reports "still in a
+    /// block comment".
+    #[test]
+    fn non_block_comment_langs_never_carry_state() {
+        for lang in [Language::Toml, Language::Yaml, Language::Asm, Language::Hex] {
+            for line in ["/* not a comment here */", "x */", "/* x"] {
+                let (_, carry) = tokenize_line(line, &lang, false);
+                assert!(!carry, "{lang:?} unexpectedly carried block-comment state");
+            }
+        }
     }
 }

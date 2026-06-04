@@ -1,215 +1,24 @@
-//! Rust / RON syntax tokenizer.
+//! Rust line tokenizer — the state machine that walks one line of source
+//! and emits [`Token`]s, carrying block-comment state across lines.
 
-use super::{NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start};
-use crate::code_editor::config::SyntaxDefinition;
-use crate::code_editor::token::{Token, TokenKind};
+use super::keywords::{BUILTIN_TYPES, KEYWORDS};
+use super::*;
+use crate::code_editor::lang::scan_block_comment;
 
-// ── Keywords ────────────────────────────────────────────────────────────────
-
-const KEYWORDS: &[&str] = &[
-    // Stable
-    "as",
-    "async",
-    "await",
-    "break",
-    "const",
-    "continue",
-    "crate",
-    "dyn",
-    "else",
-    "enum",
-    "extern",
-    "false",
-    "fn",
-    "for",
-    "if",
-    "impl",
-    "in",
-    "let",
-    "loop",
-    "match",
-    "mod",
-    "move",
-    "mut",
-    "pub",
-    "ref",
-    "return",
-    "self",
-    "Self",
-    "static",
-    "struct",
-    "super",
-    "trait",
-    "true",
-    "type",
-    "unsafe",
-    "use",
-    "where",
-    "while",
-    "yield",
-    "macro_rules",
-    // Reserved
-    "abstract",
-    "become",
-    "box",
-    "do",
-    "final",
-    "macro",
-    "override",
-    "priv",
-    "try",
-    "typeof",
-    "unsized",
-    "virtual",
-];
-
-const BUILTIN_TYPES: &[&str] = &[
-    // Primitives
-    "bool",
-    "char",
-    "f32",
-    "f64",
-    "i8",
-    "i16",
-    "i32",
-    "i64",
-    "i128",
-    "isize",
-    "u8",
-    "u16",
-    "u32",
-    "u64",
-    "u128",
-    "usize",
-    "str",
-    "never",
-    // Heap / smart pointers
-    "String",
-    "Box",
-    "Rc",
-    "Arc",
-    "Weak",
-    // Collections
-    "Vec",
-    "VecDeque",
-    "LinkedList",
-    "HashMap",
-    "BTreeMap",
-    "IndexMap",
-    "HashSet",
-    "BTreeSet",
-    "IndexSet",
-    // Option / Result
-    "Option",
-    "Result",
-    // Sync
-    "Cell",
-    "RefCell",
-    "Mutex",
-    "RwLock",
-    "MutexGuard",
-    "RwLockReadGuard",
-    "RwLockWriteGuard",
-    "Atomic",
-    "AtomicBool",
-    "AtomicI32",
-    "AtomicU32",
-    "AtomicI64",
-    "AtomicU64",
-    "AtomicUsize",
-    // Pointers
-    "Pin",
-    "NonNull",
-    "MaybeUninit",
-    "ManuallyDrop",
-    // Borrowed
-    "Cow",
-    "Ref",
-    "RefMut",
-    // Strings / paths
-    "OsStr",
-    "OsString",
-    "CStr",
-    "CString",
-    "Path",
-    "PathBuf",
-    // Ranges
-    "Range",
-    "RangeInclusive",
-    "RangeFull",
-    "RangeFrom",
-    "RangeTo",
-    "RangeToInclusive",
-    // Time
-    "Duration",
-    "Instant",
-    "SystemTime",
-    // I/O
-    "File",
-    "BufReader",
-    "BufWriter",
-    "Cursor",
-    // Error
-    "Error",
-    "Infallible",
-    // Misc
-    "Ordering",
-    "Formatter",
-    "Thread",
-    "JoinHandle",
-    // Common enum variants
-    "Some",
-    "None",
-    "Ok",
-    "Err",
-];
-
-// ── Language definition ─────────────────────────────────────────────────────
-
-pub struct RustLang;
-
-impl SyntaxDefinition for RustLang {
-    fn name(&self) -> &str {
-        "Rust"
-    }
-
-    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
-        tokenize(line, in_block_comment)
-    }
-
-    fn line_comment_prefix(&self) -> Option<&str> {
-        Some("//")
-    }
-    fn block_comment_delimiters(&self) -> Option<(&str, &str)> {
-        Some(("/*", "*/"))
-    }
-
-    fn bracket_pairs(&self) -> &[(char, char)] {
-        &[('(', ')'), ('{', '}'), ('[', ']')]
-    }
-
-    fn auto_indent_after(&self) -> &[char] {
-        &['{']
-    }
-    fn auto_dedent_on(&self) -> &[char] {
-        &['}']
-    }
-
-    fn auto_close_pairs(&self) -> &[(&str, &str)] {
-        &[("(", ")"), ("{", "}"), ("[", "]"), ("\"", "\""), ("'", "'")]
-    }
-}
-
-// ── Tokenizer ───────────────────────────────────────────────────────────────
-
-fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
+pub(in crate::code_editor::lang) fn tokenize(
+    line: &str,
+    in_block_comment: bool,
+) -> (Vec<Token>, bool) {
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut tokens = Vec::with_capacity(16);
     let mut i = 0;
+    // Depth of currently-open block comments. The editor only carries a
+    // `bool`, so the entry depth is `1` when `in_block_comment` is set.
+    let mut depth: u32 = u32::from(in_block_comment);
 
     // USER CODE markers — whole-line tokens
-    {
+    if depth == 0 {
         let trimmed = line.trim();
         if trimmed.starts_with("// USER CODE BEGIN") || trimmed.starts_with("// USER CODE END") {
             tokens.push(Token {
@@ -217,25 +26,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                 start: 0,
                 len: line.len(),
             });
-            return (tokens, in_block_comment);
+            return (tokens, false);
         }
     }
 
     while i < len {
-        // ── Inside block comment ─────────────────────────────────────────
-        if in_block_comment {
+        // ── Inside a (possibly nested) block comment ─────────────────────
+        if depth > 0 {
             let start = i;
-            loop {
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
-                if i >= len {
-                    break;
-                }
-            }
+            depth = scan_block_comment(&mut i, bytes, depth);
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start,
@@ -267,25 +66,14 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                 start: i,
                 len: len - i,
             });
-            return (tokens, in_block_comment);
+            return (tokens, false);
         }
 
-        // ── Block comment start ──────────────────────────────────────────
+        // ── Block comment start (nesting-aware) ──────────────────────────
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
             let start = i;
             i += 2;
-            in_block_comment = true;
-            loop {
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
-                if i >= len {
-                    break;
-                }
-            }
+            depth = scan_block_comment(&mut i, bytes, 1);
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start,
@@ -297,13 +85,29 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         // ── Attribute ────────────────────────────────────────────────────
         if b == b'#' && i + 1 < len && (bytes[i + 1] == b'[' || bytes[i + 1] == b'!') {
             let start = i;
-            let mut depth = 0u32;
+            // `#!` that is NOT followed by `[` (e.g. a shebang line, or a
+            // stray `#!`) is not a real attribute — treat `#` as punctuation
+            // and let the rest re-tokenize.
+            if bytes[i + 1] == b'!' && !(i + 2 < len && bytes[i + 2] == b'[') {
+                tokens.push(Token {
+                    kind: TokenKind::Punctuation,
+                    start,
+                    len: 1,
+                });
+                i += 1;
+                continue;
+            }
+            let mut bracket_depth = 0u32;
+            let mut saw_bracket = false;
             while i < len {
                 match bytes[i] {
-                    b'[' => depth += 1,
+                    b'[' => {
+                        bracket_depth += 1;
+                        saw_bracket = true;
+                    }
                     b']' => {
-                        depth = depth.saturating_sub(1);
-                        if depth == 0 {
+                        bracket_depth = bracket_depth.saturating_sub(1);
+                        if bracket_depth == 0 {
                             i += 1;
                             break;
                         }
@@ -312,6 +116,11 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                 }
                 i += 1;
             }
+            // If no `[` was ever seen the attribute was malformed; we still
+            // emit one Attribute token spanning what we scanned (covers the
+            // whole line for unterminated `#![` etc.) so the line stays
+            // fully colored without panicking.
+            let _ = saw_bracket;
             tokens.push(Token {
                 kind: TokenKind::Attribute,
                 start,
@@ -342,10 +151,54 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             continue;
         }
 
-        // ── Raw string (r"..." or r#"..."#) ──────────────────────────────
-        if b == b'r' && i + 1 < len && (bytes[i + 1] == b'"' || bytes[i + 1] == b'#') {
+        // ── Byte / byte-string literal (b'x', b"...") ────────────────────
+        if b == b'b' && i + 1 < len && (bytes[i + 1] == b'"' || bytes[i + 1] == b'\'') {
+            // `b"..."` byte string or `b'x'` byte char.
+            if bytes[i + 1] == b'"' {
+                let start = i;
+                i += 2;
+                while i < len {
+                    if bytes[i] == b'\\' && i + 1 < len {
+                        i += 2;
+                    } else if bytes[i] == b'"' {
+                        i += 1;
+                        break;
+                    } else {
+                        i += 1;
+                    }
+                }
+                tokens.push(Token {
+                    kind: TokenKind::String,
+                    start,
+                    len: i - start,
+                });
+                continue;
+            } else if let Some(end) = consume_char_literal(line, i + 1) {
+                // b'x' — `b` prefix + char literal.
+                tokens.push(Token {
+                    kind: TokenKind::CharLit,
+                    start: i,
+                    len: end - i,
+                });
+                i = end;
+                continue;
+            }
+            // Otherwise fall through — `b` is an ordinary identifier start.
+        }
+
+        // ── Raw string (r"..." / r#"..."# / br"..." / br#"..."#) ─────────
+        if (b == b'r' && i + 1 < len && (bytes[i + 1] == b'"' || bytes[i + 1] == b'#'))
+            || (b == b'b'
+                && i + 2 < len
+                && bytes[i + 1] == b'r'
+                && (bytes[i + 2] == b'"' || bytes[i + 2] == b'#'))
+        {
             let start = i;
-            i += 1;
+            // Skip optional `b` byte-string prefix.
+            if b == b'b' {
+                i += 1;
+            }
+            i += 1; // skip `r`
             let mut hashes = 0usize;
             while i < len && bytes[i] == b'#' {
                 hashes += 1;
@@ -436,7 +289,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                 i += 1;
             }
             let word = &line[start..i];
-            if i < len && bytes[i] == b'!' && !KEYWORDS.contains(&word) {
+            // Macro invocation: `name!` but not `!=` (the operator), and not
+            // a keyword (`return!` is never a macro). `macro_rules!` is the
+            // canonical case kept as a MacroCall by excluding it from the
+            // keyword guard.
+            if i < len
+                && bytes[i] == b'!'
+                && !(i + 1 < len && bytes[i + 1] == b'=')
+                && (!KEYWORDS.contains(&word) || word == "macro_rules")
+            {
                 i += 1;
                 tokens.push(Token {
                     kind: TokenKind::MacroCall,
@@ -563,138 +424,5 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         i += ch_len;
     }
 
-    (tokens, in_block_comment)
-}
-
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::code_editor::config::Language;
-    use crate::code_editor::lang::tokenize_line;
-
-    fn tok(line: &str) -> Vec<(TokenKind, &str)> {
-        let (tokens, _) = tokenize_line(line, &Language::Rust, false);
-        tokens
-            .iter()
-            .map(|t| (t.kind, &line[t.start..t.start + t.len]))
-            .collect()
-    }
-
-    #[test]
-    fn keywords() {
-        let toks = tok("fn main() {");
-        assert_eq!(toks[0], (TokenKind::Keyword, "fn"));
-        assert_eq!(toks[2], (TokenKind::Identifier, "main"));
-    }
-
-    #[test]
-    fn strings() {
-        let toks = tok(r#"let s = "hello \"world\"";"#);
-        let strings: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::String).collect();
-        assert_eq!(strings.len(), 1);
-    }
-
-    #[test]
-    fn line_comment() {
-        let toks = tok("let x = 5; // comment");
-        let last = toks.last().unwrap();
-        assert_eq!(last.0, TokenKind::Comment);
-        assert!(last.1.contains("comment"));
-    }
-
-    #[test]
-    fn block_comment() {
-        let (toks, still_in) = tokenize_line("/* start", &Language::Rust, false);
-        assert!(still_in);
-        assert_eq!(toks[0].kind, TokenKind::Comment);
-
-        let (toks2, still_in2) = tokenize_line("middle */code", &Language::Rust, true);
-        assert!(!still_in2);
-        assert_eq!(toks2[0].kind, TokenKind::Comment);
-    }
-
-    #[test]
-    fn numbers() {
-        let toks = tok("let x = 0xFF_u8;");
-        let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
-        assert_eq!(nums.len(), 1);
-        assert_eq!(nums[0].1, "0xFF_u8");
-    }
-
-    #[test]
-    fn lifetime() {
-        let toks = tok("fn foo<'a>(x: &'a str)");
-        let lifetimes: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Lifetime).collect();
-        assert_eq!(lifetimes.len(), 2);
-        assert_eq!(lifetimes[0].1, "'a");
-    }
-
-    #[test]
-    fn macro_call() {
-        let toks = tok("println!(\"hi\");");
-        assert_eq!(toks[0], (TokenKind::MacroCall, "println!"));
-    }
-
-    #[test]
-    fn attribute() {
-        let toks = tok("#[derive(Debug)]");
-        assert_eq!(toks[0].0, TokenKind::Attribute);
-    }
-
-    #[test]
-    fn type_name() {
-        let toks = tok("let v: Vec<String> = Vec::new();");
-        let types: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::TypeName).collect();
-        assert!(types.len() >= 2);
-    }
-
-    #[test]
-    fn user_code_marker() {
-        let toks = tok("    // USER CODE BEGIN on_click");
-        assert_eq!(toks.len(), 1);
-        assert_eq!(toks[0].0, TokenKind::UserCodeMarker);
-    }
-
-    #[test]
-    fn raw_string() {
-        let toks = tok(r###"let s = r#"hello"#;"###);
-        let strings: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::String).collect();
-        assert_eq!(strings.len(), 1);
-    }
-
-    /// Multi-byte char literals must classify as a single `CharLit`,
-    /// not fragment into the fallback bucket. Regression for ADR-027
-    /// phase 3 — byte-by-byte scanner couldn't recognise non-ASCII.
-    #[test]
-    fn char_literal_unicode() {
-        for (input, want_lit) in [
-            ("'a'", "'a'"),
-            ("'é'", "'é'"),
-            ("'你'", "'你'"),
-            ("'😀'", "'😀'"),
-            (r"'\n'", r"'\n'"),
-            (r"'\\'", r"'\\'"),
-            (r"'\''", r"'\''"),
-            (r"'\x41'", r"'\x41'"),
-            (r"'\u{1F600}'", r"'\u{1F600}'"),
-        ] {
-            let toks = tok(input);
-            let chars: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::CharLit).collect();
-            assert_eq!(chars.len(), 1, "input {input:?} produced {toks:?}");
-            assert_eq!(chars[0].1, want_lit);
-        }
-    }
-
-    /// Unterminated char (`'a`) must NOT classify as CharLit — the
-    /// lifetime branch picks it up afterwards.
-    #[test]
-    fn unterminated_char_falls_through_to_lifetime() {
-        let toks = tok("fn foo<'a>(x: &'a T)");
-        let lifetimes: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Lifetime).collect();
-        assert_eq!(lifetimes.len(), 2);
-        let chars: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::CharLit).collect();
-        assert!(chars.is_empty());
-    }
+    (tokens, depth > 0)
 }

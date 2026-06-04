@@ -106,7 +106,19 @@ impl FindReplaceState {
         // searches. This is the single biggest source of allocations during
         // a Find operation on large files: without cache, `line.to_lowercase()`
         // runs N_lines × N_keystrokes times.
-        if !self.case_sensitive && self.lowercase_version != edit_version {
+        //
+        // The `cache.len() != lines.len()` guard is load-bearing, not just
+        // defensive: `FindReplaceState` derives `Default`, so a brand-new
+        // state has `lowercase_version == 0`. A document freshly loaded via
+        // `set_text` also reports `edit_version == 0`, so the version check
+        // alone (`lowercase_version != edit_version` → `0 != 0` → false)
+        // would SKIP the build and leave the cache empty, silently degrading
+        // case-insensitive search to case-sensitive on a just-loaded file.
+        // Tying the rebuild to the cache being out of sync with `lines` fixes
+        // that without introducing a separate `built` flag.
+        let cache_stale =
+            self.lowercase_version != edit_version || self.lowercase_cache.len() != lines.len();
+        if !self.case_sensitive && cache_stale {
             self.lowercase_cache.clear();
             self.lowercase_cache.reserve(lines.len());
             for line in lines {
@@ -216,6 +228,26 @@ mod tests {
         let lines = vec!["Hello HELLO hello".to_string()];
         state.update_matches(&lines, 1);
         assert_eq!(state.matches.len(), 3);
+    }
+
+    /// Regression: case-insensitive search on a FRESHLY LOADED document
+    /// (`edit_version == 0`, matching the `Default` `lowercase_version` of
+    /// 0) used to skip building the lowercase cache — the `0 != 0` version
+    /// check was false — and silently fall back to case-sensitive matching.
+    /// The cache must build whenever it is out of sync with `lines`.
+    #[test]
+    fn test_find_case_insensitive_at_edit_version_zero() {
+        let mut state = FindReplaceState::default();
+        state.query = "hello".to_string();
+        state.case_sensitive = false;
+        let lines = vec!["Hello HELLO hello".to_string()];
+        // edit_version 0 = the value set_text leaves on a fresh load.
+        state.update_matches(&lines, 0);
+        assert_eq!(
+            state.matches.len(),
+            3,
+            "case-insensitive find must work at edit_version 0"
+        );
     }
 
     /// ASCII fast-path must preserve existing case-insensitive

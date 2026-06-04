@@ -1,6 +1,9 @@
 //! Rhai scripting language tokenizer.
 
-use super::{NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start};
+use super::{
+    NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start,
+    scan_block_comment,
+};
 use crate::code_editor::config::SyntaxDefinition;
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -91,27 +94,18 @@ impl SyntaxDefinition for RhaiLang {
 
 // ── Tokenizer ───────────────────────────────────────────────────────────────
 
-fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
+fn tokenize(line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut tokens = Vec::with_capacity(16);
     let mut i = 0;
+    let mut depth: u32 = u32::from(in_block_comment);
 
     while i < len {
-        // ── Inside block comment ─────────────────────────────────────────
-        if in_block_comment {
+        // ── Inside a (possibly nested) block comment ─────────────────────
+        if depth > 0 {
             let start = i;
-            loop {
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
-                if i >= len {
-                    break;
-                }
-            }
+            depth = scan_block_comment(&mut i, bytes, depth);
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start,
@@ -143,25 +137,14 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                 start: i,
                 len: len - i,
             });
-            return (tokens, in_block_comment);
+            return (tokens, false);
         }
 
-        // ── Block comment ────────────────────────────────────────────────
+        // ── Block comment (nesting-aware) ────────────────────────────────
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
             let start = i;
             i += 2;
-            in_block_comment = true;
-            loop {
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
-                if i >= len {
-                    break;
-                }
-            }
+            depth = scan_block_comment(&mut i, bytes, 1);
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start,
@@ -331,7 +314,7 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         i += ch_len;
     }
 
-    (tokens, in_block_comment)
+    (tokens, depth > 0)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -388,6 +371,24 @@ mod tests {
         let (toks, done) = tokenize_line("end */ code", &Language::Rhai, true);
         assert!(!done);
         assert_eq!(toks[0].kind, TokenKind::Comment);
+    }
+
+    /// Rhai block comments nest (`/* /* */ */`).
+    #[test]
+    fn nested_block_comment() {
+        let (_, still_in) = tokenize_line("/* a /* b */ c */", &Language::Rhai, false);
+        assert!(!still_in, "balanced nest closes");
+        let (_, still_in2) = tokenize_line("/* a /* b */", &Language::Rhai, false);
+        assert!(still_in2, "one level still open");
+    }
+
+    /// Unterminated string / backtick must run to EOL without panic.
+    #[test]
+    fn unterminated_string_no_panic() {
+        let toks = tok(r#"let s = "no close"#);
+        assert!(toks.iter().any(|t| t.0 == TokenKind::String));
+        let toks2 = tok("let s = `no close");
+        assert!(toks2.iter().any(|t| t.0 == TokenKind::String));
     }
 
     #[test]

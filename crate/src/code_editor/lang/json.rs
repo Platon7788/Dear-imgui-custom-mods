@@ -18,8 +18,8 @@ impl SyntaxDefinition for JsonLang {
         "JSON"
     }
 
-    fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
-        (tokenize(line), false)
+    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
+        tokenize(line, in_block_comment)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {
@@ -47,13 +47,35 @@ impl SyntaxDefinition for JsonLang {
 
 // ── Tokenizer ───────────────────────────────────────────────────────────────
 
-fn tokenize(line: &str) -> Vec<Token> {
+fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut tokens = Vec::with_capacity(16);
     let mut i = 0;
 
     while i < len {
+        // ── Inside a JSONC block comment (non-nesting) ───────────────────
+        if in_block_comment {
+            let start = i;
+            loop {
+                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                    i += 2;
+                    in_block_comment = false;
+                    break;
+                }
+                i += 1;
+                if i >= len {
+                    break;
+                }
+            }
+            tokens.push(Token {
+                kind: TokenKind::Comment,
+                start,
+                len: i - start,
+            });
+            continue;
+        }
+
         let b = bytes[i];
 
         // ── Whitespace ───────────────────────────────────────────────────
@@ -77,7 +99,31 @@ fn tokenize(line: &str) -> Vec<Token> {
                 start: i,
                 len: len - i,
             });
-            return tokens;
+            return (tokens, false);
+        }
+
+        // ── Block comment start (JSONC, non-nesting) ─────────────────────
+        if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
+            let start = i;
+            i += 2;
+            in_block_comment = true;
+            loop {
+                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                    i += 2;
+                    in_block_comment = false;
+                    break;
+                }
+                i += 1;
+                if i >= len {
+                    break;
+                }
+            }
+            tokens.push(Token {
+                kind: TokenKind::Comment,
+                start,
+                len: i - start,
+            });
+            continue;
         }
 
         // ── String (key or value) ────────────────────────────────────────
@@ -182,7 +228,7 @@ fn tokenize(line: &str) -> Vec<Token> {
         i += ch_len;
     }
 
-    tokens
+    (tokens, in_block_comment)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -233,6 +279,26 @@ mod tests {
     fn jsonc_comment() {
         let toks = tok("// this is a comment");
         assert_eq!(toks[0].0, TokenKind::Comment);
+    }
+
+    /// JSONC `/* */` block comments are now highlighted, including the
+    /// multi-line carry-over via `in_block_comment`.
+    #[test]
+    fn jsonc_block_comment() {
+        let toks = tok("/* inline */ 42");
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Comment && t.1 == "/* inline */")
+        );
+        assert!(toks.iter().any(|t| t.0 == TokenKind::Number && t.1 == "42"));
+
+        // Multi-line: open on one line, close on the next.
+        let (_, still_in) = tokenize_line("/* start", &Language::Json, false);
+        assert!(still_in);
+        let (toks2, done) = tokenize_line("end */ 1", &Language::Json, true);
+        assert!(!done);
+        assert_eq!(toks2[0].kind, TokenKind::Comment);
+        assert_eq!(&"end */ 1"[..toks2[0].len], "end */");
     }
 
     #[test]
