@@ -28,6 +28,14 @@
 
 ### Added
 
+- **`Chrome::theme()` getter** — symmetric with `set_theme`/`with_theme`;
+  lets hosts query the active titlebar theme (the field was previously
+  write-only). Audit pass also factored the `clamp_size_to_monitor` and
+  `shrink_to_monitor_after_create` DPI/min-size math into pure, unit-tested
+  helpers (`clamp_size_logic` / `shrink_size_logic`, +9 tests) and split
+  `chrome/mod.rs` (925 lines) into `render.rs` + `state.rs` (each < 500).
+  No behavioural change.
+
 - **`VirtualTree::set_lazy_loader(|id| -> Vec<T>)`** — on-demand children
   loading is now functional (previously `config.lazy_load` was a no-op
   flag). With `lazy_load = true`, a branch's children are materialized on

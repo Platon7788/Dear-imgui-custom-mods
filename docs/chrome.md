@@ -30,9 +30,14 @@ DPI / surface flow for free; we maintain less code.
 
 ## Architecture
 
+Method `impl`s + stateless functions are split across files (each < 500
+lines) but share one public surface via the parent `mod.rs`:
+
 ```
 chrome/
-├── mod.rs       Public API — render_titlebar(), Chrome wrapper, types
+├── mod.rs       Public types, Chrome struct, monitor-clamp math + tests
+├── render.rs    render_titlebar(), whole_window_resize() (stateless)
+├── state.rs     impl Chrome — builders, setters, on_setup/on_event/render
 ├── config.rs    TitlebarConfig, Buttons, TitleAlign, CloseMode
 ├── edge.rs      ResizeEdge, edge_at(), cursor_for_edge(), resize_direction()
 ├── glyph.rs     Vector glyphs for min / max / restore / close (DPI-crisp)
