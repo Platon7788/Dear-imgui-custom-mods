@@ -60,6 +60,31 @@
 
 ### Fixed
 
+- **`virtual_table` audit fixes** (correctness pass):
+  - **CRITICAL — `RingBuffer::remove` double-free / use-after-free** for
+    `T: Drop` (rows containing `String`/`Vec`/etc.). The element shift used
+    `ptr::read`+`ptr::write`, which duplicated the last element into the
+    gap-fill slot and then **dropped** the leftover bitwise duplicate —
+    freeing memory still owned by the live row. Reachable via
+    `VirtualTable::remove()` on any non-last row. Rewritten to the
+    `Vec::remove` `ptr::copy` strategy (no tail drop). Added 12 ring-buffer
+    unit tests including a drop-counting regression that fails on the old code.
+  - **Shift+Click range selection broken in `render_slice` / `render_lookup`** —
+    the range was clamped to the internal ring-buffer length (often 0 in
+    external-render modes), collapsing selection to row 0. Now clamps to the
+    actual rendered `row_count`.
+  - **Selection / edit / scroll desync under FIFO eviction** — a full-buffer
+    `push` evicts logical row 0 and slides every other row down by one, but
+    index-based selection/anchor/edit/pending-scroll were not shifted, so they
+    silently jumped to the row that slid underneath. They now shift in step
+    (the eviction analog of `remove`'s existing index fix-up).
+  - Internal cleanups: `clone_style()` per frame → direct `igGetStyle()` read;
+    `Ctrl+C` gated on window focus (matching keyboard nav); removed the dead
+    `EditState::frames_active` field.
+  - Internal-only: `mod.rs` (1722 lines) split into
+    `api`/`render`/`row_render`/`editor`/`input`/`helpers`, each < 500 lines.
+    No public API change.
+
 - **`virtual_tree` audit fixes** (correctness pass):
   - **Panic** on out-of-range `TreeConfig::tree_column` — the tree-cell
     clip-tooltip path indexed `columns[tree_column]` with the raw

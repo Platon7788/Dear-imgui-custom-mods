@@ -297,19 +297,32 @@ The RingBuffer always evicts the oldest row when full — this is inherent to th
 
 ## Architecture
 
+Method `impl`s are split across files (each < 500 lines) but all extend the
+single `VirtualTable<T>` type via `impl` blocks:
+
 ```
 virtual_table/
-  mod.rs          VirtualTable<T> struct, rendering, selection, scrolling
+  mod.rs          VirtualTable<T> struct, new()/push(), free-helper re-exports
+  api.rs          Public data/column/selection/editing API + export/import
+  render.rs       Render entry points (ring/slice/lookup), table setup, read-only rows
+  row_render.rs   Editable row rendering, header, sort, row-height resolution
+  editor.rs       Inline cell-editor activation + rendering
+  input.rs        Keyboard navigation, scroll, click selection
+  helpers.rs      build_copy_text, row_height_to_stride, snap_outer_height (+ layout tests)
   config.rs       TableConfig, SelectionMode, EditTrigger, BorderStyle, RowDensity
   column.rs       ColumnDef, CellEditor, EditorKind, alignment_pad (shared with virtual_tree)
   row.rs          VirtualTableRow trait, CellValue, CellStyle, RowStyle
-  edit.rs         Inline editing state machine (16 unit tests)
+  edit.rs         Inline editing state machine (15 unit tests)
   sort.rs         Sort state (multi-column)
-  ring_buffer.rs  Fixed-capacity O(1) ring buffer with iterators
+  ring_buffer.rs  Fixed-capacity O(1) ring buffer with iterators (12 unit tests)
 ```
 
 ## Unit Tests
 
 Run with `cargo test --lib`:
-- `edit.rs` — 16 tests: activate/deactivate, value buffers, take_cell_value for all editor types
-- `ring_buffer` — tested via `cargo test --example demo_table` (push, wrap, sort, iter, stress)
+- `ring_buffer.rs` — 12 tests: push/get, FIFO eviction, remove (middle/first/last/wrap),
+  sort, iter_mut, and **drop-safety** (each element dropped exactly once — regression
+  coverage for the `remove` double-free).
+- `edit.rs` — 15 tests: activate/deactivate, value buffers, take_cell_value for all editor types
+- `mod.rs` (`layout_tests`) — row-stride / snap-height math
+- `mod.rs` (`table_tests`) — selection shifts under FIFO eviction and `remove`

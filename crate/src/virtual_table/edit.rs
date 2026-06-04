@@ -11,8 +11,6 @@ pub(crate) struct EditState {
     pub col: usize,
     /// True on the very first frame after activation.
     pub just_activated: bool,
-    /// How many frames the editor has been active (for safe dismissal).
-    pub frames_active: u32,
 
     // Value buffers — one per editor type
     pub text_buf: String,
@@ -30,7 +28,6 @@ impl Default for EditState {
             row: 0,
             col: 0,
             just_activated: false,
-            frames_active: 0,
             text_buf: String::with_capacity(256),
             bool_val: false,
             int_val: 0,
@@ -48,7 +45,6 @@ impl EditState {
         self.row = row;
         self.col = col;
         self.just_activated = true;
-        self.frames_active = 0;
 
         match value {
             CellValue::Text(s) => {
@@ -249,14 +245,5 @@ mod tests {
             CellValue::Color(v) => assert_eq!(v, c),
             _ => panic!("expected Color"),
         }
-    }
-
-    #[test]
-    fn frames_active_counter() {
-        let mut es = EditState::default();
-        es.activate(0, 0, &CellValue::Text("".into()));
-        assert_eq!(es.frames_active, 0);
-        es.frames_active += 1;
-        assert_eq!(es.frames_active, 1);
     }
 }

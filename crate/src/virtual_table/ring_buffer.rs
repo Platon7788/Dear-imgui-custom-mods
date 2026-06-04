@@ -130,23 +130,26 @@ impl<T> RingBuffer<T> {
         if logical_index >= self.len {
             return None;
         }
-        // Linearize first to make shifting straightforward
+        // Linearize so logical index == physical index; the shift is then a
+        // single contiguous memmove (`Vec::remove` strategy).
         self.linearize();
-        let phys = logical_index; // after linearize, logical == physical
+        let phys = logical_index;
+        // Move the target element out and hand it to the caller.
         let item = unsafe { self.buf[phys].assume_init_read() };
-        // Shift elements left
-        for i in phys..self.len - 1 {
+        // Shift the tail `[phys+1 .. len)` down by one to close the gap.
+        //
+        // `ptr::copy` (memmove) relocates those elements. The vacated slot at
+        // `buf[len-1]` is left holding a *bitwise duplicate* of the new last
+        // element — it MUST NOT be dropped: its heap resources are now owned by
+        // the relocated element, so dropping it would double-free for `T: Drop`.
+        // The slot becomes logically dead (`len` shrinks) and is overwritten
+        // without a drop by the next `push`.
+        let tail = self.len - phys - 1;
+        if tail > 0 {
             unsafe {
-                let next = std::ptr::read(&self.buf[i + 1]);
-                std::ptr::write(&mut self.buf[i], next);
+                let base = self.buf.as_mut_ptr();
+                std::ptr::copy(base.add(phys + 1), base.add(phys), tail);
             }
-        }
-        // ptr::read does not destroy the source: after the shift the slot at
-        // buf[len-1] holds a phantom copy of the last element.  Without this
-        // drop the next push() overwrites that slot via MaybeUninit::new()
-        // without calling the destructor — a leak for any T: Drop.
-        if phys < self.len - 1 {
-            unsafe { self.buf[self.len - 1].assume_init_drop() };
         }
         self.len -= 1;
         self.head = self.len % self.capacity;
@@ -257,3 +260,181 @@ impl<'a, T> Iterator for RingIterMut<'a, T> {
 }
 
 impl<T> ExactSizeIterator for RingIterMut<'_, T> {}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::rc::Rc;
+
+    #[test]
+    fn push_get_len() {
+        let mut rb = RingBuffer::new(4);
+        assert!(rb.is_empty());
+        rb.push(10);
+        rb.push(20);
+        rb.push(30);
+        assert_eq!(rb.len(), 3);
+        assert_eq!(rb.get(0), Some(&10));
+        assert_eq!(rb.get(2), Some(&30));
+        assert_eq!(rb.get(3), None);
+    }
+
+    #[test]
+    fn fifo_eviction_when_full() {
+        let mut rb = RingBuffer::new(3);
+        for v in 1..=5 {
+            rb.push(v);
+        }
+        // Oldest two (1,2) evicted; window is [3,4,5].
+        assert_eq!(rb.len(), 3);
+        let got: Vec<_> = rb.iter().copied().collect();
+        assert_eq!(got, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn capacity_clamped_to_at_least_one() {
+        let rb: RingBuffer<i32> = RingBuffer::new(0);
+        assert_eq!(rb.capacity(), 1);
+    }
+
+    #[test]
+    fn remove_middle_shifts() {
+        let mut rb = RingBuffer::new(5);
+        for v in [1, 2, 3, 4] {
+            rb.push(v);
+        }
+        assert_eq!(rb.remove(1), Some(2));
+        let got: Vec<_> = rb.iter().copied().collect();
+        assert_eq!(got, vec![1, 3, 4]);
+    }
+
+    #[test]
+    fn remove_first_and_last() {
+        let mut rb = RingBuffer::new(5);
+        for v in [1, 2, 3] {
+            rb.push(v);
+        }
+        assert_eq!(rb.remove(0), Some(1));
+        assert_eq!(rb.iter().copied().collect::<Vec<_>>(), vec![2, 3]);
+        assert_eq!(rb.remove(1), Some(3));
+        assert_eq!(rb.iter().copied().collect::<Vec<_>>(), vec![2]);
+        assert_eq!(rb.remove(5), None);
+    }
+
+    #[test]
+    fn remove_after_wraparound() {
+        // Force a wrap (head != 0) then remove a middle element.
+        let mut rb = RingBuffer::new(3);
+        for v in 1..=5 {
+            rb.push(v); // window [3,4,5], internally wrapped
+        }
+        assert_eq!(rb.remove(1), Some(4));
+        assert_eq!(rb.iter().copied().collect::<Vec<_>>(), vec![3, 5]);
+    }
+
+    #[test]
+    fn sort_by_orders_elements() {
+        let mut rb = RingBuffer::new(5);
+        for v in [30, 10, 20, 5] {
+            rb.push(v);
+        }
+        rb.sort_by(|a, b| a.cmp(b));
+        assert_eq!(rb.iter().copied().collect::<Vec<_>>(), vec![5, 10, 20, 30]);
+    }
+
+    #[test]
+    fn iter_mut_modifies_in_order() {
+        let mut rb = RingBuffer::new(4);
+        for v in [1, 2, 3] {
+            rb.push(v);
+        }
+        for x in rb.iter_mut() {
+            *x *= 10;
+        }
+        assert_eq!(rb.iter().copied().collect::<Vec<_>>(), vec![10, 20, 30]);
+    }
+
+    // ── Drop-safety: the critical regression coverage for `remove` ──────────
+    //
+    // `DropTracker` bumps a shared counter on drop. A correct ring drops every
+    // element exactly once. The pre-fix `remove` left a bitwise-duplicate of the
+    // shifted-down last element in the vacated tail slot and then dropped it,
+    // double-freeing for `T: Drop` — this counts that as an extra drop.
+
+    struct DropTracker {
+        _id: u32,
+        counter: Rc<std::cell::Cell<usize>>,
+    }
+    impl Drop for DropTracker {
+        fn drop(&mut self) {
+            self.counter.set(self.counter.get() + 1);
+        }
+    }
+
+    fn tracker(id: u32, counter: &Rc<std::cell::Cell<usize>>) -> DropTracker {
+        DropTracker {
+            _id: id,
+            counter: Rc::clone(counter),
+        }
+    }
+
+    #[test]
+    fn remove_drops_each_element_exactly_once() {
+        let counter = Rc::new(std::cell::Cell::new(0));
+        let mut rb = RingBuffer::new(4);
+        for id in 0..4 {
+            rb.push(tracker(id, &counter));
+        }
+        // Remove a non-last element — this exercises the tail-shift path that
+        // previously double-freed.
+        let removed = rb.remove(1);
+        drop(removed); // +1 legit drop (the returned element)
+        drop(rb); // drops the remaining 3 elements, once each
+        // 4 created → exactly 4 drops. Pre-fix this was 5 (one double-free).
+        assert_eq!(
+            counter.get(),
+            4,
+            "each element must be dropped exactly once"
+        );
+    }
+
+    #[test]
+    fn remove_then_use_survivors_no_uaf() {
+        // After removing a middle element, the surviving elements must still be
+        // valid (no use-after-free of the relocated tail element).
+        let mut rb = RingBuffer::new(4);
+        for s in ["a", "b", "c", "d"] {
+            rb.push(String::from(s));
+        }
+        assert_eq!(rb.remove(1).as_deref(), Some("b"));
+        // Touch every survivor — would read freed memory under the old bug.
+        let joined: String = rb.iter().cloned().collect::<Vec<_>>().join(",");
+        assert_eq!(joined, "a,c,d");
+    }
+
+    #[test]
+    fn clear_drops_all_once() {
+        let counter = Rc::new(std::cell::Cell::new(0));
+        let mut rb = RingBuffer::new(8);
+        for id in 0..6 {
+            rb.push(tracker(id, &counter));
+        }
+        rb.clear();
+        assert_eq!(counter.get(), 6);
+        assert!(rb.is_empty());
+    }
+
+    #[test]
+    fn eviction_drops_evicted_once() {
+        let counter = Rc::new(std::cell::Cell::new(0));
+        let mut rb = RingBuffer::new(2);
+        rb.push(tracker(0, &counter));
+        rb.push(tracker(1, &counter));
+        rb.push(tracker(2, &counter)); // evicts id 0 → exactly one drop
+        assert_eq!(counter.get(), 1);
+        drop(rb); // drops remaining 2
+        assert_eq!(counter.get(), 3);
+    }
+}
