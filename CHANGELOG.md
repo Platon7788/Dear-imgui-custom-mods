@@ -104,9 +104,17 @@
   - **`timeline`** — `fit_to_content` didn't clamp zoom to `[min,max]`;
     `adaptive_ticks` NaN/0 interval on a degenerate viewport; scroll/zoom shared
     one wheel read.
+  - **`force_graph`** — 🔴 Barnes-Hut **infinite recursion / stack overflow**
+    when two nodes share an exact position (>50-node graphs); the Barnes-Hut
+    repulsion law diverged from the naïve path (k/dist² vs k/dist); NaN/speed
+    guard on integration. (force_graph is a non-default feature.)
+  - **`node_graph`** — self-loop wire connections allowed; stale `comment_drag`
+    index after a comment is removed mid-drag; per-frame `clone_style`.
+  - **`property_inspector`** — `add_node` panic on a corrupted `active_category`;
+    added `parse_like`/`clamp_in_place` boundary validators.
   - Repo hygiene: restored an accidentally-deleted `LICENSE`; removed empty
-    stray files created by subagents' shell. Added ~340 unit tests across the
-    audited modules (crate now at 997 lib tests).
+    stray files created by subagents' shell. Added ~400 unit tests across the
+    audited modules (crate now at 1104 lib tests incl. the force_graph feature).
 
 - **`virtual_table` audit fixes** (correctness pass):
   - **CRITICAL — `RingBuffer::remove` double-free / use-after-free** for
