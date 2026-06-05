@@ -217,13 +217,41 @@ cfg.max_zoom = 1e6;              // maximum pixels per second
 
 ## Architecture
 
+The widget is split across sibling files so every file stays well under
+the 500-line cap. `coords.rs`, `render.rs` and `tests.rs` re-open `impl
+Timeline` via `use super::*;`; the `Timeline` struct, free helpers and
+the `#[cfg(test)] mod tests;` declaration live in `mod.rs`.
+
 ```
 timeline/
-  mod.rs      Timeline struct, rendering, viewport, pan/zoom, input
-  config.rs   TimelineConfig, TimelineMode, ColorMode, TimeUnit
-  span.rs     Span and Marker data types with builders
-  track.rs    Track — named row of sorted spans
+  mod.rs       Timeline struct, data API, viewport, locale API,
+               free helpers (adaptive_ticks, format_duration)
+  coords.rs    Coordinate/axis mapping (time<->pixel), data range,
+               fit_to_content, colour resolution, layout metrics
+  render.rs    Per-frame render() + input (pan / zoom / scroll)
+  config.rs    TimelineConfig, TimelineMode, ColorMode, TimeUnit (schema)
+  config.ron   Default values for TimelineConfig
+  span.rs      Span and Marker data types with builders
+  track.rs     Track — named row of sorted spans
+  tests.rs     Unit tests (run without an ImGui context)
 ```
+
+### Robustness notes
+
+- **Coordinate mapping** is computed in `f64` (sub-nanosecond precision
+  over long captures) and only the final pixel is narrowed to `f32`.
+  `x_to_time` floors `pixels_per_second` at `1e-9` so a zero/negative
+  zoom can never divide by zero.
+- **`fit_to_content`** clamps the computed pixels-per-second to the
+  configured `[min_zoom, max_zoom]` range, matching the interactive
+  zoom path — a near-instant or extremely long capture can no longer
+  drive the viewport past the limits.
+- **Adaptive ruler ticks** fall back to the smallest "nice" interval for
+  non-finite or non-positive visible spans, and the tick loop carries a
+  hard 2000-iteration safety bound, so extreme zoom can never spin.
+- **Pan / zoom / vertical scroll** all share the same hover gate and the
+  same wheel event: plain wheel zooms toward the cursor, `Shift`+wheel
+  scrolls tall track lists — the two are mutually exclusive.
 
 ## Configuration & localisation
 

@@ -42,13 +42,37 @@ if let Some(action) = tc.render(ui) {
 
 ```
 src/tab_control/
-├── mod.rs       — TabControl<T>, TabItem trait, public API
-├── config.rs    — TabControlConfig, TabStyle, TabStatus, TabColors,
-│                  TabStrings, CloseGlyph, Badge, TabAction, TabId
+├── mod.rs       — TabControl<T> struct + TabItem trait + construction + render entry
+├── api.rs       — tab-management API (add/remove/clear/move_tab/get/set_active/iter)
+├── config.rs    — TabControlConfig schema (values live in config.ron)
+├── config.ron   — DDD config default values
+├── colors.rs    — TabColors palette + Theme::tab_colors() synthesis
+├── strings.rs   — TabStrings EN/RU catalogues + for_locale()
+├── types.rs     — TabId, TabStatus, Badge, CloseGlyph, TabStyle, TabAction
 ├── layout.rs    — pixel-width math, layout constants, pinned-partition repair
-├── render.rs    — single-file renderer (strip / styles / events / popups)
-└── tests.rs     — 33+ unit tests (logic only — no ImGui FFI)
+├── render/      — per-frame renderer (split by concern, every file < 500 lines)
+│   ├── mod.rs      — entry point (render_tab_control), animation tick, shared types
+│   ├── strip.rs    — tab-strip driver (layout + draw dispatch + event dispatch)
+│   ├── hittest.rs  — single-pass hit-test (fill_hit_scratch) + scroll_into_view
+│   ├── body.rs     — empty-state placeholder + active-tab body frame
+│   ├── events.rs   — click / middle-click / right-click / hover / preview
+│   ├── drag.rs     — drag-and-drop reorder (group-clamped swap + ghost tab)
+│   ├── keyboard.rs — focus-gated keyboard navigation
+│   ├── buttons.rs  — scroll arrows / overflow dropdown / add button / close modal
+│   └── draw.rs     — tab styles (pill/underline/square) + content + close glyph
+└── tests/       — deterministic unit tests (logic only — no ImGui FFI)
+    ├── mod.rs       — Spy fixture + helpers
+    ├── lifecycle.rs — add/remove/clear/set_active hooks + id stability
+    ├── pinned.rs    — pinned invariant + enforce_pinned_partition + move_tab
+    ├── config.rs    — config/palette default pins + popup-id scoping
+    ├── scroll.rs    — scroll_into_view regular-vs-pinned offset math
+    └── i18n.rs      — locale guard tests (resolve / default / ron round-trip)
 ```
+
+The renderer uses free functions sharing `pc.hit_scratch`; the `render/`
+sub-modules cross-call each other via `super::` paths (`pub(super)` for
+sibling-visible helpers). `TabControl`'s public tab-management surface lives in
+`api.rs` as a second `impl` block.
 
 ## `TabItem` trait
 
@@ -267,7 +291,7 @@ Stacks cleanly with `external_content: true` — disable both if your host rende
 
 ### Body background color
 
-The inner child-window's `ChildBg` is driven from `colors.body_bg`. Default is **slightly lighter** than `colors.strip_bg` so the body reads as a distinct surface and the inset gap registers as a visible frame around it (see `theme::tests::body_bg_default_differs_from_strip_bg_for_visible_frame`).
+The inner child-window's `ChildBg` is driven from `colors.body_bg`. Default is **slightly lighter** than `colors.strip_bg` so the body reads as a distinct surface and the inset gap registers as a visible frame around it (see `tab_control::tests::config::body_bg_default_differs_from_strip_bg_for_visible_frame`).
 
 ```rust
 // Distinct body surface — strip stays nav.bg, body goes white.
@@ -393,10 +417,18 @@ Showcases: pinned tabs (Home, Settings — compact left strip), nested TabContro
 ## Tests
 
 ```bash
-cargo test --lib --features tab_control tab_control::tests
+cargo test --lib --features tab_control tab_control
 ```
 
-33+ unit tests cover deterministic state (add/remove/clear/move_tab/set_active/pinned-partition/popup-IDs/dot-color/text-color/content-padding/show-preview/etc.). Rendering itself is verified manually via the demo — it requires an initialized ImGui context that's hard to mock without spinning up a window.
+64 unit tests cover deterministic state, split into themed files under
+`tests/`: lifecycle (add/remove/clear/set_active hooks + id stability), pinned
+(invariant + `enforce_pinned_partition` + `move_tab` clamping), config
+(defaults / palette pins / popup-id scoping / `SMOOTH_SCROLL_COEF`), scroll
+(`scroll_into_view` regular-vs-pinned offset math), and i18n (the four canonical
+locale guard tests). The `scroll::*` tests hand-populate `tab_widths_cache` to
+drive the scroll math without ImGui text measurement. Rendering itself is
+verified manually via the demo — it requires an initialized ImGui context
+that's hard to mock without spinning up a window.
 
 ## Configuration & localisation
 

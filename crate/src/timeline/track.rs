@@ -17,6 +17,7 @@ pub struct Track {
 }
 
 impl Track {
+    #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -33,16 +34,19 @@ impl Track {
     }
 
     /// Maximum depth among all spans on this track.
+    #[must_use]
     pub fn max_depth(&self) -> u32 {
         self.spans.iter().map(|s| s.depth).max().unwrap_or(0)
     }
 
     /// Total visual height for this track (number of depth rows).
+    #[must_use]
     pub fn depth_rows(&self) -> u32 {
         self.max_depth() + 1
     }
 
     /// Time range covered by this track.
+    #[must_use]
     pub fn time_range(&self) -> Option<(f64, f64)> {
         if self.spans.is_empty() {
             return None;

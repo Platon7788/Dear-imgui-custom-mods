@@ -11,6 +11,7 @@ pub enum TimelineMode {
 }
 
 impl TimelineMode {
+    #[must_use]
     pub fn display_name(self) -> &'static str {
         match self {
             Self::TopDown => "Top-Down",
@@ -43,6 +44,7 @@ pub enum TimeUnit {
 }
 
 impl TimeUnit {
+    #[must_use]
     pub fn suffix(self) -> &'static str {
         match self {
             Self::Nanoseconds => "ns",
@@ -52,6 +54,7 @@ impl TimeUnit {
         }
     }
 
+    #[must_use]
     pub fn factor(self) -> f64 {
         match self {
             Self::Nanoseconds => 1e9,

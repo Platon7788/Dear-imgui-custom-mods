@@ -22,6 +22,7 @@ pub struct Span {
 }
 
 impl Span {
+    #[must_use]
     pub fn new(id: u64, start: f64, end: f64, depth: u32, label: impl Into<String>) -> Self {
         let lbl = label.into();
         // Ensure start <= end and values are finite
@@ -48,23 +49,27 @@ impl Span {
     }
 
     /// Duration in seconds.
+    #[must_use]
     pub fn duration(&self) -> f64 {
         self.end - self.start
     }
 
     /// Builder: set category.
+    #[must_use]
     pub fn with_category(mut self, cat: impl Into<String>) -> Self {
         self.category = cat.into();
         self
     }
 
     /// Builder: set explicit color.
+    #[must_use]
     pub fn with_color(mut self, c: [f32; 4]) -> Self {
         self.color = Some(c);
         self
     }
 
     /// Builder: set source location.
+    #[must_use]
     pub fn with_source(mut self, src: impl Into<String>) -> Self {
         self.source = Some(src.into());
         self
@@ -83,6 +88,7 @@ pub struct Marker {
 }
 
 impl Marker {
+    #[must_use]
     pub fn new(time: f64, label: impl Into<String>) -> Self {
         Self {
             time,
@@ -91,6 +97,7 @@ impl Marker {
         }
     }
 
+    #[must_use]
     pub fn with_color(mut self, c: [f32; 4]) -> Self {
         self.color = Some(c);
         self

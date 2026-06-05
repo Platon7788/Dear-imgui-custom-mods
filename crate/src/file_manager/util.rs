@@ -122,6 +122,25 @@ pub(super) fn is_valid_filename(name: &str) -> bool {
         && !name.ends_with(' ')
 }
 
+// ─── Drive-letter parsing ────────────────────────────────────────────────────
+
+/// Extract a Windows drive letter from a path string, or `None`.
+///
+/// Returns the letter only for a genuine `X:` / `X:\…` drive prefix — so the
+/// drive bar highlights the correct button and never mistakes a relative path
+/// (`foo\bar`), a UNC root (`\\server\share`), or a Unix absolute path
+/// (`/usr`) for a drive. The letter is normalised to uppercase to match the
+/// `enumerate_drives` output (`["C:\\", …]`).
+pub(super) fn drive_letter_of(path: &str) -> Option<char> {
+    let mut chars = path.chars();
+    let first = chars.next()?;
+    if first.is_ascii_alphabetic() && chars.next() == Some(':') {
+        Some(first.to_ascii_uppercase())
+    } else {
+        None
+    }
+}
+
 // ─── Clipboard ──────────────────────────────────────────────────────────────
 
 /// Set the ImGui clipboard text via raw sys API.
@@ -258,6 +277,21 @@ mod tests {
         assert!(first.path.is_absolute());
         // Last is the full path.
         assert_eq!(out.last().unwrap().path, PathBuf::from("C:\\Users\\Platon"));
+    }
+
+    #[test]
+    fn drive_letter_parses_only_real_drives() {
+        // BUG-FM2 regression: genuine drive prefixes report their letter…
+        assert_eq!(drive_letter_of("C:\\Users"), Some('C'));
+        assert_eq!(drive_letter_of("D:"), Some('D'));
+        // …case-normalised to match `enumerate_drives` output.
+        assert_eq!(drive_letter_of("c:\\temp"), Some('C'));
+        // …but relative paths, UNC roots and Unix paths report nothing.
+        assert_eq!(drive_letter_of("foo\\bar"), None);
+        assert_eq!(drive_letter_of("\\\\server\\share"), None);
+        assert_eq!(drive_letter_of("/usr/bin"), None);
+        assert_eq!(drive_letter_of(""), None);
+        assert_eq!(drive_letter_of("C"), None);
     }
 
     #[test]

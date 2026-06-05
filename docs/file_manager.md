@@ -100,8 +100,8 @@ let config = FileManagerConfig {
 
     // Layout
     favorites_width: 150.0,         // sidebar width (default: 150.0)
-    button_width: 120.0,            // footer button width (default: 120.0)
-    button_height: 28.0,            // footer button height (default: 28.0)
+    button_width: 100.0,            // footer button width (default: 100.0)
+    button_height: 24.0,            // footer button height (default: 24.0)
     filter_width: 180.0,            // filter dropdown width (default: 180.0)
     inline_input_width: 200.0,      // new folder/file input width (default: 200.0)
 
@@ -138,49 +138,76 @@ let config = FileManagerConfig {
 
 ### Localization
 
-All UI strings are configurable via `FmStrings` (36 fields). Pass a static reference:
+The dialog ships with English (`STRINGS_EN`) and Russian (`STRINGS_RU`)
+catalogues. Switch language with one call — the builder auto-refreshes
+`config.strings` to match the locale:
 
 ```rust
-static MY_STRINGS: FmStrings = FmStrings {
-    title_open: "Open File",
-    btn_ok: "Open",
-    btn_cancel: "Cancel",
-    shortcut_hint: "F2: Rename · Del: Delete · Backspace: Parent",
-    select_all: "Select All",
-    // ... all other fields
-};
+use dear_imgui_custom_mod::i18n::Locale;
 
-let config = FileManagerConfig {
-    strings: &MY_STRINGS,
-    ..Default::default()
-};
+// English (default) or Russian:
+let fm = FileManager::new().with_locale(Locale::Ru);
+// …or mid-flight:
+let mut fm = FileManager::new();
+fm.set_locale(Locale::Ru);
+assert_eq!(fm.locale(), Locale::Ru);
 ```
+
+> Russian requires the host to bake `GlyphRanges::Cyrillic` (or a
+> superset) into the active font atlas — otherwise non-ASCII characters
+> render as `?` placeholders.
+
+For a third language, set `config.strings` directly to your own
+`&'static FmStrings` (a `static` with all fields filled). That bypasses
+the locale match entirely. Use `STRINGS_EN` as the field template — the
+actual field names are `open_file`, `save_file`, `open`, `save`,
+`cancel`, `col_name`, etc. (see `config.rs`).
 
 ## Architecture
 
+Every file is kept under 500 lines (CLAUDE.md), so the dialog is split
+into cohesive sibling modules that all `impl FileManager`:
+
 ```
 file_manager/
-  mod.rs        FileManager struct, public API, dialog lifecycle
-  config.rs     DialogMode, FileFilter, FmStrings, FileManagerConfig
-  render.rs     All ImGui rendering (drive bar, breadcrumb, toolbar, table, footer)
+  mod.rs        FileManager struct + fields, new/new_with_config, locale,
+                FmError, small helpers (current_drive_letter, has_parent)
+  lifecycle.rs  open_folder/open_file/save_file, open_common,
+                refresh_directory, try_confirm, finalize_selection
+  view.rs       per-frame render() driver
+  search.rs     type-to-search incremental matching
+  actions.rs    deferred Action enum + apply_action / try_navigate
+  config.rs     DialogMode, FileFilter, FmStrings, FileManagerConfig (schema)
+  config.ron    default config values
   entry.rs      FsEntry with pre-computed display strings, sorting
+  util.rs       breadcrumb segments, filename validation, drive-letter
+                parsing, clipboard, drive enumeration
   favorites.rs  Favorites sidebar (Desktop, Documents, Downloads + custom)
   history.rs    Back/forward navigation stack
+  tests.rs      pure-logic state-transition regression tests
+  render/       ImGui widgets: drive_bar, toolbar, breadcrumb, table,
+                footer, favorites, modals, icon_map, style
 ```
+
+The render functions are free `pub(crate)` functions (not methods) so
+`FileManager` can hand each one a disjoint set of `&mut` field borrows
+in a single call without violating Rust's borrow rules. They return a
+deferred [`Action`] which is applied once after the frame.
 
 ## Public API
 
-| Method | Description |
-|--------|-------------|
-| `new()` | Create a new file manager |
+| Method / field | Description |
+|----------------|-------------|
+| `new()` / `new_with_config(cfg)` | Create a new file manager |
+| `with_locale(loc)` / `set_locale(loc)` / `locale()` | Get/set UI language (En / Ru) |
 | `open_file(start_dir, filters)` | Open file picker with filters |
 | `save_file(start_dir, filename, filters)` | Open save dialog |
 | `open_folder(start_dir)` | Open folder picker |
 | `render(ui) -> bool` | Render dialog; returns `true` when completed |
-| `selected_path` | `Option<PathBuf>` — selected file/folder path |
-| `selected_paths` | `Vec<PathBuf>` — multiple selected paths (multi-select mode) |
-| `is_open() -> bool` | Whether the dialog is currently open |
-| `close()` | Close the dialog programmatically |
+| `selected_path` (field) | `Option<PathBuf>` — selected file/folder path |
+| `selected_paths()` | `&[PathBuf]` — multiple selected paths (multi-select mode) |
+| `favorites_mut()` | `&mut FavoritesPanel` — add/remove bookmarks |
+| `is_open` (field) | `bool` — `true` while the dialog is visible; set to `false` to close |
 
 ## Key Types
 
