@@ -187,6 +187,9 @@ Actions returned by `render()` — process in a loop:
 | `DroppedWireIn(InPinId, [f32; 2])` | Wire dropped on canvas from input pin |
 | `DeleteSelected` | Delete key pressed with selection |
 | `SelectAll` | Ctrl+A pressed (handled internally) |
+| `CommentChanged(usize)` | Comment box moved/resized this frame (mark dirty) |
+| `CommentMenu(usize)` | Right-click on a comment box (edit/recolor/delete) |
+| `PaletteDropped(u32, [f32; 2])` | Host `"NODE_GRAPH_DND"` payload dropped on canvas (graph-space point) |
 
 ## Configuration
 
@@ -196,29 +199,29 @@ All `NodeGraphConfig` fields with their defaults:
 |-------|---------|-------------|
 | `show_grid` | `true` | Draw canvas grid |
 | `grid_size` | `32.0` | Grid cell size (px at zoom 1.0) |
-| `grid_thick_every` | `8` | Draw thick grid lines every N cells |
+| `grid_thick_every` | `4` | Draw thick grid lines every N cells |
 | `grid_rotation` | `0.0` | Grid rotation angle in degrees |
 | `snap_to_grid` | `false` | Snap node positions to grid |
 | `snap_size` | `16.0` | Snap granularity (px) |
 | `node_rounding` | `6.0` | Node corner rounding |
-| `node_border_thickness` | `1.0` | Node border line thickness |
-| `node_header_height` | `26.0` | Node header bar height |
-| `node_padding_h` | `12.0` | Horizontal padding inside node |
-| `node_padding_v` | `6.0` | Vertical padding inside node |
+| `node_border_thickness` | `1.5` | Node border line thickness |
+| `node_header_height` | `24.0` | Node header bar height |
+| `node_padding_h` | `8.0` | Horizontal padding inside node |
+| `node_padding_v` | `4.0` | Vertical padding inside node |
 | `node_min_width` | `120.0` | Minimum node width |
-| `node_body_height` | `24.0` | Default body height for body nodes |
+| `node_body_height` | `30.0` | Default body height for body nodes |
 | `node_collapsible` | `true` | Show collapse/expand button in header |
 | `node_shadow` | `true` | Drop shadow behind nodes |
-| `node_shadow_offset` | `4.0` | Shadow offset (px, down-right) |
-| `node_shadow_alpha` | `80` | Shadow alpha (0–255) |
+| `node_shadow_offset` | `3.0` | Shadow offset (px, down-right) |
+| `node_shadow_alpha` | `40` | Shadow alpha (0–255) |
 | `pin_radius` | `5.0` | Pin circle radius |
 | `pin_spacing` | `22.0` | Vertical spacing between pins |
 | `pin_offset` | `0.0` | Horizontal offset of pin from node edge |
-| `pin_hit_radius` | `8.0` | Hit-test radius (easier clicking) |
+| `pin_hit_radius` | `10.0` | Hit-test radius (easier clicking) |
 | `show_wires` | `true` | Draw wires between nodes |
 | `wire_style` | `Bezier` | `Bezier` / `Line` / `Orthogonal` |
 | `wire_thickness` | `2.0` | Wire line thickness |
-| `wire_hover_distance` | `6.0` | Wire hover hit distance (px, scales with zoom) |
+| `wire_hover_distance` | `8.0` | Wire hover hit distance (px, scales with zoom) |
 | `wire_curvature` | `0.5` | Bezier tangent length (fraction of Δx) |
 | `wire_layer` | `BehindNodes` | `BehindNodes` / `AboveNodes` |
 | `wire_yanking` | `true` | Ctrl+Click on wire to detach and redirect |
@@ -233,8 +236,8 @@ All `NodeGraphConfig` fields with their defaults:
 | `smooth_zoom` | `true` | Animate zoom transitions |
 | `smooth_zoom_speed` | `8.0` | Zoom interpolation speed |
 | `pan_button_middle` | `true` | Middle mouse button pans |
-| `pan_button_right` | `true` | Right mouse drag on empty canvas pans |
-| `pan_shift_lmb` | `false` | Shift+LMB pans |
+| `pan_button_right` | `false` | Right mouse drag on empty canvas pans |
+| `pan_shift_lmb` | `true` | Shift+LMB pans |
 | `multi_select` | `true` | Ctrl+Click adds to selection |
 | `rect_select` | `true` | Drag rectangle to select |
 | `canvas_context_menu` | `true` | Right-click on empty canvas opens context menu |
@@ -243,19 +246,24 @@ All `NodeGraphConfig` fields with their defaults:
 | `keyboard_delete` | `true` | Delete key fires `DeleteSelected` |
 | `keyboard_select_all` | `true` | Ctrl+A selects all nodes |
 | `keyboard_escape_cancel` | `true` | Escape cancels wire drag |
-| `tooltip_delay` | `0.5` | Seconds before hover tooltip appears |
+| `tooltip_delay` | `0.3` | Seconds before hover tooltip appears |
 | `lod_hide_labels_zoom` | `0.4` | Hide pin/node labels below this zoom |
 | `lod_simplify_pins_zoom` | `0.3` | Simplify pin shapes below this zoom |
 | `lod_hide_body_zoom` | `0.35` | Hide node bodies below this zoom |
-| `show_stats_overlay` | `false` | Canvas stats overlay (nodes, wires, zoom) |
+| `show_stats_overlay` | `true` | Canvas stats overlay (nodes, wires, zoom) |
 | `stats_overlay_corner` | `1` | 0=TL, 1=TR, 2=BL, 3=BR |
 | `stats_overlay_margin` | `8.0` | Stats overlay edge margin (px) |
-| `show_minimap` | `false` | Mini-map overlay |
-| `minimap_size` | `[160, 100]` | Mini-map dimensions (px) |
+| `show_minimap` | `true` | Mini-map overlay |
+| `minimap_size` | `[180, 120]` | Mini-map dimensions (px) |
 | `minimap_corner` | `3` | 0=TL, 1=TR, 2=BL, 3=BR |
-| `minimap_margin` | `8.0` | Mini-map edge margin (px) |
+| `minimap_margin` | `10.0` | Mini-map edge margin (px) |
 | `minimap_interactive` | `true` | Click/drag mini-map to pan camera |
 | `colors` | default | `NgColors` palette |
+
+> Default values mirror `config.ron` (the DDD source of truth). `wire_layer`
+> defaults to `BehindNodes`; `wire_flow` to `false` (`wire_flow_speed` `60.0`,
+> `wire_flow_spacing` `20.0`); `zoom_min` `0.25`, `zoom_max` `1.5`,
+> `zoom_speed` `0.1`, `smooth_zoom` `true`, `smooth_zoom_speed` `8.0`.
 
 ### NgColors
 
@@ -292,21 +300,61 @@ All color fields are `[u8; 3]` RGB in 0–255 range. Alpha applied per-use.
 
 ```
 node_graph/
-  mod.rs      NodeGraph<T> struct, public API, convenience methods
-  graph.rs    Graph<T> — slab-based storage (O(1) insert/remove) + HashSet<Wire>
-  viewer.rs   NodeGraphViewer<T> trait — user-implemented callbacks
-  config.rs   NodeGraphConfig, NgColors — all tunables
-  state.rs    InteractionState — viewport, selection, drag, pin positions
+  mod.rs          NodeGraph<T> struct, public API, convenience methods
+  graph.rs        Graph<T> — slab storage (O(1) insert/remove) + HashSet<Wire>
+                  + can_connect_basic (self-loop / dangling-endpoint guard)
+  graph_tests.rs  Unit tests for graph.rs (sibling, keeps graph.rs < 500 lines)
+  viewer.rs       NodeGraphViewer<T> trait — user-implemented callbacks
+  config.rs       NodeGraphConfig, NgColors schema (values live in config.ron)
+  config.ron      DDD config values loaded via ron::from_str(include_str!())
+  state.rs        InteractionState — viewport, selection, drag, pin positions
   render/
-    mod.rs      Main render entry point, orchestrates sub-modules
-    grid.rs     Canvas grid rendering with rotation support
-    nodes.rs    Node frame, pin, and body rendering
-    wires.rs    Wire routing, rendering, and flow animation
-    math.rs     Geometry: bezier, orthogonal routing, obstacle avoidance, hit testing
-    input.rs    Mouse/keyboard input handling with wire hit testing
-    overlays.rs Stats overlay and interactive mini-map
-  types.rs    NodeId, InPinId, OutPinId, Wire, PinInfo, PinShape, GraphAction
+    mod.rs           Main render entry point, orchestrates sub-modules
+    grid.rs          Canvas grid rendering with rotation support
+    nodes.rs         Pin position pre-pass + immutable node frame/header/pin pass
+    nodes_body.rs    Mutable node-body pass (render_body) + pin-shape drawing
+    wires.rs         Wire routing, rendering, and flow animation
+    math.rs          Geometry: bezier, ortho routing, obstacle avoidance, hit test
+    math_tests.rs    Unit tests for math.rs (sibling, keeps math.rs < 500 lines)
+    input.rs         Mouse/keyboard input handling + wire-connect state machine
+    input_hittest.rs Hit testing (pins/nodes/wires/comments) + interactive minimap
+    overlays.rs      Stats overlay and interactive mini-map
+    comments.rs      Comment-box rendering and screen-space geometry helpers
+  types.rs        NodeId, InPinId, OutPinId, Wire, Comment, PinInfo, PinShape,
+                  WireStyle, WireLayer, GraphAction
 ```
+
+Every file is under the 500-line cap (CLAUDE.md). `graph.rs`, `render/math.rs`,
+`render/nodes.rs`, and `render/input.rs` were split into the sibling modules
+listed above; large test modules use the `#[path = "*_tests.rs"]` pattern.
+
+### Connection validation
+
+The widget refuses two connection classes *before* surfacing a
+`GraphAction::Connected`, independent of the user's `can_connect`:
+
+- **Self-loops** — output → input on the *same* node (`from.node == to.node`).
+- **Dangling endpoints** — either pin's node is no longer live in the slab.
+
+These live in `Graph::can_connect_basic`; the user's `can_connect` still governs
+type/cycle/fan-in policy on top. Duplicate wires are rejected by the
+`HashSet<Wire>` store.
+
+### i18n status
+
+`node_graph` renders **only host-supplied strings** — node titles, pin labels,
+tooltips, and comment captions all come from the user's `NodeGraphViewer` / the
+host-owned `Comment::text`. It has **no chrome strings of its own**, so per the
+CLAUDE.md i18n rule it is **N/A** (exempt) and intentionally not one of the nine
+catalogued widgets. The only non-translatable on-canvas text is the optional
+stats overlay (`Nodes/Wires/Zoom`), which is technical RE/debugging shorthand.
+
+### Tests
+
+The module ships 66 unit tests, all runnable without an ImGui context:
+graph mutation + slab reuse + id/endpoint stability, connection validation
+(self-loop / dangling / duplicate), viewport screen↔graph round-trip,
+wire geometry + obstacle-aware routing + hit testing, and config defaults.
 
 ### Data Structure
 

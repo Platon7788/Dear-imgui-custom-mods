@@ -248,3 +248,53 @@ Activate) are localised through `crate::i18n::force_graph`. Switch
 with `GraphViewer::new(...).with_locale(Locale::Ru)`. Node labels and
 tags themselves come from the host and stay host-driven. See
 [`docs/i18n.md`](./i18n.md).
+
+## Module layout
+
+Every source file is kept strictly under 500 lines. Test modules for
+the two largest files live in sibling `*_tests.rs` files included via
+`#[cfg(test)] #[path = "…"] mod tests;`.
+
+```
+src/force_graph/
+├── mod.rs              GraphViewer + public API, render orchestration
+├── config.rs           ViewerConfig / ForceConfig schema (DDD)
+├── config_tests.rs     config + i18n guard tests
+├── config.ron          default values
+├── data.rs             GraphData (SlotMap), metrics cache
+├── data_tests.rs       graph-mutation + metrics-index-safety tests
+├── event.rs            GraphEvent
+├── filter.rs           FilterState
+├── style.rs            NodeStyle / EdgeStyle / GraphColors / NodeKind
+├── sidebar.rs          sidebar panel (4 sections)
+├── layout/             initial placement + (Phase C) community
+├── metrics/
+│   ├── pagerank.rs     power-iteration PageRank (dangling-safe)
+│   └── centrality.rs   Brandes betweenness
+├── sim/
+│   ├── mod.rs          tick orchestration, integration, sleep
+│   ├── barnes_hut.rs   O(N log N) quadtree (coincident-point safe)
+│   ├── spring.rs       Hooke attraction + Coulomb repulsion
+│   └── collision.rs    overlap resolution
+└── render/
+    ├── mod.rs          per-frame pipeline (input + draw orchestration)
+    ├── draw.rs         edge + node draw passes
+    ├── shapes.rs       per-NodeKind shape / outline geometry
+    ├── helpers.rs      grid, hit-test, colour, bounds, culling
+    ├── camera.rs       pan / zoom / inertia / animation
+    ├── visibility.rs   per-frame visible-set computation
+    ├── interaction.rs  drag / box-select / keyboard / context menu
+    ├── groups.rs       colour-group query matching
+    ├── labels.rs       label drawing
+    ├── minimap.rs      minimap overlay
+    └── export.rs       SVG / DOT / Mermaid export
+```
+
+### Tests
+
+82 unit tests cover physics stability (Barnes-Hut coincident-point
+safety, force-law parity between the naïve and quadtree paths,
+finite-position guarantees, sleep/wake), PageRank / betweenness on
+small known graphs, metrics-cache index safety after node removal,
+config round-trips, the four i18n guard tests, and the pure render
+helpers. All run with `cargo test --features force_graph`.

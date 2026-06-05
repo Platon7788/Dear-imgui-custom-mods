@@ -169,6 +169,29 @@ impl<T> Graph<T> {
 
     // ── Wire operations ──────────────────────────────────────────────────
 
+    /// Built-in connection sanity check, independent of the user's
+    /// [`NodeGraphViewer::can_connect`](super::NodeGraphViewer::can_connect).
+    ///
+    /// Rejects connections that are *never* meaningful regardless of node
+    /// semantics, so the renderer can refuse them before emitting a
+    /// [`GraphAction::Connected`](super::GraphAction::Connected):
+    ///
+    /// - **self-loops** — an output pin wired to an input pin on the *same*
+    ///   node (`from.node == to.node`). egui-snarl forbids this by default and
+    ///   the default `can_connect` (which returns `true`) would otherwise let
+    ///   it through.
+    /// - **dangling endpoints** — either pin's node is not live in the slab.
+    ///
+    /// Duplicate-wire rejection is handled separately by the `HashSet` in
+    /// [`Self::connect`]; type/cycle policy stays the user's responsibility via
+    /// `can_connect`.
+    #[must_use]
+    pub fn can_connect_basic(&self, from: OutPinId, to: InPinId) -> bool {
+        from.node != to.node
+            && self.get_node(from.node).is_some()
+            && self.get_node(to.node).is_some()
+    }
+
     /// Connect an output pin to an input pin. Returns `true` if new.
     pub fn connect(&mut self, from: OutPinId, to: InPinId) -> bool {
         self.wires.insert(Wire {
@@ -284,247 +307,11 @@ impl<T> Graph<T> {
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
+//
+// The test suite lives in a sibling file to keep this module under the
+// 500-line cap (CLAUDE.md). `tests` is still a child of `graph`, so its
+// `use super::*` reaches private items directly.
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn insert_and_get() {
-        let mut g = Graph::new();
-        let id = g.insert_node("hello", [10.0, 20.0]);
-        assert_eq!(g.node_count(), 1);
-        let node = g.get_node(id).unwrap();
-        assert_eq!(node.value, "hello");
-        assert_eq!(node.pos, [10.0, 20.0]);
-        assert!(node.open);
-    }
-
-    #[test]
-    fn remove_node_returns_value() {
-        let mut g = Graph::new();
-        let id = g.insert_node(42, [0.0, 0.0]);
-        let val = g.remove_node(id);
-        assert_eq!(val, Some(42));
-        assert_eq!(g.node_count(), 0);
-        assert!(g.get_node(id).is_none());
-    }
-
-    #[test]
-    fn remove_nonexistent() {
-        let mut g: Graph<i32> = Graph::new();
-        let id = NodeId(99);
-        assert!(g.remove_node(id).is_none());
-    }
-
-    #[test]
-    fn slab_reuse() {
-        let mut g = Graph::new();
-        let a = g.insert_node("a", [0.0, 0.0]);
-        let _b = g.insert_node("b", [1.0, 0.0]);
-        g.remove_node(a);
-        // Next insert should reuse slot 0
-        let c = g.insert_node("c", [2.0, 0.0]);
-        assert_eq!(c.index(), a.index());
-        assert_eq!(g.node_count(), 2);
-        assert_eq!(g.get_node(c).unwrap().value, "c");
-    }
-
-    #[test]
-    fn connect_disconnect() {
-        let mut g = Graph::new();
-        let a = g.insert_node("a", [0.0, 0.0]);
-        let b = g.insert_node("b", [100.0, 0.0]);
-        let out = OutPinId { node: a, output: 0 };
-        let inp = InPinId { node: b, input: 0 };
-
-        assert!(g.connect(out, inp));
-        assert!(!g.connect(out, inp)); // duplicate
-        assert_eq!(g.wire_count(), 1);
-        assert!(g.has_wire(out, inp));
-
-        assert!(g.disconnect(out, inp));
-        assert_eq!(g.wire_count(), 0);
-        assert!(!g.has_wire(out, inp));
-    }
-
-    #[test]
-    fn remove_node_removes_wires() {
-        let mut g = Graph::new();
-        let a = g.insert_node("a", [0.0, 0.0]);
-        let b = g.insert_node("b", [100.0, 0.0]);
-        let c = g.insert_node("c", [200.0, 0.0]);
-        g.connect(
-            OutPinId { node: a, output: 0 },
-            InPinId { node: b, input: 0 },
-        );
-        g.connect(
-            OutPinId { node: b, output: 0 },
-            InPinId { node: c, input: 0 },
-        );
-        assert_eq!(g.wire_count(), 2);
-        g.remove_node(b);
-        assert_eq!(g.wire_count(), 0);
-    }
-
-    #[test]
-    fn input_output_remotes() {
-        let mut g = Graph::new();
-        let a = g.insert_node("a", [0.0, 0.0]);
-        let b = g.insert_node("b", [100.0, 0.0]);
-        let out = OutPinId { node: a, output: 0 };
-        let inp = InPinId { node: b, input: 0 };
-        g.connect(out, inp);
-
-        assert_eq!(g.input_remotes(inp), vec![out]);
-        assert_eq!(g.output_remotes(out), vec![inp]);
-    }
-
-    #[test]
-    fn drop_inputs_outputs() {
-        let mut g = Graph::new();
-        let a = g.insert_node("a", [0.0, 0.0]);
-        let b = g.insert_node("b", [100.0, 0.0]);
-        let out0 = OutPinId { node: a, output: 0 };
-        let out1 = OutPinId { node: a, output: 1 };
-        let inp0 = InPinId { node: b, input: 0 };
-        let inp1 = InPinId { node: b, input: 1 };
-        g.connect(out0, inp0);
-        g.connect(out1, inp1);
-        assert_eq!(g.wire_count(), 2);
-
-        g.drop_inputs(inp0);
-        assert_eq!(g.wire_count(), 1);
-
-        g.drop_outputs(out1);
-        assert_eq!(g.wire_count(), 0);
-    }
-
-    #[test]
-    fn nodes_iter() {
-        let mut g = Graph::new();
-        g.insert_node("a", [0.0, 0.0]);
-        g.insert_node("b", [1.0, 0.0]);
-        g.insert_node("c", [2.0, 0.0]);
-        let ids: Vec<_> = g.nodes().map(|(id, _)| id).collect();
-        assert_eq!(ids.len(), 3);
-    }
-
-    #[test]
-    fn node_ids_collect() {
-        let mut g = Graph::new();
-        let a = g.insert_node(1, [0.0, 0.0]);
-        let _b = g.insert_node(2, [0.0, 0.0]);
-        g.remove_node(a);
-        let ids = g.node_ids();
-        assert_eq!(ids.len(), 1);
-    }
-
-    #[test]
-    fn clear_graph() {
-        let mut g = Graph::new();
-        g.insert_node("a", [0.0, 0.0]);
-        let b = g.insert_node("b", [100.0, 0.0]);
-        g.connect(
-            OutPinId {
-                node: NodeId(0),
-                output: 0,
-            },
-            InPinId { node: b, input: 0 },
-        );
-        g.clear();
-        assert_eq!(g.node_count(), 0);
-        assert_eq!(g.wire_count(), 0);
-    }
-
-    #[test]
-    fn get_node_mut() {
-        let mut g = Graph::new();
-        let id = g.insert_node("old", [0.0, 0.0]);
-        g.get_node_mut(id).unwrap().value = "new";
-        assert_eq!(g.get_node(id).unwrap().value, "new");
-    }
-
-    #[test]
-    fn double_remove() {
-        let mut g = Graph::new();
-        let id = g.insert_node(1, [0.0, 0.0]);
-        assert!(g.remove_node(id).is_some());
-        assert!(g.remove_node(id).is_none());
-        assert_eq!(g.node_count(), 0);
-    }
-
-    // ── Comments ─────────────────────────────────────────────────────────
-
-    fn sample_comment(text: &str) -> Comment {
-        Comment {
-            pos: [10.0, 20.0],
-            size: [200.0, 120.0],
-            text: text.to_string(),
-            color: [0x5b, 0x9b, 0xd5],
-        }
-    }
-
-    #[test]
-    fn add_comment_returns_index() {
-        let mut g: Graph<i32> = Graph::new();
-        assert!(g.comments().is_empty());
-        let a = g.add_comment(sample_comment("a"));
-        let b = g.add_comment(sample_comment("b"));
-        assert_eq!(a, 0);
-        assert_eq!(b, 1);
-        assert_eq!(g.comments().len(), 2);
-        assert_eq!(g.comments()[0].text, "a");
-        assert_eq!(g.comments()[1].text, "b");
-    }
-
-    #[test]
-    fn remove_comment_shifts_indices() {
-        let mut g: Graph<i32> = Graph::new();
-        g.add_comment(sample_comment("a"));
-        g.add_comment(sample_comment("b"));
-        g.add_comment(sample_comment("c"));
-        g.remove_comment(1); // remove "b"
-        assert_eq!(g.comments().len(), 2);
-        assert_eq!(g.comments()[0].text, "a");
-        assert_eq!(g.comments()[1].text, "c");
-    }
-
-    #[test]
-    fn remove_comment_out_of_range_is_noop() {
-        let mut g: Graph<i32> = Graph::new();
-        g.add_comment(sample_comment("a"));
-        g.remove_comment(99); // out of range
-        assert_eq!(g.comments().len(), 1);
-    }
-
-    #[test]
-    fn comments_mut_bulk_edit() {
-        let mut g: Graph<i32> = Graph::new();
-        g.add_comment(sample_comment("a"));
-        g.comments_mut().push(sample_comment("loaded"));
-        g.comments_mut()[0].text = "edited".to_string();
-        assert_eq!(g.comments().len(), 2);
-        assert_eq!(g.comments()[0].text, "edited");
-        assert_eq!(g.comments()[1].text, "loaded");
-    }
-
-    #[test]
-    fn clear_comments_empties_list() {
-        let mut g: Graph<i32> = Graph::new();
-        g.add_comment(sample_comment("a"));
-        g.add_comment(sample_comment("b"));
-        g.clear_comments();
-        assert!(g.comments().is_empty());
-    }
-
-    #[test]
-    fn clear_also_clears_comments() {
-        let mut g: Graph<i32> = Graph::new();
-        g.insert_node(1, [0.0, 0.0]);
-        g.add_comment(sample_comment("a"));
-        g.clear();
-        assert_eq!(g.node_count(), 0);
-        assert!(g.comments().is_empty());
-    }
-}
+#[path = "graph_tests.rs"]
+mod tests;

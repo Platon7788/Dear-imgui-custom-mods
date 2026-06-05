@@ -17,21 +17,34 @@
 //! inspector.add("rotation", PropertyValue::F32(0.0));
 //! // In render loop: inspector.render(ui);
 //! ```
+//!
+//! ## Internationalisation (i18n)
+//!
+//! `PropertyInspector` is **N/A** for the crate i18n catalogue and is
+//! intentionally absent from the nine localised widgets. Every
+//! user-visible string it draws — category names, property keys, value
+//! displays — is **host-supplied** through [`PropertyInspector::add`],
+//! [`add_category`](PropertyInspector::add_category) and
+//! [`PropertyNode`]. The widget owns **no chrome strings** of its own
+//! (the only literals are the geometric collapse arrows `▸`/`▾` and the
+//! type badges `bool`/`i32`/…, which are technical type identifiers and
+//! stay untranslated by the same rule as `Hex`/`Dec`/`ASCII`). There is
+//! therefore nothing to localise; a `locale` field would be dead state.
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod config;
+mod render;
 pub mod value;
 
 pub use config::InspectorConfig;
 pub use value::PropertyValue;
 
-use dear_imgui_rs::{MouseButton, Ui};
-
-use crate::utils::color::rgba_f32;
-use crate::utils::text::{calc_text_size, line_height};
-
-fn col32(c: [f32; 4]) -> u32 {
-    rgba_f32(c[0], c[1], c[2], c[3])
+/// Pack an `[f32; 4]` RGBA color into the draw-list `u32` (ABGR) format.
+///
+/// `pub(super)` so the sibling `render` module shares one definition.
+#[inline]
+pub(super) fn col32(c: [f32; 4]) -> u32 {
+    crate::utils::color::col32(c)
 }
 
 // ── Property node ───────────────────────────────────────────────────────────
@@ -52,10 +65,11 @@ pub struct PropertyNode {
     /// Whether the node is expanded (for Object/Array).
     pub expanded: bool,
     /// Nesting depth.
-    depth: u32,
+    pub(super) depth: u32,
 }
 
 impl PropertyNode {
+    #[must_use]
     pub fn new(key: impl Into<String>, value: PropertyValue) -> Self {
         Self {
             key: key.into(),
@@ -68,29 +82,62 @@ impl PropertyNode {
         }
     }
 
+    #[must_use]
     pub fn with_readonly(mut self, ro: bool) -> Self {
         self.read_only = ro;
         self
     }
 
+    #[must_use]
     pub fn with_changed(mut self, c: bool) -> Self {
         self.changed = c;
         self
     }
 
+    #[must_use]
     pub fn with_child(mut self, child: PropertyNode) -> Self {
         self.children.push(child);
         self
+    }
+
+    /// `true` when this node has expandable child rows: either it
+    /// carries explicit children, or its value is a container variant
+    /// (`Object` / `Array`).
+    #[must_use]
+    pub fn has_children(&self) -> bool {
+        !self.children.is_empty() || self.value.is_container()
+    }
+
+    /// `true` when the node's key or current value display contains
+    /// `needle` (already lower-cased by the caller). An empty `needle`
+    /// always matches.
+    #[must_use]
+    pub(super) fn matches_filter(&self, needle: &str) -> bool {
+        if needle.is_empty() {
+            return true;
+        }
+        self.key.to_lowercase().contains(needle)
+            || self.value.display().to_lowercase().contains(needle)
     }
 }
 
 // ── Category ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
-struct Category {
-    name: String,
-    collapsed: bool,
-    properties: Vec<PropertyNode>,
+pub(super) struct Category {
+    pub(super) name: String,
+    pub(super) collapsed: bool,
+    pub(super) properties: Vec<PropertyNode>,
+}
+
+impl Category {
+    fn empty_root() -> Self {
+        Self {
+            name: String::new(),
+            collapsed: false,
+            properties: Vec::new(),
+        }
+    }
 }
 
 // ── Events ──────────────────────────────────────────────────────────────────
@@ -108,25 +155,22 @@ pub struct PropertyChangedEvent {
 
 /// Hierarchical property editor widget.
 pub struct PropertyInspector {
-    id: String,
-    categories: Vec<Category>,
+    pub(super) id: String,
+    pub(super) categories: Vec<Category>,
     /// Current active category for `add()` calls.
-    active_category: usize,
+    pub(super) active_category: usize,
     /// Filter text.
-    filter: String,
+    pub(super) filter: String,
     /// Configuration.
     pub config: InspectorConfig,
 }
 
 impl PropertyInspector {
+    #[must_use]
     pub fn new(id: impl Into<String>) -> Self {
         Self {
             id: id.into(),
-            categories: vec![Category {
-                name: String::new(),
-                collapsed: false,
-                properties: Vec::new(),
-            }],
+            categories: vec![Category::empty_root()],
             active_category: 0,
             filter: String::new(),
             config: InspectorConfig::default(),
@@ -146,340 +190,53 @@ impl PropertyInspector {
 
     /// Add a property to the current category.
     pub fn add(&mut self, key: impl Into<String>, value: PropertyValue) -> &mut Self {
-        let node = PropertyNode::new(key, value);
-        self.categories[self.active_category].properties.push(node);
-        self
+        self.add_node(PropertyNode::new(key, value))
     }
 
-    /// Add a full property node.
+    /// Add a full property node to the current category.
+    ///
+    /// Robust against an out-of-range `active_category` (e.g. after a
+    /// manual mutation): falls back to the last category so a stray
+    /// index can never panic.
     pub fn add_node(&mut self, node: PropertyNode) -> &mut Self {
-        self.categories[self.active_category].properties.push(node);
+        let idx = self
+            .active_category
+            .min(self.categories.len().saturating_sub(1));
+        if let Some(cat) = self.categories.get_mut(idx) {
+            cat.properties.push(node);
+        }
         self
     }
 
     /// Clear all categories and properties.
     pub fn clear(&mut self) {
         self.categories.clear();
-        self.categories.push(Category {
-            name: String::new(),
-            collapsed: false,
-            properties: Vec::new(),
-        });
+        self.categories.push(Category::empty_root());
         self.active_category = 0;
     }
 
-    /// Total number of properties across all categories.
+    /// Total number of properties across all categories (top-level only;
+    /// nested children are not counted).
+    #[must_use]
     pub fn property_count(&self) -> usize {
         self.categories.iter().map(|c| c.properties.len()).sum()
     }
 
-    /// Render the inspector. Returns change events.
-    ///
-    /// **Note (2026-04-30 audit):** the inspector currently renders
-    /// properties **read-only** — all values display via
-    /// `ui.text(...)`, no edit widgets are wired in. Therefore the
-    /// returned `Vec<PropertyChangedEvent>` is **always empty** at
-    /// the moment. The signature is preserved so when inline-edit
-    /// support lands (planned: text input for `String`, drag
-    /// widgets for numerics, checkbox for `Bool`, color picker for
-    /// `Color`) callers won't need to migrate. Tracked as
-    /// "implement value-edit widgets" in the deferred-fixes list.
-    pub fn render(&mut self, ui: &Ui) -> Vec<PropertyChangedEvent> {
-        let events = Vec::new();
-        let cfg = self.config; // Copy, not clone
-
-        let _id_tok = ui.push_id(&self.id);
-
-        // Filter bar
-        if cfg.show_filter {
-            ui.set_next_item_width(-1.0);
-            ui.input_text("##filter", &mut self.filter).build();
-        }
-
-        let avail = ui.content_region_avail();
-        let key_w = avail[0].max(1.0) * cfg.key_width_ratio.clamp(0.1, 0.9);
-
-        ui.child_window("##inspector_scroll")
-            .size(avail)
-            .build(ui, || {
-                let draw = ui.get_window_draw_list();
-                let win_pos = ui.cursor_screen_pos();
-                let win_w = ui.content_region_avail()[0];
-
-                let mouse_pos = ui.io().mouse_pos();
-                let is_clicked = ui.is_mouse_clicked(MouseButton::Left);
-                let window_hovered = ui.is_window_hovered();
-
-                let mut y = win_pos[1];
-                let mut row_idx = 0usize;
-                let filter_lower = self.filter.to_lowercase();
-
-                for cat_idx in 0..self.categories.len() {
-                    // Category header
-                    if cfg.show_categories && !self.categories[cat_idx].name.is_empty() {
-                        // Category background
-                        draw.add_rect(
-                            [win_pos[0], y],
-                            [win_pos[0] + win_w, y + cfg.row_height],
-                            col32(cfg.color_category_bg),
-                        )
-                        .filled(true)
-                        .build();
-
-                        // Hover highlight on category header
-                        let cat_row_hovered = mouse_pos[0] >= win_pos[0]
-                            && mouse_pos[0] < win_pos[0] + win_w
-                            && mouse_pos[1] >= y
-                            && mouse_pos[1] < y + cfg.row_height;
-                        if cat_row_hovered {
-                            draw.add_rect(
-                                [win_pos[0], y],
-                                [win_pos[0] + win_w, y + cfg.row_height],
-                                col32([1.0, 1.0, 1.0, 0.04]),
-                            )
-                            .filled(true)
-                            .build();
-                        }
-
-                        let arrow = if self.categories[cat_idx].collapsed {
-                            "\u{25B8}"
-                        } else {
-                            "\u{25BE}"
-                        };
-                        // Two `add_text` calls — the arrow glyph is fixed
-                        // width, so we know the offset for the name without
-                        // measuring a heap-allocated `format!` slice every
-                        // frame.
-                        let ty = y + (cfg.row_height - line_height(ui)) * 0.5;
-                        let arrow_x = win_pos[0] + 4.0;
-                        let text_color = col32(cfg.color_category_text);
-                        draw.add_text([arrow_x, ty], text_color, arrow);
-                        let arrow_w = calc_text_size(arrow)[0] + 4.0;
-                        draw.add_text(
-                            [arrow_x + arrow_w, ty],
-                            text_color,
-                            &self.categories[cat_idx].name,
-                        );
-
-                        // Click detection for category collapse toggle
-                        let cat_hovered = window_hovered
-                            && mouse_pos[0] >= win_pos[0]
-                            && mouse_pos[0] < win_pos[0] + win_w
-                            && mouse_pos[1] >= y
-                            && mouse_pos[1] < y + cfg.row_height;
-                        if cat_hovered && is_clicked {
-                            self.categories[cat_idx].collapsed =
-                                !self.categories[cat_idx].collapsed;
-                        }
-
-                        y += cfg.row_height;
-                    }
-
-                    if self.categories[cat_idx].collapsed {
-                        continue;
-                    }
-
-                    for prop_idx in 0..self.categories[cat_idx].properties.len() {
-                        // Filter
-                        if !filter_lower.is_empty()
-                            && !self.categories[cat_idx].properties[prop_idx]
-                                .key
-                                .to_lowercase()
-                                .contains(&filter_lower)
-                            && !self.categories[cat_idx].properties[prop_idx]
-                                .value
-                                .display()
-                                .to_lowercase()
-                                .contains(&filter_lower)
-                        {
-                            continue;
-                        }
-
-                        Self::render_property(
-                            &draw,
-                            ui,
-                            &mut self.categories[cat_idx].properties[prop_idx],
-                            &mut y,
-                            &mut row_idx,
-                            win_pos,
-                            win_w,
-                            key_w,
-                            &cfg,
-                            mouse_pos,
-                            is_clicked,
-                            window_hovered,
-                        );
-                    }
-                }
-
-                // Dummy for scroll
-                ui.set_cursor_pos([0.0, y - win_pos[1]]);
-                ui.dummy([1.0, 1.0]);
-            });
-
-        events
+    /// Number of categories, including the always-present unnamed root.
+    #[must_use]
+    pub fn category_count(&self) -> usize {
+        self.categories.len()
     }
 
-    /// Render a single property row and its children recursively.
-    #[allow(clippy::too_many_arguments, clippy::only_used_in_recursion)]
-    fn render_property(
-        draw: &dear_imgui_rs::DrawListMut<'_>,
-        ui: &Ui,
-        prop: &mut PropertyNode,
-        y: &mut f32,
-        row_idx: &mut usize,
-        win_pos: [f32; 2],
-        win_w: f32,
-        key_w: f32,
-        cfg: &InspectorConfig,
-        mouse_pos: [f32; 2],
-        is_clicked: bool,
-        window_hovered: bool,
-    ) {
-        // Alternate row background
-        if *row_idx % 2 == 1 {
-            draw.add_rect(
-                [win_pos[0], *y],
-                [win_pos[0] + win_w, *y + cfg.row_height],
-                col32(cfg.color_bg_alt),
-            )
-            .filled(true)
-            .build();
-        }
+    /// Current filter text.
+    #[must_use]
+    pub fn filter(&self) -> &str {
+        &self.filter
+    }
 
-        // Changed highlight
-        if cfg.highlight_changes && prop.changed {
-            draw.add_rect(
-                [win_pos[0], *y],
-                [win_pos[0] + win_w, *y + cfg.row_height],
-                col32(cfg.color_changed),
-            )
-            .filled(true)
-            .build();
-        }
-
-        // Hover highlight
-        let row_hovered = mouse_pos[0] >= win_pos[0]
-            && mouse_pos[0] < win_pos[0] + win_w
-            && mouse_pos[1] >= *y
-            && mouse_pos[1] < *y + cfg.row_height;
-        if row_hovered {
-            draw.add_rect(
-                [win_pos[0], *y],
-                [win_pos[0] + win_w, *y + cfg.row_height],
-                col32([1.0, 1.0, 1.0, 0.04]),
-            )
-            .filled(true)
-            .build();
-        }
-
-        let indent = prop.depth as f32 * cfg.indent;
-        let ty = *y + (cfg.row_height - line_height(ui)) * 0.5;
-
-        // Expand arrow for Object/Array
-        let has_children = !prop.children.is_empty()
-            || matches!(prop.value, PropertyValue::Object | PropertyValue::Array(_));
-        if has_children {
-            let arrow = if prop.expanded {
-                "\u{25BE}"
-            } else {
-                "\u{25B8}"
-            };
-            draw.add_text([win_pos[0] + indent + 2.0, ty], col32(cfg.color_key), arrow);
-        }
-
-        // Click detection for expand/collapse on property rows with children
-        if has_children {
-            let prop_hovered = window_hovered
-                && mouse_pos[0] >= win_pos[0]
-                && mouse_pos[0] < win_pos[0] + win_w
-                && mouse_pos[1] >= *y
-                && mouse_pos[1] < *y + cfg.row_height;
-            if prop_hovered && is_clicked {
-                prop.expanded = !prop.expanded;
-            }
-        }
-
-        // Key
-        let key_x = win_pos[0] + indent + if has_children { 16.0 } else { 4.0 };
-        draw.add_text([key_x, ty], col32(cfg.color_key), &prop.key);
-
-        // Separator
-        draw.add_line(
-            [win_pos[0] + key_w, *y],
-            [win_pos[0] + key_w, *y + cfg.row_height],
-            col32(cfg.color_separator),
-        )
-        .build();
-
-        // Value
-        let val_x = win_pos[0] + key_w + 4.0;
-        let val_text = prop.value.display();
-        let val_color = if prop.read_only {
-            cfg.color_readonly
-        } else {
-            cfg.color_value
-        };
-
-        // Color swatch for Color3/Color4
-        match &prop.value {
-            PropertyValue::Color3(c) => {
-                draw.add_rect(
-                    [val_x, *y + 2.0],
-                    [val_x + 14.0, *y + cfg.row_height - 2.0],
-                    col32([c[0], c[1], c[2], 1.0]),
-                )
-                .filled(true)
-                .build();
-                draw.add_text([val_x + 18.0, ty], col32(val_color), &val_text);
-            }
-            PropertyValue::Color4(c) => {
-                draw.add_rect(
-                    [val_x, *y + 2.0],
-                    [val_x + 14.0, *y + cfg.row_height - 2.0],
-                    col32(*c),
-                )
-                .filled(true)
-                .build();
-                draw.add_text([val_x + 18.0, ty], col32(val_color), &val_text);
-            }
-            _ => {
-                draw.add_text([val_x, ty], col32(val_color), &val_text);
-            }
-        }
-
-        // Type badge (dimmed, right-aligned)
-        let type_badge = prop.value.type_name();
-        let badge_x = win_pos[0] + win_w - calc_text_size(type_badge)[0] - 6.0;
-        draw.add_text([badge_x, ty], col32([0.35, 0.38, 0.45, 1.0]), type_badge);
-
-        *y += cfg.row_height;
-        *row_idx += 1;
-
-        // Recursively render children if expanded
-        if prop.expanded && !prop.children.is_empty() {
-            for child_idx in 0..prop.children.len() {
-                // Take child out temporarily to satisfy the borrow checker
-                // with mutable recursion.
-                let mut child = std::mem::take(&mut prop.children[child_idx]);
-                child.depth = prop.depth + 1;
-                Self::render_property(
-                    draw,
-                    ui,
-                    &mut child,
-                    y,
-                    row_idx,
-                    win_pos,
-                    win_w,
-                    key_w,
-                    cfg,
-                    mouse_pos,
-                    is_clicked,
-                    window_hovered,
-                );
-                prop.children[child_idx] = child;
-            }
-        }
+    /// Set the filter text programmatically.
+    pub fn set_filter(&mut self, filter: impl Into<String>) {
+        self.filter = filter.into();
     }
 }
 
@@ -504,7 +261,7 @@ mod tests {
         pi.add("x", PropertyValue::F32(1.0));
         pi.add_category("B");
         pi.add("y", PropertyValue::F32(2.0));
-        assert_eq!(pi.categories.len(), 3); // default + A + B
+        assert_eq!(pi.category_count(), 3); // default + A + B
         assert_eq!(pi.property_count(), 2);
     }
 
@@ -514,6 +271,20 @@ mod tests {
         pi.add("a", PropertyValue::Bool(true));
         pi.clear();
         assert_eq!(pi.property_count(), 0);
+        assert_eq!(pi.category_count(), 1); // root survives
+        assert_eq!(pi.active_category, 0);
+    }
+
+    #[test]
+    fn add_node_survives_out_of_range_active_category() {
+        // Corrupt the active index, then add — must not panic and must
+        // land in the last category.
+        let mut pi = PropertyInspector::new("##test");
+        pi.add_category("A");
+        pi.active_category = 999;
+        pi.add("safe", PropertyValue::Bool(false));
+        assert_eq!(pi.property_count(), 1);
+        assert_eq!(pi.categories.last().unwrap().properties.len(), 1);
     }
 
     #[test]
@@ -525,6 +296,35 @@ mod tests {
         assert!(node.read_only);
         assert!(node.changed);
         assert_eq!(node.children.len(), 1);
+    }
+
+    #[test]
+    fn has_children_detects_containers_and_explicit_kids() {
+        // Container variant with no explicit kids still reports children.
+        assert!(PropertyNode::new("o", PropertyValue::Object).has_children());
+        assert!(PropertyNode::new("a", PropertyValue::Array(0)).has_children());
+        // Scalar with no kids → no children.
+        assert!(!PropertyNode::new("s", PropertyValue::I32(1)).has_children());
+        // Scalar with an explicit child → children.
+        let n = PropertyNode::new("s", PropertyValue::I32(1)).with_child(PropertyNode::default());
+        assert!(n.has_children());
+    }
+
+    #[test]
+    fn matches_filter_on_key_and_value() {
+        let n = PropertyNode::new("Position", PropertyValue::String("origin".into()));
+        assert!(n.matches_filter(""), "empty needle matches everything");
+        assert!(n.matches_filter("posi"), "key substring matches");
+        assert!(n.matches_filter("orig"), "value substring matches");
+        assert!(!n.matches_filter("zzz"), "no match");
+    }
+
+    #[test]
+    fn set_filter_round_trips() {
+        let mut pi = PropertyInspector::new("##test");
+        assert_eq!(pi.filter(), "");
+        pi.set_filter("col");
+        assert_eq!(pi.filter(), "col");
     }
 
     #[test]
@@ -561,6 +361,17 @@ mod tests {
         assert!((cfg.key_width_ratio - 0.4).abs() < 0.01);
         assert!(cfg.show_filter);
         assert!(cfg.show_categories);
+    }
+
+    #[test]
+    fn config_round_trips_through_ron() {
+        let cfg = InspectorConfig::default();
+        let s = ron::ser::to_string(&cfg).expect("serialize");
+        let back: InspectorConfig = ron::from_str(&s).expect("deserialize");
+        assert_eq!(cfg.key_width_ratio, back.key_width_ratio);
+        assert_eq!(cfg.row_height, back.row_height);
+        assert_eq!(cfg.show_filter, back.show_filter);
+        assert_eq!(cfg.color_changed, back.color_changed);
     }
 
     #[test]

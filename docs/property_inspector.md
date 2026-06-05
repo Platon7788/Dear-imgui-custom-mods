@@ -72,15 +72,25 @@ inspector.add_node(node);
 | `new(id)` | Create a new property inspector |
 | `add_category(name)` | Add a category header; subsequent `add()` calls go into this category |
 | `add(key, value)` | Add a property to the current category |
-| `add_node(node)` | Add a full `PropertyNode` with all options |
-| `clear()` | Remove all categories and properties |
-| `property_count() -> usize` | Total number of properties across all categories |
+| `add_node(node)` | Add a full `PropertyNode` with all options (out-of-range active category falls back to the last category — never panics) |
+| `clear()` | Remove all categories and properties (the unnamed root category always survives) |
+| `property_count() -> usize` | Total number of top-level properties across all categories |
+| `category_count() -> usize` | Number of categories (includes the always-present unnamed root) |
+| `filter() -> &str` | Current filter text |
+| `set_filter(text)` | Set the filter text programmatically |
 
 ### Rendering
 
 | Method | Description |
 |--------|-------------|
 | `render(ui) -> Vec<PropertyChangedEvent>` | Render the inspector. Returns change events |
+
+> **Read-only today.** Values are painted via the window draw list; no
+> inline edit widgets are wired in yet, so `render` always returns an
+> empty `Vec`. The signature is stable for the future inline-edit work
+> (text input for `String`, drags for numerics, checkbox for `Bool`,
+> color picker for `Color*`), which is already backed by the
+> `PropertyValue::parse_like` / `clamp_in_place` helpers below.
 
 ## PropertyNode
 
@@ -103,6 +113,7 @@ Builder methods:
 | `.with_readonly(bool)` | Set read-only flag |
 | `.with_changed(bool)` | Set changed flag (diff highlight) |
 | `.with_child(node)` | Add a child property |
+| `.has_children() -> bool` | `true` if the node has explicit children **or** a container value (`Object`/`Array`) |
 
 ## PropertyValue
 
@@ -123,6 +134,31 @@ Builder methods:
 | `Flags(u64, names)` | `0xFF` | `flags` |
 | `Object` | `{...}` | `object` |
 | `Array(count)` | `[3 items]` | `array` |
+
+### Value helpers
+
+| Method | Description |
+|--------|-------------|
+| `display() -> String` | Formatted value string (out-of-range `Enum` index → `#idx`, never panics) |
+| `type_name() -> &'static str` | Lower-case type badge (`bool`, `i32`, `color4`, …) |
+| `is_container() -> bool` | `true` only for `Object` / `Array` |
+| `clamp_in_place() -> bool` | Pin `Enum` index into `0..len` and `Color*` channels into `0.0..=1.0`; returns `true` if anything changed |
+| `parse_like(text) -> Option<Self>` | Parse `text` into the **same** variant as `self`; `None` on malformed input, echoes non-textual variants unchanged |
+
+These two helpers (`clamp_in_place`, `parse_like`) exist so the planned
+inline-edit widgets validate host input at the boundary without
+re-implementing per-variant parsing.
+
+## Internationalisation (i18n)
+
+**N/A — intentionally not localised.** `PropertyInspector` is absent
+from the crate's nine i18n widgets and carries no `locale` field. Every
+user-visible string it draws — category names, property keys, value
+displays — is **host-supplied**. The widget owns no chrome strings of
+its own; the only literals are the geometric collapse arrows (`▸`/`▾`)
+and the technical type badges (`bool`/`i32`/…), which stay untranslated
+by the same rule as `Hex`/`Dec`/`ASCII`. A `locale` field would be dead
+state.
 
 ## Events
 
@@ -167,7 +203,17 @@ cfg.highlight_changes = false; // highlight changed values
 
 ```
 property_inspector/
-  mod.rs      PropertyInspector struct, rendering, category management
-  config.rs   InspectorConfig with colors and layout
-  value.rs    PropertyValue enum (15+ variants) with display and type_name
+  mod.rs      PropertyNode / Category / PropertyInspector structs, public
+              data API (add / clear / counts / filter), unit tests
+  render.rs   Draw-list rendering: filter bar, category headers, property
+              rows, recursive children, color swatches, type badges
+  config.rs   InspectorConfig schema + apply_theme / with_theme (values
+              live in config.ron, loaded via ron::from_str(include_str!))
+  config.ron  Default layout + color values
+  value.rs    PropertyValue enum (15 variants): display / type_name /
+              is_container / clamp_in_place / parse_like
 ```
+
+`mod.rs` was split (was 575 lines) so the draw path lives in its own
+`render.rs`; both stay well under the 500-line cap. `col32` is defined
+once in `mod.rs` as `pub(super)` and shared with `render.rs`.

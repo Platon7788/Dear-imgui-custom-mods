@@ -48,8 +48,12 @@ pub(crate) fn compute(
     // originating) at node_order[i] for PageRank purposes.
     let mut out_deg: Vec<usize> = vec![0usize; n];
     for (_, edge) in graph.edges.iter() {
-        let fi = index[&edge.from];
-        let ti = index[&edge.to];
+        // Defensive: skip any edge whose endpoint is not in the node set. The
+        // `GraphData` invariant guarantees this never happens (removing a node
+        // removes its edges), but indexing with `[]` would panic if it ever did.
+        let (Some(&fi), Some(&ti)) = (index.get(&edge.from), index.get(&edge.to)) else {
+            continue;
+        };
         if edge.directed {
             out_deg[fi] += 1;
         } else {
@@ -80,8 +84,9 @@ pub(crate) fn compute(
 
         // Distribute rank along edges.
         for (_, edge) in graph.edges.iter() {
-            let fi = index[&edge.from];
-            let ti = index[&edge.to];
+            let (Some(&fi), Some(&ti)) = (index.get(&edge.from), index.get(&edge.to)) else {
+                continue;
+            };
 
             if edge.directed {
                 // from → to only

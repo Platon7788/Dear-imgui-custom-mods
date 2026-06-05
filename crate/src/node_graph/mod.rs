@@ -242,6 +242,17 @@ impl<T> NodeGraph<T> {
         let kind = drag.kind;
         let offset = drag.offset;
 
+        // Defensive: the host may have removed/reordered comments (via
+        // `comments_mut()` / `remove_comment`) between frames while a drag was
+        // live. The stored index would then point at a *different* comment — or
+        // out of range. Cancel the gesture instead of silently moving the wrong
+        // box. `get_mut(index)?` below also guards the bound; this makes the
+        // intent explicit and clears the dangling drag state.
+        if index >= self.graph.comments().len() {
+            self.state.comment_drag = None;
+            return None;
+        }
+
         let mouse = ui.io().mouse_pos();
         let vp = &self.state.viewport;
         // Target graph-space point: mouse minus the grab offset, both in screen.
@@ -302,17 +313,18 @@ impl<T> NodeGraph<T> {
         self.graph.remove_node(id)
     }
 
-    /// Connect two pins.
+    /// Connect two pins. Returns `true` if the wire is new.
     pub fn connect(&mut self, from: OutPinId, to: InPinId) -> bool {
         self.graph.connect(from, to)
     }
 
-    /// Disconnect two pins.
+    /// Disconnect two pins. Returns `true` if the wire existed.
     pub fn disconnect(&mut self, from: OutPinId, to: InPinId) -> bool {
         self.graph.disconnect(from, to)
     }
 
     /// Currently selected node IDs.
+    #[must_use]
     pub fn selected(&self) -> Vec<NodeId> {
         self.state.selected.iter().copied().collect()
     }
@@ -354,8 +366,8 @@ impl<T> NodeGraph<T> {
 
         self.state.viewport.zoom = zoom;
         self.state.zoom_target = zoom;
-        self.state.viewport.offset[0] = canvas_size[0] * 0.5 - (min_x + max_x) * 0.5 * zoom;
-        self.state.viewport.offset[1] = canvas_size[1] * 0.5 - (min_y + max_y) * 0.5 * zoom;
+        self.state.viewport.offset[0] = canvas_size[0] * 0.5 - f32::midpoint(min_x, max_x) * zoom;
+        self.state.viewport.offset[1] = canvas_size[1] * 0.5 - f32::midpoint(min_y, max_y) * zoom;
     }
 
     /// Reset viewport to default (zoom 1.0, centered at origin).

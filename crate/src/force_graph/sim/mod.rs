@@ -33,6 +33,10 @@ pub(crate) struct Simulation {
 const SLEEP_THRESHOLD: f32 = 0.01;
 /// Consecutive frames below threshold before the simulation is put to sleep (~2 s at 60 FPS).
 const SLEEP_FRAMES: u32 = 120;
+/// Hard cap on per-axis node speed (canvas units / second). Bounds the worst
+/// case so a transient force spike between coincident nodes can never blow a
+/// position up to ±∞ before the repulsion softening separates them.
+const MAX_SPEED: f32 = 10_000.0;
 
 impl Simulation {
     /// Create a new, awake simulation with zero tick count.
@@ -195,11 +199,24 @@ impl Simulation {
                 .map(|&i| self.scratch_forces[i])
                 .unwrap_or([0.0, 0.0]);
             let decay_factor = (1.0 - config.velocity_decay * dt).max(0.0);
-            node.vel[0] = (node.vel[0] + f[0] * dt) * decay_factor;
-            node.vel[1] = (node.vel[1] + f[1] * dt) * decay_factor;
-            node.pos[0] += node.vel[0] * dt;
-            node.pos[1] += node.vel[1] * dt;
-            total_vel_sq += node.vel[0] * node.vel[0] + node.vel[1] * node.vel[1];
+            let mut vx = (node.vel[0] + f[0] * dt) * decay_factor;
+            let mut vy = (node.vel[1] + f[1] * dt) * decay_factor;
+            // Stability clamp: a degenerate force (e.g. a huge transient spike
+            // before nodes separate) must never push velocity to ±∞/NaN, which
+            // would then corrupt `pos` permanently. Replace any non-finite
+            // component with 0 and cap the per-tick speed.
+            if !vx.is_finite() {
+                vx = 0.0;
+            }
+            if !vy.is_finite() {
+                vy = 0.0;
+            }
+            vx = vx.clamp(-MAX_SPEED, MAX_SPEED);
+            vy = vy.clamp(-MAX_SPEED, MAX_SPEED);
+            node.vel = [vx, vy];
+            node.pos[0] += vx * dt;
+            node.pos[1] += vy * dt;
+            total_vel_sq += vx * vx + vy * vy;
         }
 
         self.iter_count += 1;
@@ -363,6 +380,38 @@ mod tests {
             assert!(node.pos[1].is_finite(), "pos.y became non-finite");
             assert!(node.vel[0].is_finite(), "vel.x became non-finite");
             assert!(node.vel[1].is_finite(), "vel.y became non-finite");
+        }
+    }
+
+    /// Regression: a *large* graph (>50 nodes → Barnes-Hut path) where many
+    /// nodes start at the exact same position must not stack-overflow when the
+    /// quadtree is built, and all positions must remain finite. The earlier
+    /// `positions_stay_finite_after_500_ticks` test used only 3 nodes, so it
+    /// stayed on the naïve O(N²) path and never exercised the quadtree.
+    #[test]
+    fn large_coincident_graph_barnes_hut_stays_finite() {
+        let mut graph = GraphData::new();
+        // 60 nodes: 30 stacked at the origin, 30 stacked at another point.
+        for _ in 0..30 {
+            let id = graph.add_node(NodeStyle::new("a"));
+            graph.nodes.get_mut(id).unwrap().pos = [0.0, 0.0];
+        }
+        for _ in 0..30 {
+            let id = graph.add_node(NodeStyle::new("b"));
+            graph.nodes.get_mut(id).unwrap().pos = [10.0, 10.0];
+        }
+        graph.dirty = true;
+
+        let mut sim = Simulation::new();
+        let cfg = test_config();
+        // Confirm we are actually on the Barnes-Hut path.
+        assert!(graph.node_count() > 50);
+        for _ in 0..200 {
+            sim.tick(&mut graph, &cfg, 1.0 / 60.0);
+        }
+        for (_, node) in graph.nodes.iter() {
+            assert!(node.pos[0].is_finite() && node.pos[1].is_finite());
+            assert!(node.vel[0].is_finite() && node.vel[1].is_finite());
         }
     }
 

@@ -439,62 +439,8 @@ struct ConfigRon {
     force: ForceConfig,
 }
 
-// ─── Unit tests ───────────────────────────────────────────────────────────────
+// ─── Unit tests (in sibling `config_tests.rs` to keep this file < 500 lines) ─
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_force_config_values_from_spec() {
-        let f = ForceConfig::default();
-        assert!((f.repulsion - 120.0).abs() < f32::EPSILON);
-        assert!((f.attraction - 0.04).abs() < f32::EPSILON);
-        assert!((f.center_pull - 0.002).abs() < f32::EPSILON);
-        assert!((f.velocity_decay - 0.6).abs() < f32::EPSILON);
-        assert!((f.barnes_hut_theta - 0.9).abs() < f32::EPSILON);
-        assert!((f.collision_radius - 20.0).abs() < f32::EPSILON);
-        assert!((f.link_distance - 80.0).abs() < f32::EPSILON);
-        assert!(f.radius_by_degree);
-        assert!((f.radius_base - 4.0).abs() < f32::EPSILON);
-        assert!((f.radius_per_degree - 1.5).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn viewer_config_builder_chain() {
-        let c = ViewerConfig {
-            show_labels: LabelVisibility::Always,
-            ..ViewerConfig::default()
-        };
-        assert!(matches!(c.show_labels, LabelVisibility::Always));
-        assert_eq!(c.lod_threshold, 5000);
-        assert!(!c.minimap);
-        assert!(c.background_grid);
-        assert!(c.show_orphans);
-        assert!(!c.cluster_hulls);
-        assert!((c.node_size_multiplier - 1.0).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn viewer_config_default_theme_is_dark() {
-        let c = ViewerConfig::default();
-        assert_eq!(c.theme, Theme::Dark);
-    }
-
-    #[test]
-    fn force_config_clone() {
-        let f = ForceConfig::default();
-        let g = f.clone();
-        assert!((f.repulsion - g.repulsion).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn color_mode_debug_does_not_panic() {
-        let _ = format!("{:?}", ColorMode::Static);
-        let _ = format!("{:?}", ColorMode::ByTag);
-        let _ = format!("{:?}", ColorMode::ByCommunity);
-        let _ = format!("{:?}", ColorMode::ByPageRank);
-        let _ = format!("{:?}", ColorMode::ByBetweenness);
-        let _ = format!("{:?}", ColorMode::Custom(Box::new(|_, _| [1.0; 4])));
-    }
-}
+#[path = "config_tests.rs"]
+mod tests;

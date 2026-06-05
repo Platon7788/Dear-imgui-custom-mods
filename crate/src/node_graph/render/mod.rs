@@ -10,8 +10,10 @@
 pub(crate) mod comments;
 mod grid;
 mod input;
+mod input_hittest;
 mod math;
 mod nodes;
+mod nodes_body;
 mod overlays;
 mod wires;
 
@@ -241,7 +243,17 @@ pub(crate) fn render_graph<T>(
     if zoom >= config.lod_hide_body_zoom {
         // Cache values used by every node body (avoid per-node FFI / clone).
         let body_base_font_size = ui.current_font_size();
-        let body_item_spacing = ui.clone_style().item_spacing();
+        // Read just the one field we need instead of `ui.clone_style()`, which
+        // deep-copies the entire ~700-byte ImGuiStyle every frame. Matches the
+        // `igGetStyle()` field-access pattern used elsewhere in the crate
+        // (see code_editor, tab_control, virtual_table).
+        //
+        // SAFETY: `igGetStyle` returns a valid pointer to the current frame's
+        // style for the lifetime of this call; we only read `ItemSpacing`.
+        let body_item_spacing = unsafe {
+            let s = &(*dear_imgui_rs::sys::igGetStyle()).ItemSpacing;
+            [s.x, s.y]
+        };
         ui.with_clip_rect(canvas_pos, canvas_max, true, || {
             for &node_id in &state.scratch_visible {
                 nodes::render_node_body(

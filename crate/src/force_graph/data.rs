@@ -350,15 +350,21 @@ impl GraphData {
         if self.dirty_metrics || self.metrics.is_none() {
             use super::metrics::{centrality, pagerank};
 
-            // Build node order + index once; both algorithms reuse it.
-            let node_order: Vec<NodeId> = self.nodes.keys().collect();
+            // Use PageRank's own returned `node_order` as the single source of
+            // truth for the index so the `pagerank`/`betweenness` arrays and the
+            // `index` map can never drift apart. (Previously the index was built
+            // from an independent `self.nodes.keys()` pass and merely *happened*
+            // to align because SlotMap iteration is deterministic — a brittle
+            // assumption to bake a cache lookup on.)
+            let (node_order, pr) = pagerank::compute(self, 0.85, 100, 1e-6);
             let index: HashMap<NodeId, usize> = node_order
                 .iter()
                 .enumerate()
                 .map(|(i, &id)| (id, i))
                 .collect();
 
-            // Build index-based undirected adjacency once; centrality reuses it.
+            // Build index-based undirected adjacency over the same order;
+            // centrality reuses it.
             let adj: Vec<Vec<usize>> = node_order
                 .iter()
                 .map(|&id| {
@@ -368,7 +374,6 @@ impl GraphData {
                 })
                 .collect();
 
-            let (_, pr) = pagerank::compute(self, 0.85, 100, 1e-6);
             let bt = centrality::compute_with_adj(&node_order, &adj);
 
             self.metrics = Some(MetricsCache {
@@ -434,161 +439,8 @@ impl Default for GraphData {
     }
 }
 
-// ─── Unit tests ───────────────────────────────────────────────────────────────
+// ─── Unit tests (in sibling `data_tests.rs` to keep this file < 500 lines) ──
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::force_graph::style::EdgeStyle;
-
-    fn make_edge_style() -> EdgeStyle {
-        EdgeStyle::new()
-    }
-
-    #[test]
-    fn add_1000_nodes_remove_half_check_counts() {
-        let mut g = GraphData::with_capacity(1000, 0);
-        let ids: Vec<NodeId> = (0..1000)
-            .map(|i| g.add_node(NodeStyle::new(format!("n{i}"))))
-            .collect();
-
-        assert_eq!(g.node_count(), 1000);
-
-        for id in ids.iter().step_by(2) {
-            g.remove_node(*id);
-        }
-
-        assert_eq!(g.node_count(), 500);
-    }
-
-    #[test]
-    fn remove_node_removes_associated_edges() {
-        let mut g = GraphData::new();
-        let a = g.add_node(NodeStyle::new("A"));
-        let b = g.add_node(NodeStyle::new("B"));
-        let c = g.add_node(NodeStyle::new("C"));
-
-        g.add_edge(a, b, make_edge_style(), 1.0, false);
-        g.add_edge(a, c, make_edge_style(), 1.0, false);
-        assert_eq!(g.edge_count(), 2);
-
-        g.remove_node(a);
-        assert_eq!(g.edge_count(), 0);
-        // b and c adjacency lists must be empty
-        assert_eq!(g.degree(b), 0);
-        assert_eq!(g.degree(c), 0);
-    }
-
-    #[test]
-    fn id_stability_after_removes() {
-        let mut g = GraphData::new();
-        let a = g.add_node(NodeStyle::new("A"));
-        let b = g.add_node(NodeStyle::new("B"));
-        let c = g.add_node(NodeStyle::new("C"));
-
-        g.remove_node(b);
-
-        // a and c must still be accessible
-        assert!(g.node(a).is_some());
-        assert!(g.node(c).is_some());
-        assert!(g.node(b).is_none());
-    }
-
-    #[test]
-    fn neighbors_on_star_graph() {
-        let mut g = GraphData::new();
-        let center = g.add_node(NodeStyle::new("center"));
-        let spokes: Vec<NodeId> = (0..5)
-            .map(|i| g.add_node(NodeStyle::new(format!("spoke{i}"))))
-            .collect();
-
-        for &s in &spokes {
-            g.add_edge(center, s, make_edge_style(), 1.0, false);
-        }
-
-        let mut nbrs: Vec<NodeId> = g.neighbors(center).collect();
-        nbrs.sort_unstable();
-
-        assert_eq!(nbrs.len(), 5);
-
-        // Each spoke should have exactly one neighbor: center
-        for &s in &spokes {
-            let n: Vec<NodeId> = g.neighbors(s).collect();
-            assert_eq!(n.len(), 1);
-            assert_eq!(n[0], center);
-        }
-    }
-
-    #[test]
-    fn add_edge_with_invalid_node_id_does_not_panic() {
-        let mut g = GraphData::new();
-        let a = g.add_node(NodeStyle::new("A"));
-        g.remove_node(a); // a is now invalid
-
-        let b = g.add_node(NodeStyle::new("B"));
-        let result = g.add_edge(a, b, make_edge_style(), 1.0, false);
-        assert!(result.is_none());
-        assert_eq!(g.edge_count(), 0);
-    }
-
-    #[test]
-    fn clear_resets_counts_to_zero() {
-        let mut g = GraphData::new();
-        let a = g.add_node(NodeStyle::new("A"));
-        let b = g.add_node(NodeStyle::new("B"));
-        g.add_edge(a, b, make_edge_style(), 0.5, true);
-
-        g.clear();
-        assert_eq!(g.node_count(), 0);
-        assert_eq!(g.edge_count(), 0);
-    }
-
-    #[test]
-    fn degree_matches_adjacency_len() {
-        let mut g = GraphData::new();
-        let a = g.add_node(NodeStyle::new("A"));
-        let b = g.add_node(NodeStyle::new("B"));
-        let c = g.add_node(NodeStyle::new("C"));
-
-        g.add_edge(a, b, make_edge_style(), 1.0, false);
-        g.add_edge(a, c, make_edge_style(), 1.0, false);
-
-        assert_eq!(g.degree(a), 2);
-        assert_eq!(g.degree(b), 1);
-        assert_eq!(g.degree(c), 1);
-    }
-
-    #[test]
-    fn remove_edge_cleans_both_adjacency_lists() {
-        let mut g = GraphData::new();
-        let a = g.add_node(NodeStyle::new("A"));
-        let b = g.add_node(NodeStyle::new("B"));
-        let eid = g.add_edge(a, b, make_edge_style(), 1.0, false).unwrap();
-
-        g.remove_edge(eid);
-        assert_eq!(g.edge_count(), 0);
-        assert_eq!(g.degree(a), 0);
-        assert_eq!(g.degree(b), 0);
-    }
-
-    #[test]
-    fn unique_tags_deduplicates() {
-        let mut g = GraphData::new();
-        g.add_node(NodeStyle::new("A").with_tag("core").with_tag("ui"));
-        g.add_node(NodeStyle::new("B").with_tag("core").with_tag("data"));
-
-        let tags = g.unique_tags().to_vec();
-        assert!(tags.contains(&"core"));
-        assert!(tags.contains(&"ui"));
-        assert!(tags.contains(&"data"));
-        // "core" must appear only once
-        assert_eq!(tags.iter().filter(|&&t| t == "core").count(), 1);
-    }
-
-    #[test]
-    fn initial_pos_zero_node_is_origin_adjacent() {
-        let pos = super::initial_pos(0);
-        // r = 0.0 * 15.0 = 0.0 → both components zero
-        assert_eq!(pos, [0.0, 0.0]);
-    }
-}
+#[path = "data_tests.rs"]
+mod tests;
