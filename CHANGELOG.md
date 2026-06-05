@@ -96,9 +96,17 @@
   - **`status_bar`** — double per-row text measurement.
   - **`confirm_dialog`** — dead `unreachable!()` icon-match panic arm.
   - **`icons`** — audited 7448 constants (0 dup names/codepoints/invalid).
+  - **`tab_control`** — `scroll_into_view` over-counted pinned tabs (regular-tab
+    activation mis-scrolled the strip); per-frame `clone_style` removed.
+  - **`file_manager`** — stale transient indices (rename/delete/context/anchor)
+    survived a directory re-listing → acted on the wrong file after
+    navigate/refresh/sort; drive-letter false-positive on relative paths.
+  - **`timeline`** — `fit_to_content` didn't clamp zoom to `[min,max]`;
+    `adaptive_ticks` NaN/0 interval on a degenerate viewport; scroll/zoom shared
+    one wheel read.
   - Repo hygiene: restored an accidentally-deleted `LICENSE`; removed empty
-    stray files created by subagents' shell. Added ~250 unit tests across the
-    audited modules.
+    stray files created by subagents' shell. Added ~340 unit tests across the
+    audited modules (crate now at 997 lib tests).
 
 - **`virtual_table` audit fixes** (correctness pass):
   - **CRITICAL — `RingBuffer::remove` double-free / use-after-free** for
