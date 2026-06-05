@@ -19,13 +19,18 @@ pub struct Selection {
 }
 
 impl Selection {
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.start == self.end
     }
+    #[must_use]
     pub fn contains(&self, offset: usize) -> bool {
         let (lo, hi) = self.ordered();
         offset >= lo && offset < hi
     }
+    /// Returns `(lo, hi)` with `lo <= hi` regardless of selection
+    /// direction (the user may have dragged right-to-left).
+    #[must_use]
     pub fn ordered(&self) -> (usize, usize) {
         if self.start <= self.end {
             (self.start, self.end)
@@ -33,6 +38,7 @@ impl Selection {
             (self.end, self.start)
         }
     }
+    #[must_use]
     pub fn len(&self) -> usize {
         let (lo, hi) = self.ordered();
         hi - lo

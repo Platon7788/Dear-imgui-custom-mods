@@ -66,12 +66,15 @@ pub fn diff_lines(old: &[&str], new: &[&str]) -> Vec<DiffOp> {
 
     // v[k + offset] = furthest x on diagonal k
     let mut v = vec![0usize; size];
-    // Store trace for backtracking
+    // Store the endpoint vector reached at the *end* of each round
+    // `d`. `trace[d]` is the state after `d` edit moves — the inner
+    // loop must finish updating every diagonal before the snapshot is
+    // taken, otherwise the round's own diagonal advances are lost and
+    // the backtrack fabricates bogus `Equal` ops / drops real edits.
     let mut trace: Vec<Vec<usize>> = Vec::new();
 
     'outer: for d in 0..=max_d {
-        trace.push(v.clone());
-
+        let mut reached = false;
         let d_i = d as isize;
         let mut k = -d_i;
         while k <= d_i {
@@ -93,62 +96,56 @@ pub fn diff_lines(old: &[&str], new: &[&str]) -> Vec<DiffOp> {
             v[ki] = x;
 
             if x >= n && y >= m {
-                break 'outer;
+                reached = true;
             }
 
             k += 2;
         }
+
+        // Snapshot AFTER the round so `trace[d]` reflects every
+        // diagonal advanced this round.
+        trace.push(v.clone());
+        if reached {
+            break 'outer;
+        }
     }
 
     // Backtrack to build the edit script
-    backtrack(&trace, old, new, n, m, offset)
+    backtrack(&trace, n, m, offset)
 }
 
-fn backtrack(
-    trace: &[Vec<usize>],
-    old: &[&str],
-    new: &[&str],
-    n: usize,
-    m: usize,
-    offset: usize,
-) -> Vec<DiffOp> {
+/// Walk the Myers `trace` backwards, reconstructing the edit script.
+///
+/// Indices come straight from the trace, so the caller's `old`/`new`
+/// slices are never re-read here — the snake length is derived from
+/// the recorded endpoints, which guarantees every emitted `Equal`
+/// pairs lines the forward pass already proved identical.
+fn backtrack(trace: &[Vec<usize>], n: usize, m: usize, offset: usize) -> Vec<DiffOp> {
     let mut ops = Vec::new();
     let mut x = n;
     let mut y = m;
 
-    for d in (0..trace.len()).rev() {
+    // Rounds `d = trace.len()-1 ..= 1`. Each round contributes exactly
+    // one edit (the move onto diagonal `k`) plus the snake that
+    // preceded it.
+    for d in (1..trace.len()).rev() {
         let v = &trace[d];
+        let d_i = d as isize;
         let k = x as isize - y as isize;
         let ki = (k + offset as isize) as usize;
 
-        if d == 0 {
-            // Base case: follow diagonal
-            while x > 0 && y > 0 && old[x - 1] == new[y - 1] {
-                x -= 1;
-                y -= 1;
-                ops.push(DiffOp::Equal {
-                    old_idx: x,
-                    new_idx: y,
-                });
-            }
-            break;
-        }
-
-        let prev_k;
-        {
-            let d_i = d as isize;
-            prev_k = if k == -d_i || (k != d_i && v[ki - 1] < v[ki + 1]) {
-                k + 1 // came from down (insert)
-            } else {
-                k - 1 // came from right (delete)
-            };
-        }
+        // Which neighbouring diagonal did this round arrive from?
+        let prev_k = if k == -d_i || (k != d_i && v[ki - 1] < v[ki + 1]) {
+            k + 1 // came from down (insert)
+        } else {
+            k - 1 // came from right (delete)
+        };
 
         let prev_ki = (prev_k + offset as isize) as usize;
         let prev_x = trace[d - 1][prev_ki];
         let prev_y = (prev_x as isize - prev_k) as usize;
 
-        // Diagonal (equal lines)
+        // Follow the snake (run of equal lines) back to the edit point.
         while x > prev_x && y > prev_y {
             x -= 1;
             y -= 1;
@@ -158,7 +155,7 @@ fn backtrack(
             });
         }
 
-        // The edit
+        // The single edit that stepped onto diagonal `k`.
         if x > prev_x {
             x -= 1;
             ops.push(DiffOp::Delete { old_idx: x });
@@ -166,6 +163,17 @@ fn backtrack(
             y -= 1;
             ops.push(DiffOp::Insert { new_idx: y });
         }
+    }
+
+    // Round `d == 0`: whatever remains is the leading common-prefix
+    // snake (`x == y`), every line of which is equal by construction.
+    while x > 0 && y > 0 {
+        x -= 1;
+        y -= 1;
+        ops.push(DiffOp::Equal {
+            old_idx: x,
+            new_idx: y,
+        });
     }
 
     ops.reverse();
@@ -282,94 +290,5 @@ fn build_hunk(ops: &[DiffOp]) -> DiffHunk {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_both() {
-        let ops = diff_lines(&[], &[]);
-        assert!(ops.is_empty());
-    }
-
-    #[test]
-    fn empty_old() {
-        let ops = diff_lines(&[], &["a", "b"]);
-        assert_eq!(ops.len(), 2);
-        assert!(ops.iter().all(|op| matches!(op, DiffOp::Insert { .. })));
-    }
-
-    #[test]
-    fn empty_new() {
-        let ops = diff_lines(&["a", "b"], &[]);
-        assert_eq!(ops.len(), 2);
-        assert!(ops.iter().all(|op| matches!(op, DiffOp::Delete { .. })));
-    }
-
-    #[test]
-    fn identical() {
-        let ops = diff_lines(&["a", "b", "c"], &["a", "b", "c"]);
-        assert_eq!(ops.len(), 3);
-        assert!(ops.iter().all(|op| matches!(op, DiffOp::Equal { .. })));
-    }
-
-    #[test]
-    fn simple_change() {
-        let old = vec!["a", "b", "c"];
-        let new = vec!["a", "x", "c"];
-        let ops = diff_lines(&old, &new);
-        // Should be: Equal(a), Delete(b), Insert(x), Equal(c)
-        let deletes = ops
-            .iter()
-            .filter(|o| matches!(o, DiffOp::Delete { .. }))
-            .count();
-        let inserts = ops
-            .iter()
-            .filter(|o| matches!(o, DiffOp::Insert { .. }))
-            .count();
-        assert_eq!(deletes, 1);
-        assert_eq!(inserts, 1);
-    }
-
-    #[test]
-    fn add_lines() {
-        let old = vec!["a", "c"];
-        let new = vec!["a", "b", "c"];
-        let ops = diff_lines(&old, &new);
-        let inserts = ops
-            .iter()
-            .filter(|o| matches!(o, DiffOp::Insert { .. }))
-            .count();
-        assert_eq!(inserts, 1);
-    }
-
-    #[test]
-    fn remove_lines() {
-        let old = vec!["a", "b", "c"];
-        let new = vec!["a", "c"];
-        let ops = diff_lines(&old, &new);
-        let deletes = ops
-            .iter()
-            .filter(|o| matches!(o, DiffOp::Delete { .. }))
-            .count();
-        assert_eq!(deletes, 1);
-    }
-
-    #[test]
-    fn group_hunks_basic() {
-        let old: Vec<&str> = (0..10)
-            .map(|i| match i {
-                3 => "OLD",
-                _ => "same",
-            })
-            .collect();
-        let new: Vec<&str> = (0..10)
-            .map(|i| match i {
-                3 => "NEW",
-                _ => "same",
-            })
-            .collect();
-        let ops = diff_lines(&old, &new);
-        let hunks = group_hunks(&ops, 2);
-        assert!(!hunks.is_empty());
-    }
-}
+#[path = "diff_tests.rs"]
+mod tests;

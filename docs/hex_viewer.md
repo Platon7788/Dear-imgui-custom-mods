@@ -10,9 +10,9 @@ Standalone hex dump widget for Dear ImGui with editing, struct overlays, data in
 
 - **3-column layout**: offset, hex bytes, ASCII with synchronized cursor
 - **Color regions** (struct overlays) — map byte ranges to colors and labels
-- **Data inspector** panel — shows cursor byte as i8/u8/i16/u16/i32/u32/i64/u64/f32/f64
+- **Data inspector** panel — shows cursor bytes as u8/i8/u16/u32/u64/f32/f64/char/hex (endianness-aware), plus an address + edit-state footer
 - **Goto address** popup (Ctrl+G) — jump to hex offset
-- **Wildcard search** (Ctrl+F) — hex pattern with `??` wildcards (`4D 5A ?? 00`) and ASCII string mode
+- **Wildcard search** (Ctrl+F) — hex pattern with `??` wildcards (`4D 5A ?? 00`) plus ASCII / UTF-8 / UTF-16LE string modes
 - **Selection** — click and drag to select byte ranges, with `selected_bytes()` accessor
 - **Inline editing** — click hex digit to type new values (nibble-by-nibble) with **undo/redo**
 - **Undo / Redo** (Ctrl+Z / Ctrl+Y) — configurable stack depth (default: 256)
@@ -25,7 +25,7 @@ Standalone hex dump widget for Dear ImGui with editing, struct overlays, data in
 - **HexDataProvider trait** — abstract data source for remote memory, page caches, or memory-mapped files
 - **Column headers** — `00 01 02 ...` column labels
 - **Byte grouping** — visual spacing: None, Word (2), DWord (4), QWord (8)
-- **Configurable bytes per row**: 8, 16, or 32
+- **Configurable bytes per row**: 8 / 12 / 16 / 20 / 24 / 28 / 32 presets, or any multiple of 4 in `4..=64`
 - **Endianness toggle** — Little/Big endian for inspector values
 - **Dim zeros** — zero bytes displayed as subtle dots instead of `00`
 - **Base address** — configurable offset added to displayed addresses
@@ -216,8 +216,14 @@ pub enum CopyFormat {
 
 ```rust
 pub enum HexSearchMode {
-    Hex,    // hex bytes with ?? wildcards
-    Ascii,  // ASCII string search
+    Hex,                      // hex bytes with ?? wildcards
+    String(StringEncoding),   // text search, encoded to wire bytes
+}
+
+pub enum StringEncoding {
+    Ascii,     // 1 byte/char (Latin-1 wire bytes)
+    Utf8,      // full UTF-8 wire bytes
+    Utf16Le,   // 2 bytes/code-unit, little-endian (Windows wchar_t)
 }
 ```
 
@@ -331,31 +337,96 @@ Built-in implementation: `VecDataProvider` wraps `Vec<u8>` with optional referen
 
 ## Architecture
 
+The module is split into focused files, each kept under the 500-line
+ceiling. Cross-file access uses `pub(super)` visibility — every
+sub-module is inside `hex_viewer`, so `super` is the same crate-private
+boundary.
+
 ```
 hex_viewer/
-  mod.rs      HexViewer struct, rendering, input, goto/search popups,
-              wildcard search, undo/redo, navigation history, copy formats
-  config.rs   HexViewerConfig, HexDataProvider trait, VecDataProvider,
-              ColorRegion, ByteCategory, BytesPerRow, ByteGrouping,
-              Endianness, HexSearchMode, CopyFormat, UndoStack, NavHistory
+  mod.rs        HexViewer struct + fields, `new`, callback setters,
+                locale, `Drop`
+  api.rs        public data-management / cursor / VA-native /
+                inspector-height / render-entry methods
+  config.rs     HexViewerConfig schema + enums (BytesPerRow, ByteGrouping,
+                Endianness, AddressWidth, StringEncoding, HexSearchMode,
+                CopyFormat) — values live in config.ron
+  config.ron    default field values (DDD schema/values split)
+  provider.rs   HexDataProvider trait, VecDataProvider, ArcVecDataProvider,
+                ColorRegion, ByteCategory
+  nav_history.rs  NavHistory back/forward address stack
+  undo.rs       UndoEntry, UndoStack
+  search.rs     Selection, PatternByte, wildcard/string parsers,
+                clipboard-format conversion, do_search, parse_address
+  input.rs      keyboard handling, EditColumn, raw char-queue reader
+  edit.rs       edit-mode state machine, undo/redo, copy, cursor moves
+  mouse.rs      mouse handling + hit-testing (mouse_to_offset / row)
+  draw.rs       render entry point + ListClipper-style virtualisation loop
+  layout.rs     column-geometry math, header drawing, search-match probe,
+                per-byte colour resolution, the inspector splitter
+  row.rs        single-row byte drawing (offset / hex / ASCII columns)
+  inspector.rs  data-inspector subview (u8..f64 reinterpretations)
+  popup.rs      goto / search / context-menu / settings popups
+  tests/        themed unit + property tests (search / edit / layout /
+                config), declared via `#[cfg(test)] mod tests;`
 ```
+
+## Provider-driven rendering
+
+Three render entry points share one provider-agnostic pipeline:
+
+- `render(ui)` — legacy zero-arg path; wraps the internal buffer in an
+  `ArcVecDataProvider` (single `Arc::clone`).
+- `render_with_provider(ui, &mut p)` — generic over any
+  `HexDataProvider`; the viewer reads every visible byte through the
+  provider (one batched read per visible row + one for the inspector)
+  and routes edits through `provider.write()`. For streaming / sliding-
+  window sources (debugger memory pane, raw-disk view) `set_data*` is
+  irrelevant — the provider is the source of truth.
+- `render_with_dyn_provider(ui, &mut dyn HexDataProvider)` — trait-object
+  overload.
+
+Only the visible row window is read and drawn each frame; a streaming
+provider returning `u64::MAX` from `len()` is clamped so scroll-extent
+math stays finite.
+
+## VA-native API
+
+For hosts driving a sliding-window view (VA-first, like `disasm_view`):
+`cursor_address()`, `contains_va(va)`, `goto_address(va)`,
+`viewport_first_va()` / `viewport_last_va()`,
+`set_viewport_first_va(va)` (scroll-only follow), plus
+`set_va_goto_callback` (re-anchor on out-of-window goto),
+`set_byte_edit_callback` (`(va, old, new)` per committed edit), and
+`set_address_formatter` (per-row `module+offset` style labels).
+
+## Localisation
+
+The column headers, goto/search/settings popups, context menu, per-byte
+hover tooltip, and inspector footer are localised through
+`crate::i18n::hex_viewer`. Switch with
+`HexViewer::new(...).with_locale(Locale::Ru)` (or `set_locale` /
+`locale()`); the locale lives on `HexViewerConfig::locale` and
+round-trips through ron. Russian requires the host to bake
+`GlyphRanges::Cyrillic` into the active font atlas.
 
 ## Tests
 
-54 unit tests covering:
-- Core operations (new, cursor, selection, goto)
-- Wildcard search (`??` patterns)
-- ASCII search
-- Byte category classification
-- Category-based coloring
-- Undo/redo stack (push, truncate, depth limit)
-- Navigation history (back/forward)
-- All 6 copy formats (hex, compact, C array, Rust array, Base64, ASCII)
-- Base64 encoding (RFC 4648 vectors)
-- VecDataProvider (read, write, diff)
-- Region overlay coloring
-- Diff highlighting
-- Config defaults
+85 unit + property tests, split across `tests/`:
+- **search_tests** — address/pattern parsing, wildcard + hex/ASCII/
+  UTF-8/UTF-16LE search, end-of-buffer selection bounds, all 6 copy
+  formats, Base64 (RFC 4648), parser property tests (never-panic).
+- **edit_tests** — undo/redo round-trip + depth-limit trim +
+  overflow-offset hardening, nav-history bounds (empty back/forward,
+  forward-clear on diverge), pending-nibble commit, cursor movement /
+  shift-select / select-all, selection single-byte/empty/out-of-range.
+- **layout_tests** — address-width policy (incl. u64::MAX saturation),
+  offset/hex/ASCII column geometry, address-literal formatting,
+  inspector-height accessors, region/diff colour overrides, search-match
+  binary probe.
+- **config_tests** — config defaults + ron round-trip, the four i18n
+  guard tests, byte-category boundaries, providers, popup-trigger API,
+  VA-native API (contains_va / goto_address / cursor_address).
 
 ## Configuration & localisation
 

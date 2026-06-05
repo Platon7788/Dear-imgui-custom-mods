@@ -18,6 +18,9 @@
 pub mod config;
 pub mod diff;
 
+mod build; // DiffViewer::build_display_lines
+mod render; // DiffViewer::render + panel/unified drawing
+
 pub use config::{DiffMode, DiffViewerConfig};
 pub use diff::{DiffHunk, DiffOp, diff_lines, group_hunks};
 
@@ -28,6 +31,21 @@ use crate::utils::text::calc_text_size;
 
 fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
+}
+
+/// Half-open `[first, last)` index range of rows that intersect the
+/// visible scroll viewport, with one row of slack on each side so a
+/// partially-scrolled row is never clipped. Returns `0..0` when there
+/// is nothing to draw. Keeps the per-frame draw cost proportional to
+/// the visible row count instead of the whole (potentially huge) diff.
+fn visible_range(scroll_y: f32, view_h: f32, line_height: f32, total: usize) -> (usize, usize) {
+    if total == 0 || line_height <= 0.0 {
+        return (0, 0);
+    }
+    let first = ((scroll_y / line_height).floor() as isize - 1).max(0) as usize;
+    let visible_rows = (view_h / line_height).ceil() as usize + 2;
+    let last = first.saturating_add(visible_rows).min(total);
+    (first.min(total), last)
 }
 
 // ── Display line ────────────────────────────────────────────────────────────
@@ -200,561 +218,6 @@ impl DiffViewer {
         // Build display lines
         self.build_display_lines(&ops, &old_lines, &new_lines);
     }
-
-    fn build_display_lines(&mut self, ops: &[DiffOp], old_lines: &[&str], new_lines: &[&str]) {
-        self.left_lines.clear();
-        self.right_lines.clear();
-
-        // Track equal runs for folding
-        let mut equal_run = Vec::new();
-
-        let flush_equal = |left: &mut Vec<DisplayLine>,
-                           right: &mut Vec<DisplayLine>,
-                           run: &mut Vec<(usize, usize)>,
-                           fold: bool,
-                           ctx: usize,
-                           old_l: &[&str],
-                           new_l: &[&str]| {
-            if !fold || run.len() <= ctx * 2 + 1 {
-                // Show all equal lines
-                for &(oi, ni) in run.iter() {
-                    left.push(DisplayLine {
-                        old_num: Some(oi + 1),
-                        new_num: None,
-                        text: old_l.get(oi).unwrap_or(&"").to_string(),
-                        kind: LineKind::Equal,
-                    });
-                    right.push(DisplayLine {
-                        old_num: None,
-                        new_num: Some(ni + 1),
-                        text: new_l.get(ni).unwrap_or(&"").to_string(),
-                        kind: LineKind::Equal,
-                    });
-                }
-            } else {
-                // Show context + fold marker + context
-                for &(oi, ni) in run[..ctx].iter() {
-                    left.push(DisplayLine {
-                        old_num: Some(oi + 1),
-                        new_num: None,
-                        text: old_l.get(oi).unwrap_or(&"").to_string(),
-                        kind: LineKind::Equal,
-                    });
-                    right.push(DisplayLine {
-                        old_num: None,
-                        new_num: Some(ni + 1),
-                        text: new_l.get(ni).unwrap_or(&"").to_string(),
-                        kind: LineKind::Equal,
-                    });
-                }
-
-                let hidden = run.len() - ctx * 2;
-                let fold_text = format!("... {} unchanged lines ...", hidden);
-                left.push(DisplayLine {
-                    old_num: None,
-                    new_num: None,
-                    text: fold_text.clone(),
-                    kind: LineKind::FoldMarker,
-                });
-                right.push(DisplayLine {
-                    old_num: None,
-                    new_num: None,
-                    text: fold_text,
-                    kind: LineKind::FoldMarker,
-                });
-
-                let start = run.len() - ctx;
-                for &(oi, ni) in run[start..].iter() {
-                    left.push(DisplayLine {
-                        old_num: Some(oi + 1),
-                        new_num: None,
-                        text: old_l.get(oi).unwrap_or(&"").to_string(),
-                        kind: LineKind::Equal,
-                    });
-                    right.push(DisplayLine {
-                        old_num: None,
-                        new_num: Some(ni + 1),
-                        text: new_l.get(ni).unwrap_or(&"").to_string(),
-                        kind: LineKind::Equal,
-                    });
-                }
-            }
-            run.clear();
-        };
-
-        for op in ops {
-            match op {
-                DiffOp::Equal { old_idx, new_idx } => {
-                    equal_run.push((*old_idx, *new_idx));
-                }
-                _ => {
-                    if !equal_run.is_empty() {
-                        flush_equal(
-                            &mut self.left_lines,
-                            &mut self.right_lines,
-                            &mut equal_run,
-                            self.config.fold_unchanged,
-                            self.config.context_lines,
-                            old_lines,
-                            new_lines,
-                        );
-                    }
-                    match op {
-                        DiffOp::Delete { old_idx } => {
-                            self.left_lines.push(DisplayLine {
-                                old_num: Some(old_idx + 1),
-                                new_num: None,
-                                text: old_lines.get(*old_idx).unwrap_or(&"").to_string(),
-                                kind: LineKind::Removed,
-                            });
-                            self.right_lines.push(DisplayLine {
-                                old_num: None,
-                                new_num: None,
-                                text: String::new(),
-                                kind: LineKind::Removed,
-                            });
-                        }
-                        DiffOp::Insert { new_idx } => {
-                            self.left_lines.push(DisplayLine {
-                                old_num: None,
-                                new_num: None,
-                                text: String::new(),
-                                kind: LineKind::Added,
-                            });
-                            self.right_lines.push(DisplayLine {
-                                old_num: None,
-                                new_num: Some(new_idx + 1),
-                                text: new_lines.get(*new_idx).unwrap_or(&"").to_string(),
-                                kind: LineKind::Added,
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        if !equal_run.is_empty() {
-            flush_equal(
-                &mut self.left_lines,
-                &mut self.right_lines,
-                &mut equal_run,
-                self.config.fold_unchanged,
-                self.config.context_lines,
-                old_lines,
-                new_lines,
-            );
-        }
-    }
-
-    // ── Render ──────────────────────────────────────────────────────────────
-
-    /// Render the diff viewer.
-    pub fn render(&mut self, ui: &Ui) -> Vec<DiffViewerEvent> {
-        let mut events = Vec::new();
-
-        // Cache metrics
-        let m = calc_text_size("M");
-        self.char_advance = m[0];
-        self.line_height = m[1] + 2.0;
-
-        let _id_tok = ui.push_id(&self.id);
-        let cfg = self.config.clone();
-
-        // Header
-        self.render_header(ui, &cfg, &mut events);
-
-        let avail = ui.content_region_avail();
-
-        match cfg.mode {
-            DiffMode::SideBySide => {
-                let panel_w = (avail[0] - 2.0) * 0.5;
-
-                // Borrow lines as plain `&[DisplayLine]` slices —
-                // disjoint immutable borrows of `self.left_lines`
-                // / `self.right_lines`, both alive for the duration
-                // of the two `child_window().build(...)` closures
-                // (which only *read* the slices and never touch
-                // `self`). Replaces a historic `from_raw_parts`
-                // unsafe block whose SAFETY note ("not mutated
-                // during render") was correct but unenforceable
-                // — any future refactor that mutates the lines
-                // mid-render would silently invoke UB.
-                let left_slice: &[DisplayLine] = &self.left_lines;
-                let right_slice: &[DisplayLine] = &self.right_lines;
-
-                let char_advance = self.char_advance;
-                let line_height = self.line_height;
-
-                let sync = cfg.sync_scroll;
-                let mut left_scroll_y = 0.0f32;
-                let mut right_scroll_y = 0.0f32;
-                let saved_sync_y = self.sync_scroll_y;
-
-                // Left panel
-                ui.child_window("##diff_left")
-                    .size([panel_w, avail[1]])
-                    .build(ui, || {
-                        if sync {
-                            let current = ui.scroll_y();
-                            if (current - saved_sync_y).abs() > 0.5 {
-                                // User scrolled the left panel — it's the source.
-                                left_scroll_y = current;
-                            } else {
-                                ui.set_scroll_y(saved_sync_y);
-                                left_scroll_y = saved_sync_y;
-                            }
-                        }
-                        Self::render_panel_static(
-                            ui,
-                            &cfg,
-                            left_slice,
-                            true,
-                            char_advance,
-                            line_height,
-                        );
-                    });
-
-                ui.same_line_with_spacing(0.0, 0.0);
-
-                // Separator
-                {
-                    let cursor = ui.cursor_screen_pos();
-                    let draw = ui.get_window_draw_list();
-                    draw.add_line(
-                        cursor,
-                        [cursor[0], cursor[1] + avail[1]],
-                        col32(cfg.color_separator),
-                    )
-                    .build();
-                }
-
-                ui.same_line();
-
-                // Right panel
-                ui.child_window("##diff_right")
-                    .size([panel_w, avail[1]])
-                    .build(ui, || {
-                        if sync {
-                            let current = ui.scroll_y();
-                            if (current - saved_sync_y).abs() > 0.5 {
-                                // User scrolled the right panel.
-                                right_scroll_y = current;
-                            } else {
-                                ui.set_scroll_y(saved_sync_y);
-                                right_scroll_y = saved_sync_y;
-                            }
-                        }
-                        Self::render_panel_static(
-                            ui,
-                            &cfg,
-                            right_slice,
-                            false,
-                            char_advance,
-                            line_height,
-                        );
-                    });
-
-                // Update sync scroll position: whichever panel the user scrolled.
-                if sync {
-                    if (left_scroll_y - saved_sync_y).abs() > 0.5 {
-                        self.sync_scroll_y = left_scroll_y;
-                    } else if (right_scroll_y - saved_sync_y).abs() > 0.5 {
-                        self.sync_scroll_y = right_scroll_y;
-                    }
-                }
-            }
-            DiffMode::Unified => {
-                ui.child_window("##diff_unified").size(avail).build(ui, || {
-                    self.render_unified(ui, &cfg);
-                });
-            }
-        }
-
-        events
-    }
-
-    fn render_header(
-        &mut self,
-        ui: &Ui,
-        cfg: &DiffViewerConfig,
-        events: &mut Vec<DiffViewerEvent>,
-    ) {
-        // Navigation and stats
-        let s = &self.stats;
-        ui.text_colored(
-            cfg.color_header,
-            format!(
-                "{} vs {}  |  +{} -{} ~{}  |  {} hunks",
-                self.old_label,
-                self.new_label,
-                s.added,
-                s.removed,
-                s.modified,
-                self.hunks.len(),
-            ),
-        );
-
-        ui.same_line();
-        let s = crate::i18n::diff_viewer::strings(self.config.locale);
-        if ui.button(s.prev_button) {
-            self.prev_hunk();
-            events.push(DiffViewerEvent::HunkSelected {
-                index: self.current_hunk,
-            });
-        }
-        ui.same_line();
-        if ui.button(s.next_button) {
-            self.next_hunk();
-            events.push(DiffViewerEvent::HunkSelected {
-                index: self.current_hunk,
-            });
-        }
-
-        if !self.hunks.is_empty() {
-            ui.same_line();
-            ui.text_colored(
-                cfg.color_line_number,
-                format!("  Hunk {}/{}", self.current_hunk + 1, self.hunks.len()),
-            );
-        }
-
-        ui.separator();
-    }
-
-    fn render_panel_static(
-        ui: &Ui,
-        cfg: &DiffViewerConfig,
-        lines: &[DisplayLine],
-        is_left: bool,
-        char_advance: f32,
-        line_height: f32,
-    ) {
-        let draw = ui.get_window_draw_list();
-        let win_pos = ui.cursor_screen_pos();
-        let win_w = ui.content_region_avail()[0];
-
-        let gutter_w = if cfg.show_line_numbers {
-            char_advance * 5.0
-        } else {
-            0.0
-        };
-
-        for (vi, line) in lines.iter().enumerate() {
-            let y = win_pos[1] + vi as f32 * line_height;
-
-            // Background
-            let bg = match line.kind {
-                LineKind::Added => Some(cfg.color_added_bg),
-                LineKind::Removed => Some(cfg.color_removed_bg),
-                LineKind::FoldMarker => Some(cfg.color_fold),
-                LineKind::Equal => None,
-            };
-            if let Some(bg_color) = bg {
-                draw.add_rect(
-                    [win_pos[0], y],
-                    [win_pos[0] + win_w, y + line_height],
-                    col32(bg_color),
-                )
-                .filled(true)
-                .build();
-            }
-
-            // Hover row highlight
-            let mouse_pos = ui.io().mouse_pos();
-            let row_hovered = mouse_pos[1] >= y
-                && mouse_pos[1] < y + line_height
-                && mouse_pos[0] >= win_pos[0]
-                && mouse_pos[0] < win_pos[0] + win_w;
-            if row_hovered {
-                draw.add_rect(
-                    [win_pos[0], y],
-                    [win_pos[0] + win_w, y + line_height],
-                    col32([1.0, 1.0, 1.0, 0.04]),
-                )
-                .filled(true)
-                .build();
-            }
-
-            // Gutter background
-            if cfg.show_line_numbers {
-                draw.add_rect(
-                    [win_pos[0], y],
-                    [win_pos[0] + gutter_w, y + line_height],
-                    col32(cfg.color_gutter_bg),
-                )
-                .filled(true)
-                .build();
-            }
-
-            // Line number
-            if cfg.show_line_numbers {
-                let num = if is_left { line.old_num } else { line.new_num };
-                if let Some(n) = num {
-                    let num_str = format!("{:>4}", n);
-                    draw.add_text(
-                        [win_pos[0] + 2.0, y],
-                        col32(cfg.color_line_number),
-                        &num_str,
-                    );
-                }
-            }
-
-            // Text
-            let text_x = win_pos[0] + gutter_w + 4.0;
-            if line.kind == LineKind::FoldMarker {
-                draw.add_text([text_x, y], col32(cfg.color_fold), &line.text);
-            } else {
-                let text_color = match line.kind {
-                    LineKind::Added => cfg.color_added_text,
-                    LineKind::Removed => cfg.color_removed_text,
-                    _ => cfg.color_text,
-                };
-                draw.add_text([text_x, y], col32(text_color), &line.text);
-            }
-        }
-
-        // Dummy for scroll extent
-        let total_h = lines.len() as f32 * line_height;
-        ui.set_cursor_pos([0.0, total_h]);
-        ui.dummy([1.0, 1.0]);
-    }
-
-    fn render_unified(&self, ui: &Ui, cfg: &DiffViewerConfig) {
-        let draw = ui.get_window_draw_list();
-        let win_pos = ui.cursor_screen_pos();
-        let win_w = ui.content_region_avail()[0];
-
-        let gutter_w = if cfg.show_line_numbers {
-            self.char_advance * 10.0 // old + new numbers
-        } else {
-            0.0
-        };
-
-        // In unified mode, interleave left and right lines
-        // For simplicity, use left_lines which have old_num and right_lines for new_num
-        let line_count = self.left_lines.len().min(self.right_lines.len());
-
-        for vi in 0..line_count {
-            let left = &self.left_lines[vi];
-            let right = &self.right_lines[vi];
-            let y = win_pos[1] + vi as f32 * self.line_height;
-
-            let (kind, text) = if left.kind == LineKind::FoldMarker {
-                (LineKind::FoldMarker, &left.text)
-            } else if left.kind == LineKind::Removed {
-                (LineKind::Removed, &left.text)
-            } else if right.kind == LineKind::Added {
-                (LineKind::Added, &right.text)
-            } else {
-                (LineKind::Equal, &left.text)
-            };
-
-            // Background
-            let bg = match kind {
-                LineKind::Added => Some(cfg.color_added_bg),
-                LineKind::Removed => Some(cfg.color_removed_bg),
-                LineKind::FoldMarker => Some(cfg.color_fold),
-                LineKind::Equal => None,
-            };
-            if let Some(bg_color) = bg {
-                draw.add_rect(
-                    [win_pos[0], y],
-                    [win_pos[0] + win_w, y + self.line_height],
-                    col32(bg_color),
-                )
-                .filled(true)
-                .build();
-            }
-
-            // Hover row highlight
-            let mouse_pos = ui.io().mouse_pos();
-            let row_hovered = mouse_pos[1] >= y
-                && mouse_pos[1] < y + self.line_height
-                && mouse_pos[0] >= win_pos[0]
-                && mouse_pos[0] < win_pos[0] + win_w;
-            if row_hovered {
-                draw.add_rect(
-                    [win_pos[0], y],
-                    [win_pos[0] + win_w, y + self.line_height],
-                    col32([1.0, 1.0, 1.0, 0.04]),
-                )
-                .filled(true)
-                .build();
-            }
-
-            // Current hunk accent bar
-            if !self.hunks.is_empty() {
-                let hunk = &self.hunks[self.current_hunk];
-                let in_hunk = match (left.old_num, right.new_num) {
-                    (Some(n), _) if n > hunk.old_start && n <= hunk.old_start + hunk.old_count => {
-                        true
-                    }
-                    (_, Some(n)) if n > hunk.new_start && n <= hunk.new_start + hunk.new_count => {
-                        true
-                    }
-                    _ => false,
-                };
-                if in_hunk {
-                    draw.add_rect(
-                        [win_pos[0], y],
-                        [win_pos[0] + 3.0, y + self.line_height],
-                        col32([0.40, 0.63, 0.88, 0.8]),
-                    )
-                    .filled(true)
-                    .build();
-                }
-            }
-
-            // Line numbers (old | new)
-            if cfg.show_line_numbers {
-                draw.add_rect(
-                    [win_pos[0], y],
-                    [win_pos[0] + gutter_w, y + self.line_height],
-                    col32(cfg.color_gutter_bg),
-                )
-                .filled(true)
-                .build();
-
-                if let Some(n) = left.old_num {
-                    draw.add_text(
-                        [win_pos[0] + 2.0, y],
-                        col32(cfg.color_line_number),
-                        format!("{:>4}", n),
-                    );
-                }
-                if let Some(n) = right.new_num {
-                    draw.add_text(
-                        [win_pos[0] + self.char_advance * 5.0, y],
-                        col32(cfg.color_line_number),
-                        format!("{:>4}", n),
-                    );
-                }
-            }
-
-            // Prefix
-            let prefix = match kind {
-                LineKind::Added => "+ ",
-                LineKind::Removed => "- ",
-                LineKind::FoldMarker => "  ",
-                LineKind::Equal => "  ",
-            };
-            let text_x = win_pos[0] + gutter_w + 2.0;
-            let prefix_w = self.char_advance * 2.0;
-            let text_color = match kind {
-                LineKind::Added => cfg.color_added_text,
-                LineKind::Removed => cfg.color_removed_text,
-                LineKind::FoldMarker => cfg.color_fold,
-                LineKind::Equal => cfg.color_text,
-            };
-            draw.add_text([text_x, y], col32(text_color), prefix);
-            draw.add_text([text_x + prefix_w, y], col32(text_color), text);
-        }
-
-        let total_h = line_count as f32 * self.line_height;
-        ui.set_cursor_pos([0.0, total_h]);
-        ui.dummy([1.0, 1.0]);
-    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -849,5 +312,187 @@ mod tests {
         assert!(cfg.show_line_numbers);
         assert!(cfg.fold_unchanged);
         assert_eq!(cfg.context_lines, 3);
+    }
+
+    #[test]
+    fn left_right_lines_stay_equal_length() {
+        // Side-by-side row pairing must keep both columns the same
+        // height for any mix of edits, else the renderer would mis-align
+        // gutters. Exercise inserts, deletes and changes together.
+        for (old, new) in [
+            ("a\nb\nc", "a\nx\nc"),
+            ("a\nb\nc\nd\ne", "x\nb\ny\nd\nz"),
+            ("a", "a\nb\nc\nd"),
+            ("a\nb\nc\nd", "a"),
+            ("", "a\nb"),
+            ("a\nb", ""),
+        ] {
+            let mut dv = DiffViewer::new("##test");
+            dv.config.fold_unchanged = false;
+            dv.set_texts(old, new);
+            assert_eq!(
+                dv.left_lines.len(),
+                dv.right_lines.len(),
+                "left/right mismatch for {old:?} -> {new:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn redisplay_is_stable_across_recompute() {
+        // Re-running the same diff must yield identical display lines
+        // (same texts, kinds and line numbers) — the renderer caches
+        // these between frames and relies on stability.
+        let mut dv = DiffViewer::new("##test");
+        dv.set_texts("a\nb\nc\nd", "a\nB\nc\nD");
+        let snapshot: Vec<_> = dv
+            .left_lines
+            .iter()
+            .map(|l| (l.old_num, l.new_num, l.kind, l.text.clone()))
+            .collect();
+        dv.set_texts("a\nb\nc\nd", "a\nB\nc\nD");
+        let again: Vec<_> = dv
+            .left_lines
+            .iter()
+            .map(|l| (l.old_num, l.new_num, l.kind, l.text.clone()))
+            .collect();
+        assert_eq!(snapshot, again);
+    }
+
+    #[test]
+    fn changed_lines_have_correct_line_numbers() {
+        // Regression guard against off-by-one gutter math: the changed
+        // middle line must keep 1-based numbering, and equal lines must
+        // carry the right old/new indices on their respective sides.
+        let mut dv = DiffViewer::new("##test");
+        dv.config.fold_unchanged = false;
+        dv.set_texts("a\nb\nc", "a\nx\nc");
+        // Left side: line 1 = a(eq), 2 = b(removed), then added blank, 3 = c(eq)
+        let removed = dv
+            .left_lines
+            .iter()
+            .find(|l| l.kind == LineKind::Removed)
+            .expect("a removed line");
+        assert_eq!(removed.old_num, Some(2));
+        let added = dv
+            .right_lines
+            .iter()
+            .find(|l| l.kind == LineKind::Added)
+            .expect("an added line");
+        assert_eq!(added.new_num, Some(2));
+    }
+
+    // ── Viewport culling ────────────────────────────────────────────────────
+
+    #[test]
+    fn visible_range_empty_and_degenerate() {
+        assert_eq!(visible_range(0.0, 100.0, 14.0, 0), (0, 0));
+        assert_eq!(visible_range(0.0, 100.0, 0.0, 50), (0, 0));
+    }
+
+    #[test]
+    fn visible_range_top_of_scroll() {
+        // At scroll 0 with a 100px viewport and 10px rows, ~12 rows
+        // (10 visible + 2 slack) starting at 0.
+        let (first, last) = visible_range(0.0, 100.0, 10.0, 1000);
+        assert_eq!(first, 0);
+        assert_eq!(last, 12);
+    }
+
+    #[test]
+    fn visible_range_scrolled_middle() {
+        // Scrolled 500px -> row 50; window shows ~rows 49..61.
+        let (first, last) = visible_range(500.0, 100.0, 10.0, 1000);
+        assert_eq!(first, 49);
+        assert!(last > first && last <= 1000);
+        assert!(last - first <= 13);
+    }
+
+    #[test]
+    fn visible_range_clamps_to_total() {
+        let (first, last) = visible_range(99_999.0, 100.0, 10.0, 30);
+        assert!(first <= 30 && last <= 30 && first <= last);
+    }
+
+    // ── i18n guard tests (project requirement) ──────────────────────────────
+
+    #[test]
+    fn diff_viewer_strings_resolve() {
+        let en = crate::i18n::diff_viewer::strings(crate::i18n::Locale::En);
+        let ru = crate::i18n::diff_viewer::strings(crate::i18n::Locale::Ru);
+        assert_eq!(en.prev_button, "Prev (Shift+F7)");
+        assert_eq!(en.next_button, "Next (F7)");
+        assert_eq!(ru.prev_button, "Назад (Shift+F7)");
+        assert_eq!(ru.next_button, "Вперёд (F7)");
+    }
+
+    #[test]
+    fn default_locale_is_english() {
+        assert_eq!(DiffViewerConfig::default().locale, crate::i18n::Locale::En);
+        assert_eq!(DiffViewer::new("##test").locale(), crate::i18n::Locale::En);
+    }
+
+    #[test]
+    fn locale_round_trips_through_ron() {
+        let cfg = DiffViewerConfig {
+            locale: crate::i18n::Locale::Ru,
+            ..DiffViewerConfig::default()
+        };
+        let text = ron::ser::to_string(&cfg).unwrap();
+        let back: DiffViewerConfig = ron::from_str(&text).unwrap();
+        assert_eq!(back.locale, crate::i18n::Locale::Ru);
+    }
+
+    #[test]
+    fn locale_field_optional_in_ron() {
+        // A `config.ron` predating the `locale` field must still parse,
+        // defaulting to English via `#[serde(default)]`.
+        let cfg: DiffViewerConfig = ron::from_str(
+            r#"(
+                mode: SideBySide,
+                show_line_numbers: true,
+                fold_unchanged: true,
+                context_lines: 3,
+                show_minimap: false,
+                sync_scroll: true,
+                color_bg: (0.11, 0.11, 0.13, 1.0),
+                color_gutter_bg: (0.13, 0.14, 0.16, 1.0),
+                color_line_number: (0.40, 0.42, 0.48, 1.0),
+                color_text: (0.85, 0.87, 0.90, 1.0),
+                color_added_bg: (0.15, 0.30, 0.18, 0.5),
+                color_added_text: (0.55, 0.90, 0.55, 1.0),
+                color_removed_bg: (0.35, 0.15, 0.15, 0.5),
+                color_removed_text: (0.90, 0.55, 0.55, 1.0),
+                color_modified_bg: (0.30, 0.28, 0.15, 0.4),
+                color_inline_change: (0.90, 0.75, 0.20, 0.35),
+                color_fold: (0.35, 0.38, 0.45, 0.7),
+                color_header: (0.50, 0.55, 0.65, 1.0),
+                color_separator: (0.25, 0.27, 0.32, 0.8),
+                color_current_hunk: (0.30, 0.45, 0.65, 0.3),
+            )"#,
+        )
+        .expect("legacy ron without locale must parse");
+        assert_eq!(cfg.locale, crate::i18n::Locale::En);
+    }
+
+    #[test]
+    fn with_locale_and_set_locale_round_trip() {
+        let mut dv = DiffViewer::new("##test").with_locale(crate::i18n::Locale::Ru);
+        assert_eq!(dv.locale(), crate::i18n::Locale::Ru);
+        dv.set_locale(crate::i18n::Locale::En);
+        assert_eq!(dv.locale(), crate::i18n::Locale::En);
+    }
+
+    #[test]
+    fn config_ron_round_trips_fully() {
+        // Defaults come from config.ron; a full serialize/deserialize
+        // cycle must be lossless (DDD config pattern guard).
+        let cfg = DiffViewerConfig::default();
+        let text = ron::ser::to_string(&cfg).unwrap();
+        let back: DiffViewerConfig = ron::from_str(&text).unwrap();
+        assert_eq!(back.mode, cfg.mode);
+        assert_eq!(back.context_lines, cfg.context_lines);
+        assert_eq!(back.color_added_bg, cfg.color_added_bg);
+        assert_eq!(back.locale, cfg.locale);
     }
 }
