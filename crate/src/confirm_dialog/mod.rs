@@ -219,21 +219,26 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
                 }
             } // wdl drops here
 
+            // Resolve title / message once: host text wins, else the
+            // localized default for `cfg.locale`.
+            let title = cfg.resolved_title();
+            let message = cfg.resolved_message();
+
             // Title text
             let [_, ty] = ui.cursor_pos();
-            let title_tw = calc_text_size(cfg.title.as_str())[0];
+            let title_tw = calc_text_size(title)[0];
             let title_x = if has_icon {
                 title_start_x
             } else {
                 ((content_w - title_tw) * 0.5).max(0.0)
             };
             ui.set_cursor_pos([title_x, ty]);
-            ui.text_colored(colors.title, &cfg.title);
+            ui.text_colored(colors.title, title);
 
             ui.spacing();
 
             // ── Message ──────────────────────────────────────────────────────
-            let msg_w = calc_text_size(cfg.message.as_str())[0];
+            let msg_w = calc_text_size(message)[0];
             let msg_x = if has_icon {
                 title_start_x
             } else {
@@ -241,7 +246,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
             };
             let [_, my] = ui.cursor_pos();
             ui.set_cursor_pos([msg_x, my]);
-            ui.text_colored(colors.message, &cfg.message);
+            ui.text_colored(colors.message, message);
 
             // ── Buttons — anchored to bottom, centred horizontally ──────────
             let btn_h = cfg.button_height;
@@ -266,14 +271,18 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
                 0.0
             };
             let h_pad = cfg.button_padding_x;
+            // Resolve button labels once: host text wins, else the
+            // localized default for `cfg.locale`.
+            let cancel_label = cfg.resolved_cancel_label();
+            let confirm_label = cfg.resolved_confirm_label();
             // A non-zero `button_width` pins both cells to a fixed width;
             // `0.0` falls back to content auto-sizing (label + icon + pad),
             // with both buttons sharing the wider of the two.
             let btn_w = if cfg.button_width > 0.0 {
                 cfg.button_width
             } else {
-                let cancel_w = calc_text_size(cfg.cancel_label.as_str())[0] + icon_extra + h_pad;
-                let confirm_w = calc_text_size(cfg.confirm_label.as_str())[0] + icon_extra + h_pad;
+                let cancel_w = calc_text_size(cancel_label)[0] + icon_extra + h_pad;
+                let confirm_w = calc_text_size(confirm_label)[0] + icon_extra + h_pad;
                 cancel_w.max(confirm_w)
             };
 
@@ -289,7 +298,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
             if icon_button(
                 ui,
                 "##cd_cancel",
-                &cfg.cancel_label,
+                cancel_label,
                 [btn_w, btn_h],
                 cancel_glyph,
                 colors.btn_cancel,
@@ -321,7 +330,7 @@ pub fn render_confirm_dialog(ui: &Ui, cfg: &DialogConfig, open: &mut bool) -> Di
             if icon_button(
                 ui,
                 "##cd_confirm",
-                &cfg.confirm_label,
+                confirm_label,
                 [btn_w, btn_h],
                 confirm_glyph,
                 bg,

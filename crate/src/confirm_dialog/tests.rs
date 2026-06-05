@@ -114,10 +114,20 @@ fn default_loads_from_ron_with_expected_values() {
     // `Default` must come from `config.ron`, not hardcoded `.rs`
     // values. Pin every scalar so a drift between the two surfaces here.
     let cfg = DialogConfig::default();
-    assert_eq!(cfg.title, "Confirm");
-    assert_eq!(cfg.message, "Are you sure?");
-    assert_eq!(cfg.confirm_label, "Confirm");
-    assert_eq!(cfg.cancel_label, "Cancel");
+    // The default ron leaves title/message/labels EMPTY — they are
+    // sentinels for "no host override". The localized default fills
+    // them in at render time via the `resolved_*` accessors.
+    assert_eq!(cfg.title, "");
+    assert_eq!(cfg.message, "");
+    assert_eq!(cfg.confirm_label, "");
+    assert_eq!(cfg.cancel_label, "");
+    // Default locale is English, so the resolved defaults match the
+    // historic English literals.
+    assert_eq!(cfg.locale, crate::i18n::Locale::En);
+    assert_eq!(cfg.resolved_title(), "Confirm");
+    assert_eq!(cfg.resolved_message(), "Are you sure?");
+    assert_eq!(cfg.resolved_confirm_label(), "Confirm");
+    assert_eq!(cfg.resolved_cancel_label(), "Cancel");
     assert_eq!(cfg.icon, DialogIcon::Warning);
     assert_eq!(cfg.confirm_style, ConfirmStyle::Destructive);
     assert_eq!(cfg.theme, crate::theme::Theme::Dark);
@@ -258,4 +268,114 @@ fn dialog_result_is_must_use() {
         };
         assert!((1..=3).contains(&reacted));
     }
+}
+
+// ── i18n config guard tests (project-wide requirement) ───────────────────
+
+use crate::i18n::Locale;
+
+#[test]
+fn confirm_dialog_strings_resolve() {
+    // EN must match the historic literals; RU must actually diverge on
+    // every translated field (no stale EN-copied RU value).
+    let en = crate::i18n::confirm_dialog::strings(Locale::En);
+    let ru = crate::i18n::confirm_dialog::strings(Locale::Ru);
+    assert_eq!(en.title, "Confirm");
+    assert_eq!(en.message, "Are you sure?");
+    assert_eq!(en.confirm, "Confirm");
+    assert_eq!(en.cancel, "Cancel");
+    assert_ne!(en.title, ru.title);
+    assert_ne!(en.message, ru.message);
+    assert_ne!(en.confirm, ru.confirm);
+    assert_ne!(en.cancel, ru.cancel);
+}
+
+#[test]
+fn default_locale_is_english() {
+    let cfg = DialogConfig::default();
+    assert_eq!(cfg.locale, Locale::En);
+}
+
+#[test]
+fn locale_round_trips_through_ron() {
+    let cfg = DialogConfig {
+        locale: Locale::Ru,
+        ..DialogConfig::default()
+    };
+    let text = ron::ser::to_string(&cfg).unwrap();
+    let back: DialogConfig = ron::from_str(&text).unwrap();
+    assert_eq!(back.locale, Locale::Ru);
+}
+
+#[test]
+fn locale_field_optional_in_ron() {
+    // Older saved configs predate `locale:` — they must fall back to
+    // English. (Same ron shape as `button_icon_scale_defaults_when_field_absent`,
+    // which also omits `locale`.)
+    let legacy = r#"(
+        title: "",
+        message: "",
+        confirm_label: "",
+        cancel_label: "",
+        icon: Warning,
+        confirm_style: Destructive,
+        theme: Dark,
+        width: 340.0,
+        height: 160.0,
+        padding: 16.0,
+        button_height: 27.0,
+        button_gap: 60.0,
+        dim_background: true,
+        keyboard_shortcuts: true,
+        rounding: 6.0,
+        border_thickness: 1.5,
+        accent_border: true,
+        show_separator: false,
+        show_button_icons: true,
+        header_icon_size: 16.0,
+        button_padding_x: 22.0,
+        button_bottom_factor: 0.35,
+    )"#;
+    let cfg: DialogConfig =
+        ron::from_str(legacy).expect("confirm_dialog config without `locale` must still parse");
+    assert_eq!(cfg.locale, Locale::En);
+}
+
+#[test]
+fn with_locale_set_locale_round_trip() {
+    // `with_locale` (consuming) and `set_locale` (&mut) agree, and
+    // `locale()` mirrors the stored value.
+    let cfg = DialogConfig::default().with_locale(Locale::Ru);
+    assert_eq!(cfg.locale(), Locale::Ru);
+
+    let mut cfg2 = DialogConfig::default();
+    assert_eq!(cfg2.locale(), Locale::En);
+    cfg2.set_locale(Locale::Ru);
+    assert_eq!(cfg2.locale(), Locale::Ru);
+
+    // Empty (host-unset) fields follow the locale: Russian defaults.
+    assert_eq!(cfg.resolved_title(), "Подтверждение");
+    assert_eq!(cfg.resolved_message(), "Вы уверены?");
+    assert_eq!(cfg.resolved_confirm_label(), "Подтвердить");
+    assert_eq!(cfg.resolved_cancel_label(), "Отмена");
+}
+
+#[test]
+fn host_label_wins_over_localized_default() {
+    // Precedence: a host-set (non-empty) field always beats the
+    // localized default, regardless of locale.
+    let cfg = DialogConfig::new("Quit?", "Discard changes?")
+        .with_confirm_label("Quit")
+        .with_cancel_label("Stay")
+        .with_locale(Locale::Ru);
+    assert_eq!(cfg.resolved_title(), "Quit?");
+    assert_eq!(cfg.resolved_message(), "Discard changes?");
+    assert_eq!(cfg.resolved_confirm_label(), "Quit");
+    assert_eq!(cfg.resolved_cancel_label(), "Stay");
+    // Only the cancel label was left to the locale here is not the case —
+    // all four are host-set, so nothing falls back. Now drop the confirm
+    // override to prove the locale fills *only* the empty field.
+    let mixed = DialogConfig::new("Quit?", "Discard changes?").with_locale(Locale::Ru);
+    assert_eq!(mixed.resolved_title(), "Quit?"); // host
+    assert_eq!(mixed.resolved_confirm_label(), "Подтвердить"); // localized default
 }

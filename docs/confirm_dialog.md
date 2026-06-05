@@ -92,6 +92,51 @@ for that instance.
 | `ConfirmStyle::Destructive` | Green (safe) | Red (danger) |
 | `ConfirmStyle::Normal` | Green (safe) | Green (neutral) |
 
+## Localization
+
+`confirm_dialog` integrates with [`crate::i18n`](i18n.md). The dialog's
+own default title, message and button labels ship in English and Russian;
+set the language with `with_locale` / `set_locale`:
+
+```rust
+use dear_imgui_custom_mod::confirm_dialog::DialogConfig;
+use dear_imgui_custom_mod::i18n::Locale;
+
+// Russian defaults: title "Подтверждение", message "Вы уверены?",
+// confirm "Подтвердить", cancel "Отмена".
+let cfg = DialogConfig::default().with_locale(Locale::Ru);
+assert_eq!(cfg.resolved_confirm_label(), "Подтвердить");
+```
+
+### Precedence: host override wins over the localized default
+
+The four text fields (`title`, `message`, `confirm_label`, `cancel_label`)
+default to **empty** in `config.ron`. An empty field is a sentinel for
+"no host override" — the render path then substitutes the localized
+default for the active `locale`. Any **non-empty** value the host supplies
+(via `DialogConfig::new(...)`, `with_confirm_label`, `with_cancel_label`,
+or by setting the field directly) always wins and is rendered verbatim,
+regardless of `locale`.
+
+```rust
+# use dear_imgui_custom_mod::confirm_dialog::DialogConfig;
+# use dear_imgui_custom_mod::i18n::Locale;
+// `new` sets title/message (host override); confirm/cancel left empty.
+let cfg = DialogConfig::new("Quit?", "Discard changes?").with_locale(Locale::Ru);
+assert_eq!(cfg.resolved_title(), "Quit?");              // host wins
+assert_eq!(cfg.resolved_confirm_label(), "Подтвердить"); // localized default
+```
+
+The resolved values are exposed via `resolved_title()`,
+`resolved_message()`, `resolved_confirm_label()` and
+`resolved_cancel_label()` — these are exactly what `render_confirm_dialog`
+draws. `locale` is `#[serde(default)]`, so it round-trips through ron and
+older saved configs (without the field) load as English.
+
+> **Note:** `Locale::Ru` requires the host to bake `GlyphRanges::Cyrillic`
+> (or a superset) into the active font atlas — otherwise Cyrillic
+> characters render as `?` placeholders.
+
 ## API Reference
 
 ### `render_confirm_dialog(ui, cfg, open) -> DialogResult`
@@ -107,10 +152,10 @@ Returns:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `title` | `String` | `"Confirm"` | Header text |
-| `message` | `String` | `"Are you sure?"` | Body message |
-| `confirm_label` | `String` | `"Confirm"` | Confirm button text |
-| `cancel_label` | `String` | `"Cancel"` | Cancel button text |
+| `title` | `String` | `""` (→ localized `"Confirm"`) | Header text. Empty ⇒ localized default for `locale` |
+| `message` | `String` | `""` (→ localized `"Are you sure?"`) | Body message. Empty ⇒ localized default |
+| `confirm_label` | `String` | `""` (→ localized `"Confirm"`) | Confirm button text. Empty ⇒ localized default |
+| `cancel_label` | `String` | `""` (→ localized `"Cancel"`) | Cancel button text. Empty ⇒ localized default |
 | `icon` | `DialogIcon` | `Warning` | Icon type |
 | `confirm_style` | `ConfirmStyle` | `Destructive` | Button color style |
 | `theme` | `Theme` | `Dark` | Color theme |
@@ -132,6 +177,7 @@ Returns:
 | `accent_border` | `bool` | `true` | Tint border with the icon color |
 | `show_separator` | `bool` | `false` | Draw line between message and buttons |
 | `show_button_icons` | `bool` | `true` | Draw X / power / check glyphs in buttons |
+| `locale` | `Locale` | `En` | Language for the **default** title/message/labels (see [Localization](#localization)) |
 
 ## Render-loop integration
 

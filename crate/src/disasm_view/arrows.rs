@@ -244,19 +244,178 @@ fn assign_arrow_depths_in_order(arrows: &mut [BranchArrow]) {
     for arrow in arrows {
         let lo = arrow.from_idx.min(arrow.to_idx);
         let hi = arrow.from_idx.max(arrow.to_idx);
-        let mut found_depth = 0;
-        'depth: for (d, slot) in depth_slots.iter().enumerate().take(MAX_ARROW_DEPTH) {
-            for &(slo, shi) in slot {
-                if lo < shi && hi > slo {
-                    found_depth = d + 1;
-                    continue 'depth;
-                }
+        // `depth_slots` is a fixed `[_; MAX_ARROW_DEPTH]` array, so the
+        // iterator is already bounded — no `.take()` needed. Find the
+        // lowest lane whose existing spans don't overlap `[lo, hi]`
+        // (half-open overlap test `lo < shi && hi > slo`); if every
+        // lane up to the last overlaps, `found_depth` lands one past
+        // the array and the `.min` below clamps it to the outer lane.
+        let mut found_depth = MAX_ARROW_DEPTH;
+        for (d, slot) in depth_slots.iter().enumerate() {
+            if slot.iter().all(|&(slo, shi)| lo >= shi || hi <= slo) {
+                found_depth = d;
+                break;
             }
-            found_depth = d;
-            break;
         }
         let depth = found_depth.min(MAX_ARROW_DEPTH - 1);
         arrow.depth = depth;
         depth_slots[depth].push((lo, hi));
+    }
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::disasm_view::provider::{InstructionEntry, VecDisasmProvider};
+
+    fn arrow(from: usize, to: usize, clipped_from: bool, clipped_to: bool) -> BranchArrow {
+        BranchArrow {
+            from_idx: from,
+            to_idx: to,
+            depth: 0,
+            flow_kind: FlowKind::Jump,
+            clipped_from,
+            clipped_to,
+        }
+    }
+
+    /// Disjoint spans all pack into lane 0.
+    #[test]
+    fn depth_disjoint_spans_share_lane_zero() {
+        let mut arrows = [arrow(0, 1, false, false), arrow(4, 5, false, false)];
+        assign_arrow_depths_in_order(&mut arrows);
+        assert_eq!(arrows[0].depth, 0);
+        assert_eq!(arrows[1].depth, 0);
+    }
+
+    /// Overlapping spans must land on different lanes.
+    #[test]
+    fn depth_overlapping_spans_nest() {
+        // [0,5] overlaps [2,3] — the later-processed one moves to lane 1.
+        let mut arrows = [arrow(0, 5, false, false), arrow(2, 3, false, false)];
+        assign_arrow_depths_in_order(&mut arrows);
+        assert_ne!(arrows[0].depth, arrows[1].depth);
+    }
+
+    /// Reversed endpoints (`from > to`) still pack by absolute span.
+    #[test]
+    fn depth_uses_absolute_span_when_reversed() {
+        let mut arrows = [arrow(5, 0, false, false), arrow(3, 2, false, false)];
+        assign_arrow_depths_in_order(&mut arrows);
+        assert_ne!(arrows[0].depth, arrows[1].depth);
+    }
+
+    /// More overlapping arrows than `MAX_ARROW_DEPTH` clamp to the
+    /// outermost lane instead of panicking on an out-of-range index.
+    #[test]
+    fn depth_clamps_at_max_depth() {
+        // MAX_ARROW_DEPTH + 2 fully-overlapping spans.
+        let mut arrows: Vec<BranchArrow> = (0..MAX_ARROW_DEPTH + 2)
+            .map(|_| arrow(0, 9, false, false))
+            .collect();
+        assign_arrow_depths_in_order(&mut arrows);
+        assert!(arrows.iter().all(|a| a.depth < MAX_ARROW_DEPTH));
+        // The last spans pile into the outermost lane.
+        assert_eq!(arrows.last().unwrap().depth, MAX_ARROW_DEPTH - 1);
+    }
+
+    fn jump_provider() -> VecDisasmProvider {
+        // 20 nops at 0x1000, 0x1001, ... with a few branches wired.
+        let mut p = VecDisasmProvider::new();
+        for i in 0..20u64 {
+            p.push(InstructionEntry::new(0x1000 + i, vec![0x90], "nop", ""));
+        }
+        p
+    }
+
+    /// Both endpoints inside the window → anchored arrow, no clip flags.
+    #[test]
+    fn clipped_both_visible_is_anchored() {
+        let mut p = jump_provider();
+        // src idx 2 → dst idx 5 (both inside window [0,10)).
+        p.instructions_mut()[2] = InstructionEntry::new(0x1002, vec![0xEB], "jmp", "0x1005")
+            .with_flow(FlowKind::Jump)
+            .with_target(0x1005);
+        let arrows = compute_arrows_clipped(&p, 0, 10);
+        let a = arrows.iter().find(|a| a.from_idx == 2).unwrap();
+        assert_eq!(a.to_idx, 5);
+        assert!(!a.clipped_from && !a.clipped_to);
+    }
+
+    /// Target below the window → `to_idx` clamps to the last visible
+    /// row and `clipped_to` is raised.
+    #[test]
+    fn clipped_target_below_window_clamps() {
+        let mut p = jump_provider();
+        // src idx 1 (visible) → dst idx 15 (below window [0,10)).
+        p.instructions_mut()[1] = InstructionEntry::new(0x1001, vec![0xEB], "jmp", "0x100F")
+            .with_flow(FlowKind::Jump)
+            .with_target(0x100F);
+        let arrows = compute_arrows_clipped(&p, 0, 10);
+        let a = arrows.iter().find(|a| a.from_idx == 1).unwrap();
+        assert!(a.clipped_to, "off-window target must be flagged clipped");
+        assert!(!a.clipped_from);
+        assert_eq!(a.to_idx, 9, "clamped to last visible local row");
+    }
+
+    /// Source above + target below → pass-through, both clipped, both
+    /// endpoints clamped to the window edges.
+    #[test]
+    fn clipped_pass_through_keeps_both_flags() {
+        let mut p = jump_provider();
+        // Window [5,10). src idx 1 (above) → dst idx 15 (below).
+        p.instructions_mut()[1] = InstructionEntry::new(0x1001, vec![0xEB], "jmp", "0x100F")
+            .with_flow(FlowKind::Jump)
+            .with_target(0x100F);
+        let arrows = compute_arrows_clipped(&p, 5, 5);
+        assert_eq!(arrows.len(), 1);
+        let a = &arrows[0];
+        assert!(a.clipped_from && a.clipped_to);
+        assert_eq!(a.from_idx, 0); // clamped to top edge
+        assert_eq!(a.to_idx, 4); // clamped to bottom edge (visible_count-1)
+    }
+
+    /// Both endpoints on the same side of the window are dropped.
+    #[test]
+    fn clipped_both_below_is_dropped() {
+        let mut p = jump_provider();
+        // Window [0,5). src idx 12 → dst idx 15, both below.
+        p.instructions_mut()[12] = InstructionEntry::new(0x100C, vec![0xEB], "jmp", "0x100F")
+            .with_flow(FlowKind::Jump)
+            .with_target(0x100F);
+        let arrows = compute_arrows_clipped(&p, 0, 5);
+        assert!(arrows.is_empty());
+    }
+
+    /// Zero visible_count and empty provider both yield no arrows
+    /// (no panic on the `last_local`/`saturating_sub` path).
+    #[test]
+    fn clipped_degenerate_inputs_yield_empty() {
+        let p = jump_provider();
+        assert!(compute_arrows_clipped(&p, 0, 0).is_empty());
+        let empty = VecDisasmProvider::new();
+        assert!(compute_arrows_clipped(&empty, 0, 10).is_empty());
+    }
+
+    /// Priority sort: anchored arrows sort before pass-through, so a
+    /// caller `truncate(1)` keeps the anchored one.
+    #[test]
+    fn clipped_priority_anchored_before_pass_through() {
+        let mut p = jump_provider();
+        // Window [5,10). Anchored: idx 6 → idx 8 (both visible).
+        p.instructions_mut()[6] = InstructionEntry::new(0x1006, vec![0xEB], "jmp", "0x1008")
+            .with_flow(FlowKind::Jump)
+            .with_target(0x1008);
+        // Pass-through: idx 1 (above) → idx 15 (below).
+        p.instructions_mut()[1] = InstructionEntry::new(0x1001, vec![0xEB], "jmp", "0x100F")
+            .with_flow(FlowKind::Jump)
+            .with_target(0x100F);
+        let arrows = compute_arrows_clipped(&p, 5, 5);
+        assert_eq!(arrows.len(), 2);
+        // Anchored (no clip flags) must come first.
+        assert!(!arrows[0].clipped_from && !arrows[0].clipped_to);
+        assert!(arrows[1].clipped_from && arrows[1].clipped_to);
     }
 }

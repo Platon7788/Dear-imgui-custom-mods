@@ -38,6 +38,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod code_editor;
+pub mod confirm_dialog;
 pub mod diff_viewer;
 pub mod disasm_view;
 pub mod force_graph;

@@ -43,13 +43,22 @@ pub enum ConfirmStyle {
 /// ```
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DialogConfig {
-    /// Dialog title / header text.
+    /// Dialog title / header text. An **empty** string means "no host
+    /// override" — the render path falls back to the localized default
+    /// for [`locale`](Self::locale) (see [`resolved_title`](Self::resolved_title)).
+    /// [`new`](Self::new) populates this, so a host-built config always
+    /// carries an explicit title.
     pub title: String,
-    /// Body message shown below the title.
+    /// Body message shown below the title. Empty ⇒ use the localized
+    /// default (see [`resolved_message`](Self::resolved_message)).
     pub message: String,
-    /// Confirm button label. Default: `"Confirm"`.
+    /// Confirm button label. Empty ⇒ use the localized default for
+    /// [`locale`](Self::locale) (see [`resolved_confirm_label`](Self::resolved_confirm_label)).
+    /// Set explicitly via [`with_confirm_label`](Self::with_confirm_label) to override.
     pub confirm_label: String,
-    /// Cancel button label. Default: `"Cancel"`.
+    /// Cancel button label. Empty ⇒ use the localized default for
+    /// [`locale`](Self::locale) (see [`resolved_cancel_label`](Self::resolved_cancel_label)).
+    /// Set explicitly via [`with_cancel_label`](Self::with_cancel_label) to override.
     pub cancel_label: String,
     /// Icon displayed in the header area. Default: `Warning`.
     pub icon: DialogIcon,
@@ -110,6 +119,24 @@ pub struct DialogConfig {
     /// Default: `0.16`.
     #[serde(default = "default_button_icon_scale")]
     pub button_icon_scale: f32,
+
+    /// User-visible language for the dialog's **default** title,
+    /// message and button labels. Default [`crate::i18n::Locale::En`].
+    ///
+    /// The localized strings only apply where the host left the
+    /// corresponding field empty — an explicit
+    /// [`title`](Self::title) / [`message`](Self::message) /
+    /// [`confirm_label`](Self::confirm_label) /
+    /// [`cancel_label`](Self::cancel_label) always wins (see the
+    /// `resolved_*` accessors). Switching to
+    /// [`crate::i18n::Locale::Ru`] requires the host to bake
+    /// `GlyphRanges::Cyrillic` into the active font atlas — without
+    /// that, Cyrillic characters render as `?` placeholders.
+    ///
+    /// `#[serde(default)]` so older `config.ron` files (which predate
+    /// this field) still parse, defaulting to English.
+    #[serde(default)]
+    pub locale: crate::i18n::Locale,
 }
 
 /// Serde fallback for [`DialogConfig::button_icon_scale`] when an older saved
@@ -152,6 +179,59 @@ impl DialogConfig {
             None => self.theme.dialog(),
         }
     }
+
+    /// The localized string catalogue for the active [`locale`](Self::locale).
+    #[inline]
+    fn strings(&self) -> &'static crate::i18n::confirm_dialog::Strings {
+        crate::i18n::confirm_dialog::strings(self.locale)
+    }
+
+    /// Title to render: the host-set [`title`](Self::title) when
+    /// non-empty, otherwise the localized default. Host text always
+    /// wins over the localized default.
+    #[must_use]
+    pub fn resolved_title(&self) -> &str {
+        if self.title.is_empty() {
+            self.strings().title
+        } else {
+            &self.title
+        }
+    }
+
+    /// Message to render: host-set [`message`](Self::message) when
+    /// non-empty, otherwise the localized default.
+    #[must_use]
+    pub fn resolved_message(&self) -> &str {
+        if self.message.is_empty() {
+            self.strings().message
+        } else {
+            &self.message
+        }
+    }
+
+    /// Confirm-button label to render: host-set
+    /// [`confirm_label`](Self::confirm_label) when non-empty, otherwise
+    /// the localized default.
+    #[must_use]
+    pub fn resolved_confirm_label(&self) -> &str {
+        if self.confirm_label.is_empty() {
+            self.strings().confirm
+        } else {
+            &self.confirm_label
+        }
+    }
+
+    /// Cancel-button label to render: host-set
+    /// [`cancel_label`](Self::cancel_label) when non-empty, otherwise
+    /// the localized default.
+    #[must_use]
+    pub fn resolved_cancel_label(&self) -> &str {
+        if self.cancel_label.is_empty() {
+            self.strings().cancel
+        } else {
+            &self.cancel_label
+        }
+    }
     pub fn with_icon(mut self, icon: DialogIcon) -> Self {
         self.icon = icon;
         self
@@ -163,6 +243,41 @@ impl DialogConfig {
     pub fn with_cancel_label(mut self, l: impl Into<String>) -> Self {
         self.cancel_label = l.into();
         self
+    }
+
+    /// Set the user-visible language for the dialog's **default** title,
+    /// message and button labels.
+    ///
+    /// This only affects fields the host left empty — an explicit
+    /// [`title`](Self::title) / [`with_confirm_label`](Self::with_confirm_label)
+    /// / [`with_cancel_label`](Self::with_cancel_label) value is never
+    /// overwritten. Switching to [`crate::i18n::Locale::Ru`] requires
+    /// the host to bake `GlyphRanges::Cyrillic` into the active font
+    /// atlas, otherwise Cyrillic renders as `?`.
+    ///
+    /// ```rust,no_run
+    /// # use dear_imgui_custom_mod::confirm_dialog::DialogConfig;
+    /// # use dear_imgui_custom_mod::i18n::Locale;
+    /// // Empty title/message ⇒ the Russian defaults are used.
+    /// let cfg = DialogConfig::default().with_locale(Locale::Ru);
+    /// assert_eq!(cfg.resolved_confirm_label(), "Подтвердить");
+    /// ```
+    #[must_use]
+    pub fn with_locale(mut self, locale: crate::i18n::Locale) -> Self {
+        self.locale = locale;
+        self
+    }
+
+    /// Mid-flight language switch — mirror of [`with_locale`](Self::with_locale)
+    /// taking `&mut self`.
+    pub fn set_locale(&mut self, locale: crate::i18n::Locale) {
+        self.locale = locale;
+    }
+
+    /// Currently-active locale.
+    #[must_use]
+    pub fn locale(&self) -> crate::i18n::Locale {
+        self.locale
     }
     pub fn with_confirm_style(mut self, s: ConfirmStyle) -> Self {
         self.confirm_style = s;

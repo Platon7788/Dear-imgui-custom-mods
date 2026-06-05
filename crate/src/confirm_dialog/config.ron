@@ -1,8 +1,11 @@
 (
-    title: "Confirm",
-    message: "Are you sure?",
-    confirm_label: "Confirm",
-    cancel_label: "Cancel",
+    // Empty title/message/labels are sentinels for "no host override":
+    // the render path falls back to the localized default for `locale`
+    // (i18n/confirm_dialog.rs). A host-set value always wins.
+    title: "",
+    message: "",
+    confirm_label: "",
+    cancel_label: "",
     icon: Warning,
     confirm_style: Destructive,
     theme: Dark,
@@ -23,4 +26,5 @@
     button_padding_x: 22.0,
     button_bottom_factor: 0.35,
     button_icon_scale: 0.16,
+    locale: En,
 )
