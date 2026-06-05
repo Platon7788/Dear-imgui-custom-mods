@@ -120,10 +120,18 @@
     match-navigation dropped a half-typed nibble.
   - **`i18n`** — split `i18n.rs` into per-widget catalogue files; EN/RU parity
     verified; all `crate::i18n::*` paths unchanged.
-  - Repo hygiene: restored an accidentally-deleted `LICENSE`; removed empty
-    stray files created by subagents' shell. Added ~470 unit tests across the
-    audited modules (crate now at 1157 lib tests incl. the force_graph feature).
-    After this campaign the only remaining >500-line files are in `disasm_view`.
+  - **`disasm_view`** (final module) — split mod.rs (4586) into core + nav/
+    render/selection/search/api/edit_state + a `tests/` dir; draw.rs (1070) →
+    `draw/` (fixed 2 UTF-8 byte-vs-glyph width bugs); input.rs (683) → `input/`.
+  - **`confirm_dialog` i18n** — added the missing `crate::i18n::confirm_dialog`
+    catalogue (EN/RU) + `DialogConfig.locale` + `with_locale`/`set_locale` +
+    `resolved_*()` accessors (host-set label wins over localized default),
+    resolving the earlier i18n flag.
+  - **Campaign complete: every `.rs` file in `crate/src` is now < 500 lines.**
+    Restored an accidentally-deleted `LICENSE`; removed many empty stray files
+    created by subagents' shell redirects. Added ~540 unit tests across the
+    campaign (crate at 1224 lib tests incl. the force_graph feature); clippy
+    `-D warnings` (workspace) + fmt clean throughout.
 
 - **`virtual_table` audit fixes** (correctness pass):
   - **CRITICAL — `RingBuffer::remove` double-free / use-after-free** for
