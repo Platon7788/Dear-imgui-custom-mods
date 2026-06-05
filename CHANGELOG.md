@@ -112,9 +112,18 @@
     index after a comment is removed mid-drag; per-frame `clone_style`.
   - **`property_inspector`** — `add_node` panic on a corrupted `active_category`;
     added `parse_like`/`clamp_in_place` boundary validators.
+  - **`diff_viewer`** — 🔴 the Myers diff core produced **incorrect, non-minimal
+    edit scripts** (backtrack matched non-identical lines, fabricating bogus
+    `Equal` ops and dropping real edits). Rewritten to canonical Myers with a
+    DP-LCS fuzz oracle; added viewport culling.
+  - **`hex_viewer`** — undo/redo `off+len` usize-overflow (checked_add); F3
+    match-navigation dropped a half-typed nibble.
+  - **`i18n`** — split `i18n.rs` into per-widget catalogue files; EN/RU parity
+    verified; all `crate::i18n::*` paths unchanged.
   - Repo hygiene: restored an accidentally-deleted `LICENSE`; removed empty
-    stray files created by subagents' shell. Added ~400 unit tests across the
-    audited modules (crate now at 1104 lib tests incl. the force_graph feature).
+    stray files created by subagents' shell. Added ~470 unit tests across the
+    audited modules (crate now at 1157 lib tests incl. the force_graph feature).
+    After this campaign the only remaining >500-line files are in `disasm_view`.
 
 - **`virtual_table` audit fixes** (correctness pass):
   - **CRITICAL — `RingBuffer::remove` double-free / use-after-free** for
