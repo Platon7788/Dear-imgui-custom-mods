@@ -24,7 +24,7 @@ default-members = ["crate"]
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.96"
 license = "MIT"
 
 # ─── Build profiles (shared) ─────────────────────────────────────────────────
