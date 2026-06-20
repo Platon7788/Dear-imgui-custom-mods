@@ -289,7 +289,7 @@ impl HexViewer {
     /// surface as the documented "I have a `HexViewer` but no
     /// provider, please move the cursor" entry point — see the
     /// `goto` / `set_cursor` family above.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept: used in tests (edit_tests.rs); public entry point for callers without provider
     pub(super) fn move_cursor_with_selection(&mut self, new_cursor: usize, shift: bool) {
         let mut wrapper =
             super::provider::ArcVecDataProvider::from_arc(std::sync::Arc::clone(&self.data));
@@ -301,7 +301,7 @@ impl HexViewer {
     /// keyboard handler uses [`Self::copy_selection_with`] which is
     /// provider-aware (streams the selected range through the active
     /// provider, so streaming-memory hosts get the right bytes).
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept: documented public entry point for non-streaming callers; used in tests
     pub(super) fn copy_selection(&self) {
         let bytes = self.selected_bytes();
         if bytes.is_empty() {

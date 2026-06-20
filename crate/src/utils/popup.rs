@@ -273,7 +273,6 @@ pub fn action_row_labeled(
 /// Anchor the next ImGui window at `pos` in screen space using `pivot`.
 /// `[0.0, 0.0]` = popup top-left snaps to `pos`;
 /// `[0.5, 0.5]` = popup centre snaps to `pos`.
-#[allow(dead_code)]
 pub(crate) fn anchor_next_popup_at(pos: [f32; 2], pivot: [f32; 2]) {
     // SAFETY: side-effect-only ImGui call — writes to the shared context.
     // Safe from the single render thread that owns the ImGui context.
@@ -295,14 +294,12 @@ pub(crate) fn anchor_next_popup_at(pos: [f32; 2], pivot: [f32; 2]) {
 }
 
 /// Top-left anchor — for click-position-aware popups (right-click menus).
-#[allow(dead_code)]
 pub(crate) fn anchor_next_popup_topleft(pos: [f32; 2]) {
     anchor_next_popup_at(pos, [0.0, 0.0]);
 }
 
 /// Centred anchor — for modal-style popups (Goto / Search / Settings).
 /// `pos` is the popup's visual centre.
-#[allow(dead_code)]
 pub(crate) fn anchor_next_popup_centred(pos: [f32; 2]) {
     anchor_next_popup_at(pos, [0.5, 0.5]);
 }

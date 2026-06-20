@@ -25,6 +25,7 @@
 pub(crate) enum EditColumn {
     Bytes,
     #[allow(dead_code)]
+    // kept: used in input/mod.rs and mouse.rs match arms; compiler misses cross-file usage
     Mnemonic,
     Comment,
 }

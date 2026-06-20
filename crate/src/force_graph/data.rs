@@ -415,7 +415,7 @@ impl GraphData {
     /// Rebuilds the cache when `tag_cache_dirty` is set. The result is stable
     /// (same tags in the same order) between rebuilds — within a single rebuild
     /// order depends on SlotMap iteration order.
-    #[allow(dead_code)] // Phase B sidebar tag-filter will call this
+    #[allow(dead_code)] // kept: Phase B sidebar tag-filter will call this
     pub(crate) fn unique_tags(&mut self) -> &[&'static str] {
         if self.tag_cache_dirty {
             self.tag_cache.clear();

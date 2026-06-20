@@ -78,7 +78,7 @@ impl FindReplaceState {
     /// Retained for tests and downstream callers that want whole-document
     /// search without wiring up the scoped variant. Thin wrapper — prefer
     /// [`update_matches_scoped`](Self::update_matches_scoped) for new code.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept: used in tests; public entry point for non-scoped callers
     pub(super) fn update_matches(&mut self, lines: &[String], edit_version: u64) {
         self.update_matches_scoped(lines, edit_version, None);
     }

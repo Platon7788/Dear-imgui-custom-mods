@@ -100,18 +100,6 @@ impl Priority {
 }
 
 impl TaskKind {
-    #[allow(dead_code)]
-    fn label(self) -> &'static str {
-        match self {
-            TaskKind::Folder => "Folder",
-            TaskKind::RustFile => ".rs",
-            TaskKind::Config => ".toml",
-            TaskKind::Document => ".md",
-            TaskKind::Test => "test",
-            TaskKind::Asset => "asset",
-        }
-    }
-
     fn icon_char(self) -> char {
         match self {
             TaskKind::Folder => '\u{F024B}',   // folder
@@ -1163,7 +1151,7 @@ impl ApplicationHandler for App {
                         multiview_mask: None,
                     });
 
-                    if draw_data.total_vtx_count > 0 {
+                    if draw_data.total_vtx_count() > 0 {
                         gpu.renderer
                             .render_draw_data(draw_data, &mut pass)
                             .expect("render");

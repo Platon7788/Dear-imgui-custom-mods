@@ -58,7 +58,6 @@ pub fn with_alpha(c: [f32; 4], a: f32) -> [f32; 4] {
 
 /// Convenience alias for [`pack_color_f32`] — matches the `col32`
 /// shorthand used across the draw paths throughout the crate.
-#[allow(dead_code)]
 #[inline]
 pub(crate) fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])

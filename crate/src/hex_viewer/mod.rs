@@ -117,7 +117,7 @@ pub struct HexViewer {
     /// per-frame ImGui-ID lookup goes through the cached
     /// `goto_popup_id` / `search_popup_id` / `child_id` /
     /// `splitter_id` / etc. strings below.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept: retained for future per-instance debugging / feature gating
     pub(super) id: String,
     /// BUG-128 (2026-05-15) — `Arc<Vec<u8>>` instead of `Vec<u8>` so
     /// hosts that already own an `Arc` (sliding-window debugger panes
