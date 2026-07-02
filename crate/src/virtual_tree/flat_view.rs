@@ -33,6 +33,15 @@ pub struct FlatRow {
     pub continuation_mask: u64,
 }
 
+/// Ancestor depths in `1..depth` at which a vertical tree-line continuation is
+/// drawn, per `continuation_mask`. Clamped to 64 levels: `continuation_mask` is
+/// a `u64` (see `rebuild`), and `1u64 << d` for `d >= 64` would panic in debug
+/// / silently wrap in release. Deeper trees simply stop drawing lines past 64.
+#[inline]
+pub(crate) fn continuation_line_depths(depth: u16, mask: u64) -> impl Iterator<Item = u16> {
+    (1..depth.min(64)).filter(move |&d| mask & (1u64 << d) != 0)
+}
+
 // ─── Stack frame for iterative DFS ──────────────────────────────────────────
 
 /// Represents "process the i-th visible child of this parent".
@@ -399,5 +408,21 @@ mod tests {
 
         assert!(!fv.rows[1].is_last_child); // "a" is not last
         assert!(fv.rows[2].is_last_child); // "b" is last
+    }
+
+    #[test]
+    fn continuation_depths_no_shift_overflow_beyond_64() {
+        // Must not panic for depth > 64 (guards the `1u64 << d` shift).
+        let depths: Vec<u16> = continuation_line_depths(70, u64::MAX).collect();
+        assert!(depths.iter().all(|&d| d < 64), "clamped to < 64 levels");
+        assert_eq!(depths.len(), 63, "d in 1..64 with all mask bits set");
+    }
+
+    #[test]
+    fn continuation_depths_respects_mask() {
+        // Only bits 1 and 3 set → depths 1 and 3 drawn.
+        let mask = (1u64 << 1) | (1u64 << 3);
+        let depths: Vec<u16> = continuation_line_depths(5, mask).collect();
+        assert_eq!(depths, vec![1, 3]);
     }
 }

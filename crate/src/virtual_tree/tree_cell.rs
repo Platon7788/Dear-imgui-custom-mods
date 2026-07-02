@@ -39,18 +39,17 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 self.config.tree_line_color[3],
             );
 
-            // Vertical continuation lines at ancestor depths
-            for d in 1..flat_row.depth {
-                if flat_row.continuation_mask & (1u64 << d) != 0 {
-                    let x = cursor_screen[0] + (d as f32) * indent_w + indent_w * 0.5;
-                    draw_list
-                        .add_line(
-                            [x, cursor_screen[1]],
-                            [x, cursor_screen[1] + row_h],
-                            line_color,
-                        )
-                        .build();
-                }
+            // Vertical continuation lines at ancestor depths (overflow-safe).
+            for d in flat_view::continuation_line_depths(flat_row.depth, flat_row.continuation_mask)
+            {
+                let x = cursor_screen[0] + (d as f32) * indent_w + indent_w * 0.5;
+                draw_list
+                    .add_line(
+                        [x, cursor_screen[1]],
+                        [x, cursor_screen[1] + row_h],
+                        line_color,
+                    )
+                    .build();
             }
 
             // This node's connector: vertical stub + horizontal branch
