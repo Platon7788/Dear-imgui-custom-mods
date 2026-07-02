@@ -151,3 +151,50 @@ fn block_scalar_indent_tracks_key() {
     assert!(toks.iter().any(|t| t.kind == TokenKind::String));
     assert_eq!(deep, LineState::YamlBlock { indent: 3 });
 }
+
+/// A quoted scalar followed by `: ` is a mapping key → the whole `"key"`
+/// (quotes included) colours as `Attribute`, matching the bare-key path.
+#[test]
+fn quoted_key_is_attribute() {
+    assert!(has(
+        r#""quoted key": 1"#,
+        TokenKind::Attribute,
+        r#""quoted key""#
+    ));
+    assert!(!has(
+        r#""quoted key": 1"#,
+        TokenKind::String,
+        r#""quoted key""#
+    ));
+    assert!(has("'k': 1", TokenKind::Attribute, "'k'"));
+    assert!(!has("'k': 1", TokenKind::String, "'k'"));
+}
+
+/// A quoted scalar *not* followed by `:` is a value and stays a `String`.
+#[test]
+fn quoted_value_stays_string() {
+    assert!(has(
+        r#"k: "not a key""#,
+        TokenKind::String,
+        r#""not a key""#
+    ));
+    assert!(!has(
+        r#"k: "not a key""#,
+        TokenKind::Attribute,
+        r#""not a key""#
+    ));
+}
+
+/// YAML special floats (`.inf`, `-.inf`, `.nan`) colour as `Number`; a bare
+/// scalar that merely starts with those letters (`.information`) does not.
+#[test]
+fn special_floats_are_numbers() {
+    assert!(has("x: .inf", TokenKind::Number, ".inf"));
+    assert!(has("y: -.inf", TokenKind::Number, "-.inf"));
+    assert!(has("z: .nan", TokenKind::Number, ".nan"));
+    assert!(
+        !tok("w: .information")
+            .iter()
+            .any(|t| t.0 == TokenKind::Number)
+    );
+}

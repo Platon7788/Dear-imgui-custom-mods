@@ -223,8 +223,24 @@ pub(in crate::code_editor::lang) fn tokenize(line: &str) -> (Vec<Token>, LineSta
                     i += 1;
                 }
             }
+            // A quoted scalar immediately followed (after optional spaces) by
+            // a `:` + space/EOL is a mapping key → Attribute; otherwise it is
+            // a String value. Mirrors the bare-key `:`-lookahead (and RON's
+            // quoted-key rule).
+            let mut j = i;
+            while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            let kind = if j < len
+                && bytes[j] == b':'
+                && (j + 1 >= len || bytes[j + 1] == b' ' || bytes[j + 1] == b'\t')
+            {
+                TokenKind::Attribute
+            } else {
+                TokenKind::String
+            };
             tokens.push(Token {
-                kind: TokenKind::String,
+                kind,
                 start,
                 len: i - start,
             });
@@ -262,6 +278,34 @@ pub(in crate::code_editor::lang) fn tokenize(line: &str) -> (Vec<Token>, LineSta
             });
             i += 1;
             continue;
+        }
+
+        // ── YAML special floats (`.inf` / `+.inf` / `-.inf` / `.nan`) ────
+        // Leading-dot infinities/NaN (YAML 1.1/1.2). Matched as whole tokens
+        // ending at a word boundary so `.information` stays a bare scalar.
+        if b == b'.' || ((b == b'-' || b == b'+') && i + 1 < len && bytes[i + 1] == b'.') {
+            let start = i;
+            let after = if b == b'.' { i + 1 } else { i + 2 };
+            let word = &bytes[after..];
+            let matched = word.starts_with(b"inf")
+                || word.starts_with(b"Inf")
+                || word.starts_with(b"INF")
+                || word.starts_with(b"nan")
+                || word.starts_with(b"NaN")
+                || word.starts_with(b"NAN");
+            let end = after + 3;
+            if matched
+                && (end >= len || matches!(bytes[end], b' ' | b'\t' | b'#' | b',' | b']' | b'}'))
+            {
+                tokens.push(Token {
+                    kind: TokenKind::Number,
+                    start,
+                    len: end - start,
+                });
+                i = end;
+                continue;
+            }
+            // Not a special float — fall through to the bare-scalar handler.
         }
 
         // ── Number ───────────────────────────────────────────────────────
