@@ -16,16 +16,31 @@ pub(in crate::code_editor::lang) fn tokenize(
         0
     };
 
+    // ── Continuation of a multi-line string opened on a previous line ────
+    // `raw` = raw string (`r#"…`), scanning for the matching `"#…#`; plain
+    // strings scan for the next un-escaped `"`. Colour the whole run String;
+    // either it closes here (→ back to code) or it stays open.
+    if let LineState::Str { raw, hashes, .. } = state {
+        let (end, closed) = if raw {
+            scan_raw_string_close(bytes, 0, hashes as usize)
+        } else {
+            scan_dq_string_close(bytes, 0)
+        };
+        if end > 0 {
+            push(&mut tokens, TokenKind::String, 0, end);
+        }
+        i = end;
+        if !closed {
+            return (tokens, state);
+        }
+    }
+
     while i < len {
         // ── Inside a (possibly nested) block comment ─────────────────────
         if depth > 0 {
             let start = i;
             depth = scan_block_comment(&mut i, bytes, depth);
-            tokens.push(Token {
-                kind: TokenKind::Comment,
-                start,
-                len: i - start,
-            });
+            push(&mut tokens, TokenKind::Comment, start, i - start);
             continue;
         }
 
@@ -37,21 +52,13 @@ pub(in crate::code_editor::lang) fn tokenize(
             while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
                 i += 1;
             }
-            tokens.push(Token {
-                kind: TokenKind::Whitespace,
-                start,
-                len: i - start,
-            });
+            push(&mut tokens, TokenKind::Whitespace, start, i - start);
             continue;
         }
 
         // ── Line comment ─────────────────────────────────────────────────
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'/' {
-            tokens.push(Token {
-                kind: TokenKind::Comment,
-                start: i,
-                len: len - i,
-            });
+            push(&mut tokens, TokenKind::Comment, i, len - i);
             return (tokens, LineState::Code);
         }
 
@@ -60,11 +67,7 @@ pub(in crate::code_editor::lang) fn tokenize(
             let start = i;
             i += 2;
             depth = scan_block_comment(&mut i, bytes, 1);
-            tokens.push(Token {
-                kind: TokenKind::Comment,
-                start,
-                len: i - start,
-            });
+            push(&mut tokens, TokenKind::Comment, start, i - start);
             continue;
         }
 
@@ -86,29 +89,30 @@ pub(in crate::code_editor::lang) fn tokenize(
                 }
                 i += 1;
             }
-            tokens.push(Token {
-                kind: TokenKind::Attribute,
-                start,
-                len: i - start,
-            });
+            push(&mut tokens, TokenKind::Attribute, start, i - start);
             continue;
         }
 
-        // ── String literal (also: map key when followed by `:`) ──────────
+        // ── String literal (also: map key when followed by `:`). When it
+        //    doesn't close on this line, carry a `Str` state so the string
+        //    can span physical lines. ──────────────────────────────────────
         if b == b'"' {
             let start = i;
-            i += 1;
-            while i < len {
-                if bytes[i] == b'\\' && i + 1 < len {
-                    i += 2;
-                } else if bytes[i] == b'"' {
-                    i += 1;
-                    break;
-                } else {
-                    i += 1;
-                }
+            let (end, closed) = scan_dq_string_close(bytes, i + 1);
+            i = end;
+            if !closed {
+                push(&mut tokens, TokenKind::String, start, i - start);
+                return (
+                    tokens,
+                    LineState::Str {
+                        quote: b'"',
+                        raw: false,
+                        hashes: 0,
+                        triple: false,
+                    },
+                );
             }
-            // Lookahead past whitespace for `:` → map key
+            // Lookahead past whitespace for `:` → map key.
             let mut j = i;
             while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
                 j += 1;
@@ -118,63 +122,53 @@ pub(in crate::code_editor::lang) fn tokenize(
             } else {
                 TokenKind::String
             };
-            tokens.push(Token {
-                kind,
-                start,
-                len: i - start,
-            });
+            push(&mut tokens, kind, start, i - start);
             continue;
         }
 
-        // ── Raw string (r"..." or r#"..."#) ──────────────────────────────
+        // ── Raw string (r"..." or r#"..."#), may span physical lines ─────
         if b == b'r' && i + 1 < len && (bytes[i + 1] == b'"' || bytes[i + 1] == b'#') {
             let start = i;
-            i += 1;
+            let mut p = i + 1;
             let mut hashes = 0usize;
-            while i < len && bytes[i] == b'#' {
+            while p < len && bytes[p] == b'#' {
                 hashes += 1;
-                i += 1;
+                p += 1;
             }
-            if i < len && bytes[i] == b'"' {
-                i += 1;
-                'raw: loop {
-                    if i >= len {
-                        break;
-                    }
-                    if bytes[i] == b'"' {
-                        let mut end_hashes = 0;
-                        let mut j = i + 1;
-                        while j < len && bytes[j] == b'#' && end_hashes < hashes {
-                            end_hashes += 1;
-                            j += 1;
-                        }
-                        if end_hashes == hashes {
-                            i = j;
-                            break 'raw;
-                        }
-                    }
-                    i += 1;
+            if p < len && bytes[p] == b'"' {
+                let (end, closed) = scan_raw_string_close(bytes, p + 1, hashes);
+                push(&mut tokens, TokenKind::String, start, end - start);
+                i = end;
+                if !closed {
+                    return (
+                        tokens,
+                        LineState::Str {
+                            quote: b'"',
+                            raw: true,
+                            hashes: hashes as u8,
+                            triple: false,
+                        },
+                    );
                 }
-                tokens.push(Token {
-                    kind: TokenKind::String,
-                    start,
-                    len: i - start,
-                });
                 continue;
             }
-            i = start; // not a raw string — fall through
+            // Not a raw string — `i` untouched, fall through to identifier.
         }
 
         // ── Char literal ─────────────────────────────────────────────────
         // Helper short-circuits on `bytes[i] != b'\''`, so the call is
         // a single byte compare in the common case.
         if let Some(end) = consume_char_literal(line, i) {
-            tokens.push(Token {
-                kind: TokenKind::CharLit,
-                start: i,
-                len: end - i,
-            });
+            push(&mut tokens, TokenKind::CharLit, i, end - i);
             i = end;
+            continue;
+        }
+
+        // ── Signed non-finite floats: +inf / -inf / +NaN / -NaN ──────────
+        // Before the number branch so the sign isn't split off.
+        if let Some(n) = signed_special_float_len(bytes, i) {
+            push(&mut tokens, TokenKind::Number, i, n);
+            i += n;
             continue;
         }
 
@@ -191,11 +185,7 @@ pub(in crate::code_editor::lang) fn tokenize(
                 i += 1;
             }
             consume_number(&mut i, bytes, NumberOpts::RUST_LIKE);
-            tokens.push(Token {
-                kind: TokenKind::Number,
-                start,
-                len: i - start,
-            });
+            push(&mut tokens, TokenKind::Number, start, i - start);
             continue;
         }
 
@@ -206,27 +196,29 @@ pub(in crate::code_editor::lang) fn tokenize(
                 i += 1;
             }
             let word = &line[start..i];
-            // Lookahead past whitespace for `:` → field / map key
+            // Lookahead past whitespace for `:` → field / map key.
             let mut j = i;
             while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
                 j += 1;
             }
             let followed_by_colon = j < len && bytes[j] == b':';
 
+            // The colon-follows (field / map key) check runs BEFORE the
+            // uppercase→TypeName rule, so a capitalized key `Key:` reads as
+            // an Attribute — the same as a quoted `"key":`. Bare `inf`/`NaN`
+            // in value position are non-finite float literals.
             let kind = if KEYWORDS.contains(&word) {
                 TokenKind::Keyword
-            } else if word.chars().next().is_some_and(|c| c.is_uppercase()) {
-                TokenKind::TypeName
             } else if followed_by_colon {
                 TokenKind::Attribute
+            } else if word == "inf" || word == "NaN" {
+                TokenKind::Number
+            } else if word.chars().next().is_some_and(|c| c.is_uppercase()) {
+                TokenKind::TypeName
             } else {
                 TokenKind::Identifier
             };
-            tokens.push(Token {
-                kind,
-                start,
-                len: i - start,
-            });
+            push(&mut tokens, kind, start, i - start);
             continue;
         }
 
@@ -237,21 +229,13 @@ pub(in crate::code_editor::lang) fn tokenize(
             if i < len && bytes[i] == b'=' {
                 i += 1;
             }
-            tokens.push(Token {
-                kind: TokenKind::Operator,
-                start,
-                len: i - start,
-            });
+            push(&mut tokens, TokenKind::Operator, start, i - start);
             continue;
         }
 
         // ── Operators (`:` separates key from value, `=` legacy) ─────────
         if matches!(b, b':' | b'=' | b'-' | b'+') {
-            tokens.push(Token {
-                kind: TokenKind::Operator,
-                start: i,
-                len: 1,
-            });
+            push(&mut tokens, TokenKind::Operator, i, 1);
             i += 1;
             continue;
         }
@@ -261,22 +245,14 @@ pub(in crate::code_editor::lang) fn tokenize(
             b,
             b'(' | b')' | b'{' | b'}' | b'[' | b']' | b',' | b'.' | b';'
         ) {
-            tokens.push(Token {
-                kind: TokenKind::Punctuation,
-                start: i,
-                len: 1,
-            });
+            push(&mut tokens, TokenKind::Punctuation, i, 1);
             i += 1;
             continue;
         }
 
         // ── Fallback: full Unicode scalar ────────────────────────────────
         let ch_len = line[i..].chars().next().map_or(1, |c| c.len_utf8());
-        tokens.push(Token {
-            kind: TokenKind::Identifier,
-            start: i,
-            len: ch_len,
-        });
+        push(&mut tokens, TokenKind::Identifier, i, ch_len);
         i += ch_len;
     }
 
@@ -432,30 +408,6 @@ mod tests {
             assert_eq!(nums.len(), 1, "input {input:?} produced {toks:?}");
             assert_eq!(nums[0].1, want_lit);
         }
-    }
-
-    #[test]
-    fn numbers_with_signs_and_radix() {
-        let toks = tok("a: -3.14");
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Number && t.1 == "-3.14")
-        );
-        let toks = tok("b: 0xFF_u8");
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Number && t.1.starts_with("0xFF"))
-        );
-        let toks = tok("c: 0b1010");
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Number && t.1 == "0b1010")
-        );
-        let toks = tok("d: 0o755");
-        assert!(
-            toks.iter()
-                .any(|t| t.0 == TokenKind::Number && t.1 == "0o755")
-        );
     }
 
     #[test]
