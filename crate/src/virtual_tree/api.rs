@@ -245,6 +245,15 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
     // ─── Filter ─────────────────────────────────────────────────────
 
+    /// Apply a search filter. Empty/whitespace clears it.
+    ///
+    /// **Cost:** O(n) over all *materialized* nodes per call — one
+    /// `matches_filter` per node. For live search over very large trees,
+    /// debounce on the host side (filter on a short idle, not every keystroke).
+    ///
+    /// **Lazy trees:** only materialized nodes are scanned. Matches inside
+    /// not-yet-loaded branches are not found and do not trigger a load — expand
+    /// (or eager-load) the relevant branches first if they must be searchable.
     pub fn set_filter(&mut self, query: &str) {
         self.filter_state
             .set_filter(query, &mut self.arena, self.config.auto_expand_on_filter);
