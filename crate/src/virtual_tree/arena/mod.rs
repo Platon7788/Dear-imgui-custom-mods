@@ -28,10 +28,15 @@ pub struct NodeId {
 
 /// Internal slot storing user data alongside tree metadata.
 pub struct NodeSlot<T> {
+    /// The user-provided node payload.
     pub data: T,
+    /// Parent node, or `None` for a root.
     pub parent: Option<NodeId>,
+    /// Direct children, in display order.
     pub children: Vec<NodeId>,
+    /// Whether this branch's children are shown in the flat view.
     pub expanded: bool,
+    /// Cached distance from the nearest root (0 = root).
     pub depth: u16,
     /// Lazy loading: `true` once this branch's children have been materialized
     /// by the `set_lazy_loader` callback, so it is never reloaded. Always
@@ -55,6 +60,7 @@ pub struct TreeArena<T> {
 }
 
 impl<T> TreeArena<T> {
+    /// Create an empty arena with capacity [`MAX_TREE_NODES`] and eviction disabled.
     pub fn new() -> Self {
         Self {
             slots: Vec::new(),

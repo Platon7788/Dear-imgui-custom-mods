@@ -17,7 +17,9 @@ pub enum ExpandStyle {
     /// Custom Unicode glyphs for collapsed / expanded states.
     /// Example: `('\u{F0142}', '\u{F0140}')` for MDI chevron-right / chevron-down.
     Glyph {
+        /// Glyph drawn when the branch is collapsed.
         collapsed: char,
+        /// Glyph drawn when the branch is expanded.
         expanded: char,
         /// Glyph color (RGBA). `None` = inherit current text color.
         color: Option<[f32; 4]>,

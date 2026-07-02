@@ -115,19 +115,35 @@ pub enum SizingPolicy {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TableConfig {
     // Dear ImGui native table features
+    /// Allow dragging column borders to resize them (`TableFlags::RESIZABLE`).
     pub resizable: bool,
+    /// Allow dragging column headers to reorder columns (`TableFlags::REORDERABLE`).
     pub reorderable: bool,
+    /// Allow hiding columns via the column-visibility context menu (`TableFlags::HIDEABLE`).
     pub hideable: bool,
+    /// Allow clicking a header to sort by that column (`TableFlags::SORTABLE`).
     pub sortable: bool,
+    /// Allow sorting by multiple columns at once, e.g. Shift+Click a second
+    /// header (`TableFlags::SORT_MULTI`).
     pub multi_sort: bool,
+    /// Border preset applied to the table (none/inner/outer/full/etc.).
     pub borders: BorderStyle,
     /// Show horizontal lines between rows.
     pub show_row_lines: bool,
     /// Show vertical lines between columns.
     pub show_column_lines: bool,
+    /// Paint alternating row background stripes (`TableFlags::ROW_BG`).
     pub row_bg: bool,
+    /// Allow horizontal scrolling when columns overflow the available width
+    /// (`TableFlags::SCROLL_X`).
     pub scroll_x: bool,
+    /// Allow vertical scrolling when rows overflow the available height
+    /// (`TableFlags::SCROLL_Y`). Must be `true` for [`Self::snap_last_row`]
+    /// to have any effect.
     pub scroll_y: bool,
+    /// Tint the column under the mouse cursor
+    /// (`TableFlags::HIGHLIGHT_HOVERED_COLUMN`). Ignored when
+    /// [`Self::flat_headers`] is enabled.
     pub highlight_hovered: bool,
     /// Suppress the default hover/active highlight on column-header
     /// captions. Useful for informational tables where headers are
@@ -153,6 +169,8 @@ pub struct TableConfig {
     /// self-explanatory and a header strip steals vertical real estate.
     /// Default: `true` (existing behavior).
     pub show_headers: bool,
+    /// Enable Dear ImGui's built-in right-click context menu inside the
+    /// table body (`TableFlags::CONTEXT_MENU_IN_BODY`).
     pub context_menu: bool,
     /// Suppress the right-click "Size column to fit / Size all columns
     /// to default" popup that Dear ImGui's `TableHeader` emits
@@ -167,8 +185,14 @@ pub struct TableConfig {
     /// flip `sortable = false` if they want the popup gone.
     #[serde(default = "default_header_popup")]
     pub header_popup: bool,
+    /// Number of leading columns frozen (kept visible while scrolling
+    /// horizontally). `0` disables column freezing.
     pub freeze_cols: i32,
+    /// Number of leading rows frozen (kept visible while scrolling
+    /// vertically); typically `1` to pin the header row. Clamped to `0`
+    /// when [`Self::show_headers`] is `false`.
     pub freeze_rows: i32,
+    /// Column sizing policy applied to the whole table.
     pub sizing: SizingPolicy,
 
     // Extensions
@@ -189,13 +213,19 @@ pub struct TableConfig {
     /// Ctrl+C copies selected rows as tab-separated text to the clipboard.
     /// Works regardless of keyboard layout. Default: `false`.
     pub copy_to_clipboard: bool,
+    /// User interaction that begins inline cell editing.
     pub edit_trigger: EditTrigger,
     /// When `true`, losing focus on an editor commits the value.
     /// When `false`, losing focus cancels the edit (only Enter/widget commit applies).
     pub commit_on_focus_loss: bool,
+    /// Automatically scroll to keep the last row in view as new rows are
+    /// appended; automatically cleared once the user scrolls the mouse
+    /// wheel up over the table.
     pub auto_scroll: bool,
     /// Row vertical density (Normal / Compact / Dense).
     pub row_density: RowDensity,
+    /// Fixed row height in pixels. `None` derives the height from
+    /// [`Self::row_density`] instead.
     pub default_row_height: Option<f32>,
     /// Quantize the table's outer height to a multiple of `row_height` so
     /// the last visible row is never clipped mid-pixel. The trade-off is a

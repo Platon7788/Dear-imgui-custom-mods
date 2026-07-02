@@ -35,9 +35,12 @@ pub enum ColumnSizing {
 /// Horizontal alignment for cell content.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CellAlignment {
+    /// Text starts at the left edge of the cell (default).
     #[default]
     Left,
+    /// Text is centered within the cell.
     Center,
+    /// Text is right-aligned against the cell's edge.
     Right,
 }
 
@@ -54,21 +57,47 @@ pub enum CellEditor {
     /// Boolean toggle checkbox.
     Checkbox,
     /// Dropdown combo box with fixed options.
-    ComboBox { items: Vec<String> },
+    ComboBox {
+        /// Selectable option labels shown in the dropdown, in display order.
+        items: Vec<String>,
+    },
     /// Integer slider with range.
-    SliderInt { min: i32, max: i32 },
+    SliderInt {
+        /// Minimum value the slider can reach (inclusive).
+        min: i32,
+        /// Maximum value the slider can reach (inclusive).
+        max: i32,
+    },
     /// Float slider with range.
-    SliderFloat { min: f32, max: f32 },
+    SliderFloat {
+        /// Minimum value the slider can reach (inclusive).
+        min: f32,
+        /// Maximum value the slider can reach (inclusive).
+        max: f32,
+    },
     /// Integer spinner (`input_int` with step).
-    SpinInt { step: i32, step_fast: i32 },
+    SpinInt {
+        /// Amount added/subtracted per regular step (arrow click).
+        step: i32,
+        /// Amount added/subtracted per fast step (Ctrl+click/hold).
+        step_fast: i32,
+    },
     /// Float spinner (`input_float` with step).
-    SpinFloat { step: f32, step_fast: f32 },
+    SpinFloat {
+        /// Amount added/subtracted per regular step (arrow click).
+        step: f32,
+        /// Amount added/subtracted per fast step (Ctrl+click/hold).
+        step_fast: f32,
+    },
     /// Progress bar (read-only visualization, 0.0..1.0).
     ProgressBar,
     /// Color picker (`color_edit4`).
     ColorEdit,
     /// Clickable button inside the cell.
-    Button { label: String },
+    Button {
+        /// Text drawn on the button.
+        label: String,
+    },
     /// User-rendered via `VirtualTableRow::render_cell` / `render_editor`.
     Custom,
 }
@@ -78,13 +107,23 @@ pub enum CellEditor {
 /// Full description of a single table column.
 #[derive(Clone, Debug)]
 pub struct ColumnDef {
+    /// Header text displayed for this column.
     pub name: String,
+    /// Width policy: fixed pixels, proportional stretch, or auto-fit to content.
     pub sizing: ColumnSizing,
+    /// Horizontal alignment applied to cell content.
     pub alignment: CellAlignment,
+    /// Horizontal alignment applied to the header label.
     pub header_alignment: CellAlignment,
+    /// Inline editor widget shown when a cell in this column enters edit mode.
     pub editor: CellEditor,
+    /// Raw Dear ImGui column flags (resize/sort/reorder/hide behavior).
     pub flags: TableColumnFlags,
+    /// Whether the column starts out visible; can be toggled later from the
+    /// column-visibility UI.
     pub visible: bool,
+    /// Opaque identifier reported back in sort/interaction callbacks so a
+    /// column can be recognized independent of its display index.
     pub user_id: u32,
     /// Show a tooltip with the full cell text when it's clipped (wider than column).
     ///

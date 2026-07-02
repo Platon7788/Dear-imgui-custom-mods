@@ -21,9 +21,13 @@ use super::node::VirtualTreeNode;
 /// One entry in the flattened visible-row list.
 #[derive(Clone, Copy, Debug)]
 pub struct FlatRow {
+    /// The arena node this row displays.
     pub node_id: NodeId,
+    /// Indentation level (0 = root).
     pub depth: u16,
+    /// True if the node has no children (no expand arrow drawn).
     pub is_leaf: bool,
+    /// Whether the node's children are currently shown (only meaningful when `!is_leaf`).
     pub is_expanded: bool,
     /// True if this node is the last child of its parent (for tree line rendering).
     pub is_last_child: bool,
@@ -61,10 +65,12 @@ struct StackFrame {
 
 /// Cached linearization of the tree. Rebuilt on structural changes.
 pub struct FlatView {
+    /// Linearized visible rows, in display order.
     pub rows: Vec<FlatRow>,
     /// O(1) lookup: `index_map[NodeId.index]` → flat row index.
     /// Sentinel `u32::MAX` = not present. Sized to arena slot count.
     index_map: Vec<u32>,
+    /// `true` when the cached rows are stale and `rebuild` must run before use.
     pub dirty: bool,
     /// Reusable DFS stack — avoids re-allocation across rebuilds.
     stack: Vec<StackFrame>,
@@ -82,6 +88,7 @@ impl FlatView {
     /// Sentinel value: node is not present in the flat view.
     const NO_INDEX: u32 = u32::MAX;
 
+    /// Create an empty flat view, marked dirty so the first render triggers a rebuild.
     pub fn new() -> Self {
         Self {
             rows: Vec::new(),

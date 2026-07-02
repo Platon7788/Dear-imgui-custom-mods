@@ -41,7 +41,6 @@
 //! └── drag.rs       Drag-and-drop constants for node reparenting
 //! ```
 
-#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod arena;
 pub mod config;
 mod drag;
@@ -83,6 +82,10 @@ use sort::{SortSpec, SortState};
 
 /// Fast hash set for NodeId. Uses `foldhash` for O(1) operations.
 type NodeIdSet = HashSet<NodeId, foldhash::fast::FixedState>;
+
+/// Boxed per-tree lazy children loader (see [`VirtualTree::set_lazy_loader`]).
+/// Runtime payload — never serialized.
+type LazyLoader<T> = Box<dyn FnMut(NodeId) -> Vec<T>>;
 
 // ─── EditState (inline, mirrors virtual_table::edit) ────────────────────────
 
@@ -146,6 +149,7 @@ impl EditState {
 pub struct VirtualTree<T: VirtualTreeNode> {
     id: String,
     columns: Vec<ColumnDef>,
+    /// Tree configuration. All fields are `pub` — modify freely between frames.
     pub config: TreeConfig,
     arena: TreeArena<T>,
     flat_view: FlatView,
@@ -156,10 +160,15 @@ pub struct VirtualTree<T: VirtualTreeNode> {
     /// (not a flat-view index) so it survives expand/collapse/filter/sort
     /// rebuilds. Resolved to a flat-view row on demand.
     anchor: Option<NodeId>,
+    /// Set to `Some(id)` when a node is double-clicked. Reset each frame.
     pub double_clicked_node: Option<NodeId>,
+    /// Node of the last right-click (for context menu logic).
     pub context_node: Option<NodeId>,
+    /// Column index of the last right-click (for per-column context menus).
     pub context_col: Option<usize>,
+    /// `true` when the user right-clicked a node. Set to `false` after handling.
     pub open_context_menu: bool,
+    /// Set to `Some((node, col))` when a `CellEditor::Button` is clicked. Reset each frame.
     pub button_clicked: Option<(NodeId, usize)>,
 
     // Internal state
@@ -189,8 +198,7 @@ pub struct VirtualTree<T: VirtualTreeNode> {
     /// children. Runtime payload — never serialized. See [`set_lazy_loader`].
     ///
     /// [`set_lazy_loader`]: VirtualTree::set_lazy_loader
-    #[allow(clippy::type_complexity)]
-    lazy_loader: Option<Box<dyn FnMut(NodeId) -> Vec<T>>>,
+    lazy_loader: Option<LazyLoader<T>>,
 }
 
 impl<T: VirtualTreeNode> VirtualTree<T> {

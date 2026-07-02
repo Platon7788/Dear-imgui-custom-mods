@@ -89,8 +89,11 @@ impl CellValue {
 /// Per-cell visual overrides.
 #[derive(Clone, Debug, Default)]
 pub struct CellStyle {
+    /// Text color override for this cell. `None` uses the row/table default.
     pub text_color: Option<[f32; 4]>,
+    /// Background tint painted behind this cell. `None` uses the row/table default.
     pub bg_color: Option<[f32; 4]>,
+    /// Content alignment override for this cell. `None` uses the column's alignment.
     pub alignment: Option<CellAlignment>,
 }
 
