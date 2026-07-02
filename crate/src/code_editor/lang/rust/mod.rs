@@ -12,6 +12,7 @@ use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 mod keywords;
+mod strings;
 #[cfg(test)]
 mod tests;
 mod tokenize;

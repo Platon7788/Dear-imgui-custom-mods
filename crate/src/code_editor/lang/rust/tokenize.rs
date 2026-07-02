@@ -2,6 +2,7 @@
 //! and emits [`Token`]s, carrying block-comment state across lines.
 
 use super::keywords::{builtin_types_set, keywords_set};
+use super::strings::{scan_raw_str_body, scan_str_body, str_carry};
 use super::*;
 use crate::code_editor::lang::{LineState, scan_block_comment};
 
@@ -463,57 +464,4 @@ pub(in crate::code_editor::lang) fn tokenize(
         LineState::Code
     };
     (tokens, end)
-}
-
-// ── Multi-line string helpers ────────────────────────────────────────────────
-
-/// Carry state for an unclosed `"`-delimited string (regular / byte / c / raw).
-#[inline]
-fn str_carry(raw: bool, hashes: u8) -> LineState {
-    LineState::Str {
-        quote: b'"',
-        raw,
-        hashes,
-        triple: false,
-    }
-}
-
-/// Scan a non-raw string body from `*i` (first byte after the opening quote).
-/// Returns `true` if the closing `"` was found. Honours `\"` escapes; a
-/// trailing `\` is a line continuation that leaves the string open.
-fn scan_str_body(i: &mut usize, bytes: &[u8]) -> bool {
-    let len = bytes.len();
-    while *i < len {
-        if bytes[*i] == b'\\' {
-            *i += if *i + 1 < len { 2 } else { 1 };
-        } else if bytes[*i] == b'"' {
-            *i += 1;
-            return true;
-        } else {
-            *i += 1;
-        }
-    }
-    false
-}
-
-/// Scan a raw string body from `*i` for a closing `"` followed by exactly
-/// `hashes` `#`. Advances `*i` past the close (or to EOL); returns closed?.
-fn scan_raw_str_body(i: &mut usize, bytes: &[u8], hashes: usize) -> bool {
-    let len = bytes.len();
-    while *i < len {
-        if bytes[*i] == b'"' {
-            let mut end_hashes = 0;
-            let mut j = *i + 1;
-            while j < len && bytes[j] == b'#' && end_hashes < hashes {
-                end_hashes += 1;
-                j += 1;
-            }
-            if end_hashes == hashes {
-                *i = j;
-                return true;
-            }
-        }
-        *i += 1;
-    }
-    false
 }
