@@ -161,10 +161,9 @@ use dear_imgui_rs::{Key, ListClipper, MouseButton, SelectableFlags, TableRowFlag
 use edit::EditState;
 use helpers::{build_copy_text, snap_outer_height};
 use sort::{SortSpec, SortState};
-// Re-export so `crate::virtual_table::row_height_to_stride` (used by
-// `virtual_tree`) keeps resolving after the move into `helpers`.
-pub(crate) use helpers::row_height_to_stride;
-pub(crate) use helpers::scroll_fraction;
+// Re-export so `crate::virtual_table::{row_height_to_stride, scroll_fraction}`
+// (both used by `virtual_tree`) keep resolving from the private `helpers` module.
+pub(crate) use helpers::{row_height_to_stride, scroll_fraction};
 
 use std::collections::HashSet;
 
