@@ -489,6 +489,18 @@ impl CodeEditor {
             TokenKind::CharLit => self.config.colors.char_lit,
             TokenKind::Number => self.config.colors.number,
             TokenKind::Comment => self.config.colors.comment,
+            // Doc comments: tint the comment colour toward the keyword accent so
+            // they read as "special" — theme-aware, no per-theme palette field.
+            TokenKind::DocComment => {
+                let c = self.config.colors.comment;
+                let k = self.config.colors.keyword;
+                [
+                    c[0] * 0.6 + k[0] * 0.4,
+                    c[1] * 0.6 + k[1] * 0.4,
+                    c[2] * 0.6 + k[2] * 0.4,
+                    c[3],
+                ]
+            }
             TokenKind::Attribute => self.config.colors.attribute,
             TokenKind::MacroCall => self.config.colors.macro_call,
             TokenKind::Operator => self.config.colors.operator,

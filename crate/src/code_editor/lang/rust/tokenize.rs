@@ -61,8 +61,17 @@ pub(in crate::code_editor::lang) fn tokenize(
 
         // ── Line comment ─────────────────────────────────────────────────
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'/' {
+            // `///` outer-doc or `//!` inner-doc — but NOT `////`+ (plain).
+            let is_doc = (i + 2 < len
+                && bytes[i + 2] == b'/'
+                && !(i + 3 < len && bytes[i + 3] == b'/'))
+                || (i + 2 < len && bytes[i + 2] == b'!');
             tokens.push(Token {
-                kind: TokenKind::Comment,
+                kind: if is_doc {
+                    TokenKind::DocComment
+                } else {
+                    TokenKind::Comment
+                },
                 start: i,
                 len: len - i,
             });
@@ -72,10 +81,18 @@ pub(in crate::code_editor::lang) fn tokenize(
         // ── Block comment start (nesting-aware) ──────────────────────────
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
             let start = i;
+            // `/**` outer-doc or `/*!` inner-doc — but NOT `/**/` (empty).
+            let is_doc = i + 2 < len
+                && ((bytes[i + 2] == b'*' && !(i + 3 < len && bytes[i + 3] == b'/'))
+                    || bytes[i + 2] == b'!');
             i += 2;
             depth = scan_block_comment(&mut i, bytes, 1);
             tokens.push(Token {
-                kind: TokenKind::Comment,
+                kind: if is_doc {
+                    TokenKind::DocComment
+                } else {
+                    TokenKind::Comment
+                },
                 start,
                 len: i - start,
             });
@@ -186,16 +203,38 @@ pub(in crate::code_editor::lang) fn tokenize(
             // Otherwise fall through — `b` is an ordinary identifier start.
         }
 
-        // ── Raw string (r"..." / r#"..."# / br"..." / br#"..."#) ─────────
+        // ── C-string literal (c"...", stabilized in Rust 1.77) ───────────
+        if b == b'c' && i + 1 < len && bytes[i + 1] == b'"' {
+            let start = i;
+            i += 2;
+            while i < len {
+                if bytes[i] == b'\\' && i + 1 < len {
+                    i += 2;
+                } else if bytes[i] == b'"' {
+                    i += 1;
+                    break;
+                } else {
+                    i += 1;
+                }
+            }
+            tokens.push(Token {
+                kind: TokenKind::String,
+                start,
+                len: i - start,
+            });
+            continue;
+        }
+
+        // ── Raw string (r"..."/r#"..."#, br"...", cr"...") ───────────────
         if (b == b'r' && i + 1 < len && (bytes[i + 1] == b'"' || bytes[i + 1] == b'#'))
-            || (b == b'b'
+            || ((b == b'b' || b == b'c')
                 && i + 2 < len
                 && bytes[i + 1] == b'r'
                 && (bytes[i + 2] == b'"' || bytes[i + 2] == b'#'))
         {
             let start = i;
-            // Skip optional `b` byte-string prefix.
-            if b == b'b' {
+            // Skip optional `b` (byte) / `c` (C-string) prefix.
+            if b == b'b' || b == b'c' {
                 i += 1;
             }
             i += 1; // skip `r`

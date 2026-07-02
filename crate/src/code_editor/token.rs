@@ -14,6 +14,8 @@ pub enum TokenKind {
     CharLit,
     Number,
     Comment,
+    /// Documentation comment (`///`, `//!`, `/** */`, `/*! */`).
+    DocComment,
     Attribute,
     MacroCall,
     Operator,

@@ -28,6 +28,38 @@ fn strings() {
 }
 
 #[test]
+fn gen_keyword_2024() {
+    assert_eq!(tok("gen fn g() {}")[0], (TokenKind::Keyword, "gen"));
+}
+
+#[test]
+fn c_string_literals() {
+    assert!(
+        tok(r#"let s = c"hi";"#)
+            .iter()
+            .any(|t| *t == (TokenKind::String, r#"c"hi""#))
+    );
+    assert!(
+        tok(r##"let s = cr#"raw"#;"##)
+            .iter()
+            .any(|t| t.0 == TokenKind::String && t.1.starts_with("cr#\""))
+    );
+}
+
+#[test]
+fn doc_comments_are_distinct() {
+    assert_eq!(tok("/// outer")[0], (TokenKind::DocComment, "/// outer"));
+    assert_eq!(tok("//! inner")[0], (TokenKind::DocComment, "//! inner"));
+    // Plain and 4-slash comments are NOT doc comments.
+    assert_eq!(tok("// plain")[0].0, TokenKind::Comment);
+    assert_eq!(tok("//// four")[0].0, TokenKind::Comment);
+    // Block doc vs plain vs empty.
+    assert_eq!(tok("/** doc */")[0].0, TokenKind::DocComment);
+    assert_eq!(tok("/* plain */")[0].0, TokenKind::Comment);
+    assert_eq!(tok("/**/")[0].0, TokenKind::Comment);
+}
+
+#[test]
 fn line_comment() {
     let toks = tok("let x = 5; // comment");
     let last = toks.last().unwrap();
