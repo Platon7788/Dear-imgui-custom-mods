@@ -246,3 +246,59 @@ fn keyword_sets_match_slice_contents() {
     assert!(!is_mnemonic("hello"));
     assert!(!is_directive("hello"));
 }
+
+/// The modernized tables must recognise a representative opcode from each
+/// newly-added extension family, an AVX-512 mask / high-vector / bound
+/// register, and the new NASM/MASM directive forms.
+#[test]
+fn modern_isa_tables_cover_new_entries() {
+    use super::tables::{is_directive, is_mnemonic, is_register};
+    for m in [
+        "endbr64",         // CET
+        "addps",           // packed SSE float
+        "pshuflw",         // SSE2 pack/shift
+        "movddup",         // SSE3
+        "pcmpistri",       // SSE4.2
+        "cvtps2pd",        // packed conversion
+        "vpternlogd",      // AVX-512
+        "kmovq",           // AVX-512 mask op
+        "mulx",            // BMI2
+        "vfmadd231ps",     // FMA
+        "aeskeygenassist", // AES-NI
+        "sha256rnds2",     // SHA
+        "cmpxchg16b",      // atomics
+        "clflushopt",      // cache
+        "rdrand",          // RNG
+        "rdfsbase",        // FSGSBASE
+        "fmulp",           // x87
+        "vmxon",           // VMX
+        "cmovp",           // added conditional move
+    ] {
+        assert!(is_mnemonic(m), "mnemonic `{m}` missing from table");
+    }
+    for r in ["k0", "k7", "zmm31", "ymm16", "xmm20", "bnd0"] {
+        assert!(is_register(r), "register `{r}` missing from table");
+    }
+    for d in ["align", "textequ", "use64", "strict"] {
+        assert!(is_directive(d), "directive `{d}` missing from table");
+    }
+}
+
+/// End-to-end tokenization for AVX-512: opcode → keyword, mask register
+/// and high vector register → type names.
+#[test]
+fn avx512_line_tokenizes() {
+    let toks = tok("    vpaddd zmm0{k1}, zmm1, zmm31");
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::Keyword && t.1 == "vpaddd")
+    );
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::TypeName && t.1 == "zmm31")
+    );
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::TypeName && t.1 == "k1")
+    );
+}
