@@ -209,6 +209,33 @@ impl CodeEditor {
         }
     }
 
+    /// Widest line in the document, in pixels, tab-aware. Cached and only
+    /// recomputed when the text or char advance changes, so the horizontal
+    /// scroll extent covers every line (including off-screen ones) without an
+    /// O(lines) scan every frame.
+    pub(super) fn doc_max_line_width(&mut self) -> f32 {
+        let version = self.buffer.edit_version();
+        if self.max_line_width_version == version
+            && (self.max_line_width_advance - self.char_advance).abs() < 0.01
+        {
+            return self.max_line_width;
+        }
+        self.max_line_width_version = version;
+        self.max_line_width_advance = self.char_advance;
+
+        let mut max_w = 0.0f32;
+        for i in 0..self.buffer.line_count() {
+            let line = self.buffer.line(i);
+            let chars = line.chars().count();
+            let w = col_to_x(line, chars, self.char_advance, self.config.tab_size);
+            if w > max_w {
+                max_w = w;
+            }
+        }
+        self.max_line_width = max_w;
+        max_w
+    }
+
     pub(super) fn ensure_cursor_visible(&mut self) {
         let cursor = self.buffer.cursor();
         let vrow = self.visual_row_of(cursor.line, cursor.col);
@@ -269,6 +296,10 @@ impl CodeEditor {
         self.bc_version = version;
 
         let count = self.buffer.line_count();
+        // A line-count change means the stored states below the edit point now
+        // belong to shifted (different) lines, so the convergence early-exit
+        // can't trust `states[i + 1]` — recompute straight to the end instead.
+        let structural = self.block_comment_states.len() != count;
         let start_from = self.bc_dirty_from.unwrap_or(0).min(count);
         self.bc_dirty_from = None;
 
@@ -295,7 +326,8 @@ impl CodeEditor {
 
             // Early exit: if the bc state entering the next line matches
             // what was already stored, all downstream states are correct.
-            if i + 1 < count && self.block_comment_states[i + 1] == in_bc {
+            // Skipped after a structural edit (see `structural` above).
+            if !structural && i + 1 < count && self.block_comment_states[i + 1] == in_bc {
                 break;
             }
         }

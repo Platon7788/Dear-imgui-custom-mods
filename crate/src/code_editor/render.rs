@@ -284,11 +284,10 @@ impl CodeEditor {
                 let total_width = if wrapping {
                     inner_size[0]
                 } else {
-                    let max_line_len = (first_visible..last_visible)
-                        .map(|i| self.buffer.line(i).chars().count())
-                        .max()
-                        .unwrap_or(80);
-                    gutter_width + (max_line_len as f32 + 10.0) * self.char_advance
+                    // Document-wide, tab-aware max width (cached) so the
+                    // scrollbar reaches every line and doesn't jump as you
+                    // scroll vertically past long off-screen lines.
+                    gutter_width + self.doc_max_line_width() + 10.0 * self.char_advance
                 };
                 // Place cursor at the very end of the content area and emit
                 // a 1px-tall dummy so ImGui registers the full scroll extent.

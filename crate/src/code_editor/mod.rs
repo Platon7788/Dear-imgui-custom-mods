@@ -152,6 +152,13 @@ pub struct CodeEditor {
     line_height: f32,
     /// Cached visible height of the editor window.
     visible_height: f32,
+    /// Cached widest line in pixels (tab-aware) for the horizontal scroll
+    /// extent, so the h-scrollbar covers the whole document — not just the
+    /// visible lines — and doesn't jitter as you scroll vertically. Keyed on
+    /// edit version + char advance (see `doc_max_line_width`).
+    max_line_width: f32,
+    max_line_width_version: u64,
+    max_line_width_advance: f32,
     /// Whether the editor is focused.
     focused: bool,
     /// Previous frame's focus state — used to detect focus transitions.
@@ -262,6 +269,9 @@ impl CodeEditor {
             char_advance: 7.0,
             line_height: 16.0,
             visible_height: 300.0,
+            max_line_width: 0.0,
+            max_line_width_version: u64::MAX,
+            max_line_width_advance: 0.0,
             focused: false,
             was_focused: false,
             #[cfg(target_os = "windows")]

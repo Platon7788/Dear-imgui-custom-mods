@@ -24,6 +24,39 @@ fn test_set_get_text() {
 }
 
 #[test]
+fn doc_max_line_width_is_document_wide_and_tab_aware() {
+    let mut ed = CodeEditor::new("t");
+    ed.char_advance = 10.0;
+    ed.config_mut().tab_size = 4;
+    // "\tx" = tab(4*10=40) + x(10) = 50 — the widest, and only correct if
+    // tabs are measured by width (char-count would give 20 < "abc"'s 30).
+    ed.set_text("abc\n\tx\nab");
+    let w = ed.doc_max_line_width();
+    assert!((w - 50.0).abs() < 0.01, "expected 50 (tab-aware, doc-wide), got {w}");
+}
+
+#[test]
+fn block_comment_state_correct_after_line_delete_above() {
+    // Deleting a line above a /* … */ block used to leave downstream lines
+    // wrongly flagged in_block_comment (the convergence early-exit trusted the
+    // positionally-shifted stored states).
+    let mut ed = CodeEditor::new("t");
+    ed.set_language(Language::Rust);
+    ed.set_text("x\n/*\nstill\n*/\ncode");
+    ed.update_block_comment_states();
+    // Delete line 0 ("x") → "/*" line 0, "still" line 1, "*/" line 2, "code" line 3.
+    ed.buffer.set_cursor(buffer::CursorPos::new(0, 0));
+    ed.buffer.delete_line();
+    ed.bc_dirty_from = Some(0);
+    ed.update_block_comment_states();
+    assert!(ed.block_comment_states[1], "'still' must remain in the comment");
+    assert!(
+        !ed.block_comment_states[3],
+        "'code' must NOT be flagged as in a block comment"
+    );
+}
+
+#[test]
 fn wrap_cache_incremental_matches_full_rebuild() {
     // Editing one line and rebuilding incrementally must yield the exact same
     // wrap layout as building the final text from scratch.
