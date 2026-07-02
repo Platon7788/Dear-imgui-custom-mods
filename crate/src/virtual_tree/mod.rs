@@ -344,6 +344,24 @@ mod tests {
     }
 
     #[test]
+    fn tree_config_theme_values_from_ron() {
+        let cfg = TreeConfig::default();
+        assert_eq!(cfg.striped_color, [1.0, 1.0, 1.0, 0.02]);
+        assert_eq!(cfg.arrow_color, [0.65, 0.68, 0.72, 1.0]);
+        assert_eq!(cfg.badge_color, [0.50, 0.55, 0.62, 1.0]);
+    }
+
+    #[test]
+    fn tree_config_round_trips_through_ron() {
+        let cfg = TreeConfig::default();
+        let s = ron::to_string(&cfg).expect("serialize");
+        let back: TreeConfig = ron::from_str(&s).expect("deserialize");
+        assert_eq!(back.striped_color, cfg.striped_color);
+        assert_eq!(back.arrow_color, cfg.arrow_color);
+        assert_eq!(back.badge_color, cfg.badge_color);
+    }
+
+    #[test]
     fn tree_config_default_parses() {
         // Guards that the built-in `config.ron` stays valid (the `Default`
         // impl `.expect()`s on it) and pins a few headline values.

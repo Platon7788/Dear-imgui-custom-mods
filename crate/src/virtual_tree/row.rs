@@ -48,7 +48,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         {
             ui.table_set_row_bg1_color(bg);
         } else if self.config.striped && flat_idx % 2 == 1 {
-            ui.table_set_row_bg1_color([1.0, 1.0, 1.0, 0.02]);
+            ui.table_set_row_bg1_color(self.config.striped_color);
         }
 
         let _row_id = ui.push_id(flat_idx);
