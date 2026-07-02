@@ -55,8 +55,7 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
     let mut tokens = Vec::with_capacity(8);
     let mut i = 0;
 
-    // ── Continuation of a multi-line triple-quoted string (`"""…"""` basic
-    //    with escapes, or `'''…'''` literal). Close on the matching triple. ─
+    // ── Continuation of a multi-line triple-quoted string; close on its triple. ─
     if let LineState::Str {
         quote,
         raw,
@@ -93,32 +92,26 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
             return (tokens, LineState::Code);
         }
 
-        // Section headers [section] / [[array.of.tables]] — ONLY when the
-        // bracket is the first non-whitespace token (else it's an inline array).
+        // Section headers [section] / [[a.b]] — only when the bracket opens the line.
         if b == b'[' && tokens.iter().all(|t| t.kind == TokenKind::Whitespace) {
             let start = i;
-            let mut depth = 0u32;
+            let mut depth = 0i32;
             while i < len {
-                match bytes[i] {
-                    b'[' => depth += 1,
-                    b']' => {
-                        depth = depth.saturating_sub(1);
-                        i += 1;
-                        if depth == 0 {
-                            break;
-                        }
-                        continue;
-                    }
-                    _ => {}
-                }
+                depth += match bytes[i] {
+                    b'[' => 1,
+                    b']' => -1,
+                    _ => 0,
+                };
                 i += 1;
+                if depth == 0 {
+                    break;
+                }
             }
             push(&mut tokens, TokenKind::Attribute, start, i - start);
             continue;
         }
 
-        // String — triple-quoted (multi-line) or single-line. Basic
-        // (double-quoted) strings process `\` escapes; literal (single) don't.
+        // String — triple-quoted (multi-line) or single-line; `"` escapes, `'` raw.
         if b == b'"' || b == b'\'' {
             let quote = b;
             // Triple-quoted? `"""` / `'''` — may span lines.
@@ -140,20 +133,15 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
                 }
                 continue;
             }
-            // Single-line string.
-            let escapes = quote == b'"';
+            // Single-line string — an Attribute in key position, else a value.
             let start = i;
-            i += 1;
-            while i < len && bytes[i] != quote {
-                if escapes && bytes[i] == b'\\' && i + 1 < len {
-                    i += 1;
-                }
-                i += 1;
-            }
-            if i < len {
-                i += 1;
-            }
-            push(&mut tokens, TokenKind::String, start, i - start);
+            i = scan_quoted_end(bytes, i, quote, quote == b'"');
+            let kind = if key_path_reaches_eq(bytes, i) {
+                TokenKind::Attribute
+            } else {
+                TokenKind::String
+            };
+            push(&mut tokens, kind, start, i - start);
             continue;
         }
 
@@ -184,8 +172,7 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
             continue;
         }
 
-        // Identifier / keyword / bare key. Every segment of a dotted key
-        // (`a.b.c`) is Attribute; value-position `inf`/`nan` are Numbers.
+        // Identifier / keyword / bare key; value-position `inf`/`nan` are Numbers.
         if is_ident_start(b) {
             let start = i;
             while i < len && (is_ident_continue(bytes[i]) || bytes[i] == b'-') {
@@ -230,9 +217,8 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
 
 // ── Scan helpers ────────────────────────────────────────────────────────────
 
-/// Scan for a triple-quote close (`"""` / `'''`) from `start`. `escapes`
-/// skips `\`-escapes (basic strings). Returns `(end, closed)`: `end` is the
-/// byte index just past the close (or `len` if still open).
+/// Scan for a triple-quote close (`"""` / `'''`) from `start` (`escapes` skips
+/// `\`). Returns `(end, closed)`; `end` is just past the close, or `len`.
 fn scan_triple_close(bytes: &[u8], start: usize, quote: u8, escapes: bool) -> (usize, bool) {
     let len = bytes.len();
     let mut i = start;
@@ -249,6 +235,20 @@ fn scan_triple_close(bytes: &[u8], start: usize, quote: u8, escapes: bool) -> (u
     (len, false)
 }
 
+/// Scan a single-line quoted string from opening quote `start` (`escapes`
+/// skips `\`-escapes). Returns the index just past the close, or `len`.
+fn scan_quoted_end(bytes: &[u8], mut i: usize, quote: u8, escapes: bool) -> usize {
+    let len = bytes.len();
+    i += 1;
+    while i < len && bytes[i] != quote {
+        if escapes && bytes[i] == b'\\' && i + 1 < len {
+            i += 1;
+        }
+        i += 1;
+    }
+    i + usize::from(i < len)
+}
+
 /// `true` if `bytes[start..start+count]` exist and are all ASCII digits.
 fn digits(bytes: &[u8], start: usize, count: usize) -> bool {
     start + count <= bytes.len() && bytes[start..start + count].iter().all(u8::is_ascii_digit)
@@ -256,10 +256,11 @@ fn digits(bytes: &[u8], start: usize, count: usize) -> bool {
 
 /// Match a `YYYY-MM-DD` date at `p`; returns the end index.
 fn match_date(bytes: &[u8], p: usize) -> Option<usize> {
+    let dash = |o| bytes.get(p + o) == Some(&b'-');
     (digits(bytes, p, 4)
-        && bytes.get(p + 4) == Some(&b'-')
+        && dash(4)
         && digits(bytes, p + 5, 2)
-        && bytes.get(p + 7) == Some(&b'-')
+        && dash(7)
         && digits(bytes, p + 8, 2))
     .then_some(p + 10)
 }
@@ -300,8 +301,7 @@ fn match_offset(bytes: &[u8], p: usize) -> Option<usize> {
     }
 }
 
-/// Match an RFC3339 date, time, or datetime at `i` (local or offset, `T`- or
-/// space-separated). Returns the end index of the whole literal, or `None`.
+/// Match an RFC3339 date/time/datetime at `i`; returns the literal's end index.
 fn match_datetime(bytes: &[u8], i: usize) -> Option<usize> {
     let Some(after_date) = match_date(bytes, i) else {
         return match_time(bytes, i);
@@ -313,8 +313,8 @@ fn match_datetime(bytes: &[u8], i: usize) -> Option<usize> {
     }
 }
 
-/// `true` if the segment run starting at `j` (just past a bare key) reaches an
-/// `=`, treating `.`-separated bare segments as one dotted key path.
+/// `true` if the segment run starting at `j` (just past a key segment) reaches
+/// an `=`, treating `.`-separated bare or quoted segments as one dotted key.
 fn key_path_reaches_eq(bytes: &[u8], mut j: usize) -> bool {
     let len = bytes.len();
     loop {
@@ -328,11 +328,16 @@ fn key_path_reaches_eq(bytes: &[u8], mut j: usize) -> bool {
                 while j < len && matches!(bytes[j], b' ' | b'\t') {
                     j += 1;
                 }
-                if !bytes.get(j).is_some_and(|&c| is_ident_start(c)) {
-                    return false;
-                }
-                while j < len && (is_ident_continue(bytes[j]) || bytes[j] == b'-') {
-                    j += 1;
+                match bytes.get(j) {
+                    Some(&q) if matches!(q, b'"' | b'\'') => {
+                        j = scan_quoted_end(bytes, j, q, q == b'"');
+                    }
+                    Some(&c) if is_ident_start(c) => {
+                        while j < len && (is_ident_continue(bytes[j]) || bytes[j] == b'-') {
+                            j += 1;
+                        }
+                    }
+                    _ => return false,
                 }
             }
             _ => return false,
@@ -340,8 +345,7 @@ fn key_path_reaches_eq(bytes: &[u8], mut j: usize) -> bool {
     }
 }
 
-/// Byte length of a signed special float (`+inf` / `-inf` / `+nan` / `-nan`)
-/// at `i`, or `None`. Bare `inf`/`nan` are classified in the identifier arm.
+/// Byte length of a signed special float (`+inf`/`-inf`/`+nan`/`-nan`) at `i`.
 fn signed_special_float_len(bytes: &[u8], i: usize) -> Option<usize> {
     if !matches!(bytes.get(i), Some(&b'+') | Some(&b'-')) || i + 4 > bytes.len() {
         return None;
@@ -358,6 +362,7 @@ mod tests {
     use crate::code_editor::config::{Language, LineState};
     use crate::code_editor::lang::tokenize_line;
     use crate::code_editor::token::TokenKind;
+    use TokenKind::*;
 
     fn lits(line: &str, kind: TokenKind) -> Vec<&str> {
         let (toks, _) = tokenize_line(line, &Language::Toml, LineState::Code);
@@ -369,46 +374,37 @@ mod tests {
 
     #[test]
     fn section_headers() {
-        assert_eq!(lits("[package]", TokenKind::Attribute), vec!["[package]"]);
-        assert_eq!(
-            lits("[[dependencies.serde]]", TokenKind::Attribute),
-            vec!["[[dependencies.serde]]"]
-        );
+        assert_eq!(lits("[package]", Attribute), vec!["[package]"]);
+        assert_eq!(lits("[[a.b.c]]", Attribute), vec!["[[a.b.c]]"]);
     }
 
     #[test]
     fn inline_array_value_is_not_a_section_header() {
         let line = r#"members = ["crate", "app"]"#;
-        assert_eq!(lits(line, TokenKind::Punctuation), vec!["[", ",", "]"]);
-        assert_eq!(lits(line, TokenKind::Attribute), vec!["members"]);
-        assert_eq!(lits(line, TokenKind::String), vec!["\"crate\"", "\"app\""]);
+        assert_eq!(lits(line, Punctuation), vec!["[", ",", "]"]);
+        assert_eq!(lits(line, Attribute), vec!["members"]);
+        assert_eq!(lits(line, String), vec!["\"crate\"", "\"app\""]);
     }
 
     #[test]
     fn keys_and_values() {
-        assert_eq!(lits("name = \"hello\"", TokenKind::Attribute), vec!["name"]);
-        assert_eq!(
-            lits("name = \"hello\"", TokenKind::String),
-            vec!["\"hello\""]
-        );
+        assert_eq!(lits("name = \"hello\"", Attribute), vec!["name"]);
+        assert_eq!(lits("name = \"hello\"", String), vec!["\"hello\""]);
         // Bare key (with dash) is Attribute; a bare value stays Identifier.
-        assert_eq!(lits("my-key = 42", TokenKind::Attribute), vec!["my-key"]);
-        assert_eq!(lits("color = red", TokenKind::Identifier), vec!["red"]);
+        assert_eq!(lits("my-key = 42", Attribute), vec!["my-key"]);
+        assert_eq!(lits("color = red", Identifier), vec!["red"]);
     }
 
     #[test]
     fn literal_string_no_escape() {
         // Single-quoted strings keep `\` verbatim and still close at `'`.
-        assert_eq!(
-            lits(r"path = 'C:\temp\new'", TokenKind::String),
-            vec![r"'C:\temp\new'"]
-        );
+        assert_eq!(lits(r"p = 'C:\t'", String), vec![r"'C:\t'"]);
     }
 
     #[test]
     fn comment() {
         let (toks, _) = tokenize_line("# comment", &Language::Toml, LineState::Code);
-        assert_eq!(toks[0].kind, TokenKind::Comment);
+        assert_eq!(toks[0].kind, Comment);
     }
 
     #[test]
@@ -422,7 +418,7 @@ mod tests {
             ("a = 1.5e10", "1.5e10"),
             ("a = -42", "-42"),
         ] {
-            assert_eq!(lits(line, TokenKind::Number), vec![want], "{line:?}");
+            assert_eq!(lits(line, Number), vec![want], "{line:?}");
         }
     }
 
@@ -433,19 +429,19 @@ mod tests {
         let (t1, s1) = tokenize_line("x = \"\"\"start", &Language::Toml, LineState::Code);
         assert!(matches!(s1, LineState::Str { raw: false, .. }));
         assert!(matches!(s1, LineState::Str { triple: true, .. }));
-        assert_eq!(t1.last().unwrap().kind, TokenKind::String);
+        assert_eq!(t1.last().unwrap().kind, String);
         let (_t2, s2) = tokenize_line("middle", &Language::Toml, s1);
         assert_eq!(s2, s1, "still open on line 2");
         let (t3, s3) = tokenize_line("end\"\"\"", &Language::Toml, s2);
         assert_eq!(s3, LineState::Code);
-        assert_eq!(t3[0].kind, TokenKind::String);
+        assert_eq!(t3[0].kind, String);
 
         // Literal `'''…'''` is raw (no `\` escapes); closes on `'''`.
         let (_l, ls) = tokenize_line(r"y = '''C:\raw", &Language::Toml, LineState::Code);
         assert!(matches!(ls, LineState::Str { raw: true, .. }));
         let (lt, le) = tokenize_line("done'''", &Language::Toml, ls);
         assert_eq!(le, LineState::Code);
-        assert_eq!(lt[0].kind, TokenKind::String);
+        assert_eq!(lt[0].kind, String);
     }
 
     /// A single-line triple `"""x"""` closes immediately (state stays Code).
@@ -453,10 +449,7 @@ mod tests {
     fn single_line_triple_closes_immediately() {
         let (_toks, s) = tokenize_line("x = \"\"\"y\"\"\"", &Language::Toml, LineState::Code);
         assert_eq!(s, LineState::Code);
-        assert_eq!(
-            lits("x = \"\"\"y\"\"\"", TokenKind::String),
-            vec!["\"\"\"y\"\"\""]
-        );
+        assert_eq!(lits("x = \"\"\"y\"\"\"", String), vec!["\"\"\"y\"\"\""]);
     }
 
     /// RFC3339 dates, times, and datetimes are single Number tokens.
@@ -471,16 +464,22 @@ mod tests {
             ("z = 2024-01-01T07:32:00+07:00", "2024-01-01T07:32:00+07:00"),
             ("s = 2024-01-01 07:32:00", "2024-01-01 07:32:00"),
         ] {
-            assert_eq!(lits(line, TokenKind::Number), vec![want], "{line:?}");
+            assert_eq!(lits(line, Number), vec![want], "{line:?}");
         }
     }
 
-    /// Every segment of a dotted key `a.b.c = v` is an Attribute; the dots
-    /// between segments are Punctuation.
+    /// Every segment of a dotted key `a.b.c = v` is an Attribute and the dots
+    /// are Punctuation; quoted key segments (incl. mixes like `a."b".c`) are
+    /// Attributes too, while a quoted value stays a String.
     #[test]
     fn dotted_key_every_segment_is_attribute() {
-        assert_eq!(lits("a.b.c = 1", TokenKind::Attribute), vec!["a", "b", "c"]);
-        assert_eq!(lits("a.b.c = 1", TokenKind::Punctuation), vec![".", "."]);
+        assert_eq!(lits("a.b.c = 1", Attribute), vec!["a", "b", "c"]);
+        assert_eq!(lits("a.b.c = 1", Punctuation), vec![".", "."]);
+        assert_eq!(lits(r#""q key" = 1"#, Attribute), vec![r#""q key""#]);
+        assert_eq!(lits("'lit key' = 1", Attribute), vec!["'lit key'"]);
+        assert_eq!(lits(r#"a."b".c = 1"#, Attribute), vec!["a", r#""b""#, "c"]);
+        assert_eq!(lits(r#"a."b".c = 1"#, Punctuation), vec![".", "."]);
+        assert_eq!(lits(r#"x = "not a key""#, String), vec![r#""not a key""#]);
     }
 
     #[test]
@@ -493,7 +492,7 @@ mod tests {
             ("x = +nan", "+nan"),
             ("x = -nan", "-nan"),
         ] {
-            assert_eq!(lits(line, TokenKind::Number), vec![want], "{line:?}");
+            assert_eq!(lits(line, Number), vec![want], "{line:?}");
         }
     }
 }
