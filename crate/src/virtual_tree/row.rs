@@ -32,14 +32,15 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
         // Row background:
         // - Unselected: `row_style.bg_color` overrides the striped zebra.
-        // - Selected:   `row_style.selection_color` override (per-row); if
-        //   absent, leave the bg to `Selectable`'s built-in `Header` tint
-        //   so the default selection highlight stays intact.
+        // - Selected: per-row `row_style.selection_color` override, else the
+        //   table-wide `config.table.selection_color` (parity with
+        //   VirtualTable). A fully-transparent result suppresses the paint,
+        //   letting Selectable's built-in `Header` tint show instead.
         if is_selected {
-            if let Some(ref style) = row_style
-                && let Some(sel_bg) = style.selection_color
-                && sel_bg[3] > 0.0
-            {
+            if let Some(sel_bg) = crate::virtual_table::row::resolve_selection_bg(
+                row_style.as_ref(),
+                self.config.table.selection_color,
+            ) {
                 ui.table_set_row_bg1_color(sel_bg);
             }
         } else if let Some(ref style) = row_style
@@ -161,12 +162,13 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
         // ── Render cells ────────────────────────────────────────────
         // Priority for selected rows: per-row selection_text_color
+        // → table-wide config.table.selection_text_color
         // → per-row text_color (fallback). Unselected: per-row text_color only.
         let row_text_color = if is_selected {
-            row_style
-                .as_ref()
-                .and_then(|s| s.selection_text_color)
-                .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
+            crate::virtual_table::row::resolve_selection_text_color(
+                row_style.as_ref(),
+                self.config.table.selection_text_color,
+            )
         } else {
             row_style.as_ref().and_then(|s| s.text_color)
         };

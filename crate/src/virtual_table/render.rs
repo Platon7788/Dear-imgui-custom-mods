@@ -344,16 +344,11 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Selection state — O(1) via foldhash-backed HashSet
         let is_selected = self.selected_rows.contains(&idx);
 
-        if is_selected {
-            // Per-row override wins; otherwise fall back to the table-wide
-            // default from `TableConfig::selection_color`.
-            let sel_bg = row_style
-                .as_ref()
-                .and_then(|s| s.selection_color)
-                .unwrap_or(self.config.selection_color);
-            if sel_bg[3] > 0.0 {
-                ui.table_set_row_bg1_color(sel_bg);
-            }
+        if is_selected
+            && let Some(sel_bg) =
+                row::resolve_selection_bg(row_style.as_ref(), self.config.selection_color)
+        {
+            ui.table_set_row_bg1_color(sel_bg);
         }
 
         let _row_id = ui.push_id(idx);
@@ -403,11 +398,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         //   → per-row text_color (legacy fallback)
         // Priority when not selected: per-row text_color only.
         let row_text_color = if is_selected {
-            row_style
-                .as_ref()
-                .and_then(|s| s.selection_text_color)
-                .or(self.config.selection_text_color)
-                .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
+            row::resolve_selection_text_color(row_style.as_ref(), self.config.selection_text_color)
         } else {
             row_style.as_ref().and_then(|s| s.text_color)
         };
