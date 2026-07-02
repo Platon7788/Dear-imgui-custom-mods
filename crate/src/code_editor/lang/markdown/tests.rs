@@ -176,3 +176,114 @@ fn escapes_are_literal() {
     // No emphasis String tokens — the `*` are escaped.
     assert!(toks.iter().all(|t| t.kind != TokenKind::String));
 }
+
+#[test]
+fn indented_code_block() {
+    // 4+ leading spaces → the whole remainder is code, never inline emphasis.
+    let line = "    *not italic*";
+    let (toks, st) = md(line, LineState::Code);
+    assert_tiles(line, &toks);
+    assert_eq!(st, LineState::Code);
+    assert_eq!(toks.len(), 2);
+    assert_eq!(toks[0].kind, TokenKind::Whitespace);
+    assert_eq!(toks[1].kind, TokenKind::String);
+    assert_eq!(
+        &line[toks[1].start..toks[1].start + toks[1].len],
+        "*not italic*",
+        "the `*` must NOT open an italic span in indented code"
+    );
+    // A single leading tab counts as >= 4 columns.
+    let tabbed = "\tcode();";
+    let (tt, _) = md(tabbed, LineState::Code);
+    assert_tiles(tabbed, &tt);
+    assert!(tt.iter().any(|t| t.kind == TokenKind::String));
+    // 3 leading spaces is NOT enough — still an ordinary paragraph.
+    let three = "   *italic*";
+    let (t3, _) = md(three, LineState::Code);
+    assert_tiles(three, &t3);
+    assert!(
+        t3.iter().any(|t| t.kind == TokenKind::String),
+        "3-space indent should still tokenize inline emphasis: {t3:?}"
+    );
+}
+
+#[test]
+fn table_row_pipes_and_cells() {
+    let line = "| a | b |";
+    let (toks, st) = md(line, LineState::Code);
+    assert_tiles(line, &toks);
+    assert_eq!(st, LineState::Code);
+    // Each `|` is a Punctuation token.
+    let pipes: Vec<&str> = toks
+        .iter()
+        .filter(|t| t.kind == TokenKind::Punctuation)
+        .map(|t| &line[t.start..t.start + t.len])
+        .collect();
+    assert_eq!(pipes.len(), 3, "each `|` is Punctuation: {toks:?}");
+    assert!(pipes.iter().all(|p| *p == "|"));
+    // Cell text goes through the inline tokenizer.
+    assert!(toks.iter().any(|t| t.kind == TokenKind::Identifier));
+}
+
+#[test]
+fn table_delimiter_row() {
+    let line = "|---|:--:|";
+    let (toks, st) = md(line, LineState::Code);
+    assert_tiles(line, &toks);
+    assert_eq!(st, LineState::Code);
+    // Dash/colon runs colour as Operator, pipes as Punctuation.
+    assert!(
+        toks.iter().any(|t| t.kind == TokenKind::Operator),
+        "delimiter dashes/colons should be Operator: {toks:?}"
+    );
+    assert_eq!(
+        toks.iter()
+            .filter(|t| t.kind == TokenKind::Punctuation)
+            .count(),
+        3
+    );
+    // A delimiter row has no inline emphasis spans.
+    assert!(toks.iter().all(|t| t.kind != TokenKind::String));
+}
+
+#[test]
+fn fenced_body_indent_and_pipe_stay_code() {
+    let (_o, st) = md("```", LineState::Code);
+    assert!(matches!(st, LineState::Fenced { .. }));
+    // A 4-space-indented body line stays fenced code (one String token) —
+    // the new indented-code rule must NOT fire inside a fence.
+    let indented = "    still code";
+    let (it, ist) = md(indented, st);
+    assert_tiles(indented, &it);
+    assert!(
+        matches!(ist, LineState::Fenced { .. }),
+        "indent inside a fence must stay fenced, got {ist:?}"
+    );
+    assert_eq!(it.len(), 1);
+    assert_eq!(it[0].kind, TokenKind::String);
+    // A body line containing a pipe stays fenced code (not a GFM table).
+    let piped = "| not | a table |";
+    let (pt, pst) = md(piped, ist);
+    assert_tiles(piped, &pt);
+    assert!(
+        matches!(pst, LineState::Fenced { .. }),
+        "pipe inside a fence must stay fenced, got {pst:?}"
+    );
+    assert_eq!(pt.len(), 1);
+    assert_eq!(pt[0].kind, TokenKind::String);
+}
+
+#[test]
+fn paragraph_with_stray_pipe_tiles() {
+    let line = "a | b or c";
+    let (toks, st) = md(line, LineState::Code);
+    assert_tiles(line, &toks);
+    assert_eq!(st, LineState::Code);
+    // The lone `|` is Punctuation; the surrounding text is inline.
+    assert!(
+        toks.iter()
+            .any(|t| t.kind == TokenKind::Punctuation && &line[t.start..t.start + t.len] == "|"),
+        "stray pipe should be Punctuation: {toks:?}"
+    );
+    assert!(toks.iter().any(|t| t.kind == TokenKind::Identifier));
+}

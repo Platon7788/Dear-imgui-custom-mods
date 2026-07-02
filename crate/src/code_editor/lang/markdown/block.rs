@@ -5,7 +5,7 @@
 //! blockquotes, and bullet / ordered list markers. Body text and list /
 //! quote content is handed off to the inline tokenizer in [`super::inline`].
 
-use super::inline::inline;
+use super::inline::{inline, inline_range};
 use super::*;
 
 // ── Fenced-code body / close ────────────────────────────────────────────────
@@ -89,6 +89,16 @@ pub(super) fn tokenize_normal(line: &str) -> (Vec<Token>, LineState) {
 
     if cs >= len {
         // Whitespace-only line.
+        return (tokens, LineState::Code);
+    }
+
+    // ── Indented code block (>= 4 columns of leading indent) ─────────────────
+    // A line indented by 4+ spaces (a leading tab counts as >= 4) is a code
+    // block: the whole remainder is plain code text, never run through the
+    // inline emphasis/link tokenizer (so `    *not italic*` stays literal).
+    // Purely line-local — no list-continuation context is tracked.
+    if is_indented_code(bytes, cs) {
+        tokens.push(tok(TokenKind::String, cs, len));
         return (tokens, LineState::Code);
     }
 
@@ -183,9 +193,104 @@ pub(super) fn tokenize_normal(line: &str) -> (Vec<Token>, LineState) {
         // e.g. `1.5` or `2024 ...` → not a list marker; fall through.
     }
 
-    // ── Ordinary paragraph text ──────────────────────────────────────────────
-    inline(line, cs, &mut tokens);
+    // ── GFM table row (line-local) or ordinary paragraph text ────────────────
+    // A normal line containing a pipe is tokenized as a table row: each `|`
+    // is Punctuation and the cell text between pipes goes through the inline
+    // tokenizer. A delimiter row (`|---|:--:|`) colours its dash/colon runs as
+    // Operator. This also gracefully handles a paragraph with a stray `|`
+    // (lone pipe → Punctuation, the rest inline). Purely line-local: no header
+    // row above is required.
+    if bytes[cs..len].contains(&b'|') {
+        if is_delimiter_row(bytes, cs, len) {
+            tokenize_delimiter_row(bytes, cs, len, &mut tokens);
+        } else {
+            tokenize_table_row(line, cs, len, &mut tokens);
+        }
+    } else {
+        inline(line, cs, &mut tokens);
+    }
     (tokens, LineState::Code)
+}
+
+/// True when the leading whitespace `bytes[..cs]` (all spaces / tabs) forms an
+/// indented-code-block indent: 4+ columns, counting a tab as 4 columns. A
+/// single leading tab therefore qualifies on its own.
+fn is_indented_code(bytes: &[u8], cs: usize) -> bool {
+    let mut columns = 0usize;
+    for &b in &bytes[..cs] {
+        columns += if b == b'\t' { 4 } else { 1 };
+        if columns >= 4 {
+            return true;
+        }
+    }
+    false
+}
+
+/// A GFM delimiter row: `bytes[cs..len]` consists only of `|`, `:`, `-`, and
+/// whitespace, and contains at least one `-` (e.g. `|---|:--:|`, `--- | ---`).
+fn is_delimiter_row(bytes: &[u8], cs: usize, len: usize) -> bool {
+    let mut has_dash = false;
+    for &b in &bytes[cs..len] {
+        match b {
+            b'-' => has_dash = true,
+            b'|' | b':' | b' ' | b'\t' => {}
+            _ => return false,
+        }
+    }
+    has_dash
+}
+
+/// Tokenize a delimiter row: pipes as Punctuation, `-`/`:` runs as Operator,
+/// whitespace runs as Whitespace. Tiles `bytes[cs..len]` exactly.
+fn tokenize_delimiter_row(bytes: &[u8], cs: usize, len: usize, tokens: &mut Vec<Token>) {
+    let mut i = cs;
+    while i < len {
+        match bytes[i] {
+            b'|' => {
+                tokens.push(tok(TokenKind::Punctuation, i, i + 1));
+                i += 1;
+            }
+            b' ' | b'\t' => {
+                let s = i;
+                while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
+                    i += 1;
+                }
+                tokens.push(tok(TokenKind::Whitespace, s, i));
+            }
+            _ => {
+                // Run of `-` / `:` (all that remains in a delimiter row).
+                let s = i;
+                while i < len && (bytes[i] == b'-' || bytes[i] == b':') {
+                    i += 1;
+                }
+                tokens.push(tok(TokenKind::Operator, s, i));
+            }
+        }
+    }
+}
+
+/// Tokenize a GFM table row: each `|` is Punctuation, cell text between pipes
+/// goes through the inline tokenizer (bounded to the cell). Tiles
+/// `line[cs..len]` exactly; `cs..len` is known to contain at least one `|`.
+fn tokenize_table_row(line: &str, cs: usize, len: usize, tokens: &mut Vec<Token>) {
+    let bytes = line.as_bytes();
+    let mut cell_start = cs;
+    let mut i = cs;
+    while i < len {
+        if bytes[i] == b'|' {
+            if i > cell_start {
+                inline_range(line, cell_start, i, tokens);
+            }
+            tokens.push(tok(TokenKind::Punctuation, i, i + 1));
+            i += 1;
+            cell_start = i;
+        } else {
+            i += 1;
+        }
+    }
+    if cell_start < len {
+        inline_range(line, cell_start, len, tokens);
+    }
 }
 
 /// A thematic break is a line whose content is only `-`, `*`, or `_`
