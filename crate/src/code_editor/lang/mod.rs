@@ -29,9 +29,10 @@ use std::sync::Arc;
 /// Replaces the old single `bool` "still in a block comment" flag: it carries
 /// the same information (`Code` / `BlockComment`) plus room for the multi-line
 /// modes a richer highlighter needs (strings, Markdown fences, HTML raw-text,
-/// YAML block scalars). Only [`LineState::Code`] and
-/// [`LineState::BlockComment`] are produced by the current tokenizers; the
-/// other variants are reserved for follow-up work and may be unused for now.
+/// YAML block scalars). Every variant is now produced by at least one built-in
+/// tokenizer (e.g. `Str` by Rust/RON/TOML/Rhai, `Fenced` by Markdown, `HtmlRaw`
+/// by XML/HTML, `YamlBlock` by YAML); the span-tiling invariant is enforced for
+/// all of them by `all_langs_no_panic_full_coverage_all_states`.
 ///
 /// `Copy` + `Eq` so the editor can compare and store one per line cheaply and
 /// use equality for its incremental block-comment convergence early-exit.
@@ -268,7 +269,7 @@ impl Language {
             Language::Json => "JSON",
             Language::Yaml => "YAML",
             Language::Xml => "XML",
-            Language::Asm => "ASM",
+            Language::Asm => "Assembly",
             Language::Hex => "Hex",
             Language::Sql => "SQL",
             Language::Diff => "Diff",
@@ -318,10 +319,10 @@ impl Language {
             "toml" => Language::Toml,
             "ron" => Language::Ron,
             "rhai" => Language::Rhai,
-            "json" | "jsonc" => Language::Json,
+            "json" | "jsonc" | "json5" => Language::Json,
             "yaml" | "yml" => Language::Yaml,
             "xml" | "html" | "htm" | "svg" | "xhtml" => Language::Xml,
-            "s" | "asm" => Language::Asm,
+            "s" | "asm" | "nasm" => Language::Asm,
             "hex" => Language::Hex,
             "sql" => Language::Sql,
             "diff" | "patch" => Language::Diff,
@@ -334,12 +335,15 @@ impl Language {
 
     /// Detect the language from a file path.
     ///
-    /// A bare filename of exactly `Dockerfile` (case-insensitive, any
-    /// directory) maps to [`Language::Dockerfile`]; otherwise the file
-    /// extension is looked up via [`Language::from_extension`].
+    /// A filename whose stem is `Dockerfile` (case-insensitive, any
+    /// directory) maps to [`Language::Dockerfile`] — this covers both the
+    /// bare `Dockerfile` and the common `Dockerfile.dev` / `Dockerfile.prod`
+    /// variants. Otherwise the file extension is looked up via
+    /// [`Language::from_extension`] (so the `api.dockerfile` form also works).
     pub fn from_path(path: &str) -> Option<Language> {
         let file = path.rsplit(['/', '\\']).next().unwrap_or(path);
-        if file.eq_ignore_ascii_case("Dockerfile") {
+        let stem = file.split('.').next().unwrap_or(file);
+        if stem.eq_ignore_ascii_case("Dockerfile") {
             return Some(Language::Dockerfile);
         }
         let ext = file.rsplit_once('.').map(|(_, e)| e)?;
@@ -462,278 +466,4 @@ pub fn definition(language: &Language) -> &dyn SyntaxDefinition {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_empty_line_all_langs() {
-        for lang in [
-            Language::None,
-            Language::Rust,
-            Language::Ron,
-            Language::Rhai,
-            Language::Toml,
-            Language::Json,
-            Language::Yaml,
-            Language::Xml,
-            Language::Hex,
-            Language::Asm,
-            Language::Sql,
-            Language::Diff,
-            Language::Ini,
-            Language::Dockerfile,
-            Language::Markdown,
-        ] {
-            let (toks, _) = tokenize_line("", &lang, LineState::Code);
-            assert!(
-                toks.is_empty(),
-                "non-empty tokens for {:?} on empty line",
-                lang
-            );
-        }
-    }
-
-    #[test]
-    fn test_plain_text() {
-        let (toks, bc) = tokenize_line("hello world", &Language::None, LineState::Code);
-        assert_eq!(toks.len(), 1);
-        assert_eq!(toks[0].kind, TokenKind::Identifier);
-        assert_eq!(bc, LineState::Code);
-    }
-
-    #[test]
-    fn test_definition_names() {
-        assert_eq!(definition(&Language::None).name(), "Plain Text");
-        assert_eq!(definition(&Language::Rust).name(), "Rust");
-        assert_eq!(definition(&Language::Ron).name(), "RON");
-        assert_eq!(definition(&Language::Rhai).name(), "Rhai");
-        assert_eq!(definition(&Language::Toml).name(), "TOML");
-        assert_eq!(definition(&Language::Json).name(), "JSON");
-        assert_eq!(definition(&Language::Yaml).name(), "YAML");
-        assert_eq!(definition(&Language::Xml).name(), "XML");
-        assert_eq!(definition(&Language::Hex).name(), "Hex");
-        assert_eq!(definition(&Language::Asm).name(), "Assembly");
-        assert_eq!(definition(&Language::Sql).name(), "SQL");
-        assert_eq!(definition(&Language::Diff).name(), "Diff");
-        assert_eq!(definition(&Language::Ini).name(), "INI");
-        assert_eq!(definition(&Language::Dockerfile).name(), "Dockerfile");
-    }
-
-    #[test]
-    fn language_name_helper() {
-        assert_eq!(Language::Rust.name(), "Rust");
-        assert_eq!(Language::Asm.name(), "ASM");
-        assert_eq!(Language::Sql.name(), "SQL");
-        assert_eq!(Language::Diff.name(), "Diff");
-        assert_eq!(Language::Ini.name(), "INI");
-        assert_eq!(Language::Dockerfile.name(), "Dockerfile");
-        assert_eq!(Language::None.name(), "Plain Text");
-    }
-
-    #[test]
-    fn builtins_include_new_languages() {
-        let all = Language::builtins();
-        assert!(all.contains(&Language::Sql));
-        assert!(all.contains(&Language::Diff));
-        assert!(all.contains(&Language::Ini));
-        assert!(all.contains(&Language::Dockerfile));
-        // No Custom variant in the built-in list.
-        assert!(!all.iter().any(|l| matches!(l, Language::Custom(_))));
-    }
-
-    #[test]
-    fn from_extension_mapping() {
-        assert_eq!(Language::from_extension("rs"), Some(Language::Rust));
-        assert_eq!(Language::from_extension(".RS"), Some(Language::Rust));
-        assert_eq!(Language::from_extension("toml"), Some(Language::Toml));
-        assert_eq!(Language::from_extension("jsonc"), Some(Language::Json));
-        assert_eq!(Language::from_extension("yml"), Some(Language::Yaml));
-        assert_eq!(Language::from_extension("HTML"), Some(Language::Xml));
-        assert_eq!(Language::from_extension("asm"), Some(Language::Asm));
-        assert_eq!(Language::from_extension("sql"), Some(Language::Sql));
-        assert_eq!(Language::from_extension("patch"), Some(Language::Diff));
-        assert_eq!(Language::from_extension("diff"), Some(Language::Diff));
-        assert_eq!(Language::from_extension("cfg"), Some(Language::Ini));
-        assert_eq!(Language::from_extension("conf"), Some(Language::Ini));
-        assert_eq!(
-            Language::from_extension("dockerfile"),
-            Some(Language::Dockerfile)
-        );
-        // Plain text and unknown → None.
-        assert_eq!(Language::from_extension("txt"), None);
-        assert_eq!(Language::from_extension("xyz"), None);
-    }
-
-    #[test]
-    fn from_path_detection() {
-        assert_eq!(Language::from_path("src/main.rs"), Some(Language::Rust));
-        assert_eq!(
-            Language::from_path("C:\\proj\\schema.SQL"),
-            Some(Language::Sql)
-        );
-        // Bare `Dockerfile` filename (no extension) is special-cased.
-        assert_eq!(
-            Language::from_path("Dockerfile"),
-            Some(Language::Dockerfile)
-        );
-        assert_eq!(
-            Language::from_path("docker/Dockerfile"),
-            Some(Language::Dockerfile)
-        );
-        // `*.dockerfile` still resolves via the extension table.
-        assert_eq!(
-            Language::from_path("build.dockerfile"),
-            Some(Language::Dockerfile)
-        );
-        // No extension and not `Dockerfile` → None.
-        assert_eq!(Language::from_path("README"), None);
-        assert_eq!(Language::from_path("notes.txt"), None);
-    }
-
-    #[test]
-    fn test_definition_bracket_pairs() {
-        let pairs = definition(&Language::Rust).bracket_pairs();
-        assert!(pairs.contains(&('(', ')')));
-        assert!(pairs.contains(&('{', '}')));
-
-        let xml_pairs = definition(&Language::Xml).bracket_pairs();
-        assert!(xml_pairs.contains(&('<', '>')));
-
-        let plain_pairs = definition(&Language::None).bracket_pairs();
-        assert!(plain_pairs.is_empty());
-    }
-
-    #[test]
-    fn test_definition_comment_delimiters() {
-        assert_eq!(
-            definition(&Language::Rust).line_comment_prefix(),
-            Some("//")
-        );
-        assert_eq!(definition(&Language::Toml).line_comment_prefix(), Some("#"));
-        assert_eq!(definition(&Language::Yaml).line_comment_prefix(), Some("#"));
-        assert_eq!(definition(&Language::Xml).line_comment_prefix(), None);
-        assert_eq!(definition(&Language::None).line_comment_prefix(), None);
-
-        assert_eq!(
-            definition(&Language::Rust).block_comment_delimiters(),
-            Some(("/*", "*/"))
-        );
-        assert_eq!(
-            definition(&Language::Xml).block_comment_delimiters(),
-            Some(("<!--", "-->"))
-        );
-        assert!(
-            definition(&Language::Yaml)
-                .block_comment_delimiters()
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn test_covers_full_line_rust() {
-        let line = "pub fn foo(x: i32) -> bool { true }";
-        let (toks, _) = tokenize_line(line, &Language::Rust, LineState::Code);
-        let total: usize = toks.iter().map(|t| t.len).sum();
-        assert_eq!(total, line.len());
-    }
-
-    const ALL_LANGS: &[Language] = &[
-        Language::None,
-        Language::Rust,
-        Language::Ron,
-        Language::Rhai,
-        Language::Toml,
-        Language::Json,
-        Language::Yaml,
-        Language::Xml,
-        Language::Hex,
-        Language::Asm,
-        Language::Sql,
-        Language::Diff,
-        Language::Ini,
-        Language::Dockerfile,
-        Language::Markdown,
-    ];
-
-    /// Adversarial inputs must never panic and must always produce tokens
-    /// whose byte spans exactly tile the line (contiguous, no gaps, no
-    /// overlaps, total == line length). This is the single most important
-    /// invariant: the renderer slices the line by these spans, so any gap
-    /// or overlap is a UTF-8 panic waiting to happen.
-    #[test]
-    fn all_langs_no_panic_full_coverage_both_states() {
-        let samples = [
-            "",
-            " ",
-            "\t\t",
-            "/* unterminated",
-            "*/ stray close",
-            "\"unterminated string",
-            "'unterminated char",
-            "r#\"unterminated raw",
-            "你好世界 — 多字节",
-            "😀😀😀",
-            "0x 0b 0o 1_2_3 1.2e+3 .5 1..2 1..=3",
-            "#![attr(unclosed",
-            "<!-- xml unclosed",
-            "<![CDATA[ unclosed",
-            // Opening markers that terminate the line exactly — regression
-            // guard for the block-comment/CDATA/PI scanners that used to
-            // over-run the line by one byte (span past EOL → tiling break).
-            "/*",
-            "x /*",
-            "<!--",
-            "<![CDATA[",
-            "<?",
-            "key: value # comment",
-            "DE AD BE EF GG",
-            "&amp; <b>x</b>",
-            "let x = b'\\x41'; // mix",
-            "\\\\\\ stray backslashes",
-            ":::,,,...===!!!",
-        ];
-        for lang in ALL_LANGS {
-            for &in_bc in &[LineState::Code, LineState::BlockComment(1)] {
-                for s in &samples {
-                    let (toks, _) = tokenize_line(s, lang, in_bc);
-                    let mut pos = 0usize;
-                    for t in &toks {
-                        assert_eq!(
-                            t.start, pos,
-                            "non-contiguous span in {lang:?} (bc={in_bc:?}) on {s:?}: {toks:?}"
-                        );
-                        // Spans must land on char boundaries so the renderer
-                        // can slice without panicking.
-                        assert!(
-                            s.is_char_boundary(t.start) && s.is_char_boundary(t.start + t.len),
-                            "span not on char boundary in {lang:?} on {s:?}"
-                        );
-                        pos += t.len;
-                    }
-                    assert_eq!(
-                        pos,
-                        s.len(),
-                        "span total != line len in {lang:?} (bc={in_bc:?}) on {s:?}: {toks:?}"
-                    );
-                }
-            }
-        }
-    }
-
-    /// Block-comment carry state must be idempotent in the sense that a
-    /// language advertising no block comments never reports "still in a
-    /// block comment".
-    #[test]
-    fn non_block_comment_langs_never_carry_state() {
-        for lang in [Language::Toml, Language::Yaml, Language::Asm, Language::Hex] {
-            for line in ["/* not a comment here */", "x */", "/* x"] {
-                let (_, carry) = tokenize_line(line, &lang, LineState::Code);
-                assert_eq!(
-                    carry,
-                    LineState::Code,
-                    "{lang:?} unexpectedly carried block-comment state"
-                );
-            }
-        }
-    }
-}
+mod tests;
