@@ -93,17 +93,18 @@ fn tokenize(line: &str) -> Vec<Token> {
         return tokens;
     }
 
-    // Document markers (--- or ...)
+    // Document markers (--- or ...) — may carry trailing content
+    // (`--- !tag`, `--- key: val`), so emit the 3-char marker and keep
+    // tokenizing the rest of the line instead of returning.
+    if (bytes[i..].starts_with(b"---") || bytes[i..].starts_with(b"..."))
+        && (i + 3 == len || bytes[i + 3] == b' ' || bytes[i + 3] == b'\t')
     {
-        let trimmed = line.trim();
-        if trimmed == "---" || trimmed == "..." {
-            tokens.push(Token {
-                kind: TokenKind::Keyword,
-                start: i,
-                len: len - i,
-            });
-            return tokens;
-        }
+        tokens.push(Token {
+            kind: TokenKind::Keyword,
+            start: i,
+            len: 3,
+        });
+        i += 3;
     }
 
     while i < len {
@@ -124,13 +125,43 @@ fn tokenize(line: &str) -> Vec<Token> {
         }
 
         // ── Comment ──────────────────────────────────────────────────────
-        if b == b'#' {
+        // YAML only starts a comment when `#` is preceded by whitespace (or at
+        // line start); `http://x#frag` and `a#b` are scalars, not comments.
+        if b == b'#' && (i == 0 || bytes[i - 1] == b' ' || bytes[i - 1] == b'\t') {
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start: i,
                 len: len - i,
             });
             return tokens;
+        }
+
+        // ── Null tilde `~` ───────────────────────────────────────────────
+        if b == b'~' {
+            tokens.push(Token {
+                kind: TokenKind::Keyword,
+                start: i,
+                len: 1,
+            });
+            i += 1;
+            continue;
+        }
+
+        // ── Block scalar indicator `|` / `>` (+ chomping -/+ and indent digit) ──
+        // Only the indicator is coloured; the indented body needs cross-line
+        // state the stateless tokenizer doesn't carry.
+        if b == b'|' || b == b'>' {
+            let start = i;
+            i += 1;
+            while i < len && matches!(bytes[i], b'-' | b'+' | b'0'..=b'9') {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Operator,
+                start,
+                len: i - start,
+            });
+            continue;
         }
 
         // ── Anchor (&name) / Alias (*name) ───────────────────────────────
@@ -262,7 +293,9 @@ fn tokenize(line: &str) -> Vec<Token> {
             let start = i;
             while i < len {
                 let c = bytes[i];
-                if c == b'#' {
+                // Comment only when `#` follows whitespace — keep `#` inside
+                // scalars like `http://x#frag` / `a#b`.
+                if c == b'#' && i > 0 && matches!(bytes[i - 1], b' ' | b'\t') {
                     break;
                 }
                 if c == b':' && (i + 1 >= len || bytes[i + 1] == b' ' || bytes[i + 1] == b'\t') {
@@ -338,6 +371,26 @@ mod tests {
             .iter()
             .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
             .collect()
+    }
+
+    #[test]
+    fn hash_in_scalar_is_not_a_comment() {
+        // `#` not preceded by whitespace stays part of the scalar.
+        let toks = tok("url: http://x#frag");
+        assert!(!toks.iter().any(|(k, _)| *k == TokenKind::Comment));
+    }
+
+    #[test]
+    fn block_scalar_indicator_is_colored() {
+        let toks = tok("body: |");
+        assert!(toks.iter().any(|(k, s)| *k == TokenKind::Operator && s == "|"));
+    }
+
+    #[test]
+    fn document_marker_with_trailing_content() {
+        let toks = tok("--- !tag");
+        assert!(toks.iter().any(|(k, s)| *k == TokenKind::Keyword && s == "---"));
+        assert!(toks.iter().any(|(_, s)| s.contains("tag")));
     }
 
     #[test]

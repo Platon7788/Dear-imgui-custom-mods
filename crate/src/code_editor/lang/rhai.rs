@@ -17,6 +17,7 @@ const KEYWORDS: &[&str] = &[
     "for",
     "in",
     "do",
+    "until",
     "break",
     "continue",
     "return",
@@ -42,6 +43,7 @@ const KEYWORDS: &[&str] = &[
     "is_def_var",
     "is_shared",
     "eval",
+    "global",
 ];
 
 const BUILTIN_TYPES: &[&str] = &[
@@ -267,6 +269,13 @@ fn tokenize(line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
                         | (b'-', b'=')
                         | (b'*', b'=')
                         | (b'/', b'=')
+                        | (b'*', b'*') // exponent
+                        | (b'<', b'<')
+                        | (b'>', b'>')
+                        | (b'%', b'=')
+                        | (b'&', b'=')
+                        | (b'|', b'=')
+                        | (b'^', b'=')
                 )
             {
                 i += 1;
@@ -276,6 +285,32 @@ fn tokenize(line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
                 start,
                 len: i - start,
             });
+            continue;
+        }
+
+        // ── Range operators `..` / `..=` (used everywhere: `for x in 0..10`) ──
+        if b == b'.' && i + 1 < len && bytes[i + 1] == b'.' {
+            let start = i;
+            i += 2;
+            if i < len && bytes[i] == b'=' {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Operator,
+                start,
+                len: i - start,
+            });
+            continue;
+        }
+
+        // ── `?.` null-safe access, `??` null-coalescing ──────────────────
+        if b == b'?' && i + 1 < len && matches!(bytes[i + 1], b'.' | b'?') {
+            tokens.push(Token {
+                kind: TokenKind::Operator,
+                start: i,
+                len: 2,
+            });
+            i += 2;
             continue;
         }
 
@@ -331,6 +366,32 @@ mod tests {
             .iter()
             .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
             .collect()
+    }
+
+    #[test]
+    fn range_operator_single_token() {
+        let toks = tok("for x in 0..10 {}");
+        assert!(toks.iter().any(|(k, s)| *k == TokenKind::Operator && s == ".."));
+    }
+
+    #[test]
+    fn until_and_global_keywords() {
+        assert!(
+            tok("do {} until x")
+                .iter()
+                .any(|(k, s)| *k == TokenKind::Keyword && s == "until")
+        );
+        assert!(
+            tok("global::X")
+                .iter()
+                .any(|(k, s)| *k == TokenKind::Keyword && s == "global")
+        );
+    }
+
+    #[test]
+    fn null_safe_operator() {
+        let toks = tok("a?.b");
+        assert!(toks.iter().any(|(k, s)| *k == TokenKind::Operator && s == "?."));
     }
 
     #[test]

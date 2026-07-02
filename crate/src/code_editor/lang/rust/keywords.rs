@@ -20,6 +20,7 @@ pub(super) const KEYWORDS: &[&str] = &[
     "false",
     "fn",
     "for",
+    "gen",
     "if",
     "impl",
     "in",

@@ -76,8 +76,11 @@ fn tokenize(line: &str) -> Vec<Token> {
             return tokens;
         }
 
-        // Section headers [section] or [[array.of.tables]]
-        if b == b'[' {
+        // Section headers [section] or [[array.of.tables]] — ONLY when the
+        // bracket is the first non-whitespace token on the line. A `[` after
+        // `=` (or anywhere in a value) is an inline array, handled as
+        // punctuation below — not swallowed as a header Attribute.
+        if b == b'[' && tokens.iter().all(|t| t.kind == TokenKind::Whitespace) {
             let start = i;
             let mut depth = 0u32;
             while i < len {
@@ -190,8 +193,8 @@ fn tokenize(line: &str) -> Vec<Token> {
             continue;
         }
 
-        // Punctuation
-        if matches!(b, b'{' | b'}' | b',' | b'.' | b']') {
+        // Punctuation (incl. inline-array brackets in value position)
+        if matches!(b, b'{' | b'}' | b',' | b'.' | b'[' | b']') {
             tokens.push(Token {
                 kind: TokenKind::Punctuation,
                 start: i,
@@ -234,6 +237,27 @@ mod tests {
         assert_eq!(toks[0].kind, TokenKind::Attribute);
         // Should be a single token covering the full header
         assert_eq!(toks[0].len, "[[dependencies.serde]]".len());
+    }
+
+    #[test]
+    fn inline_array_value_is_not_a_section_header() {
+        // Regression: `[` after `=` used to be scanned as a section header,
+        // swallowing the whole array into one Attribute token.
+        let line = r#"members = ["crate", "app"]"#;
+        let (toks, _) = tokenize_line(line, &Language::Toml, false);
+        let puncts: Vec<_> = toks
+            .iter()
+            .filter(|t| t.kind == TokenKind::Punctuation)
+            .map(|t| &line[t.start..t.start + t.len])
+            .collect();
+        assert!(puncts.contains(&"["), "'[' in value position should be punctuation");
+        assert!(puncts.contains(&"]"), "']' should be punctuation");
+        assert!(toks.iter().any(|t| t.kind == TokenKind::String));
+        // `members` (the key) is the only Attribute; no Attribute spans a bracket.
+        assert!(
+            !toks.iter().any(|t| t.kind == TokenKind::Attribute
+                && line[t.start..t.start + t.len].contains('['))
+        );
     }
 
     #[test]
