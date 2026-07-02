@@ -24,6 +24,23 @@ fn test_set_get_text() {
 }
 
 #[test]
+fn replace_current_does_not_re_match_its_own_replacement() {
+    // Find "cat" / Replace "cats": the replacement contains the query, so a
+    // naive rebuild would keep re-selecting the replacement and grow the same
+    // spot on every click. Replace must advance past the inserted text.
+    let mut editor = CodeEditor::new("t");
+    editor.set_text("cat cat cat");
+    editor.find_replace.query = "cat".to_string();
+    editor.find_replace.replacement = "cats".to_string();
+    editor.update_find_matches();
+    editor.find_replace.current_match = 0;
+    editor.replace_current();
+    editor.replace_current();
+    editor.replace_current();
+    assert_eq!(editor.get_text(), "cats cats cats");
+}
+
+#[test]
 fn test_language() {
     let mut editor = CodeEditor::new("test");
     editor.set_language(Language::Toml);

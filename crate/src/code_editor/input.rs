@@ -10,7 +10,10 @@ impl CodeEditor {
 
     pub(super) fn handle_keyboard(&mut self, ui: &Ui) {
         let io = ui.io();
-        let ctrl = io.key_ctrl();
+        // Accept ⌘ (Super) as the command modifier on macOS so shortcuts work
+        // natively; on other platforms Super is the Win/Meta key and must not
+        // trigger editor shortcuts.
+        let ctrl = io.key_ctrl() || (cfg!(target_os = "macos") && io.key_super());
         let shift = io.key_shift();
         let alt = io.key_alt();
 

@@ -63,8 +63,31 @@ impl CodeEditor {
         }
     }
 
+    /// Set `current_match` to the first match starting at or after `pos`
+    /// (wrapping to the first match) and select it.
+    fn select_match_at_or_after(&mut self, pos: CursorPos) {
+        if self.find_replace.matches.is_empty() {
+            return;
+        }
+        let idx = self
+            .find_replace
+            .matches
+            .iter()
+            .position(|&(l, cs, _)| (l, cs) >= (pos.line, pos.col))
+            .unwrap_or(0);
+        self.find_replace.current_match = idx;
+        self.jump_to_current_match();
+    }
+
     pub(super) fn replace_current(&mut self) {
-        if self.find_replace.matches.is_empty() || self.config.read_only {
+        if self.config.read_only {
+            return;
+        }
+        // Recompute against the current text first: the buffer may have been
+        // edited since the last search, leaving `matches` with stale spans
+        // that would replace the wrong text.
+        self.update_find_matches();
+        if self.find_replace.matches.is_empty() {
             return;
         }
         self.snapshot_undo(true);
@@ -81,12 +104,24 @@ impl CodeEditor {
             self.buffer
                 .insert_text(&self.find_replace.replacement.clone());
             self.invalidate_token_cache_all();
+            // The caret now sits after the inserted replacement. Rebuild the
+            // match set and advance to the next occurrence at/after the caret
+            // so a replacement that itself contains the query is not
+            // re-selected (Find "cat" / Replace "cats" would otherwise keep
+            // growing the same spot on repeated clicks).
+            let after = self.buffer.cursor();
             self.update_find_matches();
+            self.select_match_at_or_after(after);
         }
     }
 
     pub(super) fn replace_all(&mut self) {
-        if self.find_replace.matches.is_empty() || self.config.read_only {
+        if self.config.read_only {
+            return;
+        }
+        // Recompute against the current text so stale spans can't misfire.
+        self.update_find_matches();
+        if self.find_replace.matches.is_empty() {
             return;
         }
         self.snapshot_undo(true);

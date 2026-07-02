@@ -173,6 +173,11 @@ pub struct CodeEditor {
     bc_version: u64,
     /// Earliest line that may have changed (for incremental bc recompute).
     bc_dirty_from: Option<usize>,
+    /// Discriminant of `config.language` at the last render. Detects a
+    /// language switch made via `config_mut()` — which, unlike
+    /// [`set_language`](CodeEditor::set_language), does not invalidate the
+    /// token cache — so the stale highlighting can be refreshed.
+    last_language: Option<std::mem::Discriminant<Language>>,
 
     // ── Markers ──────────────────────────────────────────────────────
     error_markers: Vec<LineMarker>,
@@ -265,6 +270,7 @@ impl CodeEditor {
             block_comment_states: vec![false],
             bc_version: u64::MAX,
             bc_dirty_from: None,
+            last_language: None,
 
             error_markers: Vec::new(),
             error_lines: HashSet::new(),

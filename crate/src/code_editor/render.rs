@@ -35,6 +35,17 @@ impl CodeEditor {
         // when the gutter actually draws the fold markers — skip the full
         // document scan otherwise. On a 10 000-line file this was running
         // on every keystroke even when folds weren't visible.
+        // A language switch via config_mut() (rather than set_language) leaves
+        // a stale token cache — every line keeps the old language's colours
+        // until edited. Detect the change by discriminant and invalidate.
+        let lang_discriminant = std::mem::discriminant(&self.config.language);
+        if self.last_language != Some(lang_discriminant) {
+            self.last_language = Some(lang_discriminant);
+            self.bc_version = u64::MAX;
+            self.bc_dirty_from = Some(0);
+            self.token_cache.clear();
+        }
+
         self.update_block_comment_states();
         if self.config.show_fold_indicators {
             self.update_fold_regions();
