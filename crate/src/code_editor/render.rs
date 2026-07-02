@@ -177,6 +177,25 @@ impl CodeEditor {
                 // naturally until the user types or arrows back to it.
                 if self.buffer.cursor() != cursor_before {
                     self.ensure_cursor_visible();
+                    // Horizontal auto-scroll (wrap off only): keep the caret
+                    // inside the code column when typing past the right/left
+                    // edge. Only runs when the cursor moved, so a manual
+                    // horizontal scrollbar drag isn't fought.
+                    if !self.config.word_wrap {
+                        let cur = self.buffer.cursor();
+                        let caret_x = col_to_x(
+                            self.buffer.line(cur.line),
+                            cur.col,
+                            self.char_advance,
+                            self.config.tab_size,
+                        );
+                        let margin = self.char_advance * 3.0;
+                        if caret_x < self.scroll_x + margin {
+                            self.scroll_x = (caret_x - margin).max(0.0);
+                        } else if caret_x > self.scroll_x + text_area_w - margin {
+                            self.scroll_x = caret_x - text_area_w + margin;
+                        }
+                    }
                 }
 
                 // ── Sync scroll back to ImGui ───────────────────────────
@@ -186,6 +205,11 @@ impl CodeEditor {
                 // reflect the new state.
                 ui.set_scroll_y(self.scroll_y);
                 self.last_set_scroll_y = self.scroll_y;
+                // Apply horizontal scroll (no-op when unchanged, so it doesn't
+                // override the user's scrollbar unless the caret moved above).
+                if !self.config.word_wrap {
+                    ui.set_scroll_x(self.scroll_x);
+                }
 
                 let draw_list = ui.get_window_draw_list();
                 // cursor_screen_pos() includes the scroll offset (ImGui's
