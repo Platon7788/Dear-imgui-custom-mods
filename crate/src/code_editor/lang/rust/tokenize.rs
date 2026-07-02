@@ -459,7 +459,8 @@ pub(in crate::code_editor::lang) fn tokenize(
     }
 
     let end = if depth > 0 {
-        LineState::BlockComment(depth as u16)
+        // Saturate: a 65536-deep nested comment must stay "open", not wrap to 0.
+        LineState::BlockComment(depth.min(u16::MAX as u32) as u16)
     } else {
         LineState::Code
     };

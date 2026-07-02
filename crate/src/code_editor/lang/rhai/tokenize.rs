@@ -98,7 +98,7 @@ pub(in crate::code_editor::lang) fn tokenize(
     }
 
     let end = if depth > 0 {
-        LineState::BlockComment(depth as u16)
+        LineState::BlockComment(depth.min(u16::MAX as u32) as u16)
     } else {
         LineState::Code
     };
@@ -144,7 +144,7 @@ fn consume_token(
         *i += 2;
         let depth = scan_block_comment(i, bytes, 1);
         push(tokens, TokenKind::Comment, start, *i);
-        return (depth > 0).then_some(LineState::BlockComment(depth as u16));
+        return (depth > 0).then_some(LineState::BlockComment(depth.min(u16::MAX as u32) as u16));
     }
 
     // ── Backtick template string (with `${…}` interpolation) ─────────────

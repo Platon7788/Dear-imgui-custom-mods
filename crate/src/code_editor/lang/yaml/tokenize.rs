@@ -68,7 +68,7 @@ pub(in crate::code_editor::lang) fn tokenize(line: &str) -> (Vec<Token>, LineSta
         while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
             i += 1;
         }
-        lead_indent = (i - start) as u16;
+        lead_indent = (i - start).min(u16::MAX as usize) as u16;
         tokens.push(Token {
             kind: TokenKind::Whitespace,
             start,
