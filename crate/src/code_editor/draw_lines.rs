@@ -172,12 +172,16 @@ impl CodeEditor {
 
                 // Clip the horizontally-scrolling code column to the right of
                 // the gutter so long lines / selections / find highlights can
-                // never paint over the fixed line-number gutter. The RAII
-                // token pops at the end of this sub-row iteration, leaving the
-                // next row's gutter decorations unclipped.
+                // never paint over the fixed line-number gutter. Tighten only
+                // the LEFT edge and keep the child window's existing vertical
+                // clip for top/right/bottom — anchoring Y at `win_y` (= line 0's
+                // scrolled screen position) clipped away every row past the
+                // first viewport-height, blanking the text below ~line 50.
+                let clip_min = draw_list.clip_rect_min();
+                let clip_max = draw_list.clip_rect_max();
                 let _code_clip = draw_list.push_clip_rect(
-                    [origin_x + gutter_width - self.char_advance * 0.5, win_y],
-                    [origin_x + inner_size[0], win_y + inner_size[1]],
+                    [origin_x + gutter_width - self.char_advance * 0.5, clip_min[1]],
+                    [clip_max[0], clip_max[1]],
                     true,
                 );
 
