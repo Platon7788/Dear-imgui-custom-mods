@@ -245,6 +245,10 @@ impl CodeEditor {
                 (Language::Xml, "XML / HTML"),
                 (Language::Asm, "Assembly (x86)"),
                 (Language::Hex, "Hex Bytes"),
+                (Language::Sql, "SQL"),
+                (Language::Diff, "Diff / Patch"),
+                (Language::Ini, "INI"),
+                (Language::Dockerfile, "Dockerfile"),
                 (Language::None, s.language_plain_text),
             ] {
                 let selected = self.config.language == lang;

@@ -6,11 +6,15 @@
 //! auto-indent rules, comment delimiters, etc.).
 
 pub mod asm;
+pub mod diff;
+pub mod dockerfile;
 pub mod hex;
+pub mod ini;
 pub mod json;
 pub mod rhai;
 pub mod ron;
 pub mod rust;
+pub mod sql;
 pub mod toml;
 pub mod xml;
 pub mod yaml;
@@ -130,6 +134,15 @@ pub enum Language {
     Xml,
     /// x86/x86-64 assembly (AT&T + Intel/NASM/MASM unified).
     Asm,
+    /// SQL — case-insensitive keywords, `--` / `/* */` comments, `'…'`
+    /// strings and `"…"` / `` `…` `` quoted identifiers.
+    Sql,
+    /// Unified diff / patch — whole-line colouring by leading prefix.
+    Diff,
+    /// INI / config files — `[section]`, `key = value`, `;`/`#` comments.
+    Ini,
+    /// Dockerfile — instruction keywords, `$VAR` variables, `--flag` options.
+    Dockerfile,
     /// Fully custom syntax via a [`SyntaxDefinition`] trait object.
     Custom(Arc<dyn SyntaxDefinition>),
 }
@@ -147,6 +160,10 @@ impl std::fmt::Debug for Language {
             Language::Yaml => write!(f, "Language::Yaml"),
             Language::Xml => write!(f, "Language::Xml"),
             Language::Asm => write!(f, "Language::Asm"),
+            Language::Sql => write!(f, "Language::Sql"),
+            Language::Diff => write!(f, "Language::Diff"),
+            Language::Ini => write!(f, "Language::Ini"),
+            Language::Dockerfile => write!(f, "Language::Dockerfile"),
             Language::Custom(def) => write!(f, "Language::Custom(\"{}\")", def.name()),
         }
     }
@@ -165,8 +182,105 @@ impl PartialEq for Language {
                 | (Language::Json, Language::Json)
                 | (Language::Yaml, Language::Yaml)
                 | (Language::Xml, Language::Xml)
-                | (Language::Asm, Language::Asm) // Two Custom variants are distinct (no identity comparison).
+                | (Language::Asm, Language::Asm)
+                | (Language::Sql, Language::Sql)
+                | (Language::Diff, Language::Diff)
+                | (Language::Ini, Language::Ini)
+                | (Language::Dockerfile, Language::Dockerfile) // Two Custom variants are distinct (no identity comparison).
         )
+    }
+}
+
+// ── Ergonomics API ──────────────────────────────────────────────────────────
+
+impl Language {
+    /// Human-readable display name for the language.
+    ///
+    /// For [`Language::Custom`] this forwards to the definition's own
+    /// [`SyntaxDefinition::name`], so the returned reference borrows `self`.
+    pub fn name(&self) -> &str {
+        match self {
+            Language::None => "Plain Text",
+            Language::Rust => "Rust",
+            Language::Toml => "TOML",
+            Language::Ron => "RON",
+            Language::Rhai => "Rhai",
+            Language::Json => "JSON",
+            Language::Yaml => "YAML",
+            Language::Xml => "XML",
+            Language::Asm => "ASM",
+            Language::Hex => "Hex",
+            Language::Sql => "SQL",
+            Language::Diff => "Diff",
+            Language::Ini => "INI",
+            Language::Dockerfile => "Dockerfile",
+            Language::Custom(def) => def.name(),
+        }
+    }
+
+    /// All built-in languages in a sensible menu order.
+    ///
+    /// [`Language::Custom`] is excluded — it holds an `Arc` and has no
+    /// canonical instance. A `Language::ALL` associated constant is not
+    /// possible for the same reason, so this returns a borrowed slice from
+    /// a private `const` table instead.
+    pub fn builtins() -> &'static [Language] {
+        const ALL: &[Language] = &[
+            Language::Rust,
+            Language::Toml,
+            Language::Ron,
+            Language::Rhai,
+            Language::Json,
+            Language::Yaml,
+            Language::Xml,
+            Language::Asm,
+            Language::Hex,
+            Language::Sql,
+            Language::Diff,
+            Language::Ini,
+            Language::Dockerfile,
+            Language::None,
+        ];
+        ALL
+    }
+
+    /// Map a file extension to a built-in language.
+    ///
+    /// Case-insensitive; accepts the extension with or without a leading
+    /// dot (`"rs"`, `".RS"`). Returns `None` for plain-text (`txt`) and
+    /// unrecognised extensions.
+    pub fn from_extension(ext: &str) -> Option<Language> {
+        let ext = ext.strip_prefix('.').unwrap_or(ext).to_ascii_lowercase();
+        Some(match ext.as_str() {
+            "rs" => Language::Rust,
+            "toml" => Language::Toml,
+            "ron" => Language::Ron,
+            "rhai" => Language::Rhai,
+            "json" | "jsonc" => Language::Json,
+            "yaml" | "yml" => Language::Yaml,
+            "xml" | "html" | "htm" | "svg" | "xhtml" => Language::Xml,
+            "s" | "asm" => Language::Asm,
+            "hex" => Language::Hex,
+            "sql" => Language::Sql,
+            "diff" | "patch" => Language::Diff,
+            "ini" | "cfg" | "conf" => Language::Ini,
+            "dockerfile" => Language::Dockerfile,
+            _ => return None,
+        })
+    }
+
+    /// Detect the language from a file path.
+    ///
+    /// A bare filename of exactly `Dockerfile` (case-insensitive, any
+    /// directory) maps to [`Language::Dockerfile`]; otherwise the file
+    /// extension is looked up via [`Language::from_extension`].
+    pub fn from_path(path: &str) -> Option<Language> {
+        let file = path.rsplit(['/', '\\']).next().unwrap_or(path);
+        if file.eq_ignore_ascii_case("Dockerfile") {
+            return Some(Language::Dockerfile);
+        }
+        let ext = file.rsplit_once('.').map(|(_, e)| e)?;
+        Language::from_extension(ext)
     }
 }
 
@@ -250,6 +364,10 @@ pub fn tokenize_line(
         Language::Xml => xml::XmlLang.tokenize_line(line, in_block_comment),
         Language::Hex => hex::HexLang.tokenize_line(line, in_block_comment),
         Language::Asm => asm::AsmLang.tokenize_line(line, in_block_comment),
+        Language::Sql => sql::SqlLang.tokenize_line(line, in_block_comment),
+        Language::Diff => diff::DiffLang.tokenize_line(line, in_block_comment),
+        Language::Ini => ini::IniLang.tokenize_line(line, in_block_comment),
+        Language::Dockerfile => dockerfile::DockerfileLang.tokenize_line(line, in_block_comment),
         Language::Custom(def) => def.tokenize_line(line, in_block_comment),
     }
 }
@@ -272,6 +390,10 @@ pub fn definition(language: &Language) -> &dyn SyntaxDefinition {
         Language::Xml => &xml::XmlLang,
         Language::Hex => &hex::HexLang,
         Language::Asm => &asm::AsmLang,
+        Language::Sql => &sql::SqlLang,
+        Language::Diff => &diff::DiffLang,
+        Language::Ini => &ini::IniLang,
+        Language::Dockerfile => &dockerfile::DockerfileLang,
         Language::Custom(def) => def.as_ref(),
     }
 }
@@ -295,6 +417,10 @@ mod tests {
             Language::Xml,
             Language::Hex,
             Language::Asm,
+            Language::Sql,
+            Language::Diff,
+            Language::Ini,
+            Language::Dockerfile,
         ] {
             let (toks, _) = tokenize_line("", &lang, false);
             assert!(
@@ -325,6 +451,81 @@ mod tests {
         assert_eq!(definition(&Language::Xml).name(), "XML");
         assert_eq!(definition(&Language::Hex).name(), "Hex");
         assert_eq!(definition(&Language::Asm).name(), "Assembly");
+        assert_eq!(definition(&Language::Sql).name(), "SQL");
+        assert_eq!(definition(&Language::Diff).name(), "Diff");
+        assert_eq!(definition(&Language::Ini).name(), "INI");
+        assert_eq!(definition(&Language::Dockerfile).name(), "Dockerfile");
+    }
+
+    #[test]
+    fn language_name_helper() {
+        assert_eq!(Language::Rust.name(), "Rust");
+        assert_eq!(Language::Asm.name(), "ASM");
+        assert_eq!(Language::Sql.name(), "SQL");
+        assert_eq!(Language::Diff.name(), "Diff");
+        assert_eq!(Language::Ini.name(), "INI");
+        assert_eq!(Language::Dockerfile.name(), "Dockerfile");
+        assert_eq!(Language::None.name(), "Plain Text");
+    }
+
+    #[test]
+    fn builtins_include_new_languages() {
+        let all = Language::builtins();
+        assert!(all.contains(&Language::Sql));
+        assert!(all.contains(&Language::Diff));
+        assert!(all.contains(&Language::Ini));
+        assert!(all.contains(&Language::Dockerfile));
+        // No Custom variant in the built-in list.
+        assert!(!all.iter().any(|l| matches!(l, Language::Custom(_))));
+    }
+
+    #[test]
+    fn from_extension_mapping() {
+        assert_eq!(Language::from_extension("rs"), Some(Language::Rust));
+        assert_eq!(Language::from_extension(".RS"), Some(Language::Rust));
+        assert_eq!(Language::from_extension("toml"), Some(Language::Toml));
+        assert_eq!(Language::from_extension("jsonc"), Some(Language::Json));
+        assert_eq!(Language::from_extension("yml"), Some(Language::Yaml));
+        assert_eq!(Language::from_extension("HTML"), Some(Language::Xml));
+        assert_eq!(Language::from_extension("asm"), Some(Language::Asm));
+        assert_eq!(Language::from_extension("sql"), Some(Language::Sql));
+        assert_eq!(Language::from_extension("patch"), Some(Language::Diff));
+        assert_eq!(Language::from_extension("diff"), Some(Language::Diff));
+        assert_eq!(Language::from_extension("cfg"), Some(Language::Ini));
+        assert_eq!(Language::from_extension("conf"), Some(Language::Ini));
+        assert_eq!(
+            Language::from_extension("dockerfile"),
+            Some(Language::Dockerfile)
+        );
+        // Plain text and unknown → None.
+        assert_eq!(Language::from_extension("txt"), None);
+        assert_eq!(Language::from_extension("xyz"), None);
+    }
+
+    #[test]
+    fn from_path_detection() {
+        assert_eq!(Language::from_path("src/main.rs"), Some(Language::Rust));
+        assert_eq!(
+            Language::from_path("C:\\proj\\schema.SQL"),
+            Some(Language::Sql)
+        );
+        // Bare `Dockerfile` filename (no extension) is special-cased.
+        assert_eq!(
+            Language::from_path("Dockerfile"),
+            Some(Language::Dockerfile)
+        );
+        assert_eq!(
+            Language::from_path("docker/Dockerfile"),
+            Some(Language::Dockerfile)
+        );
+        // `*.dockerfile` still resolves via the extension table.
+        assert_eq!(
+            Language::from_path("build.dockerfile"),
+            Some(Language::Dockerfile)
+        );
+        // No extension and not `Dockerfile` → None.
+        assert_eq!(Language::from_path("README"), None);
+        assert_eq!(Language::from_path("notes.txt"), None);
     }
 
     #[test]
@@ -385,6 +586,10 @@ mod tests {
         Language::Xml,
         Language::Hex,
         Language::Asm,
+        Language::Sql,
+        Language::Diff,
+        Language::Ini,
+        Language::Dockerfile,
     ];
 
     /// Adversarial inputs must never panic and must always produce tokens

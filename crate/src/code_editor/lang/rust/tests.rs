@@ -34,11 +34,7 @@ fn gen_keyword_2024() {
 
 #[test]
 fn c_string_literals() {
-    assert!(
-        tok(r#"let s = c"hi";"#)
-            .iter()
-            .any(|t| *t == (TokenKind::String, r#"c"hi""#))
-    );
+    assert!(tok(r#"let s = c"hi";"#).contains(&(TokenKind::String, r#"c"hi""#)));
     assert!(
         tok(r##"let s = cr#"raw"#;"##)
             .iter()
