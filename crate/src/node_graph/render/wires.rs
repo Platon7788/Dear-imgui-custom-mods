@@ -132,7 +132,7 @@ fn draw_wire_smart(
             );
             draw.add_bezier_curve(from, cp0, cp1, to, c)
                 .thickness(thickness)
-                .num_segments(0)
+                .num_segments(dear_imgui_rs::DrawSegmentCount::AUTO)
                 .build();
         }
         WireStyle::Orthogonal => {
@@ -165,7 +165,7 @@ fn draw_wire_simple(
             let (cp0, cp1) = bezier_control_points(from, to, config.wire_curvature);
             draw.add_bezier_curve(from, cp0, cp1, to, c)
                 .thickness(thickness)
-                .num_segments(0)
+                .num_segments(dear_imgui_rs::DrawSegmentCount::AUTO)
                 .build();
         }
         WireStyle::Orthogonal => {
@@ -229,7 +229,7 @@ fn render_wire_flow_dots(
                     let t = t0 + frac * (t1 - t0);
                     let pt = cubic_bezier(from, cp0, cp1, to, t);
                     draw.add_circle(pt, dot_r, c32(color, 180))
-                        .num_segments(6)
+                        .num_segments(dear_imgui_rs::DrawSegmentCount::count(6))
                         .filled(true)
                         .build();
                     next_dot += spacing;
@@ -249,7 +249,7 @@ fn render_wire_flow_dots(
             while d < length {
                 let pt = [from[0] + nx * d, from[1] + ny * d];
                 draw.add_circle(pt, dot_r, c32(color, 180))
-                    .num_segments(6)
+                    .num_segments(dear_imgui_rs::DrawSegmentCount::count(6))
                     .filled(true)
                     .build();
                 d += spacing;
@@ -275,7 +275,7 @@ fn render_wire_flow_dots(
                         let frac = (d - accum) / seg_len.max(0.001);
                         let pt = [segs[i][0] + dx * frac, segs[i][1] + dy * frac];
                         draw.add_circle(pt, dot_r, c32(color, 180))
-                            .num_segments(6)
+                            .num_segments(dear_imgui_rs::DrawSegmentCount::count(6))
                             .filled(true)
                             .build();
                         break;

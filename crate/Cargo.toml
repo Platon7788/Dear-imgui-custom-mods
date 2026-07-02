@@ -8,19 +8,25 @@ description = "Custom UI components for dear-imgui-rs"
 
 # ─── Features ────────────────────────────────────────────────────────────────
 #
-# All components are on by default (`full`). Downstream consumers who want a
-# slimmer build can `--no-default-features --features=confirm_dialog` (for
-# example) and compile only what they need. `theme`, `utils`, `icons`,
-# `fonts`, `input`, `i18n` are always-on infrastructure — not exposed as
-# features.
+# All components are on by default (`full` + backend). Downstream consumers
+# who want a slimmer build can `--no-default-features --features=confirm_dialog`
+# (for example) and compile only what they need. `theme`, `utils`, `icons`,
+# `fonts`, `i18n` are always-on infrastructure — not exposed as features.
+#
+# Widget components emit dear-imgui draw-lists ONLY — they never touch
+# `wgpu` / `winit`. The heavy GPU + windowing stack lives behind three
+# opt-in backend features (`render`, `input`, `chrome`) so pulling 2-3
+# components does NOT drag in wgpu/winit and its transitive tree. The
+# `default` set re-enables them for a batteries-included experience, so
+# existing consumers are unaffected; slim consumers opt out via
+# `default-features = false`.
 #
 # Inter-component dependencies are encoded transitively so toggling one
 # leaf component does the right thing (e.g. enabling `disasm_view`
-# automatically pulls `hex_viewer`; enabling `app_window` pulls
-# `code_editor`).
+# automatically pulls `hex_viewer`; enabling `chrome` pulls `input`).
 
 [features]
-default = ["full"]
+default = ["full", "render", "chrome"]
 
 # Meta-feature: every component.
 full = [
@@ -91,6 +97,22 @@ timeline = []
 # Re-uses nav_panel palette for the sidebar. Requires slotmap for stable NodeId/EdgeId.
 force_graph = ["nav_panel", "dep:slotmap"]
 
+# ── Backend integration (opt-in) ────────────────────────────────────────────
+# Widgets never need these — enable them only if you use the crate's own
+# window chrome, keyboard/IME helpers, wgpu clear-color helpers, or want the
+# wgpu / winit re-exports. Each pulls a slice of the heavy GPU + windowing
+# dependency tree, so leaf-component builds stay lean without them.
+#
+# render → `utils::color::{wgpu_clear_color, is_srgb_surface_format}` +
+#          the `wgpu` / `dear_imgui_wgpu` re-exports.
+# input  → `crate::input` keyboard/IME helpers + the `winit` /
+#          `dear_imgui_winit` re-exports.
+# chrome → borderless-window chrome; dispatches keyboard events so it pulls
+#          `input`.
+render = ["dep:wgpu", "dep:dear-imgui-wgpu"]
+input = ["dep:winit", "dep:dear-imgui-winit"]
+chrome = ["input"]
+
 [dependencies]
 # Headless x86 disassembly knowledge — extracted in ADR-030 so the
 # catalogues (mnemonic explanations, idiom / boundary / antidisasm /
@@ -99,17 +121,20 @@ force_graph = ["nav_panel", "dep:slotmap"]
 # dear-imgui / wgpu / winit. Gated by `disasm_view` so non-disasm
 # downstream builds still skip the ~657 KB catalogue cost.
 disasm-knowledge = { path = "../../useful-lib/disasm-knowledge", optional = true }
-slotmap = { version = "1.0", optional = true }
+slotmap = { version = "1.1", optional = true }
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"
 ron = "0.12"
-dear-imgui-rs = "0.11.0"
-dear-imgui-wgpu = "0.11.0"
-dear-imgui-winit = "0.11.0"
+dear-imgui-rs = "0.15.0"
 foldhash = "0.2.0"
-pollster = "0.4.0"
-wgpu = "29.0.1"
-winit = "0.30.13"
+
+# ── Backend stack (optional; see the `render` / `input` / `chrome` features) ──
+# Heavy GPU + windowing crates. Kept out of leaf-component builds so pulling
+# a couple of widgets doesn't compile wgpu/winit and their transitive trees.
+wgpu = { version = "29.0.3", optional = true }
+dear-imgui-wgpu = { version = "0.15.0", optional = true }
+winit = { version = "0.30.13", optional = true }
+dear-imgui-winit = { version = "0.15.0", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
@@ -132,10 +157,10 @@ windows-sys = { version = "0.61.2", features = [
 [dev-dependencies]
 # Microbenchmarks via Criterion — gate behind the `bench` runner so
 # regular `cargo test` stays fast.
-criterion = { version = "0.7", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 # Property-based testing for parser correctness — catches panics on
 # malformed input that example-based tests would miss.
-proptest = "1.8"
+proptest = "1.11"
 
 [[bench]]
 name = "theme_dispatch"

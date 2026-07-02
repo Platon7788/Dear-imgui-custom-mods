@@ -133,9 +133,10 @@ impl<T> NodeGraph<T> {
         self.state.viewport.canvas_origin = canvas_pos;
         let mut actions: Vec<GraphAction> = Vec::new();
         if let Some(target) = ui.drag_drop_target() {
-            if let Some(Ok(pod)) = target
-                .accept_payload::<u32, _>("NODE_GRAPH_DND", dear_imgui_rs::DragDropFlags::empty())
-                && pod.delivery
+            if let Some(Ok(pod)) = target.accept_payload::<u32, _>(
+                "NODE_GRAPH_DND",
+                dear_imgui_rs::DragDropTargetFlags::NONE,
+            ) && pod.delivery
             {
                 let gp = self.state.viewport.screen_to_graph(ui.mouse_pos());
                 actions.push(GraphAction::PaletteDropped(pod.data, gp));

@@ -11,7 +11,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
     pub(super) fn render_header(&self, ui: &Ui) {
         ui.table_next_row_with_flags(TableRowFlags::HEADERS, 0.0);
         for i in 0..self.columns.len() {
-            if !ui.table_set_column_index(i as i32) {
+            if !ui.table_set_column_index(i) {
                 continue;
             }
             let col = &self.columns[i];
@@ -21,6 +21,18 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             if pad > 0.0 {
                 let cursor = ui.cursor_pos();
                 ui.set_cursor_pos([cursor[0] + pad, cursor[1]]);
+            }
+            // When `header_popup = false` the caller doesn't want the
+            // native ImGui "Size column to fit / Size all columns to
+            // default" right-click popup — it would normally register
+            // automatically inside `ui.table_header(...)`. Render the
+            // caption with raw `ui.text()` instead so no header popup
+            // is ever attached. Sortable indicators / drag-reorder
+            // gestures are lost as a side effect; callers that need
+            // those keep `header_popup = true` (the default).
+            if !self.config.header_popup {
+                ui.text(&col.name);
+                continue;
             }
             // Tightly scope the header-flatten style so it can't bleed
             // into the selection highlight on row bodies below (which
@@ -55,7 +67,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             self.sort_state.specs.clear();
             for s in specs.iter() {
                 self.sort_state.specs.push(SortSpec {
-                    column_index: s.column_index as usize,
+                    column_index: usize::from(s.column_index),
                     ascending: s.sort_direction == dear_imgui_rs::SortDirection::Ascending,
                 });
             }
@@ -98,7 +110,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         if let Some(ref style) = row_style
             && let Some(bg) = style.bg_color
         {
-            ui.table_set_bg_color(TableBgTarget::RowBg1, bg, -1);
+            ui.table_set_row_bg1_color(bg);
         }
 
         // Selection state — O(1) via foldhash-backed HashSet
@@ -114,7 +126,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 .and_then(|s| s.selection_color)
                 .unwrap_or(self.config.selection_color);
             if sel_bg[3] > 0.0 {
-                ui.table_set_bg_color(TableBgTarget::RowBg1, sel_bg, -1);
+                ui.table_set_row_bg1_color(sel_bg);
             }
         }
 
@@ -148,11 +160,8 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 EditTrigger::SingleClick => true, // selectable was clicked
                 _ => false,
             };
-            if activate_edit {
-                let hovered_col = ui.table_get_hovered_column();
-                if hovered_col >= 0 {
-                    self.try_activate_edit(idx, hovered_col as usize);
-                }
+            if activate_edit && let Some(hovered_col) = ui.table_get_hovered_column().column() {
+                self.try_activate_edit(idx, hovered_col.get());
             }
         }
 
@@ -194,12 +203,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         if ui.is_item_hovered() && ui.is_mouse_clicked(MouseButton::Right) {
             self.handle_selection(ui, idx, self.data.len());
             self.context_row = Some(idx);
-            let hovered = ui.table_get_hovered_column();
-            self.context_col = if hovered >= 0 {
-                Some(hovered as usize)
-            } else {
-                None
-            };
+            self.context_col = ui.table_get_hovered_column().column().map(usize::from);
             self.open_context_menu = true;
         }
 
@@ -344,7 +348,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                     if let Some(ref style) = cell_style
                         && let Some(bg) = style.bg_color
                     {
-                        ui.table_set_bg_color(TableBgTarget::CellBg, bg, -1);
+                        ui.table_set_cell_bg_color(bg, dear_imgui_rs::TableColumnRef::Current);
                     }
 
                     if !self.cell_buf.is_empty() {

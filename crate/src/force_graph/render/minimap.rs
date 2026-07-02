@@ -79,7 +79,7 @@ pub(crate) fn render_minimap(
         let dot_col = node.style.color.unwrap_or([0.55, 0.70, 0.95, 0.85]);
         draw.add_circle(sp, 1.8, pack_color_f32(dot_col))
             .filled(true)
-            .num_segments(4)
+            .num_segments(dear_imgui_rs::DrawSegmentCount::count(4))
             .build();
     }
 

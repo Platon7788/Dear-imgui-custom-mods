@@ -209,15 +209,11 @@ impl ColumnDef {
         self
     }
 
-    /// Returns the Dear ImGui column flags with sizing flags applied.
+    /// Returns the Dear ImGui column flags. The width mode (Fixed/Stretch) is
+    /// no longer a flag in dear-imgui-rs 0.13+ — it's a separate
+    /// [`TableColumnWidth`] argument; see [`Self::column_width`].
     pub(crate) fn imgui_flags(&self) -> TableColumnFlags {
         let mut f = self.flags;
-        match &self.sizing {
-            ColumnSizing::Fixed(_) | ColumnSizing::AutoFit(_) => {
-                f |= TableColumnFlags::WIDTH_FIXED;
-            }
-            ColumnSizing::Stretch(_) => f |= TableColumnFlags::WIDTH_STRETCH,
-        }
         if let Some(ascending) = self.default_sort {
             if ascending {
                 f |= TableColumnFlags::PREFER_SORT_ASCENDING;
@@ -228,11 +224,13 @@ impl ColumnDef {
         f
     }
 
-    /// Returns the init_width_or_weight value for Dear ImGui.
-    pub(crate) fn init_width_or_weight(&self) -> f32 {
+    /// Width policy + initial value for Dear ImGui's column setup.
+    pub(crate) fn column_width(&self) -> dear_imgui_rs::TableColumnWidth {
         match &self.sizing {
-            ColumnSizing::Fixed(w) | ColumnSizing::AutoFit(w) => *w,
-            ColumnSizing::Stretch(w) => *w,
+            ColumnSizing::Fixed(w) | ColumnSizing::AutoFit(w) => {
+                dear_imgui_rs::TableColumnWidth::Fixed(*w)
+            }
+            ColumnSizing::Stretch(w) => dear_imgui_rs::TableColumnWidth::Stretch(*w),
         }
     }
 }

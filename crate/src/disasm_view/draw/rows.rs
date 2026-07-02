@@ -219,7 +219,7 @@ impl DisasmView {
                         .add_circle([cx, cy], radius, col32(colors.bookmark))
                         .filled(false)
                         .thickness(1.4)
-                        .num_segments(20)
+                        .num_segments(dear_imgui_rs::DrawSegmentCount::count(20))
                         .build();
                 }
             }

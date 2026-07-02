@@ -100,7 +100,7 @@ pub use render::{render_titlebar, whole_window_resize};
 
 use std::sync::Arc;
 
-use dear_imgui_rs::{MouseButton, PopupFlags, Ui};
+use dear_imgui_rs::{MouseButton, PopupQueryFlags, Ui};
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{CursorIcon, Window};

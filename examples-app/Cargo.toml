@@ -22,17 +22,17 @@ dear-imgui-custom-mod = { path = "../crate", features = ["full", "force_graph"] 
 # host-agnostic — it only consumes a `&Ui`). Keep the versions in
 # lock-step with `crate/Cargo.toml` so cargo doesn't pull duplicate
 # graphs.
-dear-imgui-rs = "0.11.0"
-dear-imgui-wgpu = "0.11.0"
-dear-imgui-winit = "0.11.0"
+dear-imgui-rs = "0.15.0"
+dear-imgui-wgpu = "0.15.0"
+dear-imgui-winit = "0.15.0"
 # `demo_chrome` (and any chrome-using demo) wires through dear-app's runner
 # instead of spinning up its own winit / wgpu loop.
-dear-app = "0.11.0"
+dear-app = "0.15.0"
 pollster = "0.4.0"
-wgpu = "29.0.1"
+wgpu = "29.0.3"
 winit = "0.30.13"
 # `demo_disasm_view` exercises the ron-export "Save Config" button.
-ron = "0.8"
+ron = "0.12"
 
 [lib]
 # Empty stub crate — examples need a parent target to live under, but

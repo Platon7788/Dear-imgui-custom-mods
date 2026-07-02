@@ -97,14 +97,17 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
     // P0-1: clamp stale selection indices left over from a previous directory.
     selected_indices.retain(|&i| i < entries.len());
 
-    let flags = TableFlags::RESIZABLE
-        | TableFlags::SORTABLE
-        | TableFlags::ROW_BG
-        | TableFlags::SCROLL_Y
-        | TableFlags::BORDERS_INNER_H
-        | TableFlags::BORDERS_OUTER_H
-        | TableFlags::BORDERS_OUTER_V
-        | TableFlags::SIZING_FIXED_FIT;
+    let options = dear_imgui_rs::TableOptions::new()
+        .flags(
+            TableFlags::RESIZABLE
+                | TableFlags::SORTABLE
+                | TableFlags::ROW_BG
+                | TableFlags::SCROLL_Y
+                | TableFlags::BORDERS_INNER_H
+                | TableFlags::BORDERS_OUTER_H
+                | TableFlags::BORDERS_OUTER_V,
+        )
+        .sizing_policy(dear_imgui_rs::TableSizingPolicy::FixedFit);
 
     // Dynamic column count based on config
     let col_count = 1
@@ -112,26 +115,48 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
         + config.show_column_date as usize
         + config.show_column_type as usize;
 
-    let _table = match ui.begin_table_with_flags("##file_table", col_count, flags) {
+    let _table = match ui.begin_table_with_flags("##file_table", col_count, options) {
         Some(t) => t,
         None => return result,
     };
 
+    // Column user IDs — used in the sort handler below to identify which
+    // column was clicked without depending on column ordering / visibility.
+    const COL_ID_NAME: u32 = 1;
+    const COL_ID_SIZE: u32 = 2;
+    const COL_ID_DATE: u32 = 3;
+    const COL_ID_TYPE: u32 = 4;
+
     // Column setup — Name always present, others optional
     ui.table_setup_column(
         strings.col_name,
-        TableColumnFlags::WIDTH_STRETCH | TableColumnFlags::PREFER_SORT_ASCENDING,
-        0.0,
-        0,
+        TableColumnFlags::PREFER_SORT_ASCENDING,
+        Some(dear_imgui_rs::TableColumnWidth::Stretch(0.0)),
+        Some(dear_imgui_rs::Id::from(COL_ID_NAME)),
     );
     if config.show_column_size {
-        ui.table_setup_column(strings.col_size, TableColumnFlags::WIDTH_FIXED, 80.0, 1);
+        ui.table_setup_column(
+            strings.col_size,
+            TableColumnFlags::NONE,
+            Some(dear_imgui_rs::TableColumnWidth::Fixed(80.0)),
+            Some(dear_imgui_rs::Id::from(COL_ID_SIZE)),
+        );
     }
     if config.show_column_date {
-        ui.table_setup_column(strings.col_date, TableColumnFlags::WIDTH_FIXED, 140.0, 2);
+        ui.table_setup_column(
+            strings.col_date,
+            TableColumnFlags::NONE,
+            Some(dear_imgui_rs::TableColumnWidth::Fixed(140.0)),
+            Some(dear_imgui_rs::Id::from(COL_ID_DATE)),
+        );
     }
     if config.show_column_type {
-        ui.table_setup_column(strings.col_type, TableColumnFlags::WIDTH_FIXED, 70.0, 3);
+        ui.table_setup_column(
+            strings.col_type,
+            TableColumnFlags::NONE,
+            Some(dear_imgui_rs::TableColumnWidth::Fixed(70.0)),
+            Some(dear_imgui_rs::Id::from(COL_ID_TYPE)),
+        );
     }
     ui.table_setup_scroll_freeze(0, 1);
     ui.table_headers_row();
@@ -141,10 +166,10 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
         && specs.is_dirty()
     {
         if let Some(s) = specs.iter().next() {
-            let new_col = match s.column_user_id {
-                1 => SortColumn::Size,
-                2 => SortColumn::DateModified,
-                3 => SortColumn::Type,
+            let new_col = match s.column_user_id.map(dear_imgui_rs::Id::raw) {
+                Some(id) if id == COL_ID_SIZE => SortColumn::Size,
+                Some(id) if id == COL_ID_DATE => SortColumn::DateModified,
+                Some(id) if id == COL_ID_TYPE => SortColumn::Type,
                 _ => SortColumn::Name,
             };
             let new_order = if s.sort_direction == dear_imgui_rs::SortDirection::Ascending {
@@ -165,11 +190,11 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
         ui.text_disabled(strings.empty_parens);
     } else {
         // ListClipper for virtualization
-        let clip = ListClipper::new(entries.len() as i32);
+        let clip = ListClipper::new(entries.len());
         let tok = clip.begin(ui);
 
         for row_idx in tok.iter() {
-            let idx = row_idx as usize;
+            let idx = row_idx;
             let e = &entries[idx];
             let is_selected = selected_indices.contains(&idx);
             let is_renaming = *rename_index == Some(idx);

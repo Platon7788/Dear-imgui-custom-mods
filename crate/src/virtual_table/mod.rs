@@ -157,9 +157,7 @@ pub use row::{CellStyle, CellValue, RowStyle, VirtualTableRow};
 use crate::utils::clipboard::set_clipboard;
 use crate::utils::text::calc_text_size;
 use column::{EditorKind, alignment_pad, editor_kind};
-use dear_imgui_rs::{
-    Key, ListClipper, MouseButton, SelectableFlags, TableBgTarget, TableRowFlags, Ui,
-};
+use dear_imgui_rs::{Key, ListClipper, MouseButton, SelectableFlags, TableRowFlags, Ui};
 use edit::EditState;
 use helpers::{build_copy_text, snap_outer_height};
 use sort::{SortSpec, SortState};

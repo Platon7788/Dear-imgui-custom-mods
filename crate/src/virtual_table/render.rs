@@ -50,9 +50,9 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             return;
         }
 
-        let flags = self.config.to_table_flags();
+        let options = self.config.to_table_options();
 
-        let _table = match ui.begin_table_with_flags(&self.id, col_count, flags) {
+        let _table = match ui.begin_table_with_flags(&self.id, col_count, options) {
             Some(t) => t,
             None => return,
         };
@@ -60,14 +60,20 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Column setup
         for i in 0..col_count {
             let col = &self.columns[i];
+            // dear-imgui-rs 0.14 asserts non-zero user_id when
+            // `Some(_)` is passed. Default `col.user_id == 0` + first
+            // column `i == 0` collapses to `Id::from(0)` → panic.
+            // Bumping the fallback to `i as u32 + 1` keeps id stable
+            // per column slot while staying strictly positive.
+            let user_id = dear_imgui_rs::Id::from(col.user_id.max(i as u32 + 1));
             ui.table_setup_column(
                 &col.name,
                 col.imgui_flags(),
-                col.init_width_or_weight(),
-                col.user_id.max(i as u32),
+                Some(col.column_width()),
+                Some(user_id),
             );
             if !col.visible {
-                ui.table_set_column_enabled(i as i32, false);
+                ui.table_set_column_enabled(i, false);
             }
         }
 
@@ -80,7 +86,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         } else {
             0
         };
-        ui.table_setup_scroll_freeze(self.config.freeze_cols, freeze_rows);
+        ui.table_setup_scroll_freeze(
+            self.config.freeze_cols.max(0) as usize,
+            freeze_rows.max(0) as usize,
+        );
 
         // Header — opt-out via `TableConfig::show_headers = false` for
         // register-dump / status panes where the column captions are
@@ -105,11 +114,11 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // `Style` struct each frame.
         let cell_padding_y = unsafe { (*dear_imgui_rs::sys::igGetStyle()).CellPadding.y };
         let row_stride = row_height_to_stride(row_h, cell_padding_y);
-        let clip = ListClipper::new(row_count as i32).items_height(row_stride);
+        let clip = ListClipper::new(row_count).items_height(row_stride);
         let tok = clip.begin(ui);
 
         for row_idx in tok.iter() {
-            self.render_row(ui, row_idx as usize);
+            self.render_row(ui, row_idx);
         }
 
         self.handle_keyboard_nav(ui, row_count);
@@ -211,7 +220,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             return;
         }
 
-        let flags = self.config.to_table_flags();
+        let options = self.config.to_table_options();
 
         // Quantize outer height so the last visible row is never clipped
         // mid-pixel (opt-in via `TableConfig::snap_last_row`).
@@ -234,7 +243,8 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             [0.0, 0.0]
         };
 
-        let _table = match ui.begin_table_with_sizing(&self.id, col_count, flags, outer_size, 0.0) {
+        let _table = match ui.begin_table_with_sizing(&self.id, col_count, options, outer_size, 0.0)
+        {
             Some(t) => t,
             None => return,
         };
@@ -242,14 +252,17 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Column setup
         for i in 0..col_count {
             let col = &self.columns[i];
+            // dear-imgui-rs 0.14 asserts non-zero user_id (see comment
+            // in the body-render branch above for context).
+            let user_id = dear_imgui_rs::Id::from(col.user_id.max(i as u32 + 1));
             ui.table_setup_column(
                 &col.name,
                 col.imgui_flags(),
-                col.init_width_or_weight(),
-                col.user_id.max(i as u32),
+                Some(col.column_width()),
+                Some(user_id),
             );
             if !col.visible {
-                ui.table_set_column_enabled(i as i32, false);
+                ui.table_set_column_enabled(i, false);
             }
         }
 
@@ -259,7 +272,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         } else {
             0
         };
-        ui.table_setup_scroll_freeze(self.config.freeze_cols, freeze_rows);
+        ui.table_setup_scroll_freeze(
+            self.config.freeze_cols.max(0) as usize,
+            freeze_rows.max(0) as usize,
+        );
 
         // Header — opt-out via `TableConfig::show_headers = false`.
         if self.config.show_headers {
@@ -271,11 +287,11 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Rows (read-only path: no inline editing).
         // Use `row_stride` (= row_h + 2*CellPadding.y), not bare `row_h` — see
         // the comment in `render()` above and `row_height_to_stride` below.
-        let clip = ListClipper::new(row_count as i32).items_height(row_stride);
+        let clip = ListClipper::new(row_count).items_height(row_stride);
         let tok = clip.begin(ui);
 
         for row_idx in tok.iter() {
-            let idx = row_idx as usize;
+            let idx = row_idx;
             let row = match get_row(idx) {
                 Some(r) => r,
                 None => continue,
@@ -322,7 +338,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         if let Some(ref style) = row_style
             && let Some(bg) = style.bg_color
         {
-            ui.table_set_bg_color(TableBgTarget::RowBg1, bg, -1);
+            ui.table_set_row_bg1_color(bg);
         }
 
         // Selection state — O(1) via foldhash-backed HashSet
@@ -336,7 +352,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 .and_then(|s| s.selection_color)
                 .unwrap_or(self.config.selection_color);
             if sel_bg[3] > 0.0 {
-                ui.table_set_bg_color(TableBgTarget::RowBg1, sel_bg, -1);
+                ui.table_set_row_bg1_color(sel_bg);
             }
         }
 
@@ -376,12 +392,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         if ui.is_item_hovered() && ui.is_mouse_clicked(MouseButton::Right) {
             self.handle_selection(ui, idx, row_count);
             self.context_row = Some(idx);
-            let hovered = ui.table_get_hovered_column();
-            self.context_col = if hovered >= 0 {
-                Some(hovered as usize)
-            } else {
-                None
-            };
+            self.context_col = ui.table_get_hovered_column().column().map(usize::from);
             self.open_context_menu = true;
         }
 
@@ -443,7 +454,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             if let Some(ref style) = cell_style
                 && let Some(bg) = style.bg_color
             {
-                ui.table_set_bg_color(TableBgTarget::CellBg, bg, -1);
+                ui.table_set_cell_bg_color(bg, dear_imgui_rs::TableColumnRef::Current);
             }
 
             if !self.cell_buf.is_empty() {

@@ -279,7 +279,7 @@ pub(super) fn render_node_immutable<T>(
                 pin_info.fill
             };
             draw.add_circle([px, py], r, c32(fill, 255))
-                .num_segments(6)
+                .num_segments(dear_imgui_rs::DrawSegmentCount::count(6))
                 .filled(true)
                 .build();
         } else {
@@ -324,7 +324,7 @@ pub(super) fn render_node_immutable<T>(
                 pin_info.fill
             };
             draw.add_circle([px, py], r, c32(fill, 255))
-                .num_segments(6)
+                .num_segments(dear_imgui_rs::DrawSegmentCount::count(6))
                 .filled(true)
                 .build();
         } else {

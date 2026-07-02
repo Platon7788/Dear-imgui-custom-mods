@@ -773,7 +773,7 @@ impl ApplicationHandler for App {
                         multiview_mask: None,
                     });
 
-                    if draw_data.total_vtx_count > 0 {
+                    if draw_data.total_vtx_count() > 0 {
                         gpu.renderer
                             .render_draw_data(draw_data, &mut pass)
                             .expect("render");

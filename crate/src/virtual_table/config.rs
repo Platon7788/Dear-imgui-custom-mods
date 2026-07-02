@@ -24,7 +24,7 @@
 //! }
 //! ```
 
-use dear_imgui_rs::TableFlags;
+use dear_imgui_rs::{TableFlags, TableOptions, TableSizingPolicy};
 
 fn default_table_flags() -> TableFlags {
     TableFlags::NONE
@@ -154,6 +154,19 @@ pub struct TableConfig {
     /// Default: `true` (existing behavior).
     pub show_headers: bool,
     pub context_menu: bool,
+    /// Suppress the right-click "Size column to fit / Size all columns
+    /// to default" popup that Dear ImGui's `TableHeader` emits
+    /// automatically when `Resizable` is on. When `false`, headers are
+    /// rendered with raw `ui.text()` instead of `ui.table_header()`,
+    /// so no native popup is registered for them at all. Defaults to
+    /// `true` (preserves pre-existing behaviour for callers that don't
+    /// opt in).
+    ///
+    /// `Sortable = true` is incompatible with this — `ui.text()` doesn't
+    /// emit sort indicators or click-to-sort detection. Callers must
+    /// flip `sortable = false` if they want the popup gone.
+    #[serde(default = "default_header_popup")]
+    pub header_popup: bool,
     pub freeze_cols: i32,
     pub freeze_rows: i32,
     pub sizing: SizingPolicy,
@@ -218,18 +231,27 @@ pub struct TableConfig {
     pub card_border: bool,
 }
 
+fn default_header_popup() -> bool {
+    true
+}
+
 impl Default for TableConfig {
     fn default() -> Self {
         let mut cfg: TableConfig = ron::from_str(include_str!("config.ron"))
             .expect("built-in virtual_table/config.ron is valid");
         cfg.extra_flags = TableFlags::NONE;
+        cfg.header_popup = true;
         cfg
     }
 }
 
 impl TableConfig {
-    /// Build Dear ImGui `TableFlags` from this config.
-    pub(crate) fn to_table_flags(&self) -> TableFlags {
+    /// Build Dear ImGui [`TableOptions`] (flags + single sizing policy) from
+    /// this config. In dear-imgui-rs 0.13+ the sizing policy is no longer a
+    /// bit in [`TableFlags`] (it's a mutually exclusive choice on
+    /// [`TableSizingPolicy`]) — we surface a `TableOptions` instead so callers
+    /// can pass it straight to `begin_table_with_flags`.
+    pub(crate) fn to_table_options(&self) -> TableOptions {
         let mut f = TableFlags::NONE;
 
         if self.resizable {
@@ -299,14 +321,15 @@ impl TableConfig {
             f &= !TableFlags::BORDERS_INNER_V;
         }
 
-        // Sizing policy
-        match self.sizing {
-            SizingPolicy::FixedFit => f |= TableFlags::SIZING_FIXED_FIT,
-            SizingPolicy::FixedSame => f |= TableFlags::SIZING_FIXED_SAME,
-            SizingPolicy::StretchProp => f |= TableFlags::SIZING_STRETCH_PROP,
-            SizingPolicy::StretchSame => f |= TableFlags::SIZING_STRETCH_SAME,
-        }
+        let sizing_policy = match self.sizing {
+            SizingPolicy::FixedFit => TableSizingPolicy::FixedFit,
+            SizingPolicy::FixedSame => TableSizingPolicy::FixedSame,
+            SizingPolicy::StretchProp => TableSizingPolicy::StretchProp,
+            SizingPolicy::StretchSame => TableSizingPolicy::StretchSame,
+        };
 
-        f | self.extra_flags
+        TableOptions::new()
+            .flags(f | self.extra_flags)
+            .sizing_policy(sizing_policy)
     }
 }

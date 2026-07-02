@@ -72,7 +72,7 @@ pub(super) fn render_node_body<T>(
     // NOTE: Direct struct access ((*ctx).FontSize) has wrong field offsets in
     // the Rust bindings — igGetFontSize()/igPushFont() are the only safe API.
     let scaled_size = (base_font_size * zoom).round().clamp(1.0, 256.0);
-    ui.push_font_with_size(None, scaled_size);
+    let _font_token = ui.push_font_with_size(None, scaled_size);
 
     let _spacing_token = ui.push_style_var(dear_imgui_rs::StyleVar::ItemSpacing([
         orig_spacing[0] * zoom,
@@ -131,11 +131,11 @@ pub(super) fn render_pin(
     match info.shape {
         PinShape::Circle => {
             draw.add_circle(center, r, c32(fill, 255))
-                .num_segments(12)
+                .num_segments(dear_imgui_rs::DrawSegmentCount::count(12))
                 .filled(true)
                 .build();
             draw.add_circle(center, r, c32(info.stroke, 200))
-                .num_segments(12)
+                .num_segments(dear_imgui_rs::DrawSegmentCount::count(12))
                 .build();
         }
         PinShape::Square => {

@@ -74,9 +74,7 @@ pub use crate::virtual_table::row::{CellStyle, CellValue, RowStyle};
 use crate::utils::clipboard::set_clipboard;
 use crate::utils::text::calc_text_size;
 use crate::virtual_table::column::{EditorKind, alignment_pad, editor_kind};
-use dear_imgui_rs::{
-    Key, ListClipper, MouseButton, SelectableFlags, TableBgTarget, TableRowFlags, Ui,
-};
+use dear_imgui_rs::{Key, ListClipper, MouseButton, SelectableFlags, TableRowFlags, Ui};
 
 use std::collections::HashSet;
 

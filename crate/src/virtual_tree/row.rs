@@ -40,14 +40,14 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 && let Some(sel_bg) = style.selection_color
                 && sel_bg[3] > 0.0
             {
-                ui.table_set_bg_color(TableBgTarget::RowBg1, sel_bg, -1);
+                ui.table_set_row_bg1_color(sel_bg);
             }
         } else if let Some(ref style) = row_style
             && let Some(bg) = style.bg_color
         {
-            ui.table_set_bg_color(TableBgTarget::RowBg1, bg, -1);
+            ui.table_set_row_bg1_color(bg);
         } else if self.config.striped && flat_idx % 2 == 1 {
-            ui.table_set_bg_color(TableBgTarget::RowBg1, [1.0, 1.0, 1.0, 0.02], -1);
+            ui.table_set_row_bg1_color([1.0, 1.0, 1.0, 0.02]);
         }
 
         let _row_id = ui.push_id(flat_idx);
@@ -80,11 +80,8 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 EditTrigger::SingleClick => true,
                 _ => false,
             };
-            if activate_edit {
-                let hovered_col = ui.table_get_hovered_column();
-                if hovered_col >= 0 {
-                    self.try_activate_edit(flat_idx, hovered_col as usize);
-                }
+            if activate_edit && let Some(hovered_col) = ui.table_get_hovered_column().column() {
+                self.try_activate_edit(flat_idx, hovered_col.get());
             }
         }
 
@@ -104,12 +101,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         if ui.is_item_hovered() && ui.is_mouse_clicked(MouseButton::Right) {
             self.handle_selection(ui, flat_idx);
             self.context_node = Some(node_id);
-            let hovered = ui.table_get_hovered_column();
-            self.context_col = if hovered >= 0 {
-                Some(hovered as usize)
-            } else {
-                None
-            };
+            self.context_col = ui.table_get_hovered_column().column().map(usize::from);
             self.open_context_menu = true;
         }
 
@@ -138,7 +130,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             if let Some(target) = ui.drag_drop_target() {
                 if let Some(Ok(payload)) = target.accept_payload::<NodeId, _>(
                     drag::DRAG_DROP_TYPE,
-                    dear_imgui_rs::DragDropFlags::NONE,
+                    dear_imgui_rs::DragDropTargetFlags::NONE,
                 ) && payload.delivery
                 {
                     let dragged_id = payload.data;
@@ -323,7 +315,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     if let Some(ref style) = cell_style
                         && let Some(bg) = style.bg_color
                     {
-                        ui.table_set_bg_color(TableBgTarget::CellBg, bg, -1);
+                        ui.table_set_cell_bg_color(bg, dear_imgui_rs::TableColumnRef::Current);
                     }
 
                     if !self.cell_buf.is_empty() {

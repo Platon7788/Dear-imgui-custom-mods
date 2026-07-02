@@ -78,35 +78,35 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             return;
         }
 
-        let mut flags = self.config.table.to_table_flags();
+        let mut options = self.config.table.to_table_options();
         // `TreeConfig::flat_headers` overrides `TableConfig::highlight_hovered`:
         // the column-wide tint painted by `HIGHLIGHT_HOVERED_COLUMN` would
         // defeat the per-header transparent push in `render_header` below.
         // Callers only need to flip `flat_headers` — nothing else.
         if self.config.flat_headers {
-            flags &= !dear_imgui_rs::TableFlags::HIGHLIGHT_HOVERED_COLUMN;
+            options.flags &= !dear_imgui_rs::TableFlags::HIGHLIGHT_HOVERED_COLUMN;
         }
         // `TreeConfig::striped` paints its own zebra (`render_row` overrides
         // `RowBg1` on odd rows). Drop ImGui's automatic `ROW_BG` alternation so
         // the two striping systems don't fight — exactly one is authoritative.
         if self.config.striped {
-            flags &= !dear_imgui_rs::TableFlags::ROW_BG;
+            options.flags &= !dear_imgui_rs::TableFlags::ROW_BG;
         }
         // Always enable ScrollY for fill_height — required for outer_size to work.
         if fill_height {
-            flags |= dear_imgui_rs::TableFlags::SCROLL_Y;
+            options.flags |= dear_imgui_rs::TableFlags::SCROLL_Y;
         }
         let _table = if fill_height {
             // Stretch table to fill remaining window height.
             // outer_size.y > 0 = fixed height; ImGui creates an internal child window
             // with scrollbar when content exceeds this height.
             let avail_h = ui.content_region_avail()[1].max(100.0);
-            match ui.begin_table_with_sizing(&self.id, col_count, flags, [0.0, avail_h], 0.0) {
+            match ui.begin_table_with_sizing(&self.id, col_count, options, [0.0, avail_h], 0.0) {
                 Some(t) => t,
                 None => return,
             }
         } else {
-            match ui.begin_table_with_flags(&self.id, col_count, flags) {
+            match ui.begin_table_with_flags(&self.id, col_count, options) {
                 Some(t) => t,
                 None => return,
             }
@@ -115,18 +115,27 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // Column setup
         for i in 0..col_count {
             let col = &self.columns[i];
+            // dear-imgui-rs 0.14 asserts non-zero user_id when
+            // `Some(_)` is passed. Default `col.user_id == 0` + first
+            // column `i == 0` collapses to `Id::from(0)` → panic.
+            // Bumping the fallback to `i as u32 + 1` keeps id stable
+            // per column slot while staying strictly positive.
+            let user_id = dear_imgui_rs::Id::from(col.user_id.max(i as u32 + 1));
             ui.table_setup_column(
                 &col.name,
                 col.imgui_flags(),
-                col.init_width_or_weight(),
-                col.user_id.max(i as u32),
+                Some(col.column_width()),
+                Some(user_id),
             );
             if !col.visible {
-                ui.table_set_column_enabled(i as i32, false);
+                ui.table_set_column_enabled(i, false);
             }
         }
 
-        ui.table_setup_scroll_freeze(self.config.table.freeze_cols, self.config.table.freeze_rows);
+        ui.table_setup_scroll_freeze(
+            self.config.table.freeze_cols.max(0) as usize,
+            self.config.table.freeze_rows.max(0) as usize,
+        );
 
         // Header
         self.render_header(ui);
@@ -154,7 +163,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         // whole `Style` struct each frame.
         let cell_padding_y = unsafe { (*dear_imgui_rs::sys::igGetStyle()).CellPadding.y };
         let row_stride = crate::virtual_table::row_height_to_stride(row_h, cell_padding_y);
-        let clip = ListClipper::new(row_count as i32).items_height(row_stride);
+        let clip = ListClipper::new(row_count).items_height(row_stride);
         let tok = clip.begin(ui);
 
         let scroll_target = self
@@ -163,7 +172,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             .and_then(|id| self.flat_view.index_of(id));
 
         for flat_idx in tok.iter() {
-            let idx = flat_idx as usize;
+            let idx = flat_idx;
             self.render_row(ui, idx);
 
             // Scroll to target node
@@ -214,7 +223,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
     pub(super) fn render_header(&self, ui: &Ui) {
         ui.table_next_row_with_flags(TableRowFlags::HEADERS, 0.0);
         for i in 0..self.columns.len() {
-            if !ui.table_set_column_index(i as i32) {
+            if !ui.table_set_column_index(i) {
                 continue;
             }
             let col = &self.columns[i];
@@ -224,6 +233,17 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             if pad > 0.0 {
                 let cursor = ui.cursor_pos();
                 ui.set_cursor_pos([cursor[0] + pad, cursor[1]]);
+            }
+            // When `header_popup = false` skip the native ImGui
+            // `TableHeader` call entirely — that's what attaches the
+            // "Size column to fit / Size all columns to default"
+            // right-click popup. Raw `ui.text()` keeps the caption
+            // visible without registering a popup. (Sortable + drag-
+            // reorder gestures are lost — see VirtualTable's mirror
+            // comment for the same trade-off.)
+            if !self.config.header_popup {
+                ui.text(&col.name);
+                continue;
             }
             // Tightly scope the header-flatten style so it can't bleed
             // into `Selectable` rows below (those share
@@ -258,7 +278,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             self.sort_state.specs.clear();
             for s in specs.iter() {
                 self.sort_state.specs.push(SortSpec {
-                    column_index: s.column_index as usize,
+                    column_index: usize::from(s.column_index),
                     ascending: s.sort_direction == dear_imgui_rs::SortDirection::Ascending,
                 });
             }

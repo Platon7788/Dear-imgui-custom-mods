@@ -105,7 +105,10 @@ pub fn render_titlebar(
     // painted over the titlebar would otherwise let a single click both
     // dismiss the popup AND fire the underlying ×/maximise/minimise
     // button. Hover state still resolves so cursors still update.
-    let popup_blocks = ui.is_popup_open_with_flags("", PopupFlags::ANY_POPUP);
+    let popup_blocks = ui.is_popup_open_with_flags(
+        "",
+        PopupQueryFlags::ANY_POPUP_ID | PopupQueryFlags::ANY_POPUP_LEVEL,
+    );
     let clicked = !popup_blocks && ui.is_mouse_clicked(MouseButton::Left);
     let double_clicked = !popup_blocks && ui.is_mouse_double_clicked(MouseButton::Left);
     let mut action = TitlebarAction::None;

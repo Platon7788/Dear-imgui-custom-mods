@@ -82,6 +82,14 @@ pub struct TreeConfig {
     /// the header row (click-to-sort, drag-reorder, etc.).
     pub flat_headers: bool,
 
+    /// Suppress the right-click "Size column to fit / Size all columns
+    /// to default" popup that Dear ImGui's `TableHeader` emits. Same
+    /// semantics as `VirtualTable::TableConfig::header_popup` —
+    /// default `true` (existing behaviour); flip to `false` for read-
+    /// only trees where the popup is noise.
+    #[serde(default = "default_header_popup_tree")]
+    pub header_popup: bool,
+
     /// Maximum number of nodes the tree can hold.
     /// Must be in range `1..=MAX_TREE_NODES` (clamped automatically).
     /// Default: [`MAX_TREE_NODES`](super::arena::MAX_TREE_NODES) (10,000,000).
@@ -109,9 +117,15 @@ fn default_card_border_true() -> bool {
     true
 }
 
+fn default_header_popup_tree() -> bool {
+    true
+}
+
 impl Default for TreeConfig {
     fn default() -> Self {
-        ron::from_str(include_str!("config.ron"))
-            .expect("built-in virtual_tree/config.ron is valid")
+        let mut cfg: TreeConfig = ron::from_str(include_str!("config.ron"))
+            .expect("built-in virtual_tree/config.ron is valid");
+        cfg.header_popup = true;
+        cfg
     }
 }

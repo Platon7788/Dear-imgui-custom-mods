@@ -319,13 +319,13 @@ pub(super) fn render_minimap<T>(
 
     // Outer ring
     draw.add_circle([cx, cy], r_outer, c_outer)
-        .num_segments(24)
+        .num_segments(dear_imgui_rs::DrawSegmentCount::count(24))
         .thickness(1.5)
         .build();
 
     // Inner ring
     draw.add_circle([cx, cy], r_inner, c_inner)
-        .num_segments(16)
+        .num_segments(dear_imgui_rs::DrawSegmentCount::count(16))
         .thickness(1.0)
         .build();
 
@@ -366,7 +366,7 @@ pub(super) fn render_minimap<T>(
 
     // Center dot
     draw.add_circle([cx, cy], 1.5, c_dot)
-        .num_segments(8)
+        .num_segments(dear_imgui_rs::DrawSegmentCount::count(8))
         .filled(true)
         .build();
 }

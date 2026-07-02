@@ -13,7 +13,7 @@ pub(super) fn draw_node_shape(
     pos: [f32; 2],
     r: f32,
     fill: u32,
-    num_segments: i32,
+    num_segments: dear_imgui_rs::DrawSegmentCount,
 ) {
     match kind {
         // Regular + Custom → filled circle.
@@ -51,7 +51,7 @@ pub(super) fn draw_node_shape(
         NodeKind::Cluster => {
             draw.add_circle(pos, r, fill)
                 .filled(true)
-                .num_segments(8)
+                .num_segments(dear_imgui_rs::DrawSegmentCount::count(8))
                 .build();
         }
     }
@@ -65,7 +65,7 @@ pub(super) fn draw_node_outline(
     r: f32,
     color: u32,
     thickness: f32,
-    num_segments: i32,
+    num_segments: dear_imgui_rs::DrawSegmentCount,
 ) {
     match kind {
         NodeKind::Tag => {
@@ -96,7 +96,7 @@ pub(super) fn draw_node_outline(
         NodeKind::Cluster => {
             draw.add_circle(pos, r, color)
                 .thickness(thickness)
-                .num_segments(8)
+                .num_segments(dear_imgui_rs::DrawSegmentCount::count(8))
                 .build();
         }
         _ => {

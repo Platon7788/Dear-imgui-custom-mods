@@ -145,10 +145,10 @@ pub(super) fn draw_nodes(
             continue;
         }
 
-        let num_segments: i32 = if pass.use_lod || screen_radius < 4.0 {
-            4
+        let num_segments = if pass.use_lod || screen_radius < 4.0 {
+            dear_imgui_rs::DrawSegmentCount::count(4)
         } else {
-            0
+            dear_imgui_rs::DrawSegmentCount::AUTO
         };
 
         // Hover fade: dim non-neighbor nodes.
@@ -199,7 +199,7 @@ pub(super) fn draw_nodes(
                 let glow_alpha = (0.10 / i as f32) * node_alpha;
                 draw.add_circle(screen_pos, glow_r, col(with_alpha(fill_color, glow_alpha)))
                     .filled(true)
-                    .num_segments(0)
+                    .num_segments(dear_imgui_rs::DrawSegmentCount::AUTO)
                     .build();
             }
         }
