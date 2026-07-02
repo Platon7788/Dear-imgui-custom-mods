@@ -42,7 +42,11 @@ fn diagnostic_real_fold_detection_collapse() {
     assert!(ed.folds_active, "fold should be active after toggle");
     // Region (0,4): hide lines 1..=4 (4 lines) → 7 − 4 = 3 display rows.
     assert_eq!(ed.total_visual_rows(), 3, "collapse total");
-    assert_eq!(ed.visual_row_of(5, 0), 1, "after1 sits right after the header");
+    assert_eq!(
+        ed.visual_row_of(5, 0),
+        1,
+        "after1 sits right after the header"
+    );
     assert_eq!(ed.visual_row_to_line(1), (5, 0), "row 1 maps to after1");
     assert_eq!(ed.visual_row_to_line(2), (6, 0), "row 2 maps to after2");
 }
@@ -62,7 +66,11 @@ fn folded_region_collapses_visual_rows() {
     }];
     ed.rebuild_fold_display();
     assert!(ed.folds_active);
-    assert_eq!(ed.total_visual_rows(), 5, "8 lines − 3 hidden = 5 display rows");
+    assert_eq!(
+        ed.total_visual_rows(),
+        5,
+        "8 lines − 3 hidden = 5 display rows"
+    );
     // Rows: line0→0, header line1→1, [2..4 hidden], line5→2, line6→3, line7→4.
     assert_eq!(ed.visual_row_of(1, 0), 1);
     assert_eq!(ed.visual_row_of(5, 0), 2);
@@ -127,7 +135,10 @@ fn doc_max_line_width_is_document_wide_and_tab_aware() {
     // tabs are measured by width (char-count would give 20 < "abc"'s 30).
     ed.set_text("abc\n\tx\nab");
     let w = ed.doc_max_line_width();
-    assert!((w - 50.0).abs() < 0.01, "expected 50 (tab-aware, doc-wide), got {w}");
+    assert!(
+        (w - 50.0).abs() < 0.01,
+        "expected 50 (tab-aware, doc-wide), got {w}"
+    );
 }
 
 #[test]
@@ -165,8 +176,7 @@ fn wrap_cache_incremental_matches_full_rebuild() {
     ed.char_advance = 10.0;
     ed.set_text("aaaa bbbb cccc dddd\nshort\neeee ffff gggg hhhh");
     ed.update_wrap_cache(width);
-    ed.buffer
-        .set_cursor(buffer::CursorPos::new(1, 5));
+    ed.buffer.set_cursor(buffer::CursorPos::new(1, 5));
     ed.buffer.insert_text(" plus a good deal more text here");
     ed.update_wrap_cache(width); // incremental
 

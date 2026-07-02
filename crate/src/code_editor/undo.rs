@@ -48,7 +48,9 @@ impl UndoStack {
     /// is O(n) per keystroke — this check turns N keystrokes into a single
     /// allocation.
     pub fn should_push(&self, version: u64, force: bool) -> bool {
-        force || version == 0 || version.saturating_sub(self.last_push_version) > self.group_threshold
+        force
+            || version == 0
+            || version.saturating_sub(self.last_push_version) > self.group_threshold
     }
 
     /// Push a snapshot before an edit. Consecutive char edits are grouped.
@@ -57,7 +59,10 @@ impl UndoStack {
     pub fn push(&mut self, entry: UndoEntry, force: bool) {
         let version = entry.version;
         // Group consecutive single-char edits
-        if !force && version > 0 && version.saturating_sub(self.last_push_version) <= self.group_threshold {
+        if !force
+            && version > 0
+            && version.saturating_sub(self.last_push_version) <= self.group_threshold
+        {
             // Don't push — the previous snapshot still covers this edit
             self.last_push_version = version;
             // Still clear redo on new edits

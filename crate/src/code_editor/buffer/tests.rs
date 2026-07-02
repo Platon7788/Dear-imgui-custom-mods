@@ -42,10 +42,16 @@ fn multi_backspace_line_merge_stays_in_bounds() {
     b.add_cursor(CursorPos::new(3, 0));
     b.multi_backspace();
     assert_eq!(b.text(), "ab\ncd");
-    assert_eq!(sorted_cursors(&b), vec![CursorPos::new(0, 1), CursorPos::new(1, 1)]);
+    assert_eq!(
+        sorted_cursors(&b),
+        vec![CursorPos::new(0, 1), CursorPos::new(1, 1)]
+    );
     for c in b.extra_cursors() {
         assert!(c.line < b.line_count(), "extra cursor line out of bounds");
-        assert!(c.col <= b.line_char_count(c.line), "extra cursor col out of bounds");
+        assert!(
+            c.col <= b.line_char_count(c.line),
+            "extra cursor col out of bounds"
+        );
     }
 }
 
@@ -58,7 +64,10 @@ fn multi_insert_char_same_line_no_drift() {
     b.add_cursor(CursorPos::new(0, 3));
     b.multi_insert_char('X');
     assert_eq!(b.text(), "aXbcXd");
-    assert_eq!(sorted_cursors(&b), vec![CursorPos::new(0, 2), CursorPos::new(0, 5)]);
+    assert_eq!(
+        sorted_cursors(&b),
+        vec![CursorPos::new(0, 2), CursorPos::new(0, 5)]
+    );
 }
 
 #[test]
@@ -68,7 +77,10 @@ fn multi_delete_line_merge_stays_in_bounds() {
     b.add_cursor(CursorPos::new(2, 1)); // end of "c"
     b.multi_delete();
     assert_eq!(b.text(), "ab\ncd");
-    assert_eq!(sorted_cursors(&b), vec![CursorPos::new(0, 1), CursorPos::new(1, 1)]);
+    assert_eq!(
+        sorted_cursors(&b),
+        vec![CursorPos::new(0, 1), CursorPos::new(1, 1)]
+    );
 }
 
 #[test]
@@ -84,7 +96,10 @@ fn clamp_extra_cursors_brings_stale_in_bounds() {
     b.clamp_extra_cursors();
     for c in b.extra_cursors() {
         assert!(c.line < b.line_count(), "extra cursor line still OOB");
-        assert!(c.col <= b.line_char_count(c.line), "extra cursor col still OOB");
+        assert!(
+            c.col <= b.line_char_count(c.line),
+            "extra cursor col still OOB"
+        );
     }
 }
 
@@ -98,7 +113,11 @@ fn multi_insert_char_multi_line_positions() {
     assert_eq!(b.text(), ">foo\n>bar\n>baz");
     assert_eq!(
         sorted_cursors(&b),
-        vec![CursorPos::new(0, 1), CursorPos::new(1, 1), CursorPos::new(2, 1)]
+        vec![
+            CursorPos::new(0, 1),
+            CursorPos::new(1, 1),
+            CursorPos::new(2, 1)
+        ]
     );
 }
 

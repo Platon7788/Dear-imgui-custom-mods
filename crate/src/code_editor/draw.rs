@@ -292,7 +292,11 @@ impl CodeEditor {
 
         let line_chars = line_str.chars().count();
         let sel_start = if line_idx == start.line { start.col } else { 0 };
-        let sel_end = if line_idx == end.line { end.col } else { line_chars };
+        let sel_end = if line_idx == end.line {
+            end.col
+        } else {
+            line_chars
+        };
 
         // Clip to the sub-row column range
         let vis_start = sel_start.max(col_start);

@@ -180,7 +180,10 @@ impl CodeEditor {
                 let clip_min = draw_list.clip_rect_min();
                 let clip_max = draw_list.clip_rect_max();
                 let _code_clip = draw_list.push_clip_rect(
-                    [origin_x + gutter_width - self.char_advance * 0.5, clip_min[1]],
+                    [
+                        origin_x + gutter_width - self.char_advance * 0.5,
+                        clip_min[1],
+                    ],
                     [clip_max[0], clip_max[1]],
                     true,
                 );
@@ -392,11 +395,7 @@ impl CodeEditor {
                 let ey = win_y + ev as f32 * self.line_height;
                 if ey >= origin_y - self.line_height && ey <= origin_y + inner_size[1] {
                     draw_list
-                        .add_line(
-                            [ex, ey],
-                            [ex, ey + self.line_height],
-                            extra_cursor_col,
-                        )
+                        .add_line([ex, ey], [ex, ey + self.line_height], extra_cursor_col)
                         .thickness(1.5)
                         .build();
                 }
