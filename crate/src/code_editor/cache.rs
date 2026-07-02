@@ -153,8 +153,14 @@ impl CodeEditor {
         }
         self.blink_timer += dt;
         if self.blink_timer >= self.config.cursor_blink_rate {
-            self.blink_timer -= self.config.cursor_blink_rate;
-            self.cursor_visible = !self.cursor_visible;
+            // Handle a `dt` spanning several blink periods in one step (heavy
+            // frame / low FPS) without stuttering: subtract all whole periods
+            // and flip the caret once per elapsed period (by parity).
+            let periods = (self.blink_timer / self.config.cursor_blink_rate) as u32;
+            self.blink_timer -= periods as f32 * self.config.cursor_blink_rate;
+            if periods % 2 == 1 {
+                self.cursor_visible = !self.cursor_visible;
+            }
         }
     }
 

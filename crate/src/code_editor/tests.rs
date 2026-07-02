@@ -24,6 +24,19 @@ fn test_set_get_text() {
 }
 
 #[test]
+fn blink_toggles_by_parity_across_multiple_periods() {
+    let mut ed = CodeEditor::new("t");
+    ed.config_mut().cursor_blink_rate = 0.5;
+    // cursor starts visible.
+    ed.update_blink(1.0); // 2 whole periods → even → stays visible
+    assert!(ed.cursor_visible);
+    ed.update_blink(0.5); // 1 period → toggles → hidden
+    assert!(!ed.cursor_visible);
+    ed.update_blink(1.5); // 3 periods → odd → toggles → visible
+    assert!(ed.cursor_visible);
+}
+
+#[test]
 fn config_ron_colors_match_dark_default_theme() {
     // config.ron inlines the full dark palette; guard against it drifting from
     // EditorTheme::DarkDefault so a fresh editor's colours match set_theme().

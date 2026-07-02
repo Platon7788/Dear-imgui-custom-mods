@@ -357,7 +357,13 @@ impl CodeEditor {
                 .thickness(1.5)
                 .build();
 
-            // Draw extra cursors
+            // Draw extra cursors — themed from the caret colour (slightly
+            // translucent to read as secondary) instead of a hardcoded blue
+            // that clashed on light themes.
+            let extra_cursor_col = {
+                let c = self.config.colors.cursor;
+                col32([c[0], c[1], c[2], 0.85])
+            };
             for extra in self.buffer.extra_cursors() {
                 let ev = self.visual_row_of(extra.line, extra.col);
                 let extra_line_str = self.buffer.line(extra.line);
@@ -387,7 +393,7 @@ impl CodeEditor {
                         .add_line(
                             [ex, ey],
                             [ex, ey + self.line_height],
-                            col32([0.6, 0.8, 1.0, 0.85]),
+                            extra_cursor_col,
                         )
                         .thickness(1.5)
                         .build();
