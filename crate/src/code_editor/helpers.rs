@@ -158,12 +158,12 @@ pub(super) fn col_to_x(line: &str, col: usize, char_advance: f32, tab_size: u8) 
 
 /// Convert a pixel X offset to a column index, accounting for tab characters.
 ///
-/// Uses a **0.67-width** threshold (from ImGuiColorTextEdit): clicking the
-/// left third of a character places the cursor *before* it; clicking the
-/// right two-thirds places it *after*.
+/// Uses the standard **0.5-width** (midpoint) threshold: clicking the left
+/// half of a character places the caret *before* it, the right half *after*,
+/// so the caret snaps to the nearest gap.
 ///
 /// Tab-free fast path matches [`col_to_x`] — closed-form `x / char_advance`
-/// via direct floor division with the 0.67 threshold applied.
+/// via direct floor division with the 0.5 threshold applied.
 #[inline]
 pub(super) fn x_to_col(line: &str, x: f32, char_advance: f32, tab_size: u8) -> usize {
     if !line.contains('\t') && char_advance > 0.0 {
@@ -172,7 +172,7 @@ pub(super) fn x_to_col(line: &str, x: f32, char_advance: f32, tab_size: u8) -> u
         if x <= 0.0 {
             return 0;
         }
-        let raw = ((x + char_advance * 0.33) / char_advance).floor() as usize;
+        let raw = ((x + char_advance * 0.5) / char_advance).floor() as usize;
         return raw.min(max_col);
     }
     let mut cur_x = 0.0f32;
@@ -182,7 +182,7 @@ pub(super) fn x_to_col(line: &str, x: f32, char_advance: f32, tab_size: u8) -> u
         } else {
             char_advance
         };
-        if x < cur_x + ch_w * 0.67 {
+        if x < cur_x + ch_w * 0.5 {
             return i;
         }
         cur_x += ch_w;

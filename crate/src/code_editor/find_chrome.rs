@@ -322,8 +322,9 @@ impl CodeEditor {
             row_h
         };
 
-        // Dark toolbar background
-        let _bg = ui.push_style_color(StyleColor::ChildBg, [0.11, 0.13, 0.17, 1.0]);
+        // Toolbar background from the theme gutter panel colour (was a
+        // hardcoded dark box that clashed on light themes).
+        let _bg = ui.push_style_color(StyleColor::ChildBg, self.config.colors.gutter_bg);
 
         ui.child_window("##find_bar")
             .size([avail_w, bar_h])
@@ -379,10 +380,10 @@ impl CodeEditor {
                 if self.find_replace.query.is_empty() {
                     ui.text_disabled("…");
                 } else if self.find_replace.matches.is_empty() {
-                    ui.text_colored([0.9, 0.35, 0.35, 1.0], s.no_matches);
+                    ui.text_colored(self.config.colors.error_underline, s.no_matches);
                 } else {
                     ui.text_colored(
-                        [0.55, 0.85, 0.55, 1.0],
+                        self.config.colors.line_number_active,
                         format!(
                             "{} / {}",
                             self.find_replace.current_match + 1,

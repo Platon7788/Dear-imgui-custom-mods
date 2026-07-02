@@ -6,6 +6,12 @@ use super::*;
 
 impl CodeEditor {
     pub(super) fn handle_mouse(&mut self, ui: &Ui, gutter_width: f32, inner_size: [f32; 2]) {
+        // Clear the drag latch as soon as the button is up, even if the pointer
+        // has left the window — otherwise releasing a drag outside the window
+        // leaves `mouse_selecting` stuck on and a later hover resumes selecting.
+        if self.mouse_selecting && ui.is_mouse_released(MouseButton::Left) {
+            self.mouse_selecting = false;
+        }
         if !ui.is_window_hovered() {
             return;
         }
@@ -116,7 +122,6 @@ impl CodeEditor {
                     } else {
                         self.buffer.set_cursor_clear_sel(click_pos);
                     }
-                    self.mouse_selecting = true;
                 }
                 2 => {
                     self.buffer.set_cursor(click_pos);
@@ -128,6 +133,10 @@ impl CodeEditor {
                 }
                 _ => {}
             }
+            // Latch drag-select for every click kind, so a drag after a
+            // double/triple click keeps extending the selection (from the
+            // word/line anchor) instead of doing nothing.
+            self.mouse_selecting = true;
             self.reset_blink();
         }
 
@@ -137,6 +146,17 @@ impl CodeEditor {
                 .selection()
                 .map_or(self.buffer.cursor(), |s| s.anchor);
             self.buffer.set_selection(anchor, click_pos);
+            // Edge auto-scroll: dragging near the top/bottom edge scrolls so
+            // the selection can extend past the visible viewport.
+            let edge = self.line_height * 1.5;
+            if my < origin_y + edge {
+                self.scroll_y = (self.scroll_y - self.line_height).max(0.0);
+                self.target_scroll_y = self.scroll_y;
+            } else if my > content_max_y - edge {
+                let max_scroll = (self.total_visual_rows() as f32 * self.line_height).max(0.0);
+                self.scroll_y = (self.scroll_y + self.line_height).min(max_scroll);
+                self.target_scroll_y = self.scroll_y;
+            }
         }
 
         if ui.is_mouse_released(MouseButton::Left) {
