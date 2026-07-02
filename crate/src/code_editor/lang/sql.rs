@@ -1,8 +1,8 @@
 //! SQL tokenizer.
 //!
 //! Case-insensitive keyword highlighting, `--` line comments and
-//! `/* … */` block comments (scanned within a single line — this
-//! tokenizer is stateless), single-quoted strings with `''` escaping,
+//! `/* … */` block comments (non-nesting, carried across lines via
+//! `LineState::BlockComment`), single-quoted strings with `''` escaping,
 //! and double-quoted / backtick quoted identifiers.
 
 use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
@@ -107,8 +107,17 @@ impl SyntaxDefinition for SqlLang {
         "SQL"
     }
 
-    fn tokenize_line(&self, line: &str, _state: LineState) -> (Vec<Token>, LineState) {
-        (tokenize(line), LineState::Code)
+    fn tokenize_line(&self, line: &str, state: LineState) -> (Vec<Token>, LineState) {
+        // Non-nesting `/* … */` comments carry as a plain "inside a comment"
+        // flag mapped to/from `LineState` (same scheme as XML/JSON).
+        let in_bc = matches!(state, LineState::BlockComment(_));
+        let (tokens, still_open) = tokenize(line, in_bc);
+        let end = if still_open {
+            LineState::BlockComment(1)
+        } else {
+            LineState::Code
+        };
+        (tokens, end)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {
@@ -136,11 +145,29 @@ impl SyntaxDefinition for SqlLang {
 
 // ── Tokenizer ───────────────────────────────────────────────────────────────
 
-fn tokenize(line: &str) -> Vec<Token> {
+fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut tokens = Vec::with_capacity(16);
     let mut i = 0;
+
+    // ── Resume: inside a /* … */ block comment carried from a prior line ──
+    if in_block_comment {
+        let start = i;
+        while i < len {
+            if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                i += 2;
+                in_block_comment = false;
+                break;
+            }
+            i += 1;
+        }
+        tokens.push(Token {
+            kind: TokenKind::Comment,
+            start,
+            len: i - start,
+        });
+    }
 
     while i < len {
         let b = bytes[i];
@@ -166,20 +193,26 @@ fn tokenize(line: &str) -> Vec<Token> {
                 start: i,
                 len: len - i,
             });
-            return tokens;
+            return (tokens, in_block_comment);
         }
 
-        // ── Block comment (`/* … */`) — non-nesting, single line ─────────
-        // Scanned to the first `*/`; if unterminated, runs to end of line.
+        // ── Block comment (`/* … */`) — non-nesting, carries across lines ─
+        // Scanned to the first `*/`; if unterminated, `in_block_comment`
+        // carries the open comment to the next line.
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
             let start = i;
             i += 2;
+            let mut closed = false;
             while i < len {
                 if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
                     i += 2;
+                    closed = true;
                     break;
                 }
                 i += 1;
+            }
+            if !closed {
+                in_block_comment = true;
             }
             tokens.push(Token {
                 kind: TokenKind::Comment,
@@ -327,7 +360,7 @@ fn tokenize(line: &str) -> Vec<Token> {
         i += ch_len;
     }
 
-    tokens
+    (tokens, in_block_comment)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -381,6 +414,29 @@ mod tests {
         assert!(
             toks.iter()
                 .any(|t| t.0 == TokenKind::Comment && t.1 == "/* open")
+        );
+    }
+
+    #[test]
+    fn block_comment_carries_across_lines() {
+        // Line 1 opens the comment and returns an "in comment" carry.
+        let (_t1, st1) = tokenize_line("SELECT 1 /* open", &Language::Sql, LineState::Code);
+        assert_eq!(st1, LineState::BlockComment(1));
+
+        // Line 2 is entirely inside the comment and stays open.
+        let (t2, st2) = tokenize_line("still inside the comment", &Language::Sql, st1);
+        assert_eq!(st2, LineState::BlockComment(1));
+        assert!(t2.iter().all(|t| t.kind == TokenKind::Comment));
+
+        // Line 3 closes with `*/`; the rest tokenizes as code again.
+        let line3 = "*/ SELECT 1";
+        let (t3, st3) = tokenize_line(line3, &Language::Sql, st2);
+        assert_eq!(st3, LineState::Code);
+        assert!(t3.iter().any(|t| t.kind == TokenKind::Comment)); // closing `*/`
+        assert!(
+            t3.iter()
+                .any(|t| t.kind == TokenKind::Keyword
+                    && &line3[t.start..t.start + t.len] == "SELECT")
         );
     }
 
