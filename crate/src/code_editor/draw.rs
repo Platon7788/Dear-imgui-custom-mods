@@ -292,27 +292,35 @@ impl CodeEditor {
 
         let line_chars = line_str.chars().count();
         let sel_start = if line_idx == start.line { start.col } else { 0 };
-        let sel_end = if line_idx == end.line {
-            end.col
-        } else {
-            line_chars + 1
-        };
+        let sel_end = if line_idx == end.line { end.col } else { line_chars };
 
         // Clip to the sub-row column range
         let vis_start = sel_start.max(col_start);
         let vis_end = sel_end.min(col_end);
 
-        if vis_start >= vis_end {
+        // A line fully inside the selection (not the end line) includes the
+        // trailing newline; extend one glyph past the real EOL so blank/short
+        // middle lines still show the highlight instead of a gap. Only on the
+        // sub-row that actually ends the logical line (wrap-aware).
+        let eol_pad = if line_idx < end.line && vis_end >= line_chars {
+            self.char_advance
+        } else {
+            0.0
+        };
+
+        if vis_start > vis_end || (vis_start == vis_end && eol_pad <= 0.0) {
             return;
         }
 
         // X positions are relative to col_start (the sub-row starts at text_start_x)
+        let base_x = col_to_x(line_str, col_start, self.char_advance, self.config.tab_size);
         let x1 = text_start_x
             + col_to_x(line_str, vis_start, self.char_advance, self.config.tab_size)
-            - col_to_x(line_str, col_start, self.char_advance, self.config.tab_size);
+            - base_x;
         let x2 = text_start_x
             + col_to_x(line_str, vis_end, self.char_advance, self.config.tab_size)
-            - col_to_x(line_str, col_start, self.char_advance, self.config.tab_size);
+            - base_x
+            + eol_pad;
         let bg = self.config.colors.selection_bg;
         draw_list
             .add_rect([x1, y], [x2, y + self.line_height], col32(bg))
@@ -392,8 +400,10 @@ impl CodeEditor {
             // Place fold icon at right edge of gutter, between line numbers and code
             let icon_x = win_x + gutter_width - self.char_advance * 1.8;
             let icon_y = y;
-            let color = col32([0.55, 0.58, 0.65, 0.9]);
-            let color_hover = col32([0.75, 0.80, 0.90, 1.0]);
+            // Theme-derived so the chevron stays legible on light themes
+            // (the old hardcoded grey vanished on white backgrounds).
+            let color = col32(self.config.colors.line_number);
+            let color_hover = col32(self.config.colors.line_number_active);
 
             // Use MDI chevron icons for crisp rendering at any size.
             let icon = if region.folded {
@@ -425,13 +435,23 @@ impl CodeEditor {
                     // (Cyrillic, CJK, emoji) made the badge drift
                     // by N bytes for any non-ASCII source line.
                     // Same fix for `badge_w` below.
-                    let badge_x = text_x + line_str.chars().count() as f32 * self.char_advance;
+                    // Tab-aware anchor so the badge doesn't overlap code on
+                    // tab-indented folded lines.
+                    let badge_x = text_x
+                        + col_to_x(
+                            line_str,
+                            line_str.chars().count(),
+                            self.char_advance,
+                            self.config.tab_size,
+                        );
                     let badge_y = y;
                     let badge_w = badge.chars().count() as f32 * self.char_advance;
 
-                    // Badge background
-                    let bg = col32([0.20, 0.22, 0.28, 0.85]);
-                    let border = col32([0.35, 0.38, 0.45, 0.6]);
+                    // Badge colours from the gutter palette (readable on both
+                    // dark and light themes, unlike the old hardcoded dark box).
+                    let bg_c = self.config.colors.gutter_bg;
+                    let bg = col32([bg_c[0], bg_c[1], bg_c[2], 0.95]);
+                    let border = col32(self.config.colors.gutter_separator);
                     draw_list
                         .add_rect(
                             [badge_x, badge_y + 1.0],
@@ -451,7 +471,7 @@ impl CodeEditor {
                         .build();
 
                     // Badge text
-                    let text_col = col32([0.60, 0.65, 0.72, 1.0]);
+                    let text_col = col32(self.config.colors.line_number);
                     draw_list.add_text([badge_x, badge_y], text_col, &badge);
                 }
             }
