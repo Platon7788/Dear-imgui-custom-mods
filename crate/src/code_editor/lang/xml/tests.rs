@@ -132,3 +132,171 @@ fn mixed_content() {
     );
     assert!(toks.iter().any(|t| t.0 == TokenKind::Keyword && t.1 == "b"));
 }
+
+// ── <script> / <style> raw-text bodies ──────────────────────────────────────
+
+/// Tokenize `line` starting from `state`, returning `(kind, text)` pairs plus
+/// the carry-state at end of line.
+fn tok_state(line: &str, state: LineState) -> (Vec<(TokenKind, String)>, LineState) {
+    let (tokens, end) = tokenize_line(line, &Language::Xml, state);
+    let pairs = tokens
+        .iter()
+        .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
+        .collect();
+    (pairs, end)
+}
+
+#[test]
+fn script_open_enters_raw_text() {
+    let (toks, state) = tok_state("<script>", LineState::Code);
+    assert_eq!(state, LineState::HtmlRaw { is_style: false });
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::Keyword && t.1 == "script")
+    );
+}
+
+#[test]
+fn style_open_enters_raw_text() {
+    let (_toks, state) = tok_state("<style>", LineState::Code);
+    assert_eq!(state, LineState::HtmlRaw { is_style: true });
+}
+
+#[test]
+fn script_with_attrs_enters_raw_text() {
+    let (_toks, state) = tok_state(r#"<script type="text/javascript">"#, LineState::Code);
+    assert_eq!(state, LineState::HtmlRaw { is_style: false });
+}
+
+/// Self-closed `<script/>` must NOT enter raw-text mode.
+#[test]
+fn self_closed_script_stays_code() {
+    let (_toks, state) = tok_state("<script/>", LineState::Code);
+    assert_eq!(state, LineState::Code);
+}
+
+/// A `<` in a raw-text body (e.g. `a < b` in JS) must stay raw text — it does
+/// NOT start a tag — and the state stays `HtmlRaw`.
+#[test]
+fn raw_body_lt_stays_string() {
+    let entry = LineState::HtmlRaw { is_style: false };
+    let (toks, state) = tok_state("  if (a < b) return;", entry);
+    assert_eq!(state, entry, "no close tag → still raw");
+    assert!(
+        toks.iter().all(|t| t.0 == TokenKind::String),
+        "raw body must be all String, got {toks:?}"
+    );
+    // The whole line is one raw-text run (a `<` did not split it).
+    assert_eq!(toks.len(), 1);
+    assert_eq!(toks[0].1, "  if (a < b) return;");
+}
+
+/// The matching `</script>` closes the raw-text body: the close tag is markup
+/// again and the state returns to `Code`.
+#[test]
+fn raw_body_close_returns_code() {
+    let entry = LineState::HtmlRaw { is_style: false };
+    let (toks, state) = tok_state("var x = 1;</script>", entry);
+    assert_eq!(state, LineState::Code);
+    // Body before the close is raw String.
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::String && t.1 == "var x = 1;")
+    );
+    // The close tag tokenizes as markup.
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::Punctuation && t.1 == "</")
+    );
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::Keyword && t.1 == "script")
+    );
+}
+
+/// A `</style>` close is matched case-insensitively.
+#[test]
+fn raw_style_close_case_insensitive() {
+    let entry = LineState::HtmlRaw { is_style: true };
+    let (_toks, state) = tok_state("body { color: red; }</STYLE>", entry);
+    assert_eq!(state, LineState::Code);
+}
+
+/// A `</script>` while in a `<style>` body must NOT close it (mismatched).
+#[test]
+fn raw_style_ignores_script_close() {
+    let entry = LineState::HtmlRaw { is_style: true };
+    let (_toks, state) = tok_state("a < b </script> c", entry);
+    assert_eq!(state, entry, "mismatched close tag keeps style raw");
+}
+
+/// Whole `<script>…</script>` on one line opens and closes, ending in `Code`.
+#[test]
+fn script_open_and_close_same_line() {
+    let (toks, state) = tok_state("<script>a<b;</script>", LineState::Code);
+    assert_eq!(state, LineState::Code);
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::String && t.1 == "a<b;"),
+        "raw body between tags is String, got {toks:?}"
+    );
+}
+
+// ── Unquoted attribute values ───────────────────────────────────────────────
+
+#[test]
+fn unquoted_attr_value_is_string() {
+    let toks = tok("<input type=text>");
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::TypeName && t.1 == "type"),
+        "attribute name should be TypeName"
+    );
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::String && t.1 == "text"),
+        "unquoted value should be String, got {toks:?}"
+    );
+}
+
+#[test]
+fn unquoted_attr_value_with_spaces_around_eq() {
+    let toks = tok("<input type = text >");
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::String && t.1 == "text")
+    );
+}
+
+#[test]
+fn unquoted_attr_then_self_close() {
+    let toks = tok("<input type=text/>");
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::String && t.1 == "text")
+    );
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::Punctuation && t.1 == "/>")
+    );
+}
+
+// ── Entities inside quoted attribute values ─────────────────────────────────
+
+#[test]
+fn entity_in_quoted_attr_value() {
+    let toks = tok(r#"<a href="a&amp;b">"#);
+    // The entity colours distinctly from the surrounding String segments.
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::MacroCall && t.1 == "&amp;"),
+        "entity inside attr value should be MacroCall, got {toks:?}"
+    );
+    // Plain quoted value with no entity stays a single String.
+    let plain = tok(r#"<a href="ab">"#);
+    assert!(
+        plain
+            .iter()
+            .any(|t| t.0 == TokenKind::String && t.1 == r#""ab""#)
+    );
+}
