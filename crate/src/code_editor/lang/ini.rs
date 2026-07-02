@@ -60,6 +60,14 @@ fn push_ws(tokens: &mut Vec<Token>, bytes: &[u8], i: &mut usize) {
     }
 }
 
+/// In common INI dialects a `;`/`#` only opens an inline comment when it is
+/// the first non-whitespace byte on the line or is preceded by whitespace.
+/// A `;`/`#` glued to a preceding value byte (e.g. `pass#word`,
+/// `http://a;b`) is an ordinary value character, not a comment marker.
+fn is_comment_start(bytes: &[u8], i: usize) -> bool {
+    i == 0 || bytes[i - 1] == b' ' || bytes[i - 1] == b'\t'
+}
+
 /// Tokenize the value region (right-hand side of `key =`, remainder of a
 /// section line, or a bare line with no separator) from `*i` to end.
 fn tokenize_value(line: &str, tokens: &mut Vec<Token>, i: &mut usize) {
@@ -75,8 +83,9 @@ fn tokenize_value(line: &str, tokens: &mut Vec<Token>, i: &mut usize) {
             continue;
         }
 
-        // Comment to end of line.
-        if b == b';' || b == b'#' {
+        // Comment to end of line — only when the `;`/`#` starts the region
+        // or is preceded by whitespace; otherwise it is a value character.
+        if (b == b';' || b == b'#') && is_comment_start(bytes, *i) {
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start: *i,
@@ -122,11 +131,15 @@ fn tokenize_value(line: &str, tokens: &mut Vec<Token>, i: &mut usize) {
             continue;
         }
 
-        // Bare value run — up to whitespace or a comment marker.
+        // Bare value run — up to whitespace or a comment-opening `;`/`#`
+        // (a `;`/`#` glued to the value is absorbed, not a break).
         let start = *i;
         while *i < len {
             let c = bytes[*i];
-            if c == b' ' || c == b'\t' || c == b';' || c == b'#' {
+            if c == b' ' || c == b'\t' {
+                break;
+            }
+            if (c == b';' || c == b'#') && is_comment_start(bytes, *i) {
                 break;
             }
             *i += 1;
@@ -320,5 +333,55 @@ mod tests {
             toks.iter()
                 .any(|t| t.0 == TokenKind::Comment && t.1 == "; trailing")
         );
+    }
+
+    #[test]
+    fn hash_glued_to_value_is_not_comment() {
+        // `#` immediately preceded by a value byte is part of the value.
+        let toks = tok("pass#word");
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Identifier && t.1 == "pass#word")
+        );
+        assert!(toks.iter().all(|t| t.0 != TokenKind::Comment));
+    }
+
+    #[test]
+    fn semicolon_glued_to_value_is_not_comment() {
+        // The `;b` stays in the value, not a comment.
+        let toks = tok("url = http://a;b");
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Identifier && t.1 == "http://a;b")
+        );
+        assert!(toks.iter().all(|t| t.0 != TokenKind::Comment));
+    }
+
+    #[test]
+    fn spaced_semicolon_is_comment() {
+        // A `;` preceded by whitespace opens a trailing comment.
+        let toks = tok("key = value ; real comment");
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Identifier && t.1 == "value")
+        );
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Comment && t.1 == "; real comment")
+        );
+    }
+
+    #[test]
+    fn whole_line_semicolon_comment() {
+        let toks = tok("; whole line");
+        assert_eq!(toks[0].0, TokenKind::Comment);
+        assert_eq!(toks[0].1, "; whole line");
+    }
+
+    #[test]
+    fn whole_line_hash_comment() {
+        let toks = tok("# whole line");
+        assert_eq!(toks[0].0, TokenKind::Comment);
+        assert_eq!(toks[0].1, "# whole line");
     }
 }
