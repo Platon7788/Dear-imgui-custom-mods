@@ -131,10 +131,10 @@
 //! - **Vertical centering**: computed once per row, not per cell
 //! - **Sort**: in-place via `rotate_left` linearization (zero extra allocation)
 
-#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod column;
 pub mod config;
 mod edit;
+pub(crate) mod edit_common;
 pub mod ring_buffer;
 pub mod row;
 mod sort;
@@ -161,9 +161,9 @@ use dear_imgui_rs::{Key, ListClipper, MouseButton, SelectableFlags, TableRowFlag
 use edit::EditState;
 use helpers::{build_copy_text, snap_outer_height};
 use sort::{SortSpec, SortState};
-// Re-export so `crate::virtual_table::row_height_to_stride` (used by
-// `virtual_tree`) keeps resolving after the move into `helpers`.
-pub(crate) use helpers::row_height_to_stride;
+// Re-export so `crate::virtual_table::{row_height_to_stride, scroll_fraction}`
+// (both used by `virtual_tree`) keep resolving from the private `helpers` module.
+pub(crate) use helpers::{row_height_to_stride, scroll_fraction};
 
 use std::collections::HashSet;
 
@@ -269,6 +269,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             && (!self.selected_rows.is_empty()
                 || self.selection_anchor.is_some()
                 || self.pending_scroll_to.is_some()
+                || self.context_row.is_some()
                 || self.edit_state.active)
         {
             self.shift_indices_for_eviction();
@@ -293,6 +294,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             Some(a) => Some(a - 1),
         };
         self.pending_scroll_to = match self.pending_scroll_to {
+            Some(0) | None => None,
+            Some(a) => Some(a - 1),
+        };
+        self.context_row = match self.context_row {
             Some(0) | None => None,
             Some(a) => Some(a - 1),
         };
@@ -347,6 +352,28 @@ mod table_tests {
         t.select_row(0); // select the row about to be evicted
         t.push(R(3));
         assert_eq!(t.selected_count(), 0, "evicted row's selection is dropped");
+    }
+
+    #[test]
+    fn push_eviction_shifts_context_row() {
+        let mut t = table(3);
+        for v in 0..3 {
+            t.push(R(v));
+        }
+        t.context_row = Some(2);
+        t.push(R(3)); // evict logical row 0 → context 2 slides to 1
+        assert_eq!(t.context_row, Some(1));
+    }
+
+    #[test]
+    fn push_eviction_drops_context_row_zero() {
+        let mut t = table(3);
+        for v in 0..3 {
+            t.push(R(v));
+        }
+        t.context_row = Some(0);
+        t.push(R(3)); // the row context pointed at is gone
+        assert_eq!(t.context_row, None);
     }
 
     #[test]

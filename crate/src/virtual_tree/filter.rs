@@ -17,7 +17,9 @@ use super::node::VirtualTreeNode;
 
 /// Tracks the active filter query and the set of visible nodes.
 pub struct FilterState {
+    /// The current (trimmed) filter query text.
     pub query: String,
+    /// Whether a non-empty filter is currently applied.
     pub active: bool,
     /// Index-based visibility flags: `visible_set[node.index]` = true if visible.
     /// Sized to arena slot count during `set_filter`; avoids HashSet overhead at scale.
@@ -33,6 +35,7 @@ impl Default for FilterState {
 }
 
 impl FilterState {
+    /// Create an empty, inactive filter state.
     pub fn new() -> Self {
         Self {
             query: String::new(),

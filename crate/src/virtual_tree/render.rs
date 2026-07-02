@@ -172,13 +172,15 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             .and_then(|id| self.flat_view.index_of(id));
 
         for flat_idx in tok.iter() {
-            let idx = flat_idx;
-            self.render_row(ui, idx);
+            self.render_row(ui, flat_idx);
+        }
 
-            // Scroll to target node
-            if scroll_target == Some(idx) {
-                unsafe { dear_imgui_rs::sys::igSetScrollHereY(0.5) };
-            }
+        // Scroll to the target row from its index (not SetScrollHereY inside the
+        // clipper loop) so it works even when the target is outside the current
+        // clipper window. Mirrors VirtualTable's scroll math.
+        if let Some(target) = scroll_target {
+            let frac = crate::virtual_table::scroll_fraction(target, row_count);
+            ui.set_scroll_y(frac * ui.scroll_max_y());
         }
 
         // Keyboard navigation

@@ -79,9 +79,32 @@ pub(crate) fn snap_outer_height(avail_h: f32, header_h: f32, row_stride: f32) ->
     quantized.max(row_stride + header_h)
 }
 
+/// Fraction in `[0, 1]` to pass to `set_scroll_y(frac * scroll_max_y())` so a
+/// target row is brought into view. Computed from the row index (not the live
+/// cursor), so it works even when the target is outside the current
+/// `ListClipper` window. Shared by `VirtualTable` and `VirtualTree`.
+#[inline]
+pub(crate) fn scroll_fraction(target: usize, row_count: usize) -> f32 {
+    if row_count <= 1 {
+        0.0
+    } else {
+        target as f32 / (row_count - 1) as f32
+    }
+}
+
 #[cfg(test)]
 mod layout_tests {
     use super::*;
+
+    #[test]
+    fn scroll_fraction_maps_row_to_unit_interval() {
+        assert_eq!(scroll_fraction(0, 100), 0.0);
+        assert_eq!(scroll_fraction(99, 100), 1.0);
+        assert!((scroll_fraction(50, 101) - 0.5).abs() < f32::EPSILON);
+        // Degenerate: single row (or none) never divides by zero.
+        assert_eq!(scroll_fraction(0, 1), 0.0);
+        assert_eq!(scroll_fraction(0, 0), 0.0);
+    }
 
     #[test]
     fn row_stride_adds_two_cell_paddings() {

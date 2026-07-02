@@ -89,8 +89,11 @@ impl CellValue {
 /// Per-cell visual overrides.
 #[derive(Clone, Debug, Default)]
 pub struct CellStyle {
+    /// Text color override for this cell. `None` uses the row/table default.
     pub text_color: Option<[f32; 4]>,
+    /// Background tint painted behind this cell. `None` uses the row/table default.
     pub bg_color: Option<[f32; 4]>,
+    /// Content alignment override for this cell. `None` uses the column's alignment.
     pub alignment: Option<CellAlignment>,
 }
 
@@ -116,6 +119,37 @@ pub struct RowStyle {
     ///
     /// `None` → use the table-wide `TableConfig::selection_text_color`.
     pub selection_text_color: Option<[f32; 4]>,
+}
+
+// ─── Shared selection-colour resolution ─────────────────────────────────────
+// Used by both VirtualTable and VirtualTree so the two widgets resolve the
+// effective selection background / text colour identically.
+
+/// Effective selection background: per-row `selection_color` override, else the
+/// table-wide default. Returns `None` when the result is fully transparent
+/// (`alpha == 0`), signalling "don't paint — let the built-in highlight show".
+#[inline]
+pub(crate) fn resolve_selection_bg(
+    row_style: Option<&RowStyle>,
+    table_default: [f32; 4],
+) -> Option<[f32; 4]> {
+    let bg = row_style
+        .and_then(|s| s.selection_color)
+        .unwrap_or(table_default);
+    (bg[3] > 0.0).then_some(bg)
+}
+
+/// Effective text colour for a selected row: per-row `selection_text_color`
+/// → table-wide default → per-row `text_color` fallback.
+#[inline]
+pub(crate) fn resolve_selection_text_color(
+    row_style: Option<&RowStyle>,
+    table_default: Option<[f32; 4]>,
+) -> Option<[f32; 4]> {
+    row_style
+        .and_then(|s| s.selection_text_color)
+        .or(table_default)
+        .or_else(|| row_style.and_then(|s| s.text_color))
 }
 
 // ─── Row trait ──────────────────────────────────────────────────────────────
@@ -167,5 +201,68 @@ pub trait VirtualTableRow {
     /// Compare two rows for sorting on `col`.
     fn compare(&self, _other: &Self, _col: usize) -> Ordering {
         Ordering::Equal
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    fn style(
+        sel: Option<[f32; 4]>,
+        sel_text: Option<[f32; 4]>,
+        text: Option<[f32; 4]>,
+    ) -> RowStyle {
+        RowStyle {
+            selection_color: sel,
+            selection_text_color: sel_text,
+            text_color: text,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn bg_prefers_row_override_then_table_default() {
+        let dflt = [0.2, 0.45, 0.85, 0.75];
+        assert_eq!(resolve_selection_bg(None, dflt), Some(dflt));
+        let s = style(Some([1.0, 0.0, 0.0, 1.0]), None, None);
+        assert_eq!(
+            resolve_selection_bg(Some(&s), dflt),
+            Some([1.0, 0.0, 0.0, 1.0])
+        );
+    }
+
+    #[test]
+    fn bg_transparent_default_suppresses_paint() {
+        assert_eq!(resolve_selection_bg(None, [0.2, 0.45, 0.85, 0.0]), None);
+        // A row-level override with alpha==0 also suppresses, even if the table
+        // default is opaque.
+        let s = style(Some([1.0, 0.0, 0.0, 0.0]), None, None);
+        assert_eq!(resolve_selection_bg(Some(&s), [0.2, 0.45, 0.85, 1.0]), None);
+    }
+
+    #[test]
+    fn text_color_priority_chain() {
+        let dflt = Some([1.0, 1.0, 1.0, 1.0]);
+        let s = style(None, Some([0.1, 0.2, 0.3, 1.0]), Some([9.0, 9.0, 9.0, 1.0]));
+        assert_eq!(
+            resolve_selection_text_color(Some(&s), dflt),
+            Some([0.1, 0.2, 0.3, 1.0])
+        );
+        assert_eq!(resolve_selection_text_color(None, dflt), dflt);
+        let s2 = style(None, None, Some([0.4, 0.4, 0.4, 1.0]));
+        assert_eq!(
+            resolve_selection_text_color(Some(&s2), None),
+            Some([0.4, 0.4, 0.4, 1.0])
+        );
+        // Middle rung: no per-row selection_text_color, table default present,
+        // AND a per-row text_color present → table default must win over the
+        // per-row text_color fallback (the rung VirtualTree previously skipped).
+        let s3 = style(None, None, Some([0.4, 0.4, 0.4, 1.0]));
+        assert_eq!(
+            resolve_selection_text_color(Some(&s3), Some([0.7, 0.7, 0.7, 1.0])),
+            Some([0.7, 0.7, 0.7, 1.0]),
+            "table default outranks per-row text_color fallback"
+        );
     }
 }

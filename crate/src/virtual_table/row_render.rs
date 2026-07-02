@@ -120,14 +120,11 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // even when many rows are selected. Applied after row_style so selection
         // always wins over custom row backgrounds. Per-row override takes
         // precedence over the table-wide default.
-        if is_selected {
-            let sel_bg = row_style
-                .as_ref()
-                .and_then(|s| s.selection_color)
-                .unwrap_or(self.config.selection_color);
-            if sel_bg[3] > 0.0 {
-                ui.table_set_row_bg1_color(sel_bg);
-            }
+        if is_selected
+            && let Some(sel_bg) =
+                row::resolve_selection_bg(row_style.as_ref(), self.config.selection_color)
+        {
+            ui.table_set_row_bg1_color(sel_bg);
         }
 
         // Push row-level ID scope (covers selectable + ALL cells)
@@ -214,11 +211,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         //   → per-row text_color (legacy fallback)
         // Not selected: per-row text_color only.
         let row_text_color = if is_selected {
-            row_style
-                .as_ref()
-                .and_then(|s| s.selection_text_color)
-                .or(self.config.selection_text_color)
-                .or_else(|| row_style.as_ref().and_then(|s| s.text_color))
+            row::resolve_selection_text_color(row_style.as_ref(), self.config.selection_text_color)
         } else {
             row_style.as_ref().and_then(|s| s.text_color)
         };
@@ -268,10 +261,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                         let changed = {
                             let items = match &self.columns[col_idx].editor {
                                 CellEditor::ComboBox { items } => items,
-                                _ => {
-                                    self.edit_state.deactivate();
-                                    return;
-                                }
+                                // Unreachable: editor_kind already classified this
+                                // column as ComboBox. Skip the cell rather than
+                                // aborting the whole row if that ever changes.
+                                _ => continue,
                             };
                             ui.set_next_item_width(-1.0);
                             ui.combo_simple_string("##combo", &mut choice, items)
@@ -300,10 +293,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                     let clicked = {
                         let label = match &self.columns[col_idx].editor {
                             CellEditor::Button { label } => label.as_str(),
-                            _ => {
-                                self.edit_state.deactivate();
-                                return;
-                            }
+                            _ => continue, // unreachable; skip cell, don't abort row
                         };
                         ui.button(label)
                     };

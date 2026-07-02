@@ -6,21 +6,25 @@
 use super::*;
 
 impl<T: VirtualTableRow> VirtualTable<T> {
+    /// Number of rows currently stored.
     #[inline]
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
+    /// `true` when the table holds no rows.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
+    /// Get a row by logical index (0 = oldest).
     #[inline]
     pub fn get(&self, index: usize) -> Option<&T> {
         self.data.get(index)
     }
 
+    /// Get a mutable reference to a row by logical index.
     #[inline]
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.data.get_mut(index)
@@ -58,20 +62,24 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.data.remove(index)
     }
 
+    /// Direct read access to the underlying row storage.
     pub fn data(&self) -> &RingBuffer<T> {
         &self.data
     }
 
+    /// Direct mutable access to the underlying row storage.
     pub fn data_mut(&mut self) -> &mut RingBuffer<T> {
         &mut self.data
     }
 
     // ─── Column access ──────────────────────────────────────────────
 
+    /// Current column definitions, in display order.
     pub fn columns(&self) -> &[ColumnDef] {
         &self.columns
     }
 
+    /// Mutable access to the column definitions, in display order.
     pub fn columns_mut(&mut self) -> &mut [ColumnDef] {
         &mut self.columns
     }
@@ -101,6 +109,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             .or_else(|| self.selected_rows.iter().next().copied())
     }
 
+    /// Deselect all rows and clear the selection anchor.
     pub fn clear_selection(&mut self) {
         self.selected_rows.clear();
         self.selection_anchor = None;
@@ -122,10 +131,12 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
     // ─── Editing ────────────────────────────────────────────────────
 
+    /// `true` when a cell editor is currently active.
     pub fn is_editing(&self) -> bool {
         self.edit_state.active
     }
 
+    /// Deactivate the current cell editor without committing its value.
     pub fn cancel_edit(&mut self) {
         self.edit_state.deactivate();
     }

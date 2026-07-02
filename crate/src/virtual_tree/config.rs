@@ -17,7 +17,9 @@ pub enum ExpandStyle {
     /// Custom Unicode glyphs for collapsed / expanded states.
     /// Example: `('\u{F0142}', '\u{F0140}')` for MDI chevron-right / chevron-down.
     Glyph {
+        /// Glyph drawn when the branch is collapsed.
         collapsed: char,
+        /// Glyph drawn when the branch is expanded.
         expanded: char,
         /// Glyph color (RGBA). `None` = inherit current text color.
         color: Option<[f32; 4]>,
@@ -100,6 +102,21 @@ pub struct TreeConfig {
     /// When `false` (default), insert methods return `None` at capacity.
     pub evict_on_overflow: bool,
 
+    /// Zebra-stripe background tint for odd rows (used when `striped`).
+    /// Default: near-transparent white `[1.0, 1.0, 1.0, 0.02]`.
+    #[serde(default = "default_striped_color")]
+    pub striped_color: [f32; 4],
+
+    /// Fill colour of the `ExpandStyle::Arrow` triangle.
+    /// Default: dim blue-gray `[0.65, 0.68, 0.72, 1.0]`.
+    #[serde(default = "default_arrow_color")]
+    pub arrow_color: [f32; 4],
+
+    /// Text colour of the per-node badge (`VirtualTreeNode::badge`).
+    /// Default: muted slate `[0.50, 0.55, 0.62, 1.0]`.
+    #[serde(default = "default_badge_color")]
+    pub badge_color: [f32; 4],
+
     /// Wrap the whole tree render in a bordered child window so it reads
     /// as a rounded card (uses the host's global `ChildRounding` /
     /// `Border` theme colors). Wrapper uses `WindowPadding [0, 0]` so the
@@ -115,6 +132,18 @@ pub struct TreeConfig {
 
 fn default_card_border_true() -> bool {
     true
+}
+
+fn default_striped_color() -> [f32; 4] {
+    [1.0, 1.0, 1.0, 0.02]
+}
+
+fn default_arrow_color() -> [f32; 4] {
+    [0.65, 0.68, 0.72, 1.0]
+}
+
+fn default_badge_color() -> [f32; 4] {
+    [0.50, 0.55, 0.62, 1.0]
 }
 
 fn default_header_popup_tree() -> bool {

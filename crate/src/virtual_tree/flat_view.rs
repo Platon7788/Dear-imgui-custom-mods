@@ -21,9 +21,13 @@ use super::node::VirtualTreeNode;
 /// One entry in the flattened visible-row list.
 #[derive(Clone, Copy, Debug)]
 pub struct FlatRow {
+    /// The arena node this row displays.
     pub node_id: NodeId,
+    /// Indentation level (0 = root).
     pub depth: u16,
+    /// True if the node has no children (no expand arrow drawn).
     pub is_leaf: bool,
+    /// Whether the node's children are currently shown (only meaningful when `!is_leaf`).
     pub is_expanded: bool,
     /// True if this node is the last child of its parent (for tree line rendering).
     pub is_last_child: bool,
@@ -31,6 +35,15 @@ pub struct FlatRow {
     /// (i.e. a vertical continuation line should be drawn at that depth).
     /// Supports up to 64 levels of depth.
     pub continuation_mask: u64,
+}
+
+/// Ancestor depths in `1..depth` at which a vertical tree-line continuation is
+/// drawn, per `continuation_mask`. Clamped to 64 levels: `continuation_mask` is
+/// a `u64` (see `rebuild`), and `1u64 << d` for `d >= 64` would panic in debug
+/// / silently wrap in release. Deeper trees simply stop drawing lines past 64.
+#[inline]
+pub(crate) fn continuation_line_depths(depth: u16, mask: u64) -> impl Iterator<Item = u16> {
+    (1..depth.min(64)).filter(move |&d| mask & (1u64 << d) != 0)
 }
 
 // ─── Stack frame for iterative DFS ──────────────────────────────────────────
@@ -52,10 +65,12 @@ struct StackFrame {
 
 /// Cached linearization of the tree. Rebuilt on structural changes.
 pub struct FlatView {
+    /// Linearized visible rows, in display order.
     pub rows: Vec<FlatRow>,
     /// O(1) lookup: `index_map[NodeId.index]` → flat row index.
     /// Sentinel `u32::MAX` = not present. Sized to arena slot count.
     index_map: Vec<u32>,
+    /// `true` when the cached rows are stale and `rebuild` must run before use.
     pub dirty: bool,
     /// Reusable DFS stack — avoids re-allocation across rebuilds.
     stack: Vec<StackFrame>,
@@ -73,6 +88,7 @@ impl FlatView {
     /// Sentinel value: node is not present in the flat view.
     const NO_INDEX: u32 = u32::MAX;
 
+    /// Create an empty flat view, marked dirty so the first render triggers a rebuild.
     pub fn new() -> Self {
         Self {
             rows: Vec::new(),
@@ -399,5 +415,21 @@ mod tests {
 
         assert!(!fv.rows[1].is_last_child); // "a" is not last
         assert!(fv.rows[2].is_last_child); // "b" is last
+    }
+
+    #[test]
+    fn continuation_depths_no_shift_overflow_beyond_64() {
+        // Must not panic for depth > 64 (guards the `1u64 << d` shift).
+        let depths: Vec<u16> = continuation_line_depths(70, u64::MAX).collect();
+        assert!(depths.iter().all(|&d| d < 64), "clamped to < 64 levels");
+        assert_eq!(depths.len(), 63, "d in 1..64 with all mask bits set");
+    }
+
+    #[test]
+    fn continuation_depths_respects_mask() {
+        // Only bits 1 and 3 set → depths 1 and 3 drawn.
+        let mask = (1u64 << 1) | (1u64 << 3);
+        let depths: Vec<u16> = continuation_line_depths(5, mask).collect();
+        assert_eq!(depths, vec![1, 3]);
     }
 }

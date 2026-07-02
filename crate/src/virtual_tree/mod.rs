@@ -41,7 +41,6 @@
 //! └── drag.rs       Drag-and-drop constants for node reparenting
 //! ```
 
-#![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod arena;
 pub mod config;
 mod drag;
@@ -84,6 +83,10 @@ use sort::{SortSpec, SortState};
 /// Fast hash set for NodeId. Uses `foldhash` for O(1) operations.
 type NodeIdSet = HashSet<NodeId, foldhash::fast::FixedState>;
 
+/// Boxed per-tree lazy children loader (see [`VirtualTree::set_lazy_loader`]).
+/// Runtime payload — never serialized.
+type LazyLoader<T> = Box<dyn FnMut(NodeId) -> Vec<T>>;
+
 // ─── EditState (inline, mirrors virtual_table::edit) ────────────────────────
 
 /// Tracks the currently active inline editor.
@@ -96,33 +99,23 @@ struct EditState {
     active: bool,
     node: Option<NodeId>,
     col: usize,
-    just_activated: bool,
-    text_buf: String,
-    bool_val: bool,
-    int_val: i32,
-    float_val: f32,
-    choice_idx: usize,
-    color_val: [f32; 4],
+    buf: crate::virtual_table::edit_common::EditBuffers,
 }
 
 impl EditState {
+    fn just_activated(&self) -> bool {
+        self.buf.just_activated
+    }
+
+    fn set_activated(&mut self, v: bool) {
+        self.buf.just_activated = v;
+    }
+
     fn activate(&mut self, node: NodeId, col: usize, value: &CellValue) {
         self.active = true;
         self.node = Some(node);
         self.col = col;
-        self.just_activated = true;
-        match value {
-            CellValue::Text(s) => {
-                self.text_buf.clear();
-                self.text_buf.push_str(s);
-            }
-            CellValue::Bool(b) => self.bool_val = *b,
-            CellValue::Int(v) => self.int_val = (*v).clamp(i32::MIN as i64, i32::MAX as i64) as i32,
-            CellValue::Float(v) => self.float_val = (*v as f32).clamp(f32::MIN, f32::MAX),
-            CellValue::Choice(idx) => self.choice_idx = *idx,
-            CellValue::Color(c) => self.color_val = *c,
-            CellValue::Progress(_) | CellValue::Custom => {}
-        }
+        self.buf.copy_from_value(value);
     }
 
     fn deactivate(&mut self) {
@@ -130,24 +123,7 @@ impl EditState {
     }
 
     fn take_cell_value(&mut self, editor: &CellEditor) -> CellValue {
-        match editor {
-            CellEditor::None | CellEditor::TextInput => {
-                // Move string out instead of cloning — zero-copy commit.
-                let text = std::mem::replace(&mut self.text_buf, String::with_capacity(256));
-                CellValue::Text(text)
-            }
-            CellEditor::Checkbox => CellValue::Bool(self.bool_val),
-            CellEditor::ComboBox { .. } => CellValue::Choice(self.choice_idx),
-            CellEditor::SliderInt { .. } | CellEditor::SpinInt { .. } => {
-                CellValue::Int(self.int_val as i64)
-            }
-            CellEditor::SliderFloat { .. } | CellEditor::SpinFloat { .. } => {
-                CellValue::Float(self.float_val as f64)
-            }
-            CellEditor::ColorEdit => CellValue::Color(self.color_val),
-            CellEditor::ProgressBar => CellValue::Progress(self.float_val),
-            CellEditor::Button { .. } | CellEditor::Custom => CellValue::Custom,
-        }
+        self.buf.take_cell_value(editor)
     }
 
     #[inline]
@@ -173,6 +149,7 @@ impl EditState {
 pub struct VirtualTree<T: VirtualTreeNode> {
     id: String,
     columns: Vec<ColumnDef>,
+    /// Tree configuration. All fields are `pub` — modify freely between frames.
     pub config: TreeConfig,
     arena: TreeArena<T>,
     flat_view: FlatView,
@@ -183,10 +160,15 @@ pub struct VirtualTree<T: VirtualTreeNode> {
     /// (not a flat-view index) so it survives expand/collapse/filter/sort
     /// rebuilds. Resolved to a flat-view row on demand.
     anchor: Option<NodeId>,
+    /// Set to `Some(id)` when a node is double-clicked. Reset each frame.
     pub double_clicked_node: Option<NodeId>,
+    /// Node of the last right-click (for context menu logic).
     pub context_node: Option<NodeId>,
+    /// Column index of the last right-click (for per-column context menus).
     pub context_col: Option<usize>,
+    /// `true` when the user right-clicked a node. Set to `false` after handling.
     pub open_context_menu: bool,
+    /// Set to `Some((node, col))` when a `CellEditor::Button` is clicked. Reset each frame.
     pub button_clicked: Option<(NodeId, usize)>,
 
     // Internal state
@@ -216,8 +198,7 @@ pub struct VirtualTree<T: VirtualTreeNode> {
     /// children. Runtime payload — never serialized. See [`set_lazy_loader`].
     ///
     /// [`set_lazy_loader`]: VirtualTree::set_lazy_loader
-    #[allow(clippy::type_complexity)]
-    lazy_loader: Option<Box<dyn FnMut(NodeId) -> Vec<T>>>,
+    lazy_loader: Option<LazyLoader<T>>,
 }
 
 impl<T: VirtualTreeNode> VirtualTree<T> {
@@ -341,6 +322,46 @@ mod tests {
 
     fn one_col_tree(config: TreeConfig) -> VirtualTree<TNode> {
         VirtualTree::new("t", vec![ColumnDef::new("name")], config)
+    }
+
+    #[test]
+    fn tree_config_theme_values_from_ron() {
+        let cfg = TreeConfig::default();
+        assert_eq!(cfg.striped_color, [1.0, 1.0, 1.0, 0.02]);
+        assert_eq!(cfg.arrow_color, [0.65, 0.68, 0.72, 1.0]);
+        assert_eq!(cfg.badge_color, [0.50, 0.55, 0.62, 1.0]);
+    }
+
+    #[test]
+    fn tree_config_round_trips_through_ron() {
+        let cfg = TreeConfig::default();
+        let s = ron::to_string(&cfg).expect("serialize");
+        let back: TreeConfig = ron::from_str(&s).expect("deserialize");
+        assert_eq!(back.striped_color, cfg.striped_color);
+        assert_eq!(back.arrow_color, cfg.arrow_color);
+        assert_eq!(back.badge_color, cfg.badge_color);
+    }
+
+    #[test]
+    fn tree_config_theme_colors_optional_in_ron() {
+        // Simulate an older config.ron saved before the theme-colour fields
+        // existed: strip those three lines and confirm it still parses, with the
+        // `#[serde(default = ...)]` fallbacks supplying the values.
+        let full = include_str!("config.ron");
+        let old: String = full
+            .lines()
+            .filter(|l| {
+                !l.contains("striped_color")
+                    && !l.contains("arrow_color")
+                    && !l.contains("badge_color")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cfg: TreeConfig =
+            ron::from_str(&old).expect("old ron without theme colours must parse");
+        assert_eq!(cfg.striped_color, [1.0, 1.0, 1.0, 0.02]);
+        assert_eq!(cfg.arrow_color, [0.65, 0.68, 0.72, 1.0]);
+        assert_eq!(cfg.badge_color, [0.50, 0.55, 0.62, 1.0]);
     }
 
     #[test]

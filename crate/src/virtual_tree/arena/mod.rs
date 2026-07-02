@@ -28,10 +28,15 @@ pub struct NodeId {
 
 /// Internal slot storing user data alongside tree metadata.
 pub struct NodeSlot<T> {
+    /// The user-provided node payload.
     pub data: T,
+    /// Parent node, or `None` for a root.
     pub parent: Option<NodeId>,
+    /// Direct children, in display order.
     pub children: Vec<NodeId>,
+    /// Whether this branch's children are shown in the flat view.
     pub expanded: bool,
+    /// Cached distance from the nearest root (0 = root).
     pub depth: u16,
     /// Lazy loading: `true` once this branch's children have been materialized
     /// by the `set_lazy_loader` callback, so it is never reloaded. Always
@@ -55,6 +60,7 @@ pub struct TreeArena<T> {
 }
 
 impl<T> TreeArena<T> {
+    /// Create an empty arena with capacity [`MAX_TREE_NODES`] and eviction disabled.
     pub fn new() -> Self {
         Self {
             slots: Vec::new(),
@@ -212,18 +218,18 @@ impl<T> TreeArena<T> {
     ///
     /// Uses iterative DFS to avoid stack overflow on deep trees.
     pub fn remove(&mut self, id: NodeId) -> Option<T> {
-        // Detach from parent first — use position + swap_remove for O(1).
+        // Detach first, preserving sibling / root order. `Vec::remove` is O(n)
+        // in the sibling count, but ordering matters: it keeps stable display
+        // order on delete and preserves the FIFO contract `evict_oldest_root`
+        // depends on. This mirrors `move_node`, which already uses `remove`.
         if let Some(parent_id) = self.get(id)?.parent {
             if let Some(parent_slot) = self.slot_mut(parent_id)
                 && let Some(pos) = parent_slot.children.iter().position(|&c| c == id)
             {
-                parent_slot.children.swap_remove(pos);
+                parent_slot.children.remove(pos);
             }
-        } else {
-            // It's a root — swap_remove is OK since root order may change.
-            if let Some(pos) = self.roots.iter().position(|&r| r == id) {
-                self.roots.swap_remove(pos);
-            }
+        } else if let Some(pos) = self.roots.iter().position(|&r| r == id) {
+            self.roots.remove(pos);
         }
 
         // Iterative DFS to free the node and all descendants.

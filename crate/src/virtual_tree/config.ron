@@ -46,5 +46,8 @@
     flat_headers: true,
     max_nodes: 10000000,
     evict_on_overflow: false,
+    striped_color: (1.0, 1.0, 1.0, 0.02),
+    arrow_color: (0.65, 0.68, 0.72, 1.0),
+    badge_color: (0.50, 0.55, 0.62, 1.0),
     card_border: true,
 )

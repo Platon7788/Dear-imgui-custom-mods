@@ -140,17 +140,22 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
     // ─── Expand / Collapse ──────────────────────────────────────────
 
+    /// Expand a node, revealing its children in the flat view. If the tree is
+    /// in `lazy_load` mode and this branch has never been loaded, materializes
+    /// its children first.
     pub fn expand(&mut self, id: NodeId) {
         self.load_children_if_needed(id);
         self.arena.expand(id);
         self.flat_view.mark_dirty();
     }
 
+    /// Collapse a node, hiding its children in the flat view.
     pub fn collapse(&mut self, id: NodeId) {
         self.arena.collapse(id);
         self.flat_view.mark_dirty();
     }
 
+    /// Toggle a node between expanded and collapsed.
     pub fn toggle(&mut self, id: NodeId) {
         // Only materialize children lazily when transitioning into expanded.
         if !self.arena.is_expanded(id) {
@@ -160,11 +165,13 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
         self.flat_view.mark_dirty();
     }
 
+    /// Expand every node in the tree.
     pub fn expand_all(&mut self) {
         self.arena.expand_all();
         self.flat_view.mark_dirty();
     }
 
+    /// Collapse every node in the tree.
     pub fn collapse_all(&mut self) {
         self.arena.collapse_all();
         self.flat_view.mark_dirty();
@@ -201,26 +208,32 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
     // ─── Selection ──────────────────────────────────────────────────
 
+    /// Iterator over currently selected node IDs.
     pub fn selected_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.selected_nodes.iter().copied()
     }
 
+    /// Number of currently selected nodes.
     pub fn selected_count(&self) -> usize {
         self.selected_nodes.len()
     }
 
+    /// Returns `true` if the given node is selected.
     pub fn is_selected(&self, id: NodeId) -> bool {
         self.selected_nodes.contains(&id)
     }
 
+    /// Add a node to the selection.
     pub fn select(&mut self, id: NodeId) {
         self.selected_nodes.insert(id);
     }
 
+    /// Remove a node from the selection.
     pub fn deselect(&mut self, id: NodeId) {
         self.selected_nodes.remove(&id);
     }
 
+    /// Clear the selection and reset the range-selection anchor.
     pub fn clear_selection(&mut self) {
         self.selected_nodes.clear();
         self.anchor = None;
@@ -245,27 +258,40 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
     // ─── Filter ─────────────────────────────────────────────────────
 
+    /// Apply a search filter. Empty/whitespace clears it.
+    ///
+    /// **Cost:** O(n) over all *materialized* nodes per call — one
+    /// `matches_filter` per node. For live search over very large trees,
+    /// debounce on the host side (filter on a short idle, not every keystroke).
+    ///
+    /// **Lazy trees:** only materialized nodes are scanned. Matches inside
+    /// not-yet-loaded branches are not found and do not trigger a load — expand
+    /// (or eager-load) the relevant branches first if they must be searchable.
     pub fn set_filter(&mut self, query: &str) {
         self.filter_state
             .set_filter(query, &mut self.arena, self.config.auto_expand_on_filter);
         self.flat_view.mark_dirty();
     }
 
+    /// Clear the active search filter, restoring all nodes to visibility.
     pub fn clear_filter(&mut self) {
         self.filter_state.clear();
         self.flat_view.mark_dirty();
     }
 
+    /// Returns `true` if a search filter is currently active.
     pub fn is_filtered(&self) -> bool {
         self.filter_state.active
     }
 
     // ─── Column access ──────────────────────────────────────────────
 
+    /// Column definitions for this tree.
     pub fn columns(&self) -> &[ColumnDef] {
         &self.columns
     }
 
+    /// Mutable access to column definitions.
     pub fn columns_mut(&mut self) -> &mut [ColumnDef] {
         &mut self.columns
     }
@@ -284,10 +310,12 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
 
     // ─── Editing ────────────────────────────────────────────────────
 
+    /// Returns `true` if a cell is currently being edited.
     pub fn is_editing(&self) -> bool {
         self.edit_state.active
     }
 
+    /// Cancel the active inline edit without committing its changes.
     pub fn cancel_edit(&mut self) {
         self.edit_state.deactivate();
     }

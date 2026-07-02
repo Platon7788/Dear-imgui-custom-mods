@@ -39,18 +39,17 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 self.config.tree_line_color[3],
             );
 
-            // Vertical continuation lines at ancestor depths
-            for d in 1..flat_row.depth {
-                if flat_row.continuation_mask & (1u64 << d) != 0 {
-                    let x = cursor_screen[0] + (d as f32) * indent_w + indent_w * 0.5;
-                    draw_list
-                        .add_line(
-                            [x, cursor_screen[1]],
-                            [x, cursor_screen[1] + row_h],
-                            line_color,
-                        )
-                        .build();
-                }
+            // Vertical continuation lines at ancestor depths (overflow-safe).
+            for d in flat_view::continuation_line_depths(flat_row.depth, flat_row.continuation_mask)
+            {
+                let x = cursor_screen[0] + (d as f32) * indent_w + indent_w * 0.5;
+                draw_list
+                    .add_line(
+                        [x, cursor_screen[1]],
+                        [x, cursor_screen[1] + row_h],
+                        line_color,
+                    )
+                    .build();
             }
 
             // This node's connector: vertical stub + horizontal branch
@@ -178,7 +177,8 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     // Draw triangle arrow over the invisible button
                     let btn_min = ui.item_rect_min();
                     let draw_list = ui.get_window_draw_list();
-                    let arrow_color = crate::utils::color::rgba_f32(0.65, 0.68, 0.72, 1.0);
+                    let ac = self.config.arrow_color;
+                    let arrow_color = crate::utils::color::rgba_f32(ac[0], ac[1], ac[2], ac[3]);
                     let cx = btn_min[0] + btn_sz * 0.5;
                     let cy = btn_min[1] + btn_sz * 0.5;
                     let r = btn_sz * 0.25;
@@ -292,7 +292,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
             let badge = data.badge();
             if !badge.is_empty() {
                 ui.same_line_with_spacing(0.0, 6.0);
-                ui.text_colored([0.50, 0.55, 0.62, 1.0], badge);
+                ui.text_colored(self.config.badge_color, badge);
             }
         }
     }

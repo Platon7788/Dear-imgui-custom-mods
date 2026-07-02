@@ -29,6 +29,9 @@ use std::mem::MaybeUninit;
 /// ListClipper renders only visible rows regardless of total count.
 pub const MAX_TABLE_ROWS: usize = 10_000_000;
 
+/// Fixed-capacity circular buffer. See the module docs for the full
+/// complexity table (`push`/`get` are O(1), `remove`/`sort_by` linearize
+/// first).
 pub struct RingBuffer<T> {
     buf: Box<[MaybeUninit<T>]>,
     capacity: usize,
@@ -64,16 +67,20 @@ impl<T> RingBuffer<T> {
         }
     }
 
+    /// Number of elements currently stored (always `<= capacity()`).
     #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
+    /// `true` when the buffer holds no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
+    /// Maximum number of elements the buffer can hold before it starts
+    /// evicting the oldest entry on `push`.
     #[inline]
     pub fn capacity(&self) -> usize {
         self.capacity
@@ -114,6 +121,7 @@ impl<T> RingBuffer<T> {
         Some(unsafe { self.buf[phys].assume_init_mut() })
     }
 
+    /// Drop every element and reset the buffer to empty. O(n).
     pub fn clear(&mut self) {
         let start = self.start();
         for i in 0..self.len {
@@ -209,6 +217,7 @@ impl<T> Drop for RingBuffer<T> {
 
 // ─── Iterators ──────────────────────────────────────────────────────────────
 
+/// Borrowing iterator over a [`RingBuffer`], oldest element first.
 pub struct RingIter<'a, T> {
     ring: &'a RingBuffer<T>,
     pos: usize,
@@ -232,6 +241,7 @@ impl<'a, T> Iterator for RingIter<'a, T> {
 
 impl<T> ExactSizeIterator for RingIter<'_, T> {}
 
+/// Mutably borrowing iterator over a [`RingBuffer`], oldest element first.
 pub struct RingIterMut<'a, T> {
     ptr: *mut MaybeUninit<T>,
     start: usize,
