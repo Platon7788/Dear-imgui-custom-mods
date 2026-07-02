@@ -21,6 +21,87 @@ fn byte_to_char_snaps_non_boundary_offset() {
     assert_eq!(byte_to_char("café", 99), 4); // past end clamps
 }
 
+// ── Multi-cursor edits ────────────────────────────────────────────────────
+// Regression suite for the global-offset rewrite: structural edits (line
+// merges) must not leave out-of-bounds extra cursors, and same-line edits
+// must not drift already-recorded cursor positions.
+
+fn sorted_cursors(b: &TextBuffer) -> Vec<CursorPos> {
+    let mut all = vec![b.cursor()];
+    all.extend_from_slice(b.extra_cursors());
+    all.sort();
+    all
+}
+
+#[test]
+fn multi_backspace_line_merge_stays_in_bounds() {
+    // Two cursors both at col 0 on different lines: each backspace merges a
+    // line, and the lower cursor's recorded index used to go out of bounds.
+    let mut b = buf("a\nb\nc\nd");
+    b.set_cursor(CursorPos::new(1, 0));
+    b.add_cursor(CursorPos::new(3, 0));
+    b.multi_backspace();
+    assert_eq!(b.text(), "ab\ncd");
+    assert_eq!(sorted_cursors(&b), vec![CursorPos::new(0, 1), CursorPos::new(1, 1)]);
+    for c in b.extra_cursors() {
+        assert!(c.line < b.line_count(), "extra cursor line out of bounds");
+        assert!(c.col <= b.line_char_count(c.line), "extra cursor col out of bounds");
+    }
+}
+
+#[test]
+fn multi_insert_char_same_line_no_drift() {
+    // Two cursors on one line: each caret must land right after the char it
+    // typed, not before it (the left insert used to shift the right caret).
+    let mut b = buf("abcd");
+    b.set_cursor(CursorPos::new(0, 1));
+    b.add_cursor(CursorPos::new(0, 3));
+    b.multi_insert_char('X');
+    assert_eq!(b.text(), "aXbcXd");
+    assert_eq!(sorted_cursors(&b), vec![CursorPos::new(0, 2), CursorPos::new(0, 5)]);
+}
+
+#[test]
+fn multi_delete_line_merge_stays_in_bounds() {
+    let mut b = buf("a\nb\nc\nd");
+    b.set_cursor(CursorPos::new(0, 1)); // end of "a"
+    b.add_cursor(CursorPos::new(2, 1)); // end of "c"
+    b.multi_delete();
+    assert_eq!(b.text(), "ab\ncd");
+    assert_eq!(sorted_cursors(&b), vec![CursorPos::new(0, 1), CursorPos::new(1, 1)]);
+}
+
+#[test]
+fn clamp_extra_cursors_brings_stale_in_bounds() {
+    // A single-cursor structural edit (delete_line) doesn't reconcile extras,
+    // so an extra can point past the shrunken buffer. clamp is the backstop
+    // that keeps the renderer from indexing out of bounds.
+    let mut b = buf("a\nb\nc\nd");
+    b.add_cursor(CursorPos::new(3, 0)); // extra on the last line
+    b.set_cursor(CursorPos::new(0, 0));
+    b.delete_line(); // ["b","c","d"]
+    b.delete_line(); // ["c","d"] — line index 3 no longer exists
+    b.clamp_extra_cursors();
+    for c in b.extra_cursors() {
+        assert!(c.line < b.line_count(), "extra cursor line still OOB");
+        assert!(c.col <= b.line_char_count(c.line), "extra cursor col still OOB");
+    }
+}
+
+#[test]
+fn multi_insert_char_multi_line_positions() {
+    let mut b = buf("foo\nbar\nbaz");
+    b.set_cursor(CursorPos::new(0, 0));
+    b.add_cursor(CursorPos::new(1, 0));
+    b.add_cursor(CursorPos::new(2, 0));
+    b.multi_insert_char('>');
+    assert_eq!(b.text(), ">foo\n>bar\n>baz");
+    assert_eq!(
+        sorted_cursors(&b),
+        vec![CursorPos::new(0, 1), CursorPos::new(1, 1), CursorPos::new(2, 1)]
+    );
+}
+
 #[test]
 fn test_set_text() {
     let b = buf("hello\nworld");

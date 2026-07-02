@@ -40,6 +40,9 @@ impl CodeEditor {
             self.update_fold_regions();
         }
         self.ensure_token_cache_size();
+        // Backstop: single-cursor structural edits don't reconcile extra
+        // cursors, so keep them in-bounds before anything indexes their lines.
+        self.buffer.clamp_extra_cursors();
 
         let fold_extra = if self.config.show_fold_indicators {
             2.0

@@ -53,6 +53,18 @@ impl TextBuffer {
         self.extra_selections.clear();
     }
 
+    /// Clamp every extra cursor to a valid in-bounds position.
+    ///
+    /// Defensive backstop: single-cursor structural edits (Enter, delete-line,
+    /// move-line, duplicate-line) don't reconcile the extra cursors, so a
+    /// stale extra could otherwise point past the end of the buffer and panic
+    /// the renderer when it indexes that line. Cheap — extras are few.
+    pub fn clamp_extra_cursors(&mut self) {
+        for i in 0..self.extra_cursors.len() {
+            self.extra_cursors[i] = self.clamp_pos(self.extra_cursors[i]);
+        }
+    }
+
     /// Get all cursor positions (primary + extras), sorted in document order.
     pub fn all_cursors_sorted(&self) -> Vec<CursorPos> {
         let mut all = vec![self.cursor];
@@ -109,103 +121,113 @@ impl TextBuffer {
         None
     }
 
-    /// Insert a character at all cursors (primary + extras).
-    /// Edits in reverse document order to preserve positions.
+    /// Insert a character at every cursor (primary + extras).
     pub fn multi_insert_char(&mut self, ch: char) {
-        let mut cursors = self.all_cursors_sorted();
-        // Reverse to edit from bottom-up
-        cursors.reverse();
-
-        // Save primary cursor index
-        let primary_idx = cursors.iter().position(|c| *c == self.cursor);
-
-        let mut new_cursors: Vec<CursorPos> = Vec::with_capacity(cursors.len());
-
-        for cursor_pos in &cursors {
-            // Temporarily set cursor to this position
-            self.cursor = *cursor_pos;
-            self.selection = None; // per-cursor selection cleared on insert
-            self.insert_char(ch);
-            new_cursors.push(self.cursor);
-        }
-
-        // Reverse back to document order
-        new_cursors.reverse();
-
-        // Restore primary and extra cursors
-        if let Some(pi) = primary_idx {
-            let doc_idx = cursors.len() - 1 - pi;
-            self.cursor = new_cursors[doc_idx];
-            self.extra_cursors.clear();
-            self.extra_selections.clear();
-            for (i, &c) in new_cursors.iter().enumerate() {
-                if i != doc_idx {
-                    self.extra_cursors.push(c);
-                    self.extra_selections.push(None);
-                }
-            }
-        }
+        // A typed char is always +1 in global-offset space — a newline never
+        // reaches here (Enter routes through the single-cursor path).
+        self.multi_edit(|b| {
+            b.insert_char(ch);
+            1
+        });
     }
 
-    /// Delete (backspace) at all cursors.
+    /// Backspace at every cursor.
     pub fn multi_backspace(&mut self) {
-        let mut cursors = self.all_cursors_sorted();
-        cursors.reverse();
+        self.multi_edit(|b| {
+            // Backspace at the very start of the document is a no-op.
+            let no_op = b.cursor.line == 0 && b.cursor.col == 0;
+            b.backspace();
+            if no_op { 0 } else { -1 }
+        });
+    }
 
-        let primary_idx = cursors.iter().position(|c| *c == self.cursor);
-        let mut new_cursors: Vec<CursorPos> = Vec::with_capacity(cursors.len());
+    /// Delete-forward at every cursor.
+    pub fn multi_delete(&mut self) {
+        self.multi_edit(|b| {
+            // Delete at the very end of the document is a no-op.
+            let at_doc_end = b.cursor.col >= b.line_char_count(b.cursor.line)
+                && b.cursor.line + 1 >= b.lines.len();
+            b.delete();
+            if at_doc_end { 0 } else { -1 }
+        });
+    }
 
-        for cursor_pos in &cursors {
-            self.cursor = *cursor_pos;
+    /// Apply a single-cursor `edit` at every cursor (primary + extras),
+    /// keeping all positions correct across structural changes.
+    ///
+    /// Positions are tracked as **global character offsets** — the document
+    /// viewed as its lines joined by `\n` — so a line merge or split is a
+    /// uniform ±1-char change instead of a special line-index reshuffle (the
+    /// source of the previous out-of-bounds / same-line-drift bugs). Edits run
+    /// bottom-up so an edit never disturbs a not-yet-processed (lower) cursor;
+    /// each already-processed (higher) offset is then shifted by the deltas of
+    /// the edits applied below it. `edit` returns its net char-count delta.
+    fn multi_edit(&mut self, mut edit: impl FnMut(&mut Self) -> isize) {
+        let sorted = self.all_cursors_sorted();
+        if sorted.len() <= 1 {
             self.selection = None;
-            self.backspace();
-            new_cursors.push(self.cursor);
+            edit(self);
+            return;
+        }
+        let primary_idx = sorted.iter().position(|c| *c == self.cursor).unwrap_or(0);
+        let offsets: Vec<usize> = sorted.iter().map(|&p| self.pos_to_offset(p)).collect();
+        let n = offsets.len();
+
+        let mut result_raw = vec![0usize; n];
+        let mut deltas = vec![0isize; n];
+        for i in (0..n).rev() {
+            self.cursor = self.offset_to_pos(offsets[i]);
+            self.selection = None;
+            deltas[i] = edit(self);
+            result_raw[i] = self.pos_to_offset(self.cursor);
         }
 
-        new_cursors.reverse();
+        // Final offset = raw result + sum of the deltas from edits applied
+        // *after* it (those at lower offsets → indices `< i`).
+        let mut final_positions: Vec<CursorPos> = Vec::with_capacity(n);
+        let mut prefix = 0isize;
+        for i in 0..n {
+            let off = (result_raw[i] as isize + prefix).max(0) as usize;
+            final_positions.push(self.offset_to_pos(off));
+            prefix += deltas[i];
+        }
 
-        if let Some(pi) = primary_idx {
-            let doc_idx = cursors.len() - 1 - pi;
-            self.cursor = new_cursors[doc_idx];
-            self.extra_cursors.clear();
-            self.extra_selections.clear();
-            for (i, &c) in new_cursors.iter().enumerate() {
-                if i != doc_idx {
-                    self.extra_cursors.push(c);
-                    self.extra_selections.push(None);
-                }
+        self.cursor = final_positions[primary_idx];
+        self.extra_cursors.clear();
+        self.extra_selections.clear();
+        let mut seen = vec![self.cursor];
+        for (i, &p) in final_positions.iter().enumerate() {
+            if i == primary_idx || seen.contains(&p) {
+                continue;
             }
+            seen.push(p);
+            self.extra_cursors.push(p);
+            self.extra_selections.push(None);
         }
     }
 
-    /// Delete at all cursors.
-    pub fn multi_delete(&mut self) {
-        let mut cursors = self.all_cursors_sorted();
-        cursors.reverse();
-
-        let primary_idx = cursors.iter().position(|c| *c == self.cursor);
-        let mut new_cursors: Vec<CursorPos> = Vec::with_capacity(cursors.len());
-
-        for cursor_pos in &cursors {
-            self.cursor = *cursor_pos;
-            self.selection = None;
-            self.delete();
-            new_cursors.push(self.cursor);
+    /// Global character offset of `pos` (document = lines joined by `\n`).
+    /// Clamps out-of-range input so it can never panic on a stale cursor.
+    fn pos_to_offset(&self, pos: CursorPos) -> usize {
+        let line = pos.line.min(self.lines.len().saturating_sub(1));
+        let mut off = 0usize;
+        for l in 0..line {
+            off += self.line_char_count(l) + 1; // +1 for the newline
         }
+        off + pos.col.min(self.line_char_count(line))
+    }
 
-        new_cursors.reverse();
-
-        if let Some(pi) = primary_idx {
-            let doc_idx = cursors.len() - 1 - pi;
-            self.cursor = new_cursors[doc_idx];
-            self.extra_cursors.clear();
-            self.extra_selections.clear();
-            for (i, &c) in new_cursors.iter().enumerate() {
-                if i != doc_idx {
-                    self.extra_cursors.push(c);
-                    self.extra_selections.push(None);
-                }
+    /// Inverse of [`pos_to_offset`](Self::pos_to_offset) against the current
+    /// buffer contents.
+    fn offset_to_pos(&self, mut off: usize) -> CursorPos {
+        let last = self.lines.len().saturating_sub(1);
+        for i in 0..self.lines.len() {
+            let len = self.line_char_count(i);
+            if off <= len || i == last {
+                return CursorPos::new(i, off.min(len));
             }
+            off -= len + 1;
         }
+        CursorPos::new(0, 0)
     }
 }
