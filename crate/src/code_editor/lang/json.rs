@@ -1,7 +1,11 @@
-//! JSON / JSONC tokenizer.
+//! JSON / JSONC / JSON5 tokenizer.
 //!
 //! Keys are highlighted as [`TokenKind::Attribute`] (distinguished from string
-//! values by lookahead for `:`).  JSONC-style `//` line comments are supported.
+//! values by lookahead for `:`), including JSON5 single-quoted and unquoted
+//! identifier keys. JSONC-style `//` and `/* */` comments are supported (the
+//! block-comment carry threads through [`LineState::BlockComment`]). JSON5
+//! extras: single-quoted strings, `Infinity` / `NaN`, hex `0x` literals,
+//! leading `+`, and bare-leading (`.5`) / trailing (`5.`) decimal points.
 
 use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
@@ -135,14 +139,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             continue;
         }
 
-        // ── String (key or value) ────────────────────────────────────────
-        if b == b'"' {
+        // ── String (key or value) — JSON5 allows single quotes too ───────
+        if b == b'"' || b == b'\'' {
+            let quote = b;
             let start = i;
             i += 1;
             while i < len {
                 if bytes[i] == b'\\' && i + 1 < len {
                     i += 2;
-                } else if bytes[i] == b'"' {
+                } else if bytes[i] == quote {
                     i += 1;
                     break;
                 } else {
@@ -167,32 +172,43 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             continue;
         }
 
-        // ── Number ───────────────────────────────────────────────────────
-        // JSON-spec strict: decimal only, no underscore separators,
-        // no radix prefixes. `1_000` would not be a single Number;
-        // the `_000` portion would fall through to identifier handling.
-        if b.is_ascii_digit() || (b == b'-' && i + 1 < len && bytes[i + 1].is_ascii_digit()) {
-            let start = i;
-            if b == b'-' {
-                i += 1;
-            }
-            consume_number(&mut i, bytes, NumberOpts::JSON);
+        // ── Number (JSON5) ───────────────────────────────────────────────
+        // Digits, hex `0x`, leading `+`/`-`, bare-leading `.5`, trailing
+        // `5.`, plus the `Infinity` / `NaN` keywords (checked before the
+        // identifier branch so they colour as numbers). A `+`/`-`/`.` that
+        // does not begin a literal falls through to the branches below.
+        if (b.is_ascii_digit()
+            || b == b'+'
+            || b == b'-'
+            || (b == b'.' && i + 1 < len && bytes[i + 1].is_ascii_digit())
+            || bytes[i..].starts_with(b"Infinity")
+            || bytes[i..].starts_with(b"NaN"))
+            && let Some(end) = consume_json5_number(line, i)
+        {
             tokens.push(Token {
                 kind: TokenKind::Number,
-                start,
-                len: i - start,
+                start: i,
+                len: end - i,
             });
+            i = end;
             continue;
         }
 
-        // ── Identifier / keyword ─────────────────────────────────────────
+        // ── Identifier / keyword / unquoted key (JSON5) ──────────────────
         if is_ident_start(b) {
             let start = i;
             while i < len && is_ident_continue(bytes[i]) {
                 i += 1;
             }
             let word = &line[start..i];
-            let kind = if KEYWORDS.contains(&word) {
+            // An unquoted identifier followed by `:` is a JSON5 object key.
+            let mut j = i;
+            while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            let kind = if j < len && bytes[j] == b':' {
+                TokenKind::Attribute
+            } else if KEYWORDS.contains(&word) {
                 TokenKind::Keyword
             } else {
                 TokenKind::Identifier
@@ -238,6 +254,68 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
     }
 
     (tokens, in_block_comment)
+}
+
+/// Try to consume a JSON5 number starting at `start`.
+///
+/// Handles an optional leading `+`/`-`, the `Infinity` / `NaN` keywords (as
+/// whole words), hex `0x` literals, decimals with a bare-leading (`.5`) or
+/// trailing (`5.`) point, and exponents. Returns the end byte index past the
+/// literal, or `None` when the bytes do not form a number (the caller then
+/// falls through to other branches).
+fn consume_json5_number(line: &str, start: usize) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let len = bytes.len();
+    let mut i = start;
+
+    // Optional sign.
+    if i < len && (bytes[i] == b'+' || bytes[i] == b'-') {
+        i += 1;
+    }
+
+    // `Infinity` / `NaN` — only when a whole word (not an identifier prefix).
+    for word in [b"Infinity".as_slice(), b"NaN".as_slice()] {
+        if bytes[i..].starts_with(word) {
+            let end = i + word.len();
+            if end >= len || !is_ident_continue(bytes[end]) {
+                return Some(end);
+            }
+        }
+    }
+
+    // Numeric body.
+    let opts = NumberOpts {
+        underscore: false,
+        radix: true,
+        float: true,
+    };
+    let body = i;
+    if i < len && bytes[i] == b'.' && i + 1 < len && bytes[i + 1].is_ascii_digit() {
+        // Bare-leading `.5`.
+        consume_number(&mut i, bytes, opts);
+    } else if i < len && bytes[i].is_ascii_digit() {
+        let is_hex = bytes[i] == b'0' && i + 1 < len && matches!(bytes[i + 1], b'x' | b'X');
+        consume_number(&mut i, bytes, opts);
+        // Trailing bare `.` (`5.`) — consume_number leaves the dot when no
+        // fractional digit follows. Include it and any exponent.
+        if !is_hex && i < len && bytes[i] == b'.' {
+            i += 1;
+            while i < len && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            if i < len && (bytes[i] == b'e' || bytes[i] == b'E') {
+                i += 1;
+                if i < len && (bytes[i] == b'+' || bytes[i] == b'-') {
+                    i += 1;
+                }
+                while i < len && bytes[i].is_ascii_digit() {
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    if i > body { Some(i) } else { None }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -335,16 +413,6 @@ mod tests {
         assert!(toks.iter().any(|t| t.1.starts_with('_')));
     }
 
-    /// JSON spec rejects radix prefixes — `0x10` is `0` then identifier.
-    #[test]
-    fn no_radix_prefixes() {
-        let toks = tok("0x10");
-        let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
-        // Only `0` parses as a number.
-        assert_eq!(nums.len(), 1);
-        assert_eq!(nums[0].1, "0");
-    }
-
     /// JSON does support exponent and decimal-point floats.
     #[test]
     fn decimal_with_exponent() {
@@ -352,5 +420,59 @@ mod tests {
         let nums: Vec<_> = toks.iter().filter(|t| t.0 == TokenKind::Number).collect();
         assert_eq!(nums.len(), 1);
         assert_eq!(nums[0].1, "-3.14e+2");
+    }
+
+    fn only_number(line: &str) -> Vec<String> {
+        tok(line)
+            .into_iter()
+            .filter(|t| t.0 == TokenKind::Number)
+            .map(|t| t.1)
+            .collect()
+    }
+
+    /// JSON5 single-quoted strings: `'a'` is a key (followed by `:`), `'b'`
+    /// is a value.
+    #[test]
+    fn json5_single_quoted_string() {
+        let toks = tok(r#"{ 'a': 'b' }"#);
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Attribute && t.1 == "'a'")
+        );
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::String && t.1 == "'b'")
+        );
+    }
+
+    /// JSON5 unquoted identifier keys colour as [`TokenKind::Attribute`].
+    #[test]
+    fn json5_unquoted_key() {
+        let toks = tok("{ key: 1 }");
+        assert!(
+            toks.iter()
+                .any(|t| t.0 == TokenKind::Attribute && t.1 == "key")
+        );
+        assert!(toks.iter().any(|t| t.0 == TokenKind::Number && t.1 == "1"));
+    }
+
+    /// JSON5 `Infinity` / `NaN` (with optional sign) tokenize as numbers, but
+    /// a longer identifier such as `NaNoTech` does not.
+    #[test]
+    fn json5_infinity_and_nan() {
+        for lit in ["Infinity", "-Infinity", "+Infinity", "NaN", "-NaN"] {
+            assert_eq!(only_number(lit), vec![lit.to_string()], "input {lit:?}");
+        }
+        let toks = tok("NaNoTech");
+        assert!(toks.iter().any(|t| t.0 == TokenKind::Identifier));
+        assert!(!toks.iter().any(|t| t.0 == TokenKind::Number));
+    }
+
+    /// JSON5 numeric extras: hex, leading `+`, bare-leading `.5`, trailing `5.`.
+    #[test]
+    fn json5_number_forms() {
+        for (line, lit) in [("0x1F", "0x1F"), ("+5", "+5"), (".5", ".5"), ("5.", "5.")] {
+            assert_eq!(only_number(line), vec![lit.to_string()], "input {line:?}");
+        }
     }
 }
