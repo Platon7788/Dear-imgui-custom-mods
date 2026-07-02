@@ -13,6 +13,7 @@ impl CodeEditor {
             // Ensure offsets are identity when wrap is off.
             if !self.wrap_cols.is_empty() {
                 self.wrap_cols.clear();
+                self.wrap_hashes.clear();
                 self.wrap_row_offsets.clear();
                 self.wrap_row_offsets.push(0);
                 self.wrap_cached_version = u64::MAX;
@@ -28,18 +29,37 @@ impl CodeEditor {
         self.wrap_cached_width = text_width;
 
         let line_count = self.buffer.line_count();
-        self.wrap_cols.resize(line_count, Vec::new());
+        self.wrap_cols.resize_with(line_count, Vec::new);
+        // u64::MAX = "never wrapped" sentinel so a real hash forces the rebuild.
+        self.wrap_hashes.resize(line_count, u64::MAX);
         self.wrap_row_offsets.resize(line_count + 1, 0);
+
+        // Scratch allocated once per rebuild (not per line) and reused across
+        // every line — the old code allocated two Vecs per line per keystroke.
+        let mut widths: Vec<f32> = Vec::new();
+        let mut is_ws: Vec<bool> = Vec::new();
 
         let mut cumulative = 0usize;
         for i in 0..line_count {
             self.wrap_row_offsets[i] = cumulative;
-            let line = self.buffer.line(i);
-            let wraps =
-                compute_wrap_points(line, text_width, self.char_advance, self.config.tab_size);
-            let rows = wraps.len() + 1;
-            self.wrap_cols[i] = wraps;
-            cumulative += rows;
+            // Only re-wrap a line whose content changed (or on a width change).
+            // Typing on one line leaves every other line's wrap untouched
+            // instead of re-wrapping the whole document each keystroke.
+            let h = hash_line(self.buffer.line(i));
+            if width_changed || self.wrap_hashes[i] != h {
+                self.wrap_hashes[i] = h;
+                let line = self.buffer.line(i);
+                compute_wrap_points_into(
+                    line,
+                    text_width,
+                    self.char_advance,
+                    self.config.tab_size,
+                    &mut widths,
+                    &mut is_ws,
+                    &mut self.wrap_cols[i],
+                );
+            }
+            cumulative += self.wrap_cols[i].len() + 1;
         }
         self.wrap_row_offsets[line_count] = cumulative;
     }

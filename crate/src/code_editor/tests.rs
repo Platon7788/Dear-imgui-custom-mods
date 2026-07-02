@@ -24,6 +24,31 @@ fn test_set_get_text() {
 }
 
 #[test]
+fn wrap_cache_incremental_matches_full_rebuild() {
+    // Editing one line and rebuilding incrementally must yield the exact same
+    // wrap layout as building the final text from scratch.
+    let width = 45.0;
+    let mut ed = CodeEditor::new("t");
+    ed.config_mut().word_wrap = true;
+    ed.char_advance = 10.0;
+    ed.set_text("aaaa bbbb cccc dddd\nshort\neeee ffff gggg hhhh");
+    ed.update_wrap_cache(width);
+    ed.buffer
+        .set_cursor(buffer::CursorPos::new(1, 5));
+    ed.buffer.insert_text(" plus a good deal more text here");
+    ed.update_wrap_cache(width); // incremental
+
+    let mut fresh = CodeEditor::new("t");
+    fresh.config_mut().word_wrap = true;
+    fresh.char_advance = 10.0;
+    fresh.set_text(&ed.get_text());
+    fresh.update_wrap_cache(width); // full rebuild
+
+    assert_eq!(ed.wrap_row_offsets, fresh.wrap_row_offsets);
+    assert_eq!(ed.wrap_cols, fresh.wrap_cols);
+}
+
+#[test]
 fn blink_toggles_by_parity_across_multiple_periods() {
     let mut ed = CodeEditor::new("t");
     ed.config_mut().cursor_blink_rate = 0.5;

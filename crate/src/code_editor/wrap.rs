@@ -16,39 +16,64 @@
 /// Each entry is the char-column where a new visual row begins.
 /// Prefers breaking at the last space (word boundary); falls back to
 /// a hard break at the column that exceeds the width.
+///
+/// Allocating convenience wrapper — the per-frame hot path uses
+/// [`compute_wrap_points_into`] with reused scratch instead.
+#[cfg(test)]
 pub(super) fn compute_wrap_points(
     line: &str,
     max_width: f32,
     char_advance: f32,
     tab_size: u8,
 ) -> Vec<usize> {
+    let mut widths = Vec::new();
+    let mut is_ws = Vec::new();
+    let mut out = Vec::new();
+    compute_wrap_points_into(
+        line,
+        max_width,
+        char_advance,
+        tab_size,
+        &mut widths,
+        &mut is_ws,
+        &mut out,
+    );
+    out
+}
+
+/// Allocation-free variant: writes the wrap columns into `out` (cleared
+/// first) and reuses the caller-owned `widths` / `is_ws` scratch buffers, so
+/// the per-frame wrap rebuild allocates nothing after warm-up. `compute_wrap_points`
+/// is the convenience wrapper used by tests and cold callers.
+pub(super) fn compute_wrap_points_into(
+    line: &str,
+    max_width: f32,
+    char_advance: f32,
+    tab_size: u8,
+    widths: &mut Vec<f32>,
+    is_ws: &mut Vec<bool>,
+    out: &mut Vec<usize>,
+) {
+    out.clear();
     if max_width <= char_advance || !max_width.is_finite() {
-        return Vec::new();
+        return;
     }
 
-    // Precompute per-char widths via one iteration — stores `f32` (4B/char)
-    // instead of `char` (4B/char plus no guarantee of ASCII). Total memory
-    // is identical but the inner hot loop indexes a flat Vec<f32> rather
-    // than a Vec<char>, avoiding per-iteration branch on tab detection.
-    // (Compared to the previous Vec<char> + `char_w` closure call site,
-    // this is one less dispatch per iteration, and re-measuring after a
-    // wrap is a straight sum over a pre-known slice.)
-    let widths: Vec<f32> = line
-        .chars()
-        .map(|ch| {
-            if ch == '\t' {
-                char_advance * tab_size as f32
-            } else {
-                char_advance
-            }
-        })
-        .collect();
-    // Also precompute a bitmap of wrap-candidate positions (ch == ' ' || '\t').
-    // A single `char_indices()` pass gives us everything we need.
-    let is_ws: Vec<bool> = line.chars().map(|ch| ch == ' ' || ch == '\t').collect();
+    // Precompute per-char widths + wrap-candidate flags in one pass. Both use
+    // reused scratch (cleared, capacity retained) so the hot path is alloc-free.
+    widths.clear();
+    is_ws.clear();
+    for ch in line.chars() {
+        widths.push(if ch == '\t' {
+            char_advance * tab_size as f32
+        } else {
+            char_advance
+        });
+        is_ws.push(ch == ' ' || ch == '\t');
+    }
     let len = widths.len();
 
-    let mut wraps = Vec::new();
+    let wraps = out;
     let mut x = 0.0f32;
     let mut last_space: Option<usize> = None;
     let mut row_start = 0usize;
@@ -103,7 +128,6 @@ pub(super) fn compute_wrap_points(
 
         col += 1;
     }
-    wraps
 }
 
 #[cfg(test)]

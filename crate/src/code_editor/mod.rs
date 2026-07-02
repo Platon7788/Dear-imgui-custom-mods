@@ -77,7 +77,7 @@ use helpers::{
     hash_line, hex_auto_space_needed, is_closing_bracket, is_closing_quote, parse_hex_color,
     read_input_chars, set_clipboard, tab_stop_spaces, title_case, x_to_col,
 };
-use wrap::compute_wrap_points;
+use wrap::compute_wrap_points_into;
 
 pub use find_replace::{FindReplaceState, FindScope};
 
@@ -202,6 +202,9 @@ pub struct CodeEditor {
     // ── Word wrap cache ──────────────────────────────────────────────
     /// Per-line wrap column offsets.  Empty vec = line fits in one row.
     wrap_cols: Vec<Vec<usize>>,
+    /// Per-line content hash the wrap cache was built against, so only edited
+    /// lines are re-wrapped (mirrors the token cache's content-hash keying).
+    wrap_hashes: Vec<u64>,
     /// Prefix-sum of visual rows: `wrap_row_offset[i]` = total visual
     /// rows for lines `0..i`.  Length = line_count + 1.
     wrap_row_offsets: Vec<usize>,
@@ -288,6 +291,7 @@ impl CodeEditor {
             click_count: 0,
 
             wrap_cols: Vec::new(),
+            wrap_hashes: Vec::new(),
             wrap_row_offsets: vec![0],
             wrap_cached_width: 0.0,
             wrap_cached_version: u64::MAX,
