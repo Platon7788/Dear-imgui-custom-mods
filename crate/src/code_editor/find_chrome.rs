@@ -357,6 +357,12 @@ impl CodeEditor {
                 // Navigate with Enter / Shift+Enter in the search field
                 if ui.is_item_focused() {
                     let io = ui.io();
+                    // Escape closes the bar even while the query field owns
+                    // focus (its default state after Ctrl+F) — handle_keyboard
+                    // only runs when the editor child is focused, so it can't.
+                    if ui.is_key_pressed(Key::Escape) {
+                        self.find_replace.open = false;
+                    }
                     if ui.is_key_pressed(Key::Enter) || ui.is_key_pressed(Key::DownArrow) {
                         self.find_next();
                     }

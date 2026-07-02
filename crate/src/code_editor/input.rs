@@ -133,12 +133,14 @@ impl CodeEditor {
         }
 
         // ── Ctrl shortcuts ──────────────────────────────────────────
-        if ctrl && ui.is_key_pressed(Key::A) {
+        // One-shot commands use the no-repeat variant so holding the key
+        // (e.g. Ctrl+V, Ctrl+Z) fires once instead of auto-repeating paste/undo.
+        if ctrl && ui.is_key_pressed_with_repeat(Key::A, false) {
             self.buffer.select_all();
             return;
         }
 
-        if ctrl && ui.is_key_pressed(Key::C) {
+        if ctrl && ui.is_key_pressed_with_repeat(Key::C, false) {
             let text = self.buffer.selected_text();
             if !text.is_empty() {
                 set_clipboard(&text);
@@ -146,7 +148,7 @@ impl CodeEditor {
             return;
         }
 
-        if ctrl && ui.is_key_pressed(Key::X) && !self.config.read_only {
+        if ctrl && ui.is_key_pressed_with_repeat(Key::X, false) && !self.config.read_only {
             let text = self.buffer.selected_text();
             if !text.is_empty() {
                 set_clipboard(&text);
@@ -158,7 +160,7 @@ impl CodeEditor {
             return;
         }
 
-        if ctrl && ui.is_key_pressed(Key::V) && !self.config.read_only {
+        if ctrl && ui.is_key_pressed_with_repeat(Key::V, false) && !self.config.read_only {
             if let Some(clip) = get_clipboard()
                 && !clip.is_empty()
             {
@@ -176,12 +178,12 @@ impl CodeEditor {
             return;
         }
 
-        if ctrl && ui.is_key_pressed(Key::Z) && !self.config.read_only {
+        if ctrl && ui.is_key_pressed_with_repeat(Key::Z, false) && !self.config.read_only {
             self.undo();
             return;
         }
 
-        if ctrl && ui.is_key_pressed(Key::Y) && !self.config.read_only {
+        if ctrl && ui.is_key_pressed_with_repeat(Key::Y, false) && !self.config.read_only {
             self.redo();
             return;
         }
