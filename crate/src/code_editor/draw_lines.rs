@@ -56,6 +56,21 @@ impl CodeEditor {
                     (0, line_str.chars().count())
                 };
 
+                // Opaque gutter background (up to the separator). Painted
+                // under the line numbers / fold markers so the horizontally
+                // scrolled code column can never show through the gutter.
+                draw_list
+                    .add_rect(
+                        [origin_x, y],
+                        [
+                            origin_x + gutter_width - self.char_advance * 0.5,
+                            y + self.line_height,
+                        ],
+                        col32(self.config.colors.gutter_bg),
+                    )
+                    .filled(true)
+                    .build();
+
                 // ── Per-line decorations (only on first sub-row) ──
                 if sub_row == 0 {
                     // Current line highlight — drawn BEFORE selection so
@@ -156,6 +171,17 @@ impl CodeEditor {
                         draw_list.add_text([num_x, y], col32(num_color), self.gutter_buf.as_str());
                     }
                 }
+
+                // Clip the horizontally-scrolling code column to the right of
+                // the gutter so long lines / selections / find highlights can
+                // never paint over the fixed line-number gutter. The RAII
+                // token pops at the end of this sub-row iteration, leaving the
+                // next row's gutter decorations unclipped.
+                let _code_clip = draw_list.push_clip_rect(
+                    [origin_x + gutter_width - self.char_advance * 0.5, win_y],
+                    [origin_x + inner_size[0], win_y + inner_size[1]],
+                    true,
+                );
 
                 // ── Selection & find highlights (every sub-row) ──
                 // Drawn AFTER current-line-bg so the selection is on top.
