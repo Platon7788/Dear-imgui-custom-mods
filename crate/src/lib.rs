@@ -106,12 +106,20 @@
 /// Re-export of [`dear_imgui_rs`] — the Dear ImGui Rust binding this crate is built on.
 pub use dear_imgui_rs;
 /// Re-export of [`dear_imgui_wgpu`] — the wgpu renderer backend for Dear ImGui.
+/// Requires the `render` feature (on by default).
+#[cfg(feature = "render")]
 pub use dear_imgui_wgpu;
 /// Re-export of [`dear_imgui_winit`] — the winit platform backend for Dear ImGui.
+/// Requires the `input` feature (on by default; also pulled by `chrome`).
+#[cfg(feature = "input")]
 pub use dear_imgui_winit;
 /// Re-export of [`wgpu`] — the GPU abstraction backing [`dear_imgui_wgpu`].
+/// Requires the `render` feature (on by default).
+#[cfg(feature = "render")]
 pub use wgpu;
 /// Re-export of [`winit`] — the window / event loop backing [`dear_imgui_winit`].
+/// Requires the `input` feature (on by default; also pulled by `chrome`).
+#[cfg(feature = "input")]
 pub use winit;
 
 // ─── Infrastructure modules (always compiled) ────────────────────────────────
@@ -120,15 +128,28 @@ pub use winit;
 // Gating them behind features would force every leaf-component flag to
 // depend on them, adding noise to `Cargo.toml` for no payoff.
 
-pub mod chrome;
 pub mod clipboard_backend;
 pub mod fonts;
 pub mod frame_demand;
 pub mod i18n;
 pub mod icons;
-pub mod input;
 pub mod theme;
 pub mod utils;
+
+// ─── Backend-integration modules (feature-gated) ─────────────────────────────
+//
+// These pull the heavy `winit` stack, so they hide behind opt-in features.
+// Widget components never reference them, so a leaf-component build compiles
+// neither the module nor the dependency.
+
+/// Borderless-window chrome (titlebar, resize edges, Win32 DWM). Requires the
+/// `chrome` feature (on by default), which also pulls `input`.
+#[cfg(feature = "chrome")]
+pub mod chrome;
+/// Keyboard / IME helpers for `dear-imgui-winit`. Requires the `input` feature
+/// (on by default; also pulled by `chrome`).
+#[cfg(feature = "input")]
+pub mod input;
 
 // ─── Component modules (gated behind features) ───────────────────────────────
 

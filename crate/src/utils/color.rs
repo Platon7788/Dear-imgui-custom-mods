@@ -58,6 +58,11 @@ pub fn with_alpha(c: [f32; 4], a: f32) -> [f32; 4] {
 
 /// Convenience alias for [`pack_color_f32`] — matches the `col32`
 /// shorthand used across the draw paths throughout the crate.
+///
+/// Only consumed by some feature-gated components (`disasm_view`,
+/// `property_inspector`); other draw paths define their own local `col32`.
+/// `allow(dead_code)` keeps slim `--no-default-features` builds warning-clean.
+#[allow(dead_code)]
 #[inline]
 pub(crate) fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
@@ -110,6 +115,7 @@ pub fn srgba_to_linear(c: [f32; 4]) -> [f32; 4] {
 /// Returns `true` for swap-chain formats that the GPU samples from the
 /// framebuffer through a sRGB transfer (i.e. clear values are
 /// interpreted as **linear** and need conversion from sRGB inputs).
+#[cfg(feature = "render")]
 #[inline]
 pub fn is_srgb_surface_format(fmt: wgpu::TextureFormat) -> bool {
     use wgpu::TextureFormat as F;
@@ -139,6 +145,7 @@ pub fn is_srgb_surface_format(fmt: wgpu::TextureFormat) -> bool {
 ///
 /// Use this for every `wgpu::Color` derived from a theme palette
 /// instead of hand-converting in each call site.
+#[cfg(feature = "render")]
 #[inline]
 pub fn wgpu_clear_color(rgba: [f32; 4], fmt: wgpu::TextureFormat) -> wgpu::Color {
     let [r, g, b, a] = if is_srgb_surface_format(fmt) {
@@ -278,6 +285,7 @@ mod tests {
         assert_eq!(out[3], 0.42);
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn is_srgb_surface_format_identifies_srgb_swap_chains() {
         // Every flavour that wgpu surfaces expose for a normal framebuffer.
@@ -289,6 +297,7 @@ mod tests {
         assert!(!is_srgb_surface_format(wgpu::TextureFormat::Rgba16Float));
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn wgpu_clear_color_converts_for_srgb_surface() {
         // sRGB surface → input is converted, clear value lands at the
@@ -305,6 +314,7 @@ mod tests {
         assert_eq!(color.a, 1.0);
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn wgpu_clear_color_passes_through_for_unorm_surface() {
         // Non-sRGB surface → no conversion, raw value stored verbatim

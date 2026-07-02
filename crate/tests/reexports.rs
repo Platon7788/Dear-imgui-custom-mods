@@ -5,6 +5,9 @@
 //! duplicate-pin them. If one of the re-exports breaks, downstream builds
 //! start failing in confusing ways — these tests catch that early.
 
+// The wgpu / winit re-exports live behind the `render` / `input` backend
+// features (both on by default). Skip this smoke test when they're disabled.
+#[cfg(all(feature = "render", feature = "input"))]
 #[test]
 fn reexports_are_reachable() {
     // Just prove the paths resolve and the underlying types haven't been
