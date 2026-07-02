@@ -77,7 +77,7 @@ impl<T> TreeArena<T> {
     }
 
     /// Update depth of a node's entire subtree after reparenting.
-    /// Iterative BFS to avoid stack overflow on deep trees.
+    /// Iterative DFS (LIFO stack) to avoid stack overflow on deep trees.
     fn update_subtree_depth(&mut self, id: NodeId) {
         let mut queue = vec![id];
         while let Some(nid) = queue.pop() {

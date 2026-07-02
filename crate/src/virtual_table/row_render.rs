@@ -261,10 +261,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                         let changed = {
                             let items = match &self.columns[col_idx].editor {
                                 CellEditor::ComboBox { items } => items,
-                                _ => {
-                                    self.edit_state.deactivate();
-                                    return;
-                                }
+                                // Unreachable: editor_kind already classified this
+                                // column as ComboBox. Skip the cell rather than
+                                // aborting the whole row if that ever changes.
+                                _ => continue,
                             };
                             ui.set_next_item_width(-1.0);
                             ui.combo_simple_string("##combo", &mut choice, items)
@@ -293,10 +293,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                     let clicked = {
                         let label = match &self.columns[col_idx].editor {
                             CellEditor::Button { label } => label.as_str(),
-                            _ => {
-                                self.edit_state.deactivate();
-                                return;
-                            }
+                            _ => continue, // unreachable; skip cell, don't abort row
                         };
                         ui.button(label)
                     };

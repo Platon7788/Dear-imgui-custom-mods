@@ -237,10 +237,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     let changed = {
                         let items = match &self.columns[col_idx].editor {
                             CellEditor::ComboBox { items } => items,
-                            _ => {
-                                self.edit_state.deactivate();
-                                return;
-                            }
+                            _ => return, // unreachable; editor_kind already matched
                         };
                         ui.set_next_item_width(-1.0);
                         ui.combo_simple_string("##combo", &mut choice, items)
@@ -270,10 +267,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 let clicked = {
                     let label = match &self.columns[col_idx].editor {
                         CellEditor::Button { label } => label.as_str(),
-                        _ => {
-                            self.edit_state.deactivate();
-                            return;
-                        }
+                        _ => return, // unreachable; editor_kind already matched
                     };
                     ui.button(label)
                 };
