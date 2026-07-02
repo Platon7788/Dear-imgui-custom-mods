@@ -34,10 +34,13 @@ impl CodeEditor {
         }
 
         // ── I-beam cursor ONLY inside the text content area ───────────────
+        // Exclude the vertical scrollbar strip on the right so hovering the
+        // scrollbar keeps its normal arrow cursor instead of the text I-beam.
+        let scrollbar_reserve = unsafe { (*dear_imgui_rs::sys::igGetStyle()).ScrollbarSize };
         let content_max_x = origin_x + inner_size[0];
         let content_max_y = origin_y + inner_size[1];
         if mx >= origin_x + gutter_width
-            && mx < content_max_x
+            && mx < content_max_x - scrollbar_reserve
             && my >= origin_y
             && my < content_max_y
         {
@@ -79,8 +82,16 @@ impl CodeEditor {
 
         let time = ui.time();
 
-        // Click in gutter area → toggle fold
-        if self.config.show_fold_indicators && ui.is_mouse_clicked(MouseButton::Left) && mx < text_x
+        // Click on the fold chevron → toggle fold. Restrict the hit zone to the
+        // chevron icon (matching draw_fold_indicator's icon rect) so a click on
+        // the line numbers can't accidentally collapse a whole block — the old
+        // `mx < text_x` swallowed the entire gutter width.
+        let fold_zone_lo = text_x - self.char_advance * 2.0;
+        let fold_zone_hi = text_x - self.char_advance * 0.2;
+        if self.config.show_fold_indicators
+            && ui.is_mouse_clicked(MouseButton::Left)
+            && mx >= fold_zone_lo
+            && mx < fold_zone_hi
         {
             let has_fold = self.fold_regions.iter().any(|r| r.start_line == line);
             if has_fold {

@@ -447,9 +447,11 @@ impl CodeEditor {
                     let badge_y = y;
                     let badge_w = badge.chars().count() as f32 * self.char_advance;
 
-                    // Badge colours from the gutter palette (readable on both
-                    // dark and light themes, unlike the old hardcoded dark box).
-                    let bg_c = self.config.colors.gutter_bg;
+                    // Badge colours from the theme, chosen for CONTRAST so the
+                    // "... N lines" pill is clearly visible (a folded block must
+                    // be obvious). current_line_bg is lighter than gutter_bg on
+                    // dark themes and darker on light ones — readable on both.
+                    let bg_c = self.config.colors.current_line_bg;
                     let bg = col32([bg_c[0], bg_c[1], bg_c[2], 0.95]);
                     let border = col32(self.config.colors.gutter_separator);
                     draw_list
@@ -470,8 +472,8 @@ impl CodeEditor {
                         .rounding(3.0)
                         .build();
 
-                    // Badge text
-                    let text_col = col32(self.config.colors.line_number);
+                    // Badge text — bright active-line-number colour for legibility.
+                    let text_col = col32(self.config.colors.line_number_active);
                     draw_list.add_text([badge_x, badge_y], text_col, &badge);
                 }
             }

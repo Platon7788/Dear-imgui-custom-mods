@@ -24,6 +24,30 @@ fn test_set_get_text() {
 }
 
 #[test]
+fn diagnostic_real_fold_detection_collapse() {
+    let mut ed = CodeEditor::new("t");
+    ed.config_mut().show_fold_indicators = true;
+    ed.set_language(Language::Rust);
+    // Brace block lines 0..=4, then two trailing lines (5, 6).
+    ed.set_text("fn a() {\n    let x = 1;\n    let y = 2;\n    let z = 3;\n}\nlet after1 = 1;\nlet after2 = 2;");
+    let n = ed.line_count();
+    assert_eq!(n, 7);
+    ed.update_fold_regions();
+    ed.rebuild_fold_display();
+    assert!(!ed.folds_active, "nothing folded on load");
+    assert_eq!(ed.total_visual_rows(), n, "no collapse when unfolded");
+
+    ed.toggle_fold(0);
+    ed.rebuild_fold_display();
+    assert!(ed.folds_active, "fold should be active after toggle");
+    // Region (0,4): hide lines 1..=4 (4 lines) → 7 − 4 = 3 display rows.
+    assert_eq!(ed.total_visual_rows(), 3, "collapse total");
+    assert_eq!(ed.visual_row_of(5, 0), 1, "after1 sits right after the header");
+    assert_eq!(ed.visual_row_to_line(1), (5, 0), "row 1 maps to after1");
+    assert_eq!(ed.visual_row_to_line(2), (6, 0), "row 2 maps to after2");
+}
+
+#[test]
 fn folded_region_collapses_visual_rows() {
     // 8 lines; fold header on line 1 hides lines 2..=4 (3 lines). The display
     // must collapse those 3 rows: total shrinks, rows below shift up, and
