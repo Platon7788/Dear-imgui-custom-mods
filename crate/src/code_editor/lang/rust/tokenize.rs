@@ -21,8 +21,31 @@ pub(in crate::code_editor::lang) fn tokenize(
         0
     };
 
-    // USER CODE markers — whole-line tokens
-    if depth == 0 {
+    // ── Resume a multi-line string opened on a previous line ─────────────
+    // Rust string / raw / byte / c-string literals may span lines; the editor
+    // threads `LineState::Str { … }` back so we scan from column 0 for the
+    // close, colour the run as String, then stay open or fall through to code.
+    if let LineState::Str { raw, hashes, .. } = state {
+        let closed = if raw {
+            scan_raw_str_body(&mut i, bytes, usize::from(hashes))
+        } else {
+            scan_str_body(&mut i, bytes)
+        };
+        if i > 0 {
+            tokens.push(Token {
+                kind: TokenKind::String,
+                start: 0,
+                len: i,
+            });
+        }
+        if !closed {
+            return (tokens, state);
+        }
+        // Closed mid-line — fall through to the main loop, resuming at `i`.
+    }
+
+    // USER CODE markers — only when the line begins in ordinary code.
+    if depth == 0 && matches!(state, LineState::Code) {
         let trimmed = line.trim();
         if trimmed.starts_with("// USER CODE BEGIN") || trimmed.starts_with("// USER CODE END") {
             tokens.push(Token {
@@ -66,10 +89,9 @@ pub(in crate::code_editor::lang) fn tokenize(
         // ── Line comment ─────────────────────────────────────────────────
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'/' {
             // `///` outer-doc or `//!` inner-doc — but NOT `////`+ (plain).
-            let is_doc = (i + 2 < len
-                && bytes[i + 2] == b'/'
-                && !(i + 3 < len && bytes[i + 3] == b'/'))
-                || (i + 2 < len && bytes[i + 2] == b'!');
+            let is_doc =
+                (i + 2 < len && bytes[i + 2] == b'/' && !(i + 3 < len && bytes[i + 3] == b'/'))
+                    || (i + 2 < len && bytes[i + 2] == b'!');
             tokens.push(Token {
                 kind: if is_doc {
                     TokenKind::DocComment
@@ -154,21 +176,15 @@ pub(in crate::code_editor::lang) fn tokenize(
         if b == b'"' {
             let start = i;
             i += 1;
-            while i < len {
-                if bytes[i] == b'\\' && i + 1 < len {
-                    i += 2;
-                } else if bytes[i] == b'"' {
-                    i += 1;
-                    break;
-                } else {
-                    i += 1;
-                }
-            }
+            let closed = scan_str_body(&mut i, bytes);
             tokens.push(Token {
                 kind: TokenKind::String,
                 start,
                 len: i - start,
             });
+            if !closed {
+                return (tokens, str_carry(false, 0));
+            }
             continue;
         }
 
@@ -178,21 +194,15 @@ pub(in crate::code_editor::lang) fn tokenize(
             if bytes[i + 1] == b'"' {
                 let start = i;
                 i += 2;
-                while i < len {
-                    if bytes[i] == b'\\' && i + 1 < len {
-                        i += 2;
-                    } else if bytes[i] == b'"' {
-                        i += 1;
-                        break;
-                    } else {
-                        i += 1;
-                    }
-                }
+                let closed = scan_str_body(&mut i, bytes);
                 tokens.push(Token {
                     kind: TokenKind::String,
                     start,
                     len: i - start,
                 });
+                if !closed {
+                    return (tokens, str_carry(false, 0));
+                }
                 continue;
             } else if let Some(end) = consume_char_literal(line, i + 1) {
                 // b'x' — `b` prefix + char literal.
@@ -211,21 +221,15 @@ pub(in crate::code_editor::lang) fn tokenize(
         if b == b'c' && i + 1 < len && bytes[i + 1] == b'"' {
             let start = i;
             i += 2;
-            while i < len {
-                if bytes[i] == b'\\' && i + 1 < len {
-                    i += 2;
-                } else if bytes[i] == b'"' {
-                    i += 1;
-                    break;
-                } else {
-                    i += 1;
-                }
-            }
+            let closed = scan_str_body(&mut i, bytes);
             tokens.push(Token {
                 kind: TokenKind::String,
                 start,
                 len: i - start,
             });
+            if !closed {
+                return (tokens, str_carry(false, 0));
+            }
             continue;
         }
 
@@ -249,29 +253,15 @@ pub(in crate::code_editor::lang) fn tokenize(
             }
             if i < len && bytes[i] == b'"' {
                 i += 1;
-                'raw: loop {
-                    if i >= len {
-                        break;
-                    }
-                    if bytes[i] == b'"' {
-                        let mut end_hashes = 0;
-                        let mut j = i + 1;
-                        while j < len && bytes[j] == b'#' && end_hashes < hashes {
-                            end_hashes += 1;
-                            j += 1;
-                        }
-                        if end_hashes == hashes {
-                            i = j;
-                            break 'raw;
-                        }
-                    }
-                    i += 1;
-                }
+                let closed = scan_raw_str_body(&mut i, bytes, hashes);
                 tokens.push(Token {
                     kind: TokenKind::String,
                     start,
                     len: i - start,
                 });
+                if !closed {
+                    return (tokens, str_carry(true, hashes.min(255) as u8));
+                }
                 continue;
             }
             i = start; // not a raw string — fall through
@@ -473,4 +463,57 @@ pub(in crate::code_editor::lang) fn tokenize(
         LineState::Code
     };
     (tokens, end)
+}
+
+// ── Multi-line string helpers ────────────────────────────────────────────────
+
+/// Carry state for an unclosed `"`-delimited string (regular / byte / c / raw).
+#[inline]
+fn str_carry(raw: bool, hashes: u8) -> LineState {
+    LineState::Str {
+        quote: b'"',
+        raw,
+        hashes,
+        triple: false,
+    }
+}
+
+/// Scan a non-raw string body from `*i` (first byte after the opening quote).
+/// Returns `true` if the closing `"` was found. Honours `\"` escapes; a
+/// trailing `\` is a line continuation that leaves the string open.
+fn scan_str_body(i: &mut usize, bytes: &[u8]) -> bool {
+    let len = bytes.len();
+    while *i < len {
+        if bytes[*i] == b'\\' {
+            *i += if *i + 1 < len { 2 } else { 1 };
+        } else if bytes[*i] == b'"' {
+            *i += 1;
+            return true;
+        } else {
+            *i += 1;
+        }
+    }
+    false
+}
+
+/// Scan a raw string body from `*i` for a closing `"` followed by exactly
+/// `hashes` `#`. Advances `*i` past the close (or to EOL); returns closed?.
+fn scan_raw_str_body(i: &mut usize, bytes: &[u8], hashes: usize) -> bool {
+    let len = bytes.len();
+    while *i < len {
+        if bytes[*i] == b'"' {
+            let mut end_hashes = 0;
+            let mut j = *i + 1;
+            while j < len && bytes[j] == b'#' && end_hashes < hashes {
+                end_hashes += 1;
+                j += 1;
+            }
+            if end_hashes == hashes {
+                *i = j;
+                return true;
+            }
+        }
+        *i += 1;
+    }
+    false
 }
