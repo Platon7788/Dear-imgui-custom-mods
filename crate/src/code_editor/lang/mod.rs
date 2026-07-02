@@ -11,6 +11,7 @@ pub mod dockerfile;
 pub mod hex;
 pub mod ini;
 pub mod json;
+pub mod markdown;
 pub mod rhai;
 pub mod ron;
 pub mod rust;
@@ -197,6 +198,9 @@ pub enum Language {
     Ini,
     /// Dockerfile — instruction keywords, `$VAR` variables, `--flag` options.
     Dockerfile,
+    /// Markdown — headings, lists, blockquotes, inline emphasis/code/links,
+    /// and multi-line fenced code blocks (tracked via [`LineState::Fenced`]).
+    Markdown,
     /// Fully custom syntax via a [`SyntaxDefinition`] trait object.
     Custom(Arc<dyn SyntaxDefinition>),
 }
@@ -218,6 +222,7 @@ impl std::fmt::Debug for Language {
             Language::Diff => write!(f, "Language::Diff"),
             Language::Ini => write!(f, "Language::Ini"),
             Language::Dockerfile => write!(f, "Language::Dockerfile"),
+            Language::Markdown => write!(f, "Language::Markdown"),
             Language::Custom(def) => write!(f, "Language::Custom(\"{}\")", def.name()),
         }
     }
@@ -240,7 +245,8 @@ impl PartialEq for Language {
                 | (Language::Sql, Language::Sql)
                 | (Language::Diff, Language::Diff)
                 | (Language::Ini, Language::Ini)
-                | (Language::Dockerfile, Language::Dockerfile) // Two Custom variants are distinct (no identity comparison).
+                | (Language::Dockerfile, Language::Dockerfile)
+                | (Language::Markdown, Language::Markdown) // Two Custom variants are distinct (no identity comparison).
         )
     }
 }
@@ -268,6 +274,7 @@ impl Language {
             Language::Diff => "Diff",
             Language::Ini => "INI",
             Language::Dockerfile => "Dockerfile",
+            Language::Markdown => "Markdown",
             Language::Custom(def) => def.name(),
         }
     }
@@ -293,6 +300,7 @@ impl Language {
             Language::Diff,
             Language::Ini,
             Language::Dockerfile,
+            Language::Markdown,
             Language::None,
         ];
         ALL
@@ -319,6 +327,7 @@ impl Language {
             "diff" | "patch" => Language::Diff,
             "ini" | "cfg" | "conf" => Language::Ini,
             "dockerfile" => Language::Dockerfile,
+            "md" | "markdown" | "mdown" | "mkd" => Language::Markdown,
             _ => return None,
         })
     }
@@ -418,6 +427,7 @@ pub fn tokenize_line(line: &str, language: &Language, state: LineState) -> (Vec<
         Language::Diff => diff::DiffLang.tokenize_line(line, state),
         Language::Ini => ini::IniLang.tokenize_line(line, state),
         Language::Dockerfile => dockerfile::DockerfileLang.tokenize_line(line, state),
+        Language::Markdown => markdown::MarkdownLang.tokenize_line(line, state),
         Language::Custom(def) => def.tokenize_line(line, state),
     }
 }
@@ -444,6 +454,7 @@ pub fn definition(language: &Language) -> &dyn SyntaxDefinition {
         Language::Diff => &diff::DiffLang,
         Language::Ini => &ini::IniLang,
         Language::Dockerfile => &dockerfile::DockerfileLang,
+        Language::Markdown => &markdown::MarkdownLang,
         Language::Custom(def) => def.as_ref(),
     }
 }
@@ -471,6 +482,7 @@ mod tests {
             Language::Diff,
             Language::Ini,
             Language::Dockerfile,
+            Language::Markdown,
         ] {
             let (toks, _) = tokenize_line("", &lang, LineState::Code);
             assert!(
@@ -640,6 +652,7 @@ mod tests {
         Language::Diff,
         Language::Ini,
         Language::Dockerfile,
+        Language::Markdown,
     ];
 
     /// Adversarial inputs must never panic and must always produce tokens

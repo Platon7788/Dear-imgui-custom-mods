@@ -249,6 +249,7 @@ impl CodeEditor {
                 (Language::Diff, "Diff / Patch"),
                 (Language::Ini, "INI"),
                 (Language::Dockerfile, "Dockerfile"),
+                (Language::Markdown, "Markdown"),
                 (Language::None, s.language_plain_text),
             ] {
                 let selected = self.config.language == lang;
