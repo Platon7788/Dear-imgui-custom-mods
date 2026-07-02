@@ -227,6 +227,40 @@ fn raw_string() {
     assert_eq!(strings.len(), 1);
 }
 
+/// A raw identifier (`r#type`, `r#match`) is a single `Identifier` token that
+/// escapes a keyword — it must NOT surface as a keyword. Regressions: `r#"…"#`
+/// stays a raw String and a bare keyword elsewhere is still a Keyword.
+#[test]
+fn raw_identifier() {
+    let toks = tok("let r#type = 1;");
+    assert!(
+        toks.iter()
+            .any(|t| t.0 == TokenKind::Identifier && t.1 == "r#type"),
+        "`r#type` must be one Identifier: {toks:?}"
+    );
+    assert!(
+        !toks
+            .iter()
+            .any(|t| t.0 == TokenKind::Keyword && t.1 == "type"),
+        "`r#type` must not surface a `type` keyword: {toks:?}"
+    );
+    assert!(
+        tok("r#match")
+            .iter()
+            .any(|t| t.0 == TokenKind::Identifier && t.1 == "r#match"),
+        "`r#match` must be one Identifier"
+    );
+    // Regression: `r#"raw"#` is still a raw String, not an identifier.
+    assert!(
+        tok(r###"let s = r#"raw"#;"###)
+            .iter()
+            .any(|t| t.0 == TokenKind::String && t.1 == r##"r#"raw"#"##),
+        "`r#\"raw\"#` must stay a raw String"
+    );
+    // Regression: a plain `type` keyword elsewhere is still a Keyword.
+    assert_eq!(tok("type Foo = i32;")[0], (TokenKind::Keyword, "type"));
+}
+
 #[test]
 fn byte_string_and_byte_char() {
     let toks = tok(r#"let b = b"bytes";"#);

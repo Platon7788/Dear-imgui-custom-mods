@@ -234,6 +234,26 @@ pub(in crate::code_editor::lang) fn tokenize(
             continue;
         }
 
+        // ── Raw identifier (r#ident) ─────────────────────────────────────
+        // `r#` + an identifier-start byte is a *raw identifier* (`r#type`,
+        // `r#match`) — an ordinary identifier escaping a keyword, so it must be
+        // one `Identifier` token, never a keyword. Requiring an ident-start
+        // byte (not `"`) lets the raw-string branch below still own `r#"…"#`;
+        // a trailing `r#` or `r#<digit>` falls through and is tiled normally.
+        if b == b'r' && i + 2 < len && bytes[i + 1] == b'#' && is_ident_start(bytes[i + 2]) {
+            let start = i;
+            i += 2; // consume `r#`
+            while i < len && is_ident_continue(bytes[i]) {
+                i += 1;
+            }
+            tokens.push(Token {
+                kind: TokenKind::Identifier,
+                start,
+                len: i - start,
+            });
+            continue;
+        }
+
         // ── Raw string (r"..."/r#"..."#, br"...", cr"...") ───────────────
         if (b == b'r' && i + 1 < len && (bytes[i + 1] == b'"' || bytes[i + 1] == b'#'))
             || ((b == b'b' || b == b'c')
