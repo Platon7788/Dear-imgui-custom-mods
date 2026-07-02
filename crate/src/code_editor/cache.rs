@@ -16,29 +16,29 @@ impl CodeEditor {
     pub(super) fn get_cached_tokens(&mut self, line_idx: usize) -> Rc<Vec<Token>> {
         let line_str = self.buffer.line(line_idx);
         let content_hash = hash_line(line_str);
-        let in_bc = self
+        let state = self
             .block_comment_states
             .get(line_idx)
             .copied()
-            .unwrap_or(false);
+            .unwrap_or(LineState::Code);
 
         // Check cache hit — Rc::clone is just a refcount bump, no Vec copy.
         if let Some(Some(cached)) = self.token_cache.get(line_idx)
             && cached.content_hash == content_hash
-            && cached.in_block_comment == in_bc
+            && cached.line_state == state
         {
             return Rc::clone(&cached.tokens);
         }
 
         // Cache miss — tokenize
-        let (tokens, _ends_in_bc) = tokenize_line(line_str, &self.config.language, in_bc);
+        let (tokens, _end_state) = tokenize_line(line_str, &self.config.language, state);
         let rc = Rc::new(tokens);
 
         // Store in cache
         if line_idx < self.token_cache.len() {
             self.token_cache[line_idx] = Some(CachedLineTokens {
                 content_hash,
-                in_block_comment: in_bc,
+                line_state: state,
                 tokens: Rc::clone(&rc),
             });
         }

@@ -21,6 +21,59 @@ pub mod yaml;
 
 use std::sync::Arc;
 
+// ── LineState ────────────────────────────────────────────────────────────────
+
+/// Per-line tokenizer carry-state threaded from one line to the next.
+///
+/// Replaces the old single `bool` "still in a block comment" flag: it carries
+/// the same information (`Code` / `BlockComment`) plus room for the multi-line
+/// modes a richer highlighter needs (strings, Markdown fences, HTML raw-text,
+/// YAML block scalars). Only [`LineState::Code`] and
+/// [`LineState::BlockComment`] are produced by the current tokenizers; the
+/// other variants are reserved for follow-up work and may be unused for now.
+///
+/// `Copy` + `Eq` so the editor can compare and store one per line cheaply and
+/// use equality for its incremental block-comment convergence early-exit.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LineState {
+    /// Ordinary code — no multi-line construct is open.
+    #[default]
+    Code,
+    /// Inside a nesting block comment; carries nesting depth.
+    BlockComment(u16),
+    /// Inside a multi-line string. `quote` = b'"' or b'\''; `raw` disables
+    /// escapes; `hashes` = number of `#` for raw strings (Rust r#"…"#);
+    /// `triple` = a triple-quoted string (TOML/Python """…""").
+    Str {
+        /// Opening quote byte (`b'"'` or `b'\''`).
+        quote: u8,
+        /// Raw string — backslash escapes are disabled.
+        raw: bool,
+        /// Number of `#` hashes for a raw string (Rust `r#"…"#`).
+        hashes: u8,
+        /// Triple-quoted string (`"""…"""`).
+        triple: bool,
+    },
+    /// Inside a Markdown fenced code block. `fence` = b'`' or b'~';
+    /// `count` = fence length (to match the close).
+    Fenced {
+        /// Fence byte (`` b'`' `` or `b'~'`).
+        fence: u8,
+        /// Fence length — the close fence must be at least this long.
+        count: u8,
+    },
+    /// Inside an HTML raw-text element body. `is_style` = <style> vs <script>.
+    HtmlRaw {
+        /// `<style>` (`true`) vs `<script>` (`false`).
+        is_style: bool,
+    },
+    /// Inside a YAML block scalar body; `indent` = min indent that stays in.
+    YamlBlock {
+        /// Minimum indentation that remains part of the block scalar.
+        indent: u16,
+    },
+}
+
 // ── SyntaxDefinition ─────────────────────────────────────────────────────────
 
 /// Trait for custom syntax definitions.
@@ -31,18 +84,18 @@ use std::sync::Arc;
 ///
 /// # Example — minimal hex-packet DSL
 /// ```rust,no_run
-/// use dear_imgui_custom_mod::code_editor::{SyntaxDefinition, token::{Token, TokenKind}};
+/// use dear_imgui_custom_mod::code_editor::{LineState, SyntaxDefinition, token::{Token, TokenKind}};
 /// use std::sync::Arc;
 ///
 /// struct HexPacketSyntax;
 /// impl SyntaxDefinition for HexPacketSyntax {
 ///     fn name(&self) -> &str { "HexPacket" }
-///     fn tokenize_line(&self, line: &str, _in_bc: bool) -> (Vec<Token>, bool) {
+///     fn tokenize_line(&self, line: &str, _state: LineState) -> (Vec<Token>, LineState) {
 ///         if line.trim_start().starts_with("//") {
-///             return (vec![Token { kind: TokenKind::Comment, start: 0, len: line.len() }], false);
+///             return (vec![Token { kind: TokenKind::Comment, start: 0, len: line.len() }], LineState::Code);
 ///         }
 ///         // … tokenize hex bytes …
-///         (vec![], false)
+///         (vec![], LineState::Code)
 ///     }
 /// }
 /// // editor.config.language = Language::Custom(Arc::new(HexPacketSyntax));
@@ -53,9 +106,10 @@ pub trait SyntaxDefinition: Send + Sync {
 
     /// Tokenize a single line.
     ///
-    /// `in_block_comment` carries state from the previous line.
-    /// Return `(tokens, still_in_block_comment)`.
-    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool);
+    /// `state` carries the multi-line tokenizer state from the previous line
+    /// (see [`LineState`]). Return `(tokens, state_at_end_of_line)` — the
+    /// returned state is fed as the `state` argument for the next line.
+    fn tokenize_line(&self, line: &str, state: LineState) -> (Vec<Token>, LineState);
 
     /// Prefix used by Toggle Comment (`Ctrl+/`). `None` disables the command.
     fn line_comment_prefix(&self) -> Option<&str> {
@@ -306,9 +360,9 @@ impl SyntaxDefinition for PlainTextLang {
         "Plain Text"
     }
 
-    fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
+    fn tokenize_line(&self, line: &str, _state: LineState) -> (Vec<Token>, LineState) {
         if line.is_empty() {
-            (vec![], false)
+            (vec![], LineState::Code)
         } else {
             (
                 vec![Token {
@@ -316,7 +370,7 @@ impl SyntaxDefinition for PlainTextLang {
                     start: 0,
                     len: line.len(),
                 }],
-                false,
+                LineState::Code,
             )
         }
     }
@@ -348,27 +402,23 @@ impl SyntaxDefinition for PlainTextLang {
 /// Dispatches to the appropriate built-in tokenizer or custom definition.
 /// This is the hot-path function called per visible line each frame —
 /// dispatch is via direct match (no vtable) for built-in languages.
-pub fn tokenize_line(
-    line: &str,
-    language: &Language,
-    in_block_comment: bool,
-) -> (Vec<Token>, bool) {
+pub fn tokenize_line(line: &str, language: &Language, state: LineState) -> (Vec<Token>, LineState) {
     match language {
-        Language::None => PlainTextLang.tokenize_line(line, in_block_comment),
-        Language::Rust => rust::RustLang.tokenize_line(line, in_block_comment),
-        Language::Ron => ron::RonLang.tokenize_line(line, in_block_comment),
-        Language::Rhai => rhai::RhaiLang.tokenize_line(line, in_block_comment),
-        Language::Toml => toml::TomlLang.tokenize_line(line, in_block_comment),
-        Language::Json => json::JsonLang.tokenize_line(line, in_block_comment),
-        Language::Yaml => yaml::YamlLang.tokenize_line(line, in_block_comment),
-        Language::Xml => xml::XmlLang.tokenize_line(line, in_block_comment),
-        Language::Hex => hex::HexLang.tokenize_line(line, in_block_comment),
-        Language::Asm => asm::AsmLang.tokenize_line(line, in_block_comment),
-        Language::Sql => sql::SqlLang.tokenize_line(line, in_block_comment),
-        Language::Diff => diff::DiffLang.tokenize_line(line, in_block_comment),
-        Language::Ini => ini::IniLang.tokenize_line(line, in_block_comment),
-        Language::Dockerfile => dockerfile::DockerfileLang.tokenize_line(line, in_block_comment),
-        Language::Custom(def) => def.tokenize_line(line, in_block_comment),
+        Language::None => PlainTextLang.tokenize_line(line, state),
+        Language::Rust => rust::RustLang.tokenize_line(line, state),
+        Language::Ron => ron::RonLang.tokenize_line(line, state),
+        Language::Rhai => rhai::RhaiLang.tokenize_line(line, state),
+        Language::Toml => toml::TomlLang.tokenize_line(line, state),
+        Language::Json => json::JsonLang.tokenize_line(line, state),
+        Language::Yaml => yaml::YamlLang.tokenize_line(line, state),
+        Language::Xml => xml::XmlLang.tokenize_line(line, state),
+        Language::Hex => hex::HexLang.tokenize_line(line, state),
+        Language::Asm => asm::AsmLang.tokenize_line(line, state),
+        Language::Sql => sql::SqlLang.tokenize_line(line, state),
+        Language::Diff => diff::DiffLang.tokenize_line(line, state),
+        Language::Ini => ini::IniLang.tokenize_line(line, state),
+        Language::Dockerfile => dockerfile::DockerfileLang.tokenize_line(line, state),
+        Language::Custom(def) => def.tokenize_line(line, state),
     }
 }
 
@@ -422,7 +472,7 @@ mod tests {
             Language::Ini,
             Language::Dockerfile,
         ] {
-            let (toks, _) = tokenize_line("", &lang, false);
+            let (toks, _) = tokenize_line("", &lang, LineState::Code);
             assert!(
                 toks.is_empty(),
                 "non-empty tokens for {:?} on empty line",
@@ -433,10 +483,10 @@ mod tests {
 
     #[test]
     fn test_plain_text() {
-        let (toks, bc) = tokenize_line("hello world", &Language::None, false);
+        let (toks, bc) = tokenize_line("hello world", &Language::None, LineState::Code);
         assert_eq!(toks.len(), 1);
         assert_eq!(toks[0].kind, TokenKind::Identifier);
-        assert!(!bc);
+        assert_eq!(bc, LineState::Code);
     }
 
     #[test]
@@ -570,7 +620,7 @@ mod tests {
     #[test]
     fn test_covers_full_line_rust() {
         let line = "pub fn foo(x: i32) -> bool { true }";
-        let (toks, _) = tokenize_line(line, &Language::Rust, false);
+        let (toks, _) = tokenize_line(line, &Language::Rust, LineState::Code);
         let total: usize = toks.iter().map(|t| t.len).sum();
         assert_eq!(total, line.len());
     }
@@ -630,14 +680,14 @@ mod tests {
             ":::,,,...===!!!",
         ];
         for lang in ALL_LANGS {
-            for &in_bc in &[false, true] {
+            for &in_bc in &[LineState::Code, LineState::BlockComment(1)] {
                 for s in &samples {
                     let (toks, _) = tokenize_line(s, lang, in_bc);
                     let mut pos = 0usize;
                     for t in &toks {
                         assert_eq!(
                             t.start, pos,
-                            "non-contiguous span in {lang:?} (bc={in_bc}) on {s:?}: {toks:?}"
+                            "non-contiguous span in {lang:?} (bc={in_bc:?}) on {s:?}: {toks:?}"
                         );
                         // Spans must land on char boundaries so the renderer
                         // can slice without panicking.
@@ -650,7 +700,7 @@ mod tests {
                     assert_eq!(
                         pos,
                         s.len(),
-                        "span total != line len in {lang:?} (bc={in_bc}) on {s:?}: {toks:?}"
+                        "span total != line len in {lang:?} (bc={in_bc:?}) on {s:?}: {toks:?}"
                     );
                 }
             }
@@ -664,8 +714,12 @@ mod tests {
     fn non_block_comment_langs_never_carry_state() {
         for lang in [Language::Toml, Language::Yaml, Language::Asm, Language::Hex] {
             for line in ["/* not a comment here */", "x */", "/* x"] {
-                let (_, carry) = tokenize_line(line, &lang, false);
-                assert!(!carry, "{lang:?} unexpectedly carried block-comment state");
+                let (_, carry) = tokenize_line(line, &lang, LineState::Code);
+                assert_eq!(
+                    carry,
+                    LineState::Code,
+                    "{lang:?} unexpectedly carried block-comment state"
+                );
             }
         }
     }

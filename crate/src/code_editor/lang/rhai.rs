@@ -4,7 +4,7 @@ use super::{
     NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start,
     scan_block_comment,
 };
-use crate::code_editor::config::SyntaxDefinition;
+use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 const KEYWORDS: &[&str] = &[
@@ -60,8 +60,8 @@ impl SyntaxDefinition for RhaiLang {
         "Rhai"
     }
 
-    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
-        tokenize(line, in_block_comment)
+    fn tokenize_line(&self, line: &str, state: LineState) -> (Vec<Token>, LineState) {
+        tokenize(line, state)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {
@@ -96,12 +96,16 @@ impl SyntaxDefinition for RhaiLang {
 
 // ── Tokenizer ───────────────────────────────────────────────────────────────
 
-fn tokenize(line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
+fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut tokens = Vec::with_capacity(16);
     let mut i = 0;
-    let mut depth: u32 = u32::from(in_block_comment);
+    let mut depth: u32 = if let LineState::BlockComment(d) = state {
+        u32::from(d)
+    } else {
+        0
+    };
 
     while i < len {
         // ── Inside a (possibly nested) block comment ─────────────────────
@@ -139,7 +143,7 @@ fn tokenize(line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
                 start: i,
                 len: len - i,
             });
-            return (tokens, false);
+            return (tokens, LineState::Code);
         }
 
         // ── Block comment (nesting-aware) ────────────────────────────────
@@ -349,19 +353,24 @@ fn tokenize(line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
         i += ch_len;
     }
 
-    (tokens, depth > 0)
+    let end = if depth > 0 {
+        LineState::BlockComment(depth as u16)
+    } else {
+        LineState::Code
+    };
+    (tokens, end)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use crate::code_editor::config::Language;
+    use crate::code_editor::config::{Language, LineState};
     use crate::code_editor::lang::tokenize_line;
     use crate::code_editor::token::TokenKind;
 
     fn tok(line: &str) -> Vec<(TokenKind, String)> {
-        let (tokens, _) = tokenize_line(line, &Language::Rhai, false);
+        let (tokens, _) = tokenize_line(line, &Language::Rhai, LineState::Code);
         tokens
             .iter()
             .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
@@ -427,20 +436,24 @@ mod tests {
 
     #[test]
     fn block_comment() {
-        let (_, still_in) = tokenize_line("/* start", &Language::Rhai, false);
-        assert!(still_in);
-        let (toks, done) = tokenize_line("end */ code", &Language::Rhai, true);
-        assert!(!done);
+        let (_, still_in) = tokenize_line("/* start", &Language::Rhai, LineState::Code);
+        assert_eq!(still_in, LineState::BlockComment(1));
+        let (toks, done) = tokenize_line("end */ code", &Language::Rhai, LineState::BlockComment(1));
+        assert_eq!(done, LineState::Code);
         assert_eq!(toks[0].kind, TokenKind::Comment);
     }
 
     /// Rhai block comments nest (`/* /* */ */`).
     #[test]
     fn nested_block_comment() {
-        let (_, still_in) = tokenize_line("/* a /* b */ c */", &Language::Rhai, false);
-        assert!(!still_in, "balanced nest closes");
-        let (_, still_in2) = tokenize_line("/* a /* b */", &Language::Rhai, false);
-        assert!(still_in2, "one level still open");
+        let (_, still_in) = tokenize_line("/* a /* b */ c */", &Language::Rhai, LineState::Code);
+        assert_eq!(still_in, LineState::Code, "balanced nest closes");
+        let (_, still_in2) = tokenize_line("/* a /* b */", &Language::Rhai, LineState::Code);
+        assert_eq!(
+            still_in2,
+            LineState::BlockComment(1),
+            "one level still open"
+        );
     }
 
     /// Unterminated string / backtick must run to EOL without panic.

@@ -6,7 +6,7 @@
 //! (`diff`, `index`, `rename`, …) as keywords. A single token spans the
 //! whole line, so the span-tiling invariant holds trivially.
 
-use crate::code_editor::config::SyntaxDefinition;
+use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 // ── Language definition ─────────────────────────────────────────────────────
@@ -18,8 +18,8 @@ impl SyntaxDefinition for DiffLang {
         "Diff"
     }
 
-    fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
-        (tokenize(line), false)
+    fn tokenize_line(&self, line: &str, _state: LineState) -> (Vec<Token>, LineState) {
+        (tokenize(line), LineState::Code)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {
@@ -93,12 +93,12 @@ fn tokenize(line: &str) -> Vec<Token> {
 
 #[cfg(test)]
 mod tests {
-    use crate::code_editor::config::Language;
+    use crate::code_editor::config::{Language, LineState};
     use crate::code_editor::lang::tokenize_line;
     use crate::code_editor::token::TokenKind;
 
     fn kind(line: &str) -> Option<TokenKind> {
-        let (tokens, _) = tokenize_line(line, &Language::Diff, false);
+        let (tokens, _) = tokenize_line(line, &Language::Diff, LineState::Code);
         assert!(
             tokens.len() <= 1,
             "diff should emit at most one token per line"
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn whole_line_span() {
         let line = "+added content here";
-        let (toks, _) = tokenize_line(line, &Language::Diff, false);
+        let (toks, _) = tokenize_line(line, &Language::Diff, LineState::Code);
         assert_eq!(toks[0].len, line.len());
     }
 }

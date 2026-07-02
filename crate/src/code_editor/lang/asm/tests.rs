@@ -1,12 +1,12 @@
 //! Unit tests for the assembly tokenizer. Split out of `tokenize.rs` to
 //! keep every source file under the 500-line ceiling (CLAUDE.md).
 
-use crate::code_editor::config::Language;
+use crate::code_editor::config::{Language, LineState};
 use crate::code_editor::lang::tokenize_line;
 use crate::code_editor::token::TokenKind;
 
 fn tok(line: &str) -> Vec<(TokenKind, String)> {
-    let (tokens, _) = tokenize_line(line, &Language::Asm, false);
+    let (tokens, _) = tokenize_line(line, &Language::Asm, LineState::Code);
     tokens
         .iter()
         .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
@@ -221,7 +221,7 @@ fn covers_full_line() {
         "    .asciz \"hi\\n\"",
         "%define X 1",
     ] {
-        let (toks, _) = tokenize_line(line, &Language::Asm, false);
+        let (toks, _) = tokenize_line(line, &Language::Asm, LineState::Code);
         let total: usize = toks.iter().map(|t| t.len).sum();
         assert_eq!(total, line.len(), "span mismatch for {line:?}");
     }

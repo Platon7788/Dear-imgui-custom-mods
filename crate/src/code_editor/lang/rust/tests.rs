@@ -1,12 +1,12 @@
 //! Unit tests for the Rust tokenizer. Split out of `tokenize.rs` to keep
 //! every source file under the 500-line ceiling (CLAUDE.md).
 
-use crate::code_editor::config::Language;
+use crate::code_editor::config::{Language, LineState};
 use crate::code_editor::lang::tokenize_line;
 use crate::code_editor::token::TokenKind;
 
 fn tok(line: &str) -> Vec<(TokenKind, &str)> {
-    let (tokens, _) = tokenize_line(line, &Language::Rust, false);
+    let (tokens, _) = tokenize_line(line, &Language::Rust, LineState::Code);
     tokens
         .iter()
         .map(|t| (t.kind, &line[t.start..t.start + t.len]))
@@ -65,19 +65,20 @@ fn line_comment() {
 
 #[test]
 fn block_comment() {
-    let (toks, still_in) = tokenize_line("/* start", &Language::Rust, false);
-    assert!(still_in);
+    let (toks, still_in) = tokenize_line("/* start", &Language::Rust, LineState::Code);
+    assert_eq!(still_in, LineState::BlockComment(1));
     assert_eq!(toks[0].kind, TokenKind::Comment);
 
-    let (toks2, still_in2) = tokenize_line("middle */code", &Language::Rust, true);
-    assert!(!still_in2);
+    let (toks2, still_in2) =
+        tokenize_line("middle */code", &Language::Rust, LineState::BlockComment(1));
+    assert_eq!(still_in2, LineState::Code);
     assert_eq!(toks2[0].kind, TokenKind::Comment);
 }
 
 #[test]
 fn block_comment_single_line() {
-    let (toks, still_in) = tokenize_line("a /* mid */ b", &Language::Rust, false);
-    assert!(!still_in);
+    let (toks, still_in) = tokenize_line("a /* mid */ b", &Language::Rust, LineState::Code);
+    assert_eq!(still_in, LineState::Code);
     // Should be: ident, ws, comment, ws, ident
     assert!(toks.iter().any(|t| t.kind == TokenKind::Comment));
 }
@@ -88,40 +89,51 @@ fn block_comment_single_line() {
 /// over (still_in == true).
 #[test]
 fn nested_block_comment_single_line() {
-    let (_, still_in) = tokenize_line("/* a /* b */ c */", &Language::Rust, false);
-    assert!(!still_in, "balanced nested comment should close");
+    let (_, still_in) = tokenize_line("/* a /* b */ c */", &Language::Rust, LineState::Code);
+    assert_eq!(
+        still_in,
+        LineState::Code,
+        "balanced nested comment should close"
+    );
 
-    let (_, still_in2) = tokenize_line("/* a /* b */", &Language::Rust, false);
-    assert!(still_in2, "one level still open after inner close");
+    let (_, still_in2) = tokenize_line("/* a /* b */", &Language::Rust, LineState::Code);
+    assert_eq!(
+        still_in2,
+        LineState::BlockComment(1),
+        "one level still open after inner close"
+    );
 }
 
-/// Nested comment carrying across lines. Within a single line nesting
-/// is exact; across lines the editor's carry state is a single `bool`,
-/// so a depth-2 open collapses to "in comment" and the first `*/` on
-/// the resume line closes it (documented limitation). What matters for
-/// correctness: line 1 still reports "in comment", and the resume line
-/// keeps the prefix up to the first `*/` colored as Comment.
+/// Nested comment carrying across lines. The rich `LineState` carry threads
+/// the exact open-comment depth from one line to the next, so a depth-2 open
+/// stays open past the first `*/` — only the inner comment closes. Nested
+/// multi-line block comments now behave correctly (they used to collapse to
+/// depth 1 and close on the first `*/`).
 #[test]
 fn nested_block_comment_multi_line() {
-    // Line 1 opens depth 2 → still in a comment.
-    let (_, in1) = tokenize_line("/* outer /* inner", &Language::Rust, false);
-    assert!(in1);
-    // Resume line: prefix up to (and including) the first `*/` is a
-    // single Comment token; the remainder re-tokenizes as code.
-    let (toks2, still) = tokenize_line("body */ rest", &Language::Rust, true);
+    // Line 1 opens depth 2 → carries BlockComment(2).
+    let (_, in1) = tokenize_line("/* outer /* inner", &Language::Rust, LineState::Code);
+    assert_eq!(in1, LineState::BlockComment(2));
+    // Resume at depth 2: the whole line stays a Comment and the first `*/`
+    // closes only the inner comment, leaving depth 1 still open.
+    let (toks2, still) = tokenize_line("body */ rest", &Language::Rust, in1);
     assert_eq!(toks2[0].kind, TokenKind::Comment);
-    assert_eq!(&"body */ rest"[..toks2[0].len], "body */");
-    assert!(!still, "single `*/` closes the bool-carried comment");
+    assert_eq!(toks2[0].len, "body */ rest".len(), "whole line stays comment");
+    assert_eq!(
+        still,
+        LineState::BlockComment(1),
+        "outer comment still open after inner close"
+    );
 }
 
 /// A single-line nest that stays open by exactly one level carries to
 /// the next line and a single `*/` there closes it.
 #[test]
 fn nested_block_comment_one_level_carryover() {
-    let (_, in1) = tokenize_line("code /* a /* b */", &Language::Rust, false);
-    assert!(in1, "one inner level still open");
-    let (_, in2) = tokenize_line("still */ done", &Language::Rust, true);
-    assert!(!in2);
+    let (_, in1) = tokenize_line("code /* a /* b */", &Language::Rust, LineState::Code);
+    assert_eq!(in1, LineState::BlockComment(1), "one inner level still open");
+    let (_, in2) = tokenize_line("still */ done", &Language::Rust, in1);
+    assert_eq!(in2, LineState::Code);
 }
 
 #[test]
@@ -293,7 +305,7 @@ fn covers_full_line() {
         "#[derive(Clone, Debug)]",
         "let 你好 = 42; // 注释",
     ] {
-        let (toks, _) = tokenize_line(line, &Language::Rust, false);
+        let (toks, _) = tokenize_line(line, &Language::Rust, LineState::Code);
         let total: usize = toks.iter().map(|t| t.len).sum();
         assert_eq!(total, line.len(), "span mismatch for {line:?}");
         // Verify contiguity.

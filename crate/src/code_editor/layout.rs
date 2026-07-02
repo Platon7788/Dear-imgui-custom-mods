@@ -385,30 +385,30 @@ impl CodeEditor {
         self.bc_dirty_from = None;
 
         // Resize to match line count (preserves existing correct entries).
-        self.block_comment_states.resize(count, false);
+        self.block_comment_states.resize(count, LineState::Code);
 
-        // Determine the bc state entering `start_from`.
-        let mut in_bc = if start_from == 0 {
-            false
+        // Determine the carry-state entering `start_from`.
+        let mut state = if start_from == 0 {
+            LineState::Code
         } else {
-            let prev_bc = self.block_comment_states[start_from - 1];
+            let prev_state = self.block_comment_states[start_from - 1];
             let (_, still_in) = tokenize_line(
                 self.buffer.line(start_from - 1),
                 &self.config.language,
-                prev_bc,
+                prev_state,
             );
             still_in
         };
 
         for i in start_from..count {
-            self.block_comment_states[i] = in_bc;
-            let (_, still_in) = tokenize_line(self.buffer.line(i), &self.config.language, in_bc);
-            in_bc = still_in;
+            self.block_comment_states[i] = state;
+            let (_, still_in) = tokenize_line(self.buffer.line(i), &self.config.language, state);
+            state = still_in;
 
-            // Early exit: if the bc state entering the next line matches
+            // Early exit: if the carry-state entering the next line matches
             // what was already stored, all downstream states are correct.
             // Skipped after a structural edit (see `structural` above).
-            if !structural && i + 1 < count && self.block_comment_states[i + 1] == in_bc {
+            if !structural && i + 1 < count && self.block_comment_states[i + 1] == state {
                 break;
             }
         }

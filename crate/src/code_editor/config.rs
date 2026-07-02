@@ -6,7 +6,7 @@ pub use super::font_setup::{
     install_code_editor_font, install_code_editor_font_ex, install_custom_code_editor_font,
     merge_mdi_icons,
 };
-pub use super::lang::{Language, SyntaxDefinition};
+pub use super::lang::{Language, LineState, SyntaxDefinition};
 pub use super::syntax_colors::{EditorTheme, SyntaxColors};
 
 // ── ContextMenuConfig ─────────────────────────────────────────────────────────

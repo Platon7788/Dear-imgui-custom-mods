@@ -1,12 +1,12 @@
 //! Unit tests for the XML / HTML tokenizer. Split out of `mod.rs` to keep
 //! every source file under the 500-line ceiling (CLAUDE.md).
 
-use crate::code_editor::config::Language;
+use crate::code_editor::config::{Language, LineState};
 use crate::code_editor::lang::tokenize_line;
 use crate::code_editor::token::TokenKind;
 
 fn tok(line: &str) -> Vec<(TokenKind, String)> {
-    let (tokens, _) = tokenize_line(line, &Language::Xml, false);
+    let (tokens, _) = tokenize_line(line, &Language::Xml, LineState::Code);
     tokens
         .iter()
         .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
@@ -58,17 +58,17 @@ fn closing_tag() {
 
 #[test]
 fn comment_multiline() {
-    let (_, still_in) = tokenize_line("<!-- start", &Language::Xml, false);
-    assert!(still_in);
-    let (toks, done) = tokenize_line("end --> text", &Language::Xml, true);
-    assert!(!done);
+    let (_, still_in) = tokenize_line("<!-- start", &Language::Xml, LineState::Code);
+    assert_eq!(still_in, LineState::BlockComment(1));
+    let (toks, done) = tokenize_line("end --> text", &Language::Xml, LineState::BlockComment(1));
+    assert_eq!(done, LineState::Code);
     assert_eq!(toks[0].kind, TokenKind::Comment);
 }
 
 #[test]
 fn comment_single_line() {
-    let (toks, bc) = tokenize_line("<!-- full comment -->", &Language::Xml, false);
-    assert!(!bc);
+    let (toks, bc) = tokenize_line("<!-- full comment -->", &Language::Xml, LineState::Code);
+    assert_eq!(bc, LineState::Code);
     assert_eq!(toks[0].kind, TokenKind::Comment);
 }
 

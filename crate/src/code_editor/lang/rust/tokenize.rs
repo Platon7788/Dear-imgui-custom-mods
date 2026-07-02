@@ -3,19 +3,23 @@
 
 use super::keywords::{builtin_types_set, keywords_set};
 use super::*;
-use crate::code_editor::lang::scan_block_comment;
+use crate::code_editor::lang::{LineState, scan_block_comment};
 
 pub(in crate::code_editor::lang) fn tokenize(
     line: &str,
-    in_block_comment: bool,
-) -> (Vec<Token>, bool) {
+    state: LineState,
+) -> (Vec<Token>, LineState) {
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut tokens = Vec::with_capacity(16);
     let mut i = 0;
-    // Depth of currently-open block comments. The editor only carries a
-    // `bool`, so the entry depth is `1` when `in_block_comment` is set.
-    let mut depth: u32 = u32::from(in_block_comment);
+    // Depth of currently-open (possibly nested) block comments, threaded
+    // across lines via `LineState::BlockComment(depth)`.
+    let mut depth: u32 = if let LineState::BlockComment(d) = state {
+        u32::from(d)
+    } else {
+        0
+    };
 
     // USER CODE markers — whole-line tokens
     if depth == 0 {
@@ -26,7 +30,7 @@ pub(in crate::code_editor::lang) fn tokenize(
                 start: 0,
                 len: line.len(),
             });
-            return (tokens, false);
+            return (tokens, LineState::Code);
         }
     }
 
@@ -75,7 +79,7 @@ pub(in crate::code_editor::lang) fn tokenize(
                 start: i,
                 len: len - i,
             });
-            return (tokens, false);
+            return (tokens, LineState::Code);
         }
 
         // ── Block comment start (nesting-aware) ──────────────────────────
@@ -463,5 +467,10 @@ pub(in crate::code_editor::lang) fn tokenize(
         i += ch_len;
     }
 
-    (tokens, depth > 0)
+    let end = if depth > 0 {
+        LineState::BlockComment(depth as u16)
+    } else {
+        LineState::Code
+    };
+    (tokens, end)
 }

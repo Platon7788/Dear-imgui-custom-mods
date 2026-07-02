@@ -4,7 +4,7 @@
 //! values by lookahead for `:`).  JSONC-style `//` line comments are supported.
 
 use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
-use crate::code_editor::config::SyntaxDefinition;
+use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 const KEYWORDS: &[&str] = &["true", "false", "null"];
@@ -18,8 +18,17 @@ impl SyntaxDefinition for JsonLang {
         "JSON"
     }
 
-    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
-        tokenize(line, in_block_comment)
+    fn tokenize_line(&self, line: &str, state: LineState) -> (Vec<Token>, LineState) {
+        // JSONC `/* */` comments do not nest, so the carry is a plain
+        // "inside a block comment" flag mapped to/from `LineState`.
+        let in_bc = matches!(state, LineState::BlockComment(_));
+        let (tokens, still_in_block) = tokenize(line, in_bc);
+        let end = if still_in_block {
+            LineState::BlockComment(1)
+        } else {
+            LineState::Code
+        };
+        (tokens, end)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {
@@ -235,12 +244,12 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
 
 #[cfg(test)]
 mod tests {
-    use crate::code_editor::config::Language;
+    use crate::code_editor::config::{Language, LineState};
     use crate::code_editor::lang::tokenize_line;
     use crate::code_editor::token::TokenKind;
 
     fn tok(line: &str) -> Vec<(TokenKind, String)> {
-        let (tokens, _) = tokenize_line(line, &Language::Json, false);
+        let (tokens, _) = tokenize_line(line, &Language::Json, LineState::Code);
         tokens
             .iter()
             .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
@@ -293,10 +302,10 @@ mod tests {
         assert!(toks.iter().any(|t| t.0 == TokenKind::Number && t.1 == "42"));
 
         // Multi-line: open on one line, close on the next.
-        let (_, still_in) = tokenize_line("/* start", &Language::Json, false);
-        assert!(still_in);
-        let (toks2, done) = tokenize_line("end */ 1", &Language::Json, true);
-        assert!(!done);
+        let (_, still_in) = tokenize_line("/* start", &Language::Json, LineState::Code);
+        assert_eq!(still_in, LineState::BlockComment(1));
+        let (toks2, done) = tokenize_line("end */ 1", &Language::Json, LineState::BlockComment(1));
+        assert_eq!(done, LineState::Code);
         assert_eq!(toks2[0].kind, TokenKind::Comment);
         assert_eq!(&"end */ 1"[..toks2[0].len], "end */");
     }

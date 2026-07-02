@@ -6,7 +6,7 @@
 //! Multi-line `<!-- -->` comments are tracked via `in_block_comment`.
 
 use super::{is_ident_continue, is_ident_start};
-use crate::code_editor::config::SyntaxDefinition;
+use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 #[cfg(test)]
@@ -21,8 +21,17 @@ impl SyntaxDefinition for XmlLang {
         "XML"
     }
 
-    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
-        tokenize(line, in_block_comment)
+    fn tokenize_line(&self, line: &str, state: LineState) -> (Vec<Token>, LineState) {
+        // `<!-- -->` comments do not nest, so the carry is a plain
+        // "inside a comment" flag mapped to/from `LineState`.
+        let in_bc = matches!(state, LineState::BlockComment(_));
+        let (tokens, still_in_block) = tokenize(line, in_bc);
+        let end = if still_in_block {
+            LineState::BlockComment(1)
+        } else {
+            LineState::Code
+        };
+        (tokens, end)
     }
 
     /// XML has no single-line comment syntax.

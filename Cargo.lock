@@ -509,7 +509,7 @@ checksum = "da45ea4739530b7ff801e45f9b82adfefd0a2c0e5f22dcefaac6e1d3439d251e"
 
 [[package]]
 name = "dear-imgui-custom-mod"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "criterion",
  "dear-imgui-rs",

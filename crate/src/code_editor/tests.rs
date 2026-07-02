@@ -144,9 +144,13 @@ fn block_comment_state_correct_after_line_delete_above() {
     ed.buffer.delete_line();
     ed.bc_dirty_from = Some(0);
     ed.update_block_comment_states();
-    assert!(ed.block_comment_states[1], "'still' must remain in the comment");
     assert!(
-        !ed.block_comment_states[3],
+        matches!(ed.block_comment_states[1], LineState::BlockComment(_)),
+        "'still' must remain in the comment"
+    );
+    assert_eq!(
+        ed.block_comment_states[3],
+        LineState::Code,
         "'code' must NOT be flagged as in a block comment"
     );
 }
@@ -318,7 +322,14 @@ fn test_block_comment_states() {
     let mut editor = CodeEditor::new("test");
     editor.set_text("/* start\nmiddle\nend */ code");
     editor.update_block_comment_states();
-    assert_eq!(editor.block_comment_states, vec![false, true, true]);
+    assert_eq!(
+        editor.block_comment_states,
+        vec![
+            LineState::Code,
+            LineState::BlockComment(1),
+            LineState::BlockComment(1)
+        ]
+    );
 }
 
 #[test]

@@ -63,8 +63,9 @@ pub mod undo;
 pub use config::{
     BuiltinFont, CODE_EDITOR_FONT_PTR, ContextMenuConfig, EditorConfig, EditorTheme,
     HACK_FONT_DATA, JETBRAINS_MONO_FONT_DATA, JETBRAINS_MONO_LIGATURES_FONT_DATA, Language,
-    MDI_FONT_DATA, SyntaxColors, SyntaxDefinition, code_editor_font_ptr, install_code_editor_font,
-    install_code_editor_font_ex, install_custom_code_editor_font, merge_mdi_icons,
+    LineState, MDI_FONT_DATA, SyntaxColors, SyntaxDefinition, code_editor_font_ptr,
+    install_code_editor_font, install_code_editor_font_ex, install_custom_code_editor_font,
+    merge_mdi_icons,
 };
 
 mod find_replace;
@@ -119,8 +120,8 @@ pub struct Breakpoint {
 struct CachedLineTokens {
     /// The line content when tokens were computed.
     content_hash: u64,
-    /// Whether the line started inside a block comment.
-    in_block_comment: bool,
+    /// The tokenizer carry-state the line started from (see [`LineState`]).
+    line_state: LineState,
     /// Computed tokens (Rc avoids cloning on every frame).
     tokens: Rc<Vec<Token>>,
 }
@@ -174,8 +175,10 @@ pub struct CodeEditor {
     // ── Token cache ──────────────────────────────────────────────────
     /// Per-line cached tokenization.
     token_cache: Vec<Option<CachedLineTokens>>,
-    /// Per-line "starts in block comment" flags.
-    block_comment_states: Vec<bool>,
+    /// Per-line tokenizer carry-state (the [`LineState`] each line starts
+    /// from). Named `block_comment_states` for historical continuity — it
+    /// now carries the richer state, not just a block-comment flag.
+    block_comment_states: Vec<LineState>,
     /// Edit version when block_comment_states was last computed.
     bc_version: u64,
     /// Earliest line that may have changed (for incremental bc recompute).
@@ -288,7 +291,7 @@ impl CodeEditor {
             cursor_visible: true,
 
             token_cache: Vec::new(),
-            block_comment_states: vec![false],
+            block_comment_states: vec![LineState::Code],
             bc_version: u64::MAX,
             bc_dirty_from: None,
             last_language: None,

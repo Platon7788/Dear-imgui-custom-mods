@@ -1,7 +1,7 @@
 //! TOML configuration file tokenizer.
 
 use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
-use crate::code_editor::config::SyntaxDefinition;
+use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 const KEYWORDS: &[&str] = &["true", "false"];
@@ -15,8 +15,8 @@ impl SyntaxDefinition for TomlLang {
         "TOML"
     }
 
-    fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
-        (tokenize(line), false)
+    fn tokenize_line(&self, line: &str, _state: LineState) -> (Vec<Token>, LineState) {
+        (tokenize(line), LineState::Code)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {
@@ -221,19 +221,19 @@ fn tokenize(line: &str) -> Vec<Token> {
 
 #[cfg(test)]
 mod tests {
-    use crate::code_editor::config::Language;
+    use crate::code_editor::config::{Language, LineState};
     use crate::code_editor::lang::tokenize_line;
     use crate::code_editor::token::TokenKind;
 
     #[test]
     fn section_header() {
-        let (toks, _) = tokenize_line("[package]", &Language::Toml, false);
+        let (toks, _) = tokenize_line("[package]", &Language::Toml, LineState::Code);
         assert_eq!(toks[0].kind, TokenKind::Attribute);
     }
 
     #[test]
     fn array_of_tables() {
-        let (toks, _) = tokenize_line("[[dependencies.serde]]", &Language::Toml, false);
+        let (toks, _) = tokenize_line("[[dependencies.serde]]", &Language::Toml, LineState::Code);
         assert_eq!(toks[0].kind, TokenKind::Attribute);
         // Should be a single token covering the full header
         assert_eq!(toks[0].len, "[[dependencies.serde]]".len());
@@ -244,7 +244,7 @@ mod tests {
         // Regression: `[` after `=` used to be scanned as a section header,
         // swallowing the whole array into one Attribute token.
         let line = r#"members = ["crate", "app"]"#;
-        let (toks, _) = tokenize_line(line, &Language::Toml, false);
+        let (toks, _) = tokenize_line(line, &Language::Toml, LineState::Code);
         let puncts: Vec<_> = toks
             .iter()
             .filter(|t| t.kind == TokenKind::Punctuation)
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn key_value() {
-        let (toks, _) = tokenize_line("name = \"hello\"", &Language::Toml, false);
+        let (toks, _) = tokenize_line("name = \"hello\"", &Language::Toml, LineState::Code);
         // `name` is a key → Attribute.
         assert!(toks.iter().any(|t| t.kind == TokenKind::Attribute
             && &"name = \"hello\""[t.start..t.start + t.len] == "name"));
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn bare_value_is_identifier() {
         let line = "color = red";
-        let (toks, _) = tokenize_line(line, &Language::Toml, false);
+        let (toks, _) = tokenize_line(line, &Language::Toml, LineState::Code);
         assert!(
             toks.iter()
                 .any(|t| t.kind == TokenKind::Attribute
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn literal_string_no_escape() {
         let line = r"path = 'C:\temp\new'";
-        let (toks, _) = tokenize_line(line, &Language::Toml, false);
+        let (toks, _) = tokenize_line(line, &Language::Toml, LineState::Code);
         assert!(
             toks.iter().any(|t| t.kind == TokenKind::String
                 && &line[t.start..t.start + t.len] == r"'C:\temp\new'")
@@ -303,14 +303,14 @@ mod tests {
 
     #[test]
     fn comment() {
-        let (toks, _) = tokenize_line("# comment", &Language::Toml, false);
+        let (toks, _) = tokenize_line("# comment", &Language::Toml, LineState::Code);
         assert_eq!(toks[0].kind, TokenKind::Comment);
     }
 
     #[test]
     fn bare_key_with_dash() {
         let line = "my-key = 42";
-        let (toks, _) = tokenize_line(line, &Language::Toml, false);
+        let (toks, _) = tokenize_line(line, &Language::Toml, LineState::Code);
         // The dashed key before `=` is an Attribute spanning `my-key`.
         assert!(
             toks.iter()
@@ -331,7 +331,7 @@ mod tests {
             ("x = +0b1010", "+0b1010"),
             ("x = -0o755", "-0o755"),
         ] {
-            let (toks, _) = tokenize_line(input, &Language::Toml, false);
+            let (toks, _) = tokenize_line(input, &Language::Toml, LineState::Code);
             let nums: Vec<_> = toks
                 .iter()
                 .filter(|t| t.kind == TokenKind::Number)
@@ -355,7 +355,7 @@ mod tests {
             ("a = 3.14", "3.14"),
             ("a = -42", "-42"),
         ] {
-            let (toks, _) = tokenize_line(line, &Language::Toml, false);
+            let (toks, _) = tokenize_line(line, &Language::Toml, LineState::Code);
             let nums: Vec<_> = toks
                 .iter()
                 .filter(|t| t.kind == TokenKind::Number)

@@ -8,7 +8,7 @@
 //! [`SyntaxDefinition`]; the dispatcher in [`super`] matches on it.
 
 use super::{NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start};
-use crate::code_editor::config::SyntaxDefinition;
+use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 mod keywords;
@@ -27,8 +27,8 @@ impl SyntaxDefinition for RustLang {
         "Rust"
     }
 
-    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
-        tokenize(line, in_block_comment)
+    fn tokenize_line(&self, line: &str, state: LineState) -> (Vec<Token>, LineState) {
+        tokenize(line, state)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {

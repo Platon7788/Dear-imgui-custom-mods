@@ -6,7 +6,7 @@
 //! `--flag` options highlight as attributes. This tokenizer is stateless.
 
 use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
-use crate::code_editor::config::SyntaxDefinition;
+use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 /// Dockerfile instructions, matched against the **uppercased** first word.
@@ -40,8 +40,8 @@ impl SyntaxDefinition for DockerfileLang {
         "Dockerfile"
     }
 
-    fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
-        (tokenize(line), false)
+    fn tokenize_line(&self, line: &str, _state: LineState) -> (Vec<Token>, LineState) {
+        (tokenize(line), LineState::Code)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {
@@ -267,12 +267,12 @@ fn tokenize(line: &str) -> Vec<Token> {
 
 #[cfg(test)]
 mod tests {
-    use crate::code_editor::config::Language;
+    use crate::code_editor::config::{Language, LineState};
     use crate::code_editor::lang::tokenize_line;
     use crate::code_editor::token::TokenKind;
 
     fn tok(line: &str) -> Vec<(TokenKind, String)> {
-        let (tokens, _) = tokenize_line(line, &Language::Dockerfile, false);
+        let (tokens, _) = tokenize_line(line, &Language::Dockerfile, LineState::Code);
         tokens
             .iter()
             .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))

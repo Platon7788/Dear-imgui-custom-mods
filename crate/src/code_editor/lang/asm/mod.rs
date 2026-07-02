@@ -10,7 +10,7 @@
 //! - [`tokenize`] — the line tokenizer state machine (+ unit tests).
 
 use super::{is_ident_continue, is_ident_start};
-use crate::code_editor::config::SyntaxDefinition;
+use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
 mod tables;
@@ -29,8 +29,8 @@ impl SyntaxDefinition for AsmLang {
         "Assembly"
     }
 
-    fn tokenize_line(&self, line: &str, _in_block_comment: bool) -> (Vec<Token>, bool) {
-        (tokenize(line), false)
+    fn tokenize_line(&self, line: &str, _state: LineState) -> (Vec<Token>, LineState) {
+        (tokenize(line), LineState::Code)
     }
 
     fn line_comment_prefix(&self) -> Option<&str> {

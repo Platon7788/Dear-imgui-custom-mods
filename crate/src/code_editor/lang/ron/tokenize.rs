@@ -4,13 +4,17 @@ use super::*;
 
 pub(in crate::code_editor::lang) fn tokenize(
     line: &str,
-    in_block_comment: bool,
-) -> (Vec<Token>, bool) {
+    state: LineState,
+) -> (Vec<Token>, LineState) {
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut tokens = Vec::with_capacity(16);
     let mut i = 0;
-    let mut depth: u32 = u32::from(in_block_comment);
+    let mut depth: u32 = if let LineState::BlockComment(d) = state {
+        u32::from(d)
+    } else {
+        0
+    };
 
     while i < len {
         // ── Inside a (possibly nested) block comment ─────────────────────
@@ -48,7 +52,7 @@ pub(in crate::code_editor::lang) fn tokenize(
                 start: i,
                 len: len - i,
             });
-            return (tokens, false);
+            return (tokens, LineState::Code);
         }
 
         // ── Block comment start (nesting-aware) ──────────────────────────
@@ -276,19 +280,24 @@ pub(in crate::code_editor::lang) fn tokenize(
         i += ch_len;
     }
 
-    (tokens, depth > 0)
+    let end = if depth > 0 {
+        LineState::BlockComment(depth as u16)
+    } else {
+        LineState::Code
+    };
+    (tokens, end)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use crate::code_editor::config::Language;
+    use crate::code_editor::config::{Language, LineState};
     use crate::code_editor::lang::tokenize_line;
     use crate::code_editor::token::TokenKind;
 
     fn tok(line: &str) -> Vec<(TokenKind, String)> {
-        let (tokens, _) = tokenize_line(line, &Language::Ron, false);
+        let (tokens, _) = tokenize_line(line, &Language::Ron, LineState::Code);
         tokens
             .iter()
             .map(|t| (t.kind, line[t.start..t.start + t.len].to_string()))
@@ -373,22 +382,27 @@ mod tests {
 
     #[test]
     fn block_comment_multi_line() {
-        let (toks, still_in) = tokenize_line("/* start", &Language::Ron, false);
-        assert!(still_in);
+        let (toks, still_in) = tokenize_line("/* start", &Language::Ron, LineState::Code);
+        assert_eq!(still_in, LineState::BlockComment(1));
         assert_eq!(toks[0].kind, TokenKind::Comment);
 
-        let (toks2, still_in2) = tokenize_line("middle */ rest", &Language::Ron, true);
-        assert!(!still_in2);
+        let (toks2, still_in2) =
+            tokenize_line("middle */ rest", &Language::Ron, LineState::BlockComment(1));
+        assert_eq!(still_in2, LineState::Code);
         assert_eq!(toks2[0].kind, TokenKind::Comment);
     }
 
     /// RON inherits Rust's nested block comments.
     #[test]
     fn nested_block_comment() {
-        let (_, still_in) = tokenize_line("/* a /* b */ c */", &Language::Ron, false);
-        assert!(!still_in, "balanced nest closes");
-        let (_, still_in2) = tokenize_line("/* a /* b */", &Language::Ron, false);
-        assert!(still_in2, "one level still open");
+        let (_, still_in) = tokenize_line("/* a /* b */ c */", &Language::Ron, LineState::Code);
+        assert_eq!(still_in, LineState::Code, "balanced nest closes");
+        let (_, still_in2) = tokenize_line("/* a /* b */", &Language::Ron, LineState::Code);
+        assert_eq!(
+            still_in2,
+            LineState::BlockComment(1),
+            "one level still open"
+        );
     }
 
     #[test]
@@ -493,7 +507,7 @@ mod tests {
     #[test]
     fn covers_full_line() {
         let line = "Foo(name: \"v\", count: 42, // tail";
-        let (toks, _) = tokenize_line(line, &Language::Ron, false);
+        let (toks, _) = tokenize_line(line, &Language::Ron, LineState::Code);
         let total: usize = toks.iter().map(|t| t.len).sum();
         assert_eq!(total, line.len());
     }

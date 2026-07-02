@@ -211,9 +211,10 @@ pub(in crate::code_editor::lang) fn consume_char_literal(line: &str, i: usize) -
 /// `*i` is advanced to the byte after the last consumed byte (the byte
 /// after the closing `*/` when the comment closes, or `len` otherwise).
 ///
-/// Because the editor's per-line carry state is a single `bool`, callers
-/// collapse any `depth > 0` to `true`. Within one line, however, nesting
-/// is tracked exactly so `/* /* */ */` closes correctly.
+/// The editor's per-line carry state is a
+/// [`LineState::BlockComment(depth)`](super::LineState::BlockComment), so the
+/// returned depth is threaded across lines: nesting is tracked exactly both
+/// within a line (`/* /* */ */` closes correctly) and across lines.
 pub(in crate::code_editor::lang) fn scan_block_comment(
     i: &mut usize,
     bytes: &[u8],
