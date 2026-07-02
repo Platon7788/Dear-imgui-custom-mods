@@ -362,6 +362,28 @@ mod tests {
     }
 
     #[test]
+    fn tree_config_theme_colors_optional_in_ron() {
+        // Simulate an older config.ron saved before the theme-colour fields
+        // existed: strip those three lines and confirm it still parses, with the
+        // `#[serde(default = ...)]` fallbacks supplying the values.
+        let full = include_str!("config.ron");
+        let old: String = full
+            .lines()
+            .filter(|l| {
+                !l.contains("striped_color")
+                    && !l.contains("arrow_color")
+                    && !l.contains("badge_color")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cfg: TreeConfig =
+            ron::from_str(&old).expect("old ron without theme colours must parse");
+        assert_eq!(cfg.striped_color, [1.0, 1.0, 1.0, 0.02]);
+        assert_eq!(cfg.arrow_color, [0.65, 0.68, 0.72, 1.0]);
+        assert_eq!(cfg.badge_color, [0.50, 0.55, 0.62, 1.0]);
+    }
+
+    #[test]
     fn tree_config_default_parses() {
         // Guards that the built-in `config.ron` stays valid (the `Default`
         // impl `.expect()`s on it) and pins a few headline values.

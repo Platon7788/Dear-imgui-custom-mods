@@ -101,14 +101,17 @@ pub struct TreeConfig {
     pub evict_on_overflow: bool,
 
     /// Zebra-stripe background tint for odd rows (used when `striped`).
+    /// Default: near-transparent white `[1.0, 1.0, 1.0, 0.02]`.
     #[serde(default = "default_striped_color")]
     pub striped_color: [f32; 4],
 
     /// Fill colour of the `ExpandStyle::Arrow` triangle.
+    /// Default: dim blue-gray `[0.65, 0.68, 0.72, 1.0]`.
     #[serde(default = "default_arrow_color")]
     pub arrow_color: [f32; 4],
 
     /// Text colour of the per-node badge (`VirtualTreeNode::badge`).
+    /// Default: muted slate `[0.50, 0.55, 0.62, 1.0]`.
     #[serde(default = "default_badge_color")]
     pub badge_color: [f32; 4],
 
