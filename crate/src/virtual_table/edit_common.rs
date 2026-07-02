@@ -83,13 +83,12 @@ pub(crate) enum EditOutcome {
     Commit,
     /// Discard the edit.
     Cancel,
-    /// `CellEditor::Custom` — the caller must render via the node/row trait.
-    Custom,
 }
 
 /// Render the built-in editor widget for `editor` into `buf`, returning the
-/// frame's outcome. Focus/commit semantics are identical to the pre-refactor
-/// per-module code; `Custom` is delegated back to the caller.
+/// frame's outcome (`Continue` / `Commit` / `Cancel`). Focus/commit semantics
+/// are identical to the pre-refactor per-module code. `CellEditor::Custom` is
+/// handled by the caller before it delegates here, so it never reaches this fn.
 pub(crate) fn render_editor_widget(
     ui: &Ui,
     editor: &CellEditor,
@@ -186,9 +185,9 @@ pub(crate) fn render_editor_widget(
                 }
             }
         }
-        CellEditor::Custom => {
-            outcome = EditOutcome::Custom;
-        }
+        // `CellEditor::Custom` is intercepted by callers before delegating, so
+        // it never reaches here; any non-inline editor kind (Checkbox / ComboBox
+        // / Button / …) is never activated for edit and simply cancels.
         _ => {
             outcome = EditOutcome::Cancel;
         }

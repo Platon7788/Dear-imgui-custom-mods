@@ -74,7 +74,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 }
                 self.edit_state.deactivate();
             }
-            edit_common::EditOutcome::Cancel | edit_common::EditOutcome::Custom => {
+            edit_common::EditOutcome::Cancel => {
                 self.edit_state.deactivate();
             }
             edit_common::EditOutcome::Continue => {}

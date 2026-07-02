@@ -79,8 +79,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 }
                 self.edit_state.deactivate();
             }
-            crate::virtual_table::edit_common::EditOutcome::Cancel
-            | crate::virtual_table::edit_common::EditOutcome::Custom => {
+            crate::virtual_table::edit_common::EditOutcome::Cancel => {
                 self.edit_state.deactivate();
             }
             crate::virtual_table::edit_common::EditOutcome::Continue => {}
