@@ -149,16 +149,17 @@ impl CodeEditor {
         let lines = self.buffer.lines();
         let line = lines.get(pos.line)?;
         let chars: Vec<char> = line.chars().collect();
-        if pos.col >= chars.len() {
-            return None;
-        }
+        // Clamp instead of rejecting: a caret one past the last char (col ==
+        // len, i.e. end of line) is a valid position, and `foo|` should still
+        // resolve to "foo" by expanding left.
+        let col = pos.col.min(chars.len());
         // Expand left
-        let mut start = pos.col;
+        let mut start = col;
         while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
             start -= 1;
         }
         // Expand right
-        let mut end = pos.col;
+        let mut end = col;
         while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
             end += 1;
         }

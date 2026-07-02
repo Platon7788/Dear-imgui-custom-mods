@@ -48,10 +48,28 @@ pub(super) fn detect_fold_regions(lines: &[String]) -> Vec<FoldRegion> {
             }
         }
 
-        // Brace matching (simplified: doesn't handle strings/comments perfectly,
-        // but good enough for Rust code structure)
-        for ch in trimmed.chars() {
+        // Brace matching. Skip braces inside `"…"` string literals and after
+        // a `//` line comment so `let s = "}";` or `} // note` don't unbalance
+        // the stack. (Per-line only; multi-line strings / block comments and
+        // char literals / lifetimes are intentionally not tracked — matching
+        // the scanner's coarse design without risking `'a` false positives.)
+        let mut in_str = false;
+        let mut escaped = false;
+        let mut chars = trimmed.chars().peekable();
+        while let Some(ch) = chars.next() {
+            if in_str {
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == '"' {
+                    in_str = false;
+                }
+                continue;
+            }
             match ch {
+                '"' => in_str = true,
+                '/' if chars.peek() == Some(&'/') => break, // line comment
                 '{' => brace_stack.push(i),
                 '}' => {
                     if let Some(start) = brace_stack.pop() {
@@ -102,5 +120,26 @@ mod tests {
         // Comment region
         assert_eq!(regions[1].start_line, 5);
         assert_eq!(regions[1].end_line, 7);
+    }
+
+    #[test]
+    fn fold_ignores_braces_in_strings_and_line_comments() {
+        // A `}` inside a string literal or a `//` comment must not unbalance
+        // the brace stack and hide the wrong lines.
+        let lines: Vec<String> = [
+            "fn f() {",           // 0: opens
+            "    let s = \"}\";", // 1: } in string — must NOT close
+            "    g(); // }",      // 2: } in comment — must NOT close
+            "    h();",           // 3
+            "}",                  // 4: the real close
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        let regions = detect_fold_regions(&lines);
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0].start_line, 0);
+        assert_eq!(regions[0].end_line, 4);
     }
 }

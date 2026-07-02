@@ -24,6 +24,53 @@ fn test_set_get_text() {
 }
 
 #[test]
+fn default_locale_is_english() {
+    assert_eq!(EditorConfig::default().locale, crate::i18n::Locale::En);
+    let ed = CodeEditor::new("t");
+    assert_eq!(ed.locale(), crate::i18n::Locale::En);
+}
+
+#[test]
+fn locale_round_trips_through_ron() {
+    // Lock in that `locale` is really Serialize + Deserialize (not skipped).
+    let cfg = EditorConfig {
+        locale: crate::i18n::Locale::Ru,
+        ..EditorConfig::default()
+    };
+    let text = ron::ser::to_string(&cfg).unwrap();
+    let back: EditorConfig = ron::from_str(&text).unwrap();
+    assert_eq!(back.locale, crate::i18n::Locale::Ru);
+}
+
+#[test]
+fn locale_field_optional_in_ron() {
+    // Older config.ron files predate the locale field; `#[serde(default)]`
+    // must let them parse (defaulting to En). Strip the locale line and
+    // confirm the canonical ron still deserialises.
+    let ron_src = include_str!("config.ron");
+    let without_locale = ron_src
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("locale:"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let cfg: EditorConfig =
+        ron::from_str(&without_locale).expect("config.ron parses without a locale field");
+    assert_eq!(cfg.locale, crate::i18n::Locale::En);
+}
+
+#[test]
+fn word_at_cursor_at_end_of_word() {
+    // A caret sitting just past the last char of a word (a valid position)
+    // should still report that word, like every mainstream editor.
+    let mut editor = CodeEditor::new("t");
+    editor.set_text("bar foo");
+    // Caret one past the last char — also the end of the line (col == len),
+    // which the old `col >= len` guard rejected outright.
+    editor.buffer.set_cursor(buffer::CursorPos::new(0, 7)); // "bar foo|"
+    assert_eq!(editor.word_at_cursor().as_deref(), Some("foo"));
+}
+
+#[test]
 fn replace_current_does_not_re_match_its_own_replacement() {
     // Find "cat" / Replace "cats": the replacement contains the query, so a
     // naive rebuild would keep re-selecting the replacement and grow the same
