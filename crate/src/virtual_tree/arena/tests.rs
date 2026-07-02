@@ -268,3 +268,69 @@ fn capacity_clamped_to_max() {
     let arena = TreeArena::<()>::with_capacity(usize::MAX);
     assert_eq!(arena.capacity(), MAX_TREE_NODES);
 }
+
+#[test]
+fn remove_child_preserves_sibling_order() {
+    let mut arena = TreeArena::new();
+    let r = arena.insert_root(0).unwrap();
+    let a = arena.insert_child(r, 1).unwrap();
+    let b = arena.insert_child(r, 2).unwrap();
+    let c = arena.insert_child(r, 3).unwrap();
+    let d = arena.insert_child(r, 4).unwrap();
+    arena.remove(b); // remove the 2nd of 4 children
+    let vals: Vec<_> = arena
+        .children(r)
+        .iter()
+        .filter_map(|&id| arena.get_data(id).copied())
+        .collect();
+    assert_eq!(
+        vals,
+        vec![1, 3, 4],
+        "siblings keep order after a middle removal"
+    );
+    let _ = (a, c, d);
+}
+
+#[test]
+fn remove_root_preserves_order() {
+    let mut arena = TreeArena::new();
+    let r1 = arena.insert_root(1).unwrap();
+    let r2 = arena.insert_root(2).unwrap();
+    let r3 = arena.insert_root(3).unwrap();
+    let r4 = arena.insert_root(4).unwrap();
+    arena.remove(r2);
+    let vals: Vec<_> = arena
+        .roots()
+        .iter()
+        .filter_map(|&id| arena.get_data(id).copied())
+        .collect();
+    assert_eq!(
+        vals,
+        vec![1, 3, 4],
+        "roots keep order after a middle removal"
+    );
+    let _ = (r1, r3, r4);
+}
+
+#[test]
+fn evict_preserves_fifo_after_multiple() {
+    let mut arena = TreeArena::with_capacity(3);
+    arena.set_evict_on_overflow(true);
+    let r1 = arena.insert_root(1).unwrap();
+    let r2 = arena.insert_root(2).unwrap();
+    let r3 = arena.insert_root(3).unwrap();
+    let _r4 = arena.insert_root(4).unwrap(); // evict oldest (r1) -> roots [2,3,4]
+    let _r5 = arena.insert_root(5).unwrap(); // evict next-oldest (r2) -> roots [3,4,5]
+    assert!(arena.get_data(r1).is_none(), "r1 evicted first");
+    assert!(
+        arena.get_data(r2).is_none(),
+        "r2 evicted second (FIFO), not the newest"
+    );
+    let vals: Vec<_> = arena
+        .roots()
+        .iter()
+        .filter_map(|&id| arena.get_data(id).copied())
+        .collect();
+    assert_eq!(vals, vec![3, 4, 5]);
+    let _ = r3;
+}
