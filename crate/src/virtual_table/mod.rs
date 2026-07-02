@@ -269,6 +269,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             && (!self.selected_rows.is_empty()
                 || self.selection_anchor.is_some()
                 || self.pending_scroll_to.is_some()
+                || self.context_row.is_some()
                 || self.edit_state.active)
         {
             self.shift_indices_for_eviction();
@@ -293,6 +294,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             Some(a) => Some(a - 1),
         };
         self.pending_scroll_to = match self.pending_scroll_to {
+            Some(0) | None => None,
+            Some(a) => Some(a - 1),
+        };
+        self.context_row = match self.context_row {
             Some(0) | None => None,
             Some(a) => Some(a - 1),
         };
@@ -347,6 +352,28 @@ mod table_tests {
         t.select_row(0); // select the row about to be evicted
         t.push(R(3));
         assert_eq!(t.selected_count(), 0, "evicted row's selection is dropped");
+    }
+
+    #[test]
+    fn push_eviction_shifts_context_row() {
+        let mut t = table(3);
+        for v in 0..3 {
+            t.push(R(v));
+        }
+        t.context_row = Some(2);
+        t.push(R(3)); // evict logical row 0 → context 2 slides to 1
+        assert_eq!(t.context_row, Some(1));
+    }
+
+    #[test]
+    fn push_eviction_drops_context_row_zero() {
+        let mut t = table(3);
+        for v in 0..3 {
+            t.push(R(v));
+        }
+        t.context_row = Some(0);
+        t.push(R(3)); // the row context pointed at is gone
+        assert_eq!(t.context_row, None);
     }
 
     #[test]
