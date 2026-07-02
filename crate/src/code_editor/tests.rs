@@ -24,6 +24,77 @@ fn test_set_get_text() {
 }
 
 #[test]
+fn folded_region_collapses_visual_rows() {
+    // 8 lines; fold header on line 1 hides lines 2..=4 (3 lines). The display
+    // must collapse those 3 rows: total shrinks, rows below shift up, and
+    // display-row↔line mapping (scroll + click) stays consistent.
+    let mut ed = CodeEditor::new("t");
+    ed.config_mut().show_fold_indicators = true;
+    ed.set_text("0\n1\n2\n3\n4\n5\n6\n7");
+    ed.fold_regions = vec![FoldRegion {
+        start_line: 1,
+        end_line: 4,
+        folded: true,
+    }];
+    ed.rebuild_fold_display();
+    assert!(ed.folds_active);
+    assert_eq!(ed.total_visual_rows(), 5, "8 lines − 3 hidden = 5 display rows");
+    // Rows: line0→0, header line1→1, [2..4 hidden], line5→2, line6→3, line7→4.
+    assert_eq!(ed.visual_row_of(1, 0), 1);
+    assert_eq!(ed.visual_row_of(5, 0), 2);
+    assert_eq!(ed.visual_row_of(7, 0), 4);
+    // Inverse (used by scroll + click mapping) must skip hidden lines and land
+    // on the visible line.
+    assert_eq!(ed.visual_row_to_line(1), (1, 0));
+    assert_eq!(ed.visual_row_to_line(2), (5, 0));
+    assert_eq!(ed.visual_row_to_line(4), (7, 0));
+}
+
+#[test]
+fn folded_region_composes_with_word_wrap() {
+    // Fold + wrap together: hidden lines contribute 0 rows, visible lines
+    // contribute their wrapped row count, and the row of the line after the
+    // fold accounts for the header line's wrapping.
+    let mut ed = CodeEditor::new("t");
+    ed.config_mut().show_fold_indicators = true;
+    ed.config_mut().word_wrap = true;
+    ed.char_advance = 10.0;
+    ed.set_text("aaaa bbbb cccc dddd\nhdr\nhidden1\nhidden2\ntail");
+    ed.update_wrap_cache(45.0);
+    ed.fold_regions = vec![FoldRegion {
+        start_line: 1,
+        end_line: 3,
+        folded: true,
+    }];
+    ed.rebuild_fold_display();
+    let l0 = ed.wrap_cols[0].len() + 1; // line 0 wrapped rows
+    let l4 = ed.wrap_cols[4].len() + 1; // "tail" rows
+    assert!(l0 >= 2, "long line should wrap");
+    assert_eq!(ed.total_visual_rows(), l0 + 1 + l4);
+    // "tail" (line 4) starts right after line0's rows + the 1-row header.
+    assert_eq!(ed.visual_row_of(4, 0), l0 + 1);
+}
+
+#[test]
+fn no_active_fold_keeps_identity_rows() {
+    // A region that exists but isn't folded must leave the (well-tested)
+    // non-fold row math completely untouched.
+    let mut ed = CodeEditor::new("t");
+    ed.config_mut().show_fold_indicators = true;
+    ed.set_text("a\nb\nc\nd");
+    ed.fold_regions = vec![FoldRegion {
+        start_line: 0,
+        end_line: 2,
+        folded: false,
+    }];
+    ed.rebuild_fold_display();
+    assert!(!ed.folds_active);
+    assert_eq!(ed.total_visual_rows(), 4);
+    assert_eq!(ed.visual_row_of(2, 0), 2);
+    assert_eq!(ed.visual_row_to_line(3), (3, 0));
+}
+
+#[test]
 fn doc_max_line_width_is_document_wide_and_tab_aware() {
     let mut ed = CodeEditor::new("t");
     ed.char_advance = 10.0;

@@ -35,18 +35,16 @@ impl CodeEditor {
             };
 
             for sub_row in 0..sub_row_count {
-                let vrow = if wrapping {
-                    self.visual_row_of(
-                        line_idx,
-                        if sub_row == 0 {
-                            0
-                        } else {
-                            self.wrap_cols[line_idx][sub_row - 1]
-                        },
-                    )
+                // Fold-aware display row (also collapses the vertical gap left
+                // by folded lines — visual_row_of accounts for both wrap and
+                // folds). Non-wrapped lines used to hardcode `line_idx` here,
+                // which is why folding left blank rows.
+                let col_at_start = if wrapping && sub_row > 0 {
+                    self.wrap_cols[line_idx][sub_row - 1]
                 } else {
-                    line_idx
+                    0
                 };
+                let vrow = self.visual_row_of(line_idx, col_at_start);
                 let y = win_y + (vrow as f32) * self.line_height;
 
                 // Column range for this sub-row

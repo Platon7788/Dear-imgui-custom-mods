@@ -199,6 +199,14 @@ pub struct CodeEditor {
     fold_regions: Vec<FoldRegion>,
     /// Edit version when fold_regions were last computed.
     fold_version: u64,
+    /// Per-line display-row offset accounting for BOTH wrap and folded-hidden
+    /// lines. Built by `rebuild_fold_display`; only consulted when a region is
+    /// actually folded (`folds_active`), so the unfolded path stays untouched.
+    fold_display_offsets: Vec<usize>,
+    /// Total display rows with folds collapsed (the scrollbar extent).
+    fold_display_total: usize,
+    /// Whether any region is folded and `fold_display_offsets` is current.
+    folds_active: bool,
 
     // ── Mouse state ──────────────────────────────────────────────────
     mouse_selecting: bool,
@@ -294,6 +302,9 @@ impl CodeEditor {
 
             fold_regions: Vec::new(),
             fold_version: u64::MAX,
+            fold_display_offsets: Vec::new(),
+            fold_display_total: 0,
+            folds_active: false,
 
             mouse_selecting: false,
             last_click_time: 0.0,

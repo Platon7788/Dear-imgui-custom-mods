@@ -64,49 +64,130 @@ impl CodeEditor {
         self.wrap_row_offsets[line_count] = cumulative;
     }
 
-    /// Total number of visual rows (accounting for word wrap).
+    /// Visual rows a single logical line occupies (wrap-aware, fold-agnostic).
+    fn line_visual_rows(&self, line: usize) -> usize {
+        if self.config.word_wrap && line < self.wrap_cols.len() {
+            self.wrap_cols[line].len() + 1
+        } else {
+            1
+        }
+    }
+
+    /// Sub-row index (0-based) that `col` falls in within its line's wrap.
+    fn sub_row_index(&self, line: usize, col: usize) -> usize {
+        if self.config.word_wrap && line < self.wrap_cols.len() {
+            let wraps = &self.wrap_cols[line];
+            wraps.iter().position(|&wc| col < wc).unwrap_or(wraps.len())
+        } else {
+            0
+        }
+    }
+
+    /// True when a fold is collapsed and the display-row cache is current, so
+    /// the fold-aware row mapping should be used instead of the plain wrap one.
+    fn has_active_folds(&self) -> bool {
+        self.folds_active && self.fold_display_offsets.len() == self.buffer.line_count() + 1
+    }
+
+    /// Rebuild the display-row offsets that collapse folded (hidden) lines.
+    /// A no-op (and leaves `folds_active = false`) when nothing is folded, so
+    /// the well-tested non-fold path is used verbatim. Cheap integer work,
+    /// only while a fold is actually collapsed.
+    pub(super) fn rebuild_fold_display(&mut self) {
+        self.folds_active = false;
+        if !self.config.show_fold_indicators || !self.fold_regions.iter().any(|r| r.folded) {
+            return;
+        }
+        self.folds_active = true;
+
+        let count = self.buffer.line_count();
+        // start_line → end_line for every folded region; hidden lines are
+        // start_line+1..=end_line.
+        let folded_ends: std::collections::HashMap<usize, usize> = self
+            .fold_regions
+            .iter()
+            .filter(|r| r.folded)
+            .map(|r| (r.start_line, r.end_line))
+            .collect();
+
+        self.fold_display_offsets.clear();
+        self.fold_display_offsets.resize(count + 1, 0);
+
+        let mut cum = 0usize;
+        let mut i = 0usize;
+        while i < count {
+            self.fold_display_offsets[i] = cum;
+            cum += self.line_visual_rows(i);
+            if let Some(&end) = folded_ends.get(&i) {
+                // Hidden lines collapse onto the row just past the header, and
+                // add no display rows. (A nested fold inside is jumped over.)
+                let hidden_end = end.min(count.saturating_sub(1));
+                for h in (i + 1)..=hidden_end {
+                    self.fold_display_offsets[h] = cum;
+                }
+                i = hidden_end + 1;
+            } else {
+                i += 1;
+            }
+        }
+        self.fold_display_offsets[count] = cum;
+        self.fold_display_total = cum;
+    }
+
+    /// Total number of visual rows (accounting for word wrap AND folds).
     pub(super) fn total_visual_rows(&self) -> usize {
+        if self.has_active_folds() {
+            return self.fold_display_total;
+        }
         if !self.config.word_wrap || self.wrap_row_offsets.len() <= 1 {
             return self.buffer.line_count();
         }
         *self.wrap_row_offsets.last().unwrap_or(&0)
     }
 
-    /// Convert a buffer (line, col) to a visual row index.
+    /// Convert a buffer (line, col) to a visual (display) row index.
     pub(super) fn visual_row_of(&self, line: usize, col: usize) -> usize {
+        if self.has_active_folds() {
+            let base = self.fold_display_offsets.get(line).copied().unwrap_or(0);
+            return base + self.sub_row_index(line, col);
+        }
         if !self.config.word_wrap
             || line >= self.wrap_cols.len()
             || line >= self.wrap_row_offsets.len()
         {
             return line;
         }
-        let base = self.wrap_row_offsets[line];
-        let wraps = &self.wrap_cols[line];
-        // Find which sub-row this col falls in.
-        let sub = wraps.iter().position(|&wc| col < wc).unwrap_or(wraps.len());
-        base + sub
+        self.wrap_row_offsets[line] + self.sub_row_index(line, col)
     }
 
-    /// Convert a visual row to (buffer_line, sub_row_index).
+    /// Convert a visual (display) row to (buffer_line, sub_row_index).
     pub(super) fn visual_row_to_line(&self, vrow: usize) -> (usize, usize) {
         let line_count = self.buffer.line_count();
-        // Fall back to identity when wrap is off or cache is stale/empty.
-        if !self.config.word_wrap || self.wrap_row_offsets.len() < line_count + 1 {
+
+        let offsets = if self.has_active_folds() {
+            &self.fold_display_offsets
+        } else if !self.config.word_wrap || self.wrap_row_offsets.len() < line_count + 1 {
+            // Fall back to identity when wrap is off or cache is stale/empty.
             return (vrow.min(line_count.saturating_sub(1)), 0);
-        }
-        // Binary search: find largest line whose offset <= vrow.
+        } else {
+            &self.wrap_row_offsets
+        };
+
+        // Binary search: largest line whose offset <= vrow. When folds are
+        // active, hidden lines share the following visible line's offset, so
+        // this returns the visible line (highest index) — never a hidden one.
         let mut lo = 0usize;
         let mut hi = line_count;
         while lo < hi {
             let mid = (lo + hi) / 2;
-            if self.wrap_row_offsets[mid + 1] <= vrow {
+            if offsets[mid + 1] <= vrow {
                 lo = mid + 1;
             } else {
                 hi = mid;
             }
         }
         let line = lo.min(line_count.saturating_sub(1));
-        let sub = vrow.saturating_sub(self.wrap_row_offsets[line]);
+        let sub = vrow.saturating_sub(offsets[line]);
         (line, sub)
     }
 

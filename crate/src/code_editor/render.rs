@@ -129,6 +129,9 @@ impl CodeEditor {
                     unsafe { (*dear_imgui_rs::sys::igGetStyle()).ScrollbarSize };
                 let text_area_w = (inner_size[0] - gutter_width - scrollbar_reserve).max(1.0);
                 self.update_wrap_cache(text_area_w);
+                // Fold-aware display rows (collapse folded lines). Built before
+                // input so click→line mapping is correct this frame.
+                self.rebuild_fold_display();
 
                 // ── Read ImGui scroll state first ───────────────────────
                 // This is the source of truth — user may have dragged the
@@ -170,6 +173,7 @@ impl CodeEditor {
                 // Re-sync wrap cache after input — paste/Enter may have added
                 // lines, so the pre-input cache is stale.
                 self.update_wrap_cache(text_area_w);
+                self.rebuild_fold_display();
 
                 // Only pull scroll toward cursor when cursor itself moved.
                 // Wheel / scrollbar-drag scrolling is free to take the cursor
