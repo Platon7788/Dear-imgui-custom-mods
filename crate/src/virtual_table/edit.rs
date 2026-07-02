@@ -1,97 +1,46 @@
-//! Inline cell editing state and logic.
+//! Inline cell editing state and logic (table). Value buffers + widget render
+//! live in `super::edit_common`; this only adds the row/col key.
 
 use super::column::CellEditor;
+use super::edit_common::EditBuffers;
 use super::row::CellValue;
 
 /// Tracks the currently active inline editor, if any.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct EditState {
     pub active: bool,
     pub row: usize,
     pub col: usize,
-    /// True on the very first frame after activation.
-    pub just_activated: bool,
-
-    // Value buffers — one per editor type
-    pub text_buf: String,
-    pub bool_val: bool,
-    pub int_val: i32,
-    pub float_val: f32,
-    pub choice_idx: usize,
-    pub color_val: [f32; 4],
-}
-
-impl Default for EditState {
-    fn default() -> Self {
-        Self {
-            active: false,
-            row: 0,
-            col: 0,
-            just_activated: false,
-            text_buf: String::with_capacity(256),
-            bool_val: false,
-            int_val: 0,
-            float_val: 0.0,
-            choice_idx: 0,
-            color_val: [1.0; 4],
-        }
-    }
+    pub buf: EditBuffers,
 }
 
 impl EditState {
-    /// Activate editor for (row, col) by copying the current cell value into buffers.
+    /// True on the first frame after activation.
+    #[inline]
+    pub(super) fn just_activated(&self) -> bool {
+        self.buf.just_activated
+    }
+
+    #[inline]
+    pub(super) fn set_activated(&mut self, v: bool) {
+        self.buf.just_activated = v;
+    }
+
     pub(super) fn activate(&mut self, row: usize, col: usize, value: &CellValue) {
         self.active = true;
         self.row = row;
         self.col = col;
-        self.just_activated = true;
-
-        match value {
-            CellValue::Text(s) => {
-                self.text_buf.clear();
-                self.text_buf.push_str(s);
-            }
-            CellValue::Bool(b) => self.bool_val = *b,
-            CellValue::Int(v) => self.int_val = (*v).clamp(i32::MIN as i64, i32::MAX as i64) as i32,
-            CellValue::Float(v) => self.float_val = (*v as f32).clamp(f32::MIN, f32::MAX),
-            CellValue::Choice(idx) => self.choice_idx = *idx,
-            CellValue::Color(c) => self.color_val = *c,
-            CellValue::Progress(_) | CellValue::Custom => {}
-        }
+        self.buf.copy_from_value(value);
     }
 
-    /// Deactivate the editor.
     pub(super) fn deactivate(&mut self) {
         self.active = false;
     }
 
-    /// Build a `CellValue` from the current buffer state, matching the editor type.
-    ///
-    /// For `TextInput`: moves the string out of `text_buf` (zero-copy) and replaces
-    /// it with a fresh pre-allocated buffer. The old capacity is not wasted because
-    /// `set_cell_value` takes ownership of the String inside CellValue.
     pub(super) fn take_cell_value(&mut self, editor: &CellEditor) -> CellValue {
-        match editor {
-            CellEditor::None | CellEditor::TextInput => {
-                // Move the string out instead of cloning — saves one allocation.
-                let text = std::mem::replace(&mut self.text_buf, String::with_capacity(256));
-                CellValue::Text(text)
-            }
-            CellEditor::Checkbox => CellValue::Bool(self.bool_val),
-            CellEditor::ComboBox { .. } => CellValue::Choice(self.choice_idx),
-            CellEditor::SliderInt { .. } | CellEditor::SpinInt { .. } => {
-                CellValue::Int(self.int_val as i64)
-            }
-            CellEditor::SliderFloat { .. } | CellEditor::SpinFloat { .. } => {
-                CellValue::Float(self.float_val as f64)
-            }
-            CellEditor::ColorEdit => CellValue::Color(self.color_val),
-            CellEditor::ProgressBar => CellValue::Progress(self.float_val),
-            CellEditor::Button { .. } | CellEditor::Custom => CellValue::Custom,
-        }
+        self.buf.take_cell_value(editor)
     }
 
-    /// Check if editing this specific cell.
     #[inline]
     pub(super) fn is_editing(&self, row: usize, col: usize) -> bool {
         self.active && self.row == row && self.col == col
@@ -114,10 +63,10 @@ mod tests {
         let mut es = EditState::default();
         es.activate(5, 2, &CellValue::Text("hello".into()));
         assert!(es.active);
-        assert!(es.just_activated);
+        assert!(es.just_activated());
         assert_eq!(es.row, 5);
         assert_eq!(es.col, 2);
-        assert_eq!(es.text_buf, "hello");
+        assert_eq!(es.buf.text_buf, "hello");
         assert!(es.is_editing(5, 2));
         assert!(!es.is_editing(5, 3));
     }
@@ -126,35 +75,35 @@ mod tests {
     fn activate_bool() {
         let mut es = EditState::default();
         es.activate(0, 0, &CellValue::Bool(true));
-        assert!(es.bool_val);
+        assert!(es.buf.bool_val);
     }
 
     #[test]
     fn activate_int() {
         let mut es = EditState::default();
         es.activate(0, 0, &CellValue::Int(42));
-        assert_eq!(es.int_val, 42);
+        assert_eq!(es.buf.int_val, 42);
     }
 
     #[test]
     fn activate_int_clamped() {
         let mut es = EditState::default();
         es.activate(0, 0, &CellValue::Int(i64::MAX));
-        assert_eq!(es.int_val, i32::MAX);
+        assert_eq!(es.buf.int_val, i32::MAX);
     }
 
     #[test]
     fn activate_float() {
         let mut es = EditState::default();
         es.activate(0, 0, &CellValue::Float(3.25));
-        assert!((es.float_val - 3.25).abs() < 0.01);
+        assert!((es.buf.float_val - 3.25).abs() < 0.01);
     }
 
     #[test]
     fn activate_choice() {
         let mut es = EditState::default();
         es.activate(0, 0, &CellValue::Choice(7));
-        assert_eq!(es.choice_idx, 7);
+        assert_eq!(es.buf.choice_idx, 7);
     }
 
     #[test]
@@ -162,7 +111,7 @@ mod tests {
         let mut es = EditState::default();
         let c = [0.1, 0.2, 0.3, 0.4];
         es.activate(0, 0, &CellValue::Color(c));
-        assert_eq!(es.color_val, c);
+        assert_eq!(es.buf.color_val, c);
     }
 
     #[test]
@@ -184,8 +133,8 @@ mod tests {
             _ => panic!("expected Text"),
         }
         // text_buf should be replaced with fresh allocation
-        assert!(es.text_buf.is_empty());
-        assert!(es.text_buf.capacity() >= 256);
+        assert!(es.buf.text_buf.is_empty());
+        assert!(es.buf.text_buf.capacity() >= 256);
     }
 
     #[test]

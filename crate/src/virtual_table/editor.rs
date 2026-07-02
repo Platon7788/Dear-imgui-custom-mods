@@ -31,135 +31,53 @@ impl<T: VirtualTableRow> VirtualTable<T> {
     }
 
     pub(super) fn render_editor_inline(&mut self, ui: &Ui, idx: usize, col_idx: usize) {
-        let mut commit = false;
-        let mut cancel = false;
-
         ui.set_next_item_width(-1.0);
 
         // Clone the editor config to avoid borrow conflict with self.edit_state/self.data.
         let editor_snapshot = self.columns[col_idx].editor.clone();
-        let first_frame = self.edit_state.just_activated;
+
+        let first_frame = self.edit_state.just_activated();
         if first_frame {
-            self.edit_state.just_activated = false;
+            self.edit_state.set_activated(false);
         }
 
-        match &editor_snapshot {
-            CellEditor::TextInput => {
-                if first_frame {
-                    unsafe { dear_imgui_rs::sys::igSetKeyboardFocusHere(0) };
-                }
-                let entered = ui
-                    .input_text("##edit", &mut self.edit_state.text_buf)
-                    .enter_returns_true(true)
-                    .build();
-                if entered {
-                    commit = true;
-                }
-                // ImGui handles focus natively: deactivation = user clicked away / Tab / etc.
-                if !first_frame && !entered {
-                    if ui.is_item_deactivated_after_edit() {
-                        if self.config.commit_on_focus_loss {
-                            commit = true;
-                        } else {
-                            cancel = true;
-                        }
-                    } else if ui.is_item_deactivated() {
-                        cancel = true;
-                    }
-                }
-            }
-            CellEditor::SliderInt { min, max } => {
-                ui.slider_config("##edit", *min, *max)
-                    .build(&mut self.edit_state.int_val);
-                // Commit only when user releases the slider (not every drag frame)
-                if !first_frame && ui.is_item_deactivated_after_edit() {
-                    commit = true;
-                }
-            }
-            CellEditor::SliderFloat { min, max } => {
-                ui.slider_config("##edit", *min, *max)
-                    .build(&mut self.edit_state.float_val);
-                if !first_frame && ui.is_item_deactivated_after_edit() {
-                    commit = true;
-                }
-            }
-            CellEditor::SpinInt { step, step_fast } => {
-                if first_frame {
-                    unsafe { dear_imgui_rs::sys::igSetKeyboardFocusHere(0) };
-                }
-                unsafe {
-                    dear_imgui_rs::sys::igInputInt(
-                        c"##edit".as_ptr(),
-                        &mut self.edit_state.int_val,
-                        *step,
-                        *step_fast,
-                        0,
-                    );
-                }
-                if !first_frame {
-                    if ui.is_item_deactivated_after_edit() {
-                        if self.config.commit_on_focus_loss {
-                            commit = true;
-                        } else {
-                            cancel = true;
-                        }
-                    } else if ui.is_item_deactivated() {
-                        cancel = true;
-                    }
-                }
-            }
-            CellEditor::SpinFloat { step, step_fast } => {
-                if first_frame {
-                    unsafe { dear_imgui_rs::sys::igSetKeyboardFocusHere(0) };
-                }
-                unsafe {
-                    dear_imgui_rs::sys::igInputFloat(
-                        c"##edit".as_ptr(),
-                        &mut self.edit_state.float_val,
-                        *step,
-                        *step_fast,
-                        c"%.2f".as_ptr(),
-                        0,
-                    );
-                }
-                if !first_frame {
-                    if ui.is_item_deactivated_after_edit() {
-                        if self.config.commit_on_focus_loss {
-                            commit = true;
-                        } else {
-                            cancel = true;
-                        }
-                    } else if ui.is_item_deactivated() {
-                        cancel = true;
-                    }
-                }
-            }
+        let outcome = match &editor_snapshot {
             CellEditor::Custom => {
+                let mut committed = false;
                 if let Some(row) = self.data.get_mut(idx)
                     && row.render_editor(ui, col_idx)
                 {
-                    commit = true;
+                    committed = true;
+                }
+                if ui.is_key_pressed(dear_imgui_rs::Key::Escape) {
+                    edit_common::EditOutcome::Cancel
+                } else if committed {
+                    edit_common::EditOutcome::Commit
+                } else {
+                    edit_common::EditOutcome::Continue
                 }
             }
-            _ => {
+            other => edit_common::render_editor_widget(
+                ui,
+                other,
+                &mut self.edit_state.buf,
+                first_frame,
+                self.config.commit_on_focus_loss,
+            ),
+        };
+
+        match outcome {
+            edit_common::EditOutcome::Commit => {
+                let value = self.edit_state.take_cell_value(&editor_snapshot);
+                if let Some(row) = self.data.get_mut(idx) {
+                    row.set_cell_value(col_idx, &value);
+                }
                 self.edit_state.deactivate();
-                return;
             }
-        }
-
-        // Escape always cancels
-        if ui.is_key_pressed(Key::Escape) {
-            cancel = true;
-        }
-
-        if cancel {
-            self.edit_state.deactivate();
-        } else if commit {
-            let value = self.edit_state.take_cell_value(&editor_snapshot);
-            if let Some(row) = self.data.get_mut(idx) {
-                row.set_cell_value(col_idx, &value);
+            edit_common::EditOutcome::Cancel | edit_common::EditOutcome::Custom => {
+                self.edit_state.deactivate();
             }
-            self.edit_state.deactivate();
+            edit_common::EditOutcome::Continue => {}
         }
     }
 }

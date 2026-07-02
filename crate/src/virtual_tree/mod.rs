@@ -96,33 +96,23 @@ struct EditState {
     active: bool,
     node: Option<NodeId>,
     col: usize,
-    just_activated: bool,
-    text_buf: String,
-    bool_val: bool,
-    int_val: i32,
-    float_val: f32,
-    choice_idx: usize,
-    color_val: [f32; 4],
+    buf: crate::virtual_table::edit_common::EditBuffers,
 }
 
 impl EditState {
+    fn just_activated(&self) -> bool {
+        self.buf.just_activated
+    }
+
+    fn set_activated(&mut self, v: bool) {
+        self.buf.just_activated = v;
+    }
+
     fn activate(&mut self, node: NodeId, col: usize, value: &CellValue) {
         self.active = true;
         self.node = Some(node);
         self.col = col;
-        self.just_activated = true;
-        match value {
-            CellValue::Text(s) => {
-                self.text_buf.clear();
-                self.text_buf.push_str(s);
-            }
-            CellValue::Bool(b) => self.bool_val = *b,
-            CellValue::Int(v) => self.int_val = (*v).clamp(i32::MIN as i64, i32::MAX as i64) as i32,
-            CellValue::Float(v) => self.float_val = (*v as f32).clamp(f32::MIN, f32::MAX),
-            CellValue::Choice(idx) => self.choice_idx = *idx,
-            CellValue::Color(c) => self.color_val = *c,
-            CellValue::Progress(_) | CellValue::Custom => {}
-        }
+        self.buf.copy_from_value(value);
     }
 
     fn deactivate(&mut self) {
@@ -130,24 +120,7 @@ impl EditState {
     }
 
     fn take_cell_value(&mut self, editor: &CellEditor) -> CellValue {
-        match editor {
-            CellEditor::None | CellEditor::TextInput => {
-                // Move string out instead of cloning — zero-copy commit.
-                let text = std::mem::replace(&mut self.text_buf, String::with_capacity(256));
-                CellValue::Text(text)
-            }
-            CellEditor::Checkbox => CellValue::Bool(self.bool_val),
-            CellEditor::ComboBox { .. } => CellValue::Choice(self.choice_idx),
-            CellEditor::SliderInt { .. } | CellEditor::SpinInt { .. } => {
-                CellValue::Int(self.int_val as i64)
-            }
-            CellEditor::SliderFloat { .. } | CellEditor::SpinFloat { .. } => {
-                CellValue::Float(self.float_val as f64)
-            }
-            CellEditor::ColorEdit => CellValue::Color(self.color_val),
-            CellEditor::ProgressBar => CellValue::Progress(self.float_val),
-            CellEditor::Button { .. } | CellEditor::Custom => CellValue::Custom,
-        }
+        self.buf.take_cell_value(editor)
     }
 
     #[inline]

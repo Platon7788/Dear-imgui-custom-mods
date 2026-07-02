@@ -135,6 +135,7 @@
 pub mod column;
 pub mod config;
 mod edit;
+pub(crate) mod edit_common;
 pub mod ring_buffer;
 pub mod row;
 mod sort;
