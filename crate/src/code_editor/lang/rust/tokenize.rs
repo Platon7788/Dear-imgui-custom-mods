@@ -1,7 +1,7 @@
 //! Rust line tokenizer — the state machine that walks one line of source
 //! and emits [`Token`]s, carrying block-comment state across lines.
 
-use super::keywords::{BUILTIN_TYPES, KEYWORDS};
+use super::keywords::{builtin_types_set, keywords_set};
 use super::*;
 use crate::code_editor::lang::scan_block_comment;
 
@@ -296,7 +296,7 @@ pub(in crate::code_editor::lang) fn tokenize(
             if i < len
                 && bytes[i] == b'!'
                 && !(i + 1 < len && bytes[i + 1] == b'=')
-                && (!KEYWORDS.contains(&word) || word == "macro_rules")
+                && (!keywords_set().contains(word) || word == "macro_rules")
             {
                 i += 1;
                 tokens.push(Token {
@@ -306,9 +306,9 @@ pub(in crate::code_editor::lang) fn tokenize(
                 });
                 continue;
             }
-            let kind = if KEYWORDS.contains(&word) {
+            let kind = if keywords_set().contains(word) {
                 TokenKind::Keyword
-            } else if BUILTIN_TYPES.contains(&word)
+            } else if builtin_types_set().contains(word)
                 || word.chars().next().is_some_and(|c| c.is_uppercase())
             {
                 TokenKind::TypeName

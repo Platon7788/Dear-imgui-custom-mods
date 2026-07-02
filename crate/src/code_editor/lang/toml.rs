@@ -103,9 +103,12 @@ fn tokenize(line: &str) -> Vec<Token> {
             continue;
         }
 
-        // String (double or single quote, including triple-quoted).
-        // Backslash escapes apply only to basic (double-quoted) strings;
-        // TOML literal (single-quoted) strings treat `\` verbatim.
+        // String (double or single quote). Single-line only — TOML's
+        // triple-quoted multi-line strings are not tracked across lines (this
+        // tokenizer is stateless), so `"""…"""` on one line reads as an empty
+        // string followed by its content. Backslash escapes apply only to
+        // basic (double-quoted) strings; literal (single-quoted) treat `\`
+        // verbatim.
         if b == b'"' || b == b'\'' {
             let quote = b;
             let escapes = quote == b'"';

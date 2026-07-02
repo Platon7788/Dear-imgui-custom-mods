@@ -165,3 +165,19 @@ pub(super) const BUILTIN_TYPES: &[&str] = &[
     "Ok",
     "Err",
 ];
+
+use std::collections::HashSet;
+use std::sync::OnceLock;
+
+/// [`KEYWORDS`] as a hash set — one hash + probe per identifier instead of a
+/// linear scan over ~50 `&str`s (mirrors `asm/tables.rs`). Built once, lazily.
+pub(super) fn keywords_set() -> &'static HashSet<&'static str> {
+    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| KEYWORDS.iter().copied().collect())
+}
+
+/// [`BUILTIN_TYPES`] as a hash set (~90 entries; the hottest linear scan).
+pub(super) fn builtin_types_set() -> &'static HashSet<&'static str> {
+    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| BUILTIN_TYPES.iter().copied().collect())
+}

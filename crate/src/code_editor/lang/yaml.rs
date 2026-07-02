@@ -273,6 +273,20 @@ fn tokenize(line: &str) -> Vec<Token> {
                 }
                 i += 1;
             }
+            // Guaranteed-advance guard: if a leading delimiter ever slipped
+            // past the earlier branches, the loop broke at `start` with `i`
+            // unmoved — consume one char as punctuation so the outer scan
+            // can't spin forever.
+            if i == start && i < len {
+                let adv = line[i..].chars().next().map_or(1, |c| c.len_utf8());
+                tokens.push(Token {
+                    kind: TokenKind::Punctuation,
+                    start,
+                    len: adv,
+                });
+                i += adv;
+                continue;
+            }
             // Trim trailing whitespace from the token
             let mut end = i;
             while end > start && (bytes[end - 1] == b' ' || bytes[end - 1] == b'\t') {

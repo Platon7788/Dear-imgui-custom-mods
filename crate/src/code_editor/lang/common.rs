@@ -166,12 +166,14 @@ pub(in crate::code_editor::lang) fn consume_char_literal(line: &str, i: usize) -
                 }
             }
             b'u' => {
-                // \u{HHHHHH} — up to 6 hex digits in braces.
+                // \u{H..HHHH} — 1 to 6 hex digits in braces (Rust spec).
                 p += 1;
                 if p < len && bytes[p] == b'{' {
                     p += 1;
-                    while p < len && bytes[p].is_ascii_hexdigit() {
+                    let mut digits = 0;
+                    while digits < 6 && p < len && bytes[p].is_ascii_hexdigit() {
                         p += 1;
+                        digits += 1;
                     }
                     if p < len && bytes[p] == b'}' {
                         p += 1;
