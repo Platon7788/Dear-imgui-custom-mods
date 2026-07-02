@@ -22,9 +22,9 @@ pub(in crate::code_editor::lang) fn tokenize(
     // either it closes here (→ back to code) or it stays open.
     if let LineState::Str { raw, hashes, .. } = state {
         let (end, closed) = if raw {
-            scan_raw_string_close(bytes, 0, hashes as usize)
+            scan_raw_string_body(bytes, 0, hashes as usize)
         } else {
-            scan_dq_string_close(bytes, 0)
+            scan_dq_string_body(bytes, 0)
         };
         if end > 0 {
             push(&mut tokens, TokenKind::String, 0, end);
@@ -48,11 +48,7 @@ pub(in crate::code_editor::lang) fn tokenize(
 
         // ── Whitespace ───────────────────────────────────────────────────
         if b == b' ' || b == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            push(&mut tokens, TokenKind::Whitespace, start, i - start);
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 
@@ -98,7 +94,7 @@ pub(in crate::code_editor::lang) fn tokenize(
         //    can span physical lines. ──────────────────────────────────────
         if b == b'"' {
             let start = i;
-            let (end, closed) = scan_dq_string_close(bytes, i + 1);
+            let (end, closed) = scan_dq_string_body(bytes, i + 1);
             i = end;
             if !closed {
                 push(&mut tokens, TokenKind::String, start, i - start);
@@ -136,7 +132,7 @@ pub(in crate::code_editor::lang) fn tokenize(
                 p += 1;
             }
             if p < len && bytes[p] == b'"' {
-                let (end, closed) = scan_raw_string_close(bytes, p + 1, hashes);
+                let (end, closed) = scan_raw_string_body(bytes, p + 1, hashes);
                 push(&mut tokens, TokenKind::String, start, end - start);
                 i = end;
                 if !closed {
@@ -168,7 +164,7 @@ pub(in crate::code_editor::lang) fn tokenize(
 
         // ── Signed non-finite floats: +inf / -inf / +NaN / -NaN ──────────
         // Before the number branch so the sign isn't split off.
-        if let Some(n) = signed_special_float_len(bytes, i) {
+        if let Some(n) = signed_special_float_len(bytes, i, b"NaN") {
             push(&mut tokens, TokenKind::Number, i, n);
             i += n;
             continue;

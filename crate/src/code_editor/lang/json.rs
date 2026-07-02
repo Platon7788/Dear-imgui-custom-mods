@@ -7,7 +7,7 @@
 //! extras: single-quoted strings, `Infinity` / `NaN`, hex `0x` literals,
 //! leading `+`, and bare-leading (`.5`) / trailing (`5.`) decimal points.
 
-use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
+use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start, scan_until, scan_ws};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -70,16 +70,8 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         // ── Inside a JSONC block comment (non-nesting) ───────────────────
         if in_block_comment {
             let start = i;
-            loop {
-                if i >= len {
-                    break;
-                }
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
+            if scan_until(bytes, &mut i, b"*/") {
+                in_block_comment = false;
             }
             tokens.push(Token {
                 kind: TokenKind::Comment,
@@ -93,15 +85,7 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
 
         // ── Whitespace ───────────────────────────────────────────────────
         if b == b' ' || b == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            tokens.push(Token {
-                kind: TokenKind::Whitespace,
-                start,
-                len: i - start,
-            });
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 
@@ -119,18 +103,7 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
             let start = i;
             i += 2;
-            in_block_comment = true;
-            loop {
-                if i >= len {
-                    break;
-                }
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
-            }
+            in_block_comment = !scan_until(bytes, &mut i, b"*/");
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start,

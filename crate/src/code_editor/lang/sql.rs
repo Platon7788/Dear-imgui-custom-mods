@@ -5,9 +5,11 @@
 //! `LineState::BlockComment`), single-quoted strings with `''` escaping,
 //! and double-quoted / backtick quoted identifiers.
 
-use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
+use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start, scan_until, scan_ws};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
+use std::collections::HashSet;
+use std::sync::OnceLock;
 
 /// Reserved words compared against the **uppercased** identifier, so
 /// `select`, `Select` and `SELECT` all match.
@@ -98,6 +100,14 @@ const KEYWORDS: &[&str] = &[
     "IF",
 ];
 
+/// [`KEYWORDS`] as a hash set (uppercased keys) — one hash + probe per
+/// identifier instead of a linear scan over ~90 `&str`s (mirrors
+/// `rust::keywords` / `asm::tables`). Built once, lazily.
+fn keywords_set() -> &'static HashSet<&'static str> {
+    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| KEYWORDS.iter().copied().collect())
+}
+
 // ── Language definition ─────────────────────────────────────────────────────
 
 pub struct SqlLang;
@@ -154,13 +164,8 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
     // ── Resume: inside a /* … */ block comment carried from a prior line ──
     if in_block_comment {
         let start = i;
-        while i < len {
-            if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                i += 2;
-                in_block_comment = false;
-                break;
-            }
-            i += 1;
+        if scan_until(bytes, &mut i, b"*/") {
+            in_block_comment = false;
         }
         tokens.push(Token {
             kind: TokenKind::Comment,
@@ -174,15 +179,7 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
 
         // ── Whitespace ───────────────────────────────────────────────────
         if b == b' ' || b == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            tokens.push(Token {
-                kind: TokenKind::Whitespace,
-                start,
-                len: i - start,
-            });
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 
@@ -202,16 +199,7 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
             let start = i;
             i += 2;
-            let mut closed = false;
-            while i < len {
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    closed = true;
-                    break;
-                }
-                i += 1;
-            }
-            if !closed {
+            if !scan_until(bytes, &mut i, b"*/") {
                 in_block_comment = true;
             }
             tokens.push(Token {
@@ -283,8 +271,18 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
                 i += 1;
             }
             let word = &line[start..i];
-            let upper = word.to_ascii_uppercase();
-            let kind = if KEYWORDS.contains(&upper.as_str()) {
+            // Case-insensitive keyword match. Only allocate the uppercased
+            // copy when the word actually contains a lowercase byte; an
+            // already-uppercase (or caseless) word borrows and compares in
+            // place (mirrors the alloc-avoidance in `asm::tokenize`).
+            let word_upper: String;
+            let word_uc = if word.bytes().any(|c| c.is_ascii_lowercase()) {
+                word_upper = word.to_ascii_uppercase();
+                word_upper.as_str()
+            } else {
+                word
+            };
+            let kind = if keywords_set().contains(word_uc) {
                 TokenKind::Keyword
             } else {
                 TokenKind::Identifier

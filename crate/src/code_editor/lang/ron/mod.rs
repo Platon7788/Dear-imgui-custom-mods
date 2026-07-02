@@ -18,7 +18,8 @@
 
 use super::{
     NumberOpts, consume_char_literal, consume_number, is_ident_continue, is_ident_start,
-    scan_block_comment,
+    scan_block_comment, scan_dq_string_body, scan_raw_string_body, scan_ws,
+    signed_special_float_len,
 };
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
@@ -34,62 +35,6 @@ const KEYWORDS: &[&str] = &["true", "false"];
 /// Push a token spanning `start..start+len` of the given `kind`.
 fn push(tokens: &mut Vec<Token>, kind: TokenKind, start: usize, len: usize) {
     tokens.push(Token { kind, start, len });
-}
-
-/// Scan a double-quoted string body from `start` (just past the opening `"`),
-/// honouring `\`-escapes. Returns `(end, closed)`: `end` is the byte index
-/// just past the closing `"` (or `len` if unterminated) and `closed` says
-/// whether the close was found on this line. A lone trailing `\` (Rust-style
-/// line continuation) leaves the string open, so a multi-line string carries.
-fn scan_dq_string_close(bytes: &[u8], start: usize) -> (usize, bool) {
-    let len = bytes.len();
-    let mut i = start;
-    while i < len {
-        if bytes[i] == b'\\' && i + 1 < len {
-            i += 2;
-        } else if bytes[i] == b'"' {
-            return (i + 1, true);
-        } else {
-            i += 1;
-        }
-    }
-    (len, false)
-}
-
-/// Scan a raw-string body from `start` (just past the opening `r#…#"`) for the
-/// matching `"` followed by exactly `hashes` `#`. Returns `(end, closed)` —
-/// see [`scan_dq_string_close`].
-fn scan_raw_string_close(bytes: &[u8], start: usize, hashes: usize) -> (usize, bool) {
-    let len = bytes.len();
-    let mut i = start;
-    while i < len {
-        if bytes[i] == b'"' {
-            let mut end_hashes = 0;
-            let mut j = i + 1;
-            while j < len && bytes[j] == b'#' && end_hashes < hashes {
-                end_hashes += 1;
-                j += 1;
-            }
-            if end_hashes == hashes {
-                return (j, true);
-            }
-        }
-        i += 1;
-    }
-    (len, false)
-}
-
-/// Byte length of a signed non-finite float (`+inf` / `-inf` / `+NaN` /
-/// `-NaN`, RON's serialization of non-finite `f32`/`f64`) at `i`, or `None`.
-/// Bare `inf` / `NaN` are classified in the identifier branch so a field-key
-/// role (`inf:`) can win first.
-fn signed_special_float_len(bytes: &[u8], i: usize) -> Option<usize> {
-    if !matches!(bytes.get(i), Some(&b'+') | Some(&b'-')) || i + 4 > bytes.len() {
-        return None;
-    }
-    let seg = &bytes[i + 1..i + 4];
-    ((seg == b"inf" || seg == b"NaN") && (i + 4 == bytes.len() || !is_ident_continue(bytes[i + 4])))
-        .then_some(4)
 }
 
 // ── Language definition ─────────────────────────────────────────────────────

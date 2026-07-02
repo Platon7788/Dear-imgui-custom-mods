@@ -359,7 +359,8 @@ pub use super::token::{Token, TokenKind};
 mod common;
 
 pub(in crate::code_editor::lang) use common::{
-    NumberOpts, consume_char_literal, consume_number, scan_block_comment,
+    NumberOpts, consume_char_literal, consume_number, scan_block_comment, scan_dq_string_body,
+    scan_raw_string_body, scan_until, scan_ws, signed_special_float_len,
 };
 pub(crate) use common::{is_ident_continue, is_ident_start};
 

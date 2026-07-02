@@ -5,6 +5,8 @@
 //! branch ordering. Splitting them out of `lang/mod.rs` keeps that file
 //! focused on the public trait / `Language` enum / dispatch surface.
 
+use crate::code_editor::token::{Token, TokenKind};
+
 /// ASCII letter or `_`.
 #[inline]
 pub(crate) fn is_ident_start(b: u8) -> bool {
@@ -236,6 +238,110 @@ pub(in crate::code_editor::lang) fn scan_block_comment(
         }
     }
     depth
+}
+
+/// Push a whitespace run (spaces / tabs) starting at `*i`, if any. A no-op
+/// when `*i` isn't at a space or tab, so it's safe to call unconditionally
+/// (the leading-indent scanners call it that way). Emits a single
+/// [`TokenKind::Whitespace`] span covering the run and advances `*i` past it.
+pub(in crate::code_editor::lang) fn scan_ws(tokens: &mut Vec<Token>, bytes: &[u8], i: &mut usize) {
+    let len = bytes.len();
+    if *i < len && (bytes[*i] == b' ' || bytes[*i] == b'\t') {
+        let start = *i;
+        while *i < len && (bytes[*i] == b' ' || bytes[*i] == b'\t') {
+            *i += 1;
+        }
+        tokens.push(Token {
+            kind: TokenKind::Whitespace,
+            start,
+            len: *i - start,
+        });
+    }
+}
+
+/// Scan a double-quoted string body from `start` (just past the opening `"`),
+/// honouring `\`-escapes. Returns `(end, closed)`: `end` is the byte index
+/// just past the closing `"` (or `len` if unterminated) and `closed` says
+/// whether the close was found on this line. A lone trailing `\` (Rust-style
+/// line continuation) leaves the string open, so a multi-line string carries.
+pub(in crate::code_editor::lang) fn scan_dq_string_body(
+    bytes: &[u8],
+    start: usize,
+) -> (usize, bool) {
+    let len = bytes.len();
+    let mut i = start;
+    while i < len {
+        if bytes[i] == b'\\' && i + 1 < len {
+            i += 2;
+        } else if bytes[i] == b'"' {
+            return (i + 1, true);
+        } else {
+            i += 1;
+        }
+    }
+    (len, false)
+}
+
+/// Scan a raw-string body from `start` (just past the opening `r#…#"`) for the
+/// matching `"` followed by exactly `hashes` `#`. Returns `(end, closed)` —
+/// see [`scan_dq_string_body`].
+pub(in crate::code_editor::lang) fn scan_raw_string_body(
+    bytes: &[u8],
+    start: usize,
+    hashes: usize,
+) -> (usize, bool) {
+    let len = bytes.len();
+    let mut i = start;
+    while i < len {
+        if bytes[i] == b'"' {
+            let mut end_hashes = 0;
+            let mut j = i + 1;
+            while j < len && bytes[j] == b'#' && end_hashes < hashes {
+                end_hashes += 1;
+                j += 1;
+            }
+            if end_hashes == hashes {
+                return (j, true);
+            }
+        }
+        i += 1;
+    }
+    (len, false)
+}
+
+/// Byte length of a signed non-finite float (`+inf` / `-inf` / `+<nan>` /
+/// `-<nan>`) at `i`, or `None`. The `nan` needle is the exact 3-byte spelling
+/// the language serializes (`b"nan"` for TOML, `b"NaN"` for RON) — the only
+/// difference between the two callers. Bare `inf` / `nan` (no sign) are
+/// classified in the identifier branch so a field-key role can win first.
+pub(in crate::code_editor::lang) fn signed_special_float_len(
+    bytes: &[u8],
+    i: usize,
+    nan: &[u8],
+) -> Option<usize> {
+    if !matches!(bytes.get(i), Some(&b'+') | Some(&b'-')) || i + 4 > bytes.len() {
+        return None;
+    }
+    let seg = &bytes[i + 1..i + 4];
+    ((seg == b"inf" || seg == nan) && (i + 4 == bytes.len() || !is_ident_continue(bytes[i + 4])))
+        .then_some(4)
+}
+
+/// Scan forward from `*i` for the next occurrence of `needle`, advancing `*i`
+/// past it and returning `true` when found. When the needle isn't present,
+/// `*i` is advanced to `bytes.len()` and `false` is returned. Used for the
+/// non-nesting scan-to-close loops (`*/`, `-->`, `]]>`, `?>`).
+pub(in crate::code_editor::lang) fn scan_until(bytes: &[u8], i: &mut usize, needle: &[u8]) -> bool {
+    let len = bytes.len();
+    let n = needle.len();
+    while *i < len {
+        if *i + n <= len && &bytes[*i..*i + n] == needle {
+            *i += n;
+            return true;
+        }
+        *i += 1;
+    }
+    false
 }
 
 #[cfg(test)]

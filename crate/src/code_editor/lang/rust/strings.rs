@@ -21,39 +21,23 @@ pub(super) fn str_carry(raw: bool, hashes: u8) -> LineState {
 /// Scan a non-raw string body from `*i` (first byte after the opening quote).
 /// Returns `true` if the closing `"` was found. Honours `\"` escapes; a
 /// trailing `\` is a line continuation that leaves the string open.
+///
+/// Thin `&mut usize`-shaped wrapper over the shared
+/// [`crate::code_editor::lang::scan_dq_string_body`] (the RON tokenizer uses
+/// the positional-return shape directly).
 pub(super) fn scan_str_body(i: &mut usize, bytes: &[u8]) -> bool {
-    let len = bytes.len();
-    while *i < len {
-        if bytes[*i] == b'\\' {
-            *i += if *i + 1 < len { 2 } else { 1 };
-        } else if bytes[*i] == b'"' {
-            *i += 1;
-            return true;
-        } else {
-            *i += 1;
-        }
-    }
-    false
+    let (end, closed) = crate::code_editor::lang::scan_dq_string_body(bytes, *i);
+    *i = end;
+    closed
 }
 
 /// Scan a raw string body from `*i` for a closing `"` followed by exactly
 /// `hashes` `#`. Advances `*i` past the close (or to EOL); returns closed?.
+///
+/// Thin `&mut usize`-shaped wrapper over the shared
+/// [`crate::code_editor::lang::scan_raw_string_body`].
 pub(super) fn scan_raw_str_body(i: &mut usize, bytes: &[u8], hashes: usize) -> bool {
-    let len = bytes.len();
-    while *i < len {
-        if bytes[*i] == b'"' {
-            let mut end_hashes = 0;
-            let mut j = *i + 1;
-            while j < len && bytes[j] == b'#' && end_hashes < hashes {
-                end_hashes += 1;
-                j += 1;
-            }
-            if end_hashes == hashes {
-                *i = j;
-                return true;
-            }
-        }
-        *i += 1;
-    }
-    false
+    let (end, closed) = crate::code_editor::lang::scan_raw_string_body(bytes, *i, hashes);
+    *i = end;
+    closed
 }

@@ -11,7 +11,7 @@
 //!   [`LineState::HtmlRaw`]. Inside them a `<` is *not* markup (e.g. `a < b`
 //!   in JS stays raw text) until the matching `</script>` / `</style>`.
 
-use super::{is_ident_continue, is_ident_start};
+use super::{is_ident_continue, is_ident_start, scan_until};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -142,16 +142,8 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
         // ── Inside XML comment <!-- ... --> ───────────────────────────────
         if in_block_comment {
             let start = i;
-            loop {
-                if i >= len {
-                    break;
-                }
-                if i + 2 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' && bytes[i + 2] == b'>' {
-                    i += 3;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
+            if scan_until(bytes, &mut i, b"-->") {
+                in_block_comment = false;
             }
             emit(&mut tokens, TokenKind::Comment, start, i - start);
             continue;
@@ -178,18 +170,7 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
         {
             let start = i;
             i += 4;
-            in_block_comment = true;
-            loop {
-                if i >= len {
-                    break;
-                }
-                if i + 2 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' && bytes[i + 2] == b'>' {
-                    i += 3;
-                    in_block_comment = false;
-                    break;
-                }
-                i += 1;
-            }
+            in_block_comment = !scan_until(bytes, &mut i, b"-->");
             emit(&mut tokens, TokenKind::Comment, start, i - start);
             continue;
         }
@@ -201,16 +182,7 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
         if b == b'<' && i + 9 <= len && &bytes[i..i + 9] == b"<![CDATA[" {
             let start = i;
             i += 9;
-            loop {
-                if i >= len {
-                    break;
-                }
-                if i + 2 < len && bytes[i] == b']' && bytes[i + 1] == b']' && bytes[i + 2] == b'>' {
-                    i += 3;
-                    break;
-                }
-                i += 1;
-            }
+            scan_until(bytes, &mut i, b"]]>");
             emit(&mut tokens, TokenKind::String, start, i - start);
             continue;
         }
@@ -219,16 +191,7 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
         if b == b'<' && i + 1 < len && bytes[i + 1] == b'?' {
             let start = i;
             i += 2;
-            loop {
-                if i >= len {
-                    break;
-                }
-                if i + 1 < len && bytes[i] == b'?' && bytes[i + 1] == b'>' {
-                    i += 2;
-                    break;
-                }
-                i += 1;
-            }
+            scan_until(bytes, &mut i, b"?>");
             emit(&mut tokens, TokenKind::Attribute, start, i - start);
             continue;
         }

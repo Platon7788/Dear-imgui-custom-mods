@@ -5,9 +5,11 @@
 //! `# escape=` parser directives), `$VAR` / `${VAR}` are variables, and
 //! `--flag` options highlight as attributes. This tokenizer is stateless.
 
-use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
+use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start, scan_ws};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
+use std::collections::HashSet;
+use std::sync::OnceLock;
 
 /// Dockerfile instructions, matched against the **uppercased** first word.
 const INSTRUCTIONS: &[&str] = &[
@@ -30,6 +32,13 @@ const INSTRUCTIONS: &[&str] = &[
     "HEALTHCHECK",
     "SHELL",
 ];
+
+/// [`INSTRUCTIONS`] as a hash set (uppercased keys) — one hash + probe per
+/// leading word instead of a linear scan (mirrors `sql` / `asm::tables`).
+fn instructions_set() -> &'static HashSet<&'static str> {
+    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| INSTRUCTIONS.iter().copied().collect())
+}
 
 // ── Language definition ─────────────────────────────────────────────────────
 
@@ -68,17 +77,7 @@ fn tokenize(line: &str) -> Vec<Token> {
     let mut i = 0;
 
     // Leading whitespace.
-    if i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-        let start = i;
-        while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-            i += 1;
-        }
-        tokens.push(Token {
-            kind: TokenKind::Whitespace,
-            start,
-            len: i - start,
-        });
-    }
+    scan_ws(&mut tokens, bytes, &mut i);
 
     if i >= len {
         return tokens;
@@ -108,8 +107,16 @@ fn tokenize(line: &str) -> Vec<Token> {
             i += 1;
         }
         let word = &line[start..i];
-        let upper = word.to_ascii_uppercase();
-        let kind = if INSTRUCTIONS.contains(&upper.as_str()) {
+        // Only allocate the uppercased copy when the word contains a
+        // lowercase byte; otherwise borrow and compare in place.
+        let word_upper: String;
+        let word_uc = if word.bytes().any(|c| c.is_ascii_lowercase()) {
+            word_upper = word.to_ascii_uppercase();
+            word_upper.as_str()
+        } else {
+            word
+        };
+        let kind = if instructions_set().contains(word_uc) {
             TokenKind::Keyword
         } else {
             TokenKind::Identifier
@@ -127,15 +134,7 @@ fn tokenize(line: &str) -> Vec<Token> {
 
         // Whitespace.
         if b == b' ' || b == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            tokens.push(Token {
-                kind: TokenKind::Whitespace,
-                start,
-                len: i - start,
-            });
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 

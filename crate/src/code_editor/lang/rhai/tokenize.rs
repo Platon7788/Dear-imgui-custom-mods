@@ -3,7 +3,7 @@
 //! state across lines.
 
 use super::*;
-use crate::code_editor::lang::{LineState, scan_block_comment};
+use crate::code_editor::lang::{LineState, scan_block_comment, scan_ws};
 
 const KEYWORDS: &[&str] = &[
     "let",
@@ -123,11 +123,7 @@ fn consume_token(
 
     // ── Whitespace ───────────────────────────────────────────────────────
     if b == b' ' || b == b'\t' {
-        let start = *i;
-        while *i < len && (bytes[*i] == b' ' || bytes[*i] == b'\t') {
-            *i += 1;
-        }
-        push(tokens, TokenKind::Whitespace, start, *i);
+        scan_ws(tokens, bytes, i);
         return None;
     }
 

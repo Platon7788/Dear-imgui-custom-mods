@@ -8,6 +8,7 @@
 //! - Lone hex nibble → [`TokenKind::Attribute`] (amber warning)
 //! - Non-hex chars → [`TokenKind::Operator`] (error marker)
 
+use super::scan_ws;
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -84,15 +85,7 @@ fn tokenize(line: &str) -> Vec<Token> {
 
         // ── Whitespace ───────────────────────────────────────────────────
         if bytes[i] == b' ' || bytes[i] == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            tokens.push(Token {
-                kind: TokenKind::Whitespace,
-                start,
-                len: i - start,
-            });
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 

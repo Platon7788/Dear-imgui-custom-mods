@@ -114,15 +114,7 @@ pub(in crate::code_editor::lang) fn tokenize(line: &str) -> (Vec<Token>, LineSta
 
         // ── Whitespace ───────────────────────────────────────────────────
         if b == b' ' || b == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            tokens.push(Token {
-                kind: TokenKind::Whitespace,
-                start,
-                len: i - start,
-            });
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 

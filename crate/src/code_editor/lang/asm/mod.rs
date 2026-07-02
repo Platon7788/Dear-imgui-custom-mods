@@ -9,7 +9,7 @@
 //! - [`tables`] — register / mnemonic / directive data + lookup caches.
 //! - [`tokenize`] — the line tokenizer state machine (+ unit tests).
 
-use super::{is_ident_continue, is_ident_start};
+use super::{is_ident_continue, is_ident_start, scan_until, scan_ws};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 

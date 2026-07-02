@@ -4,7 +4,7 @@
 //! separator as an operator, and values as strings / numbers / identifiers.
 //! Comments start with `;` or `#`. This tokenizer is stateless.
 
-use super::{NumberOpts, consume_number};
+use super::{NumberOpts, consume_number, scan_ws};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -44,22 +44,6 @@ impl SyntaxDefinition for IniLang {
 
 // ── Tokenizer ───────────────────────────────────────────────────────────────
 
-/// Push a whitespace run (spaces / tabs) starting at `*i`, if any.
-fn push_ws(tokens: &mut Vec<Token>, bytes: &[u8], i: &mut usize) {
-    let len = bytes.len();
-    if *i < len && (bytes[*i] == b' ' || bytes[*i] == b'\t') {
-        let start = *i;
-        while *i < len && (bytes[*i] == b' ' || bytes[*i] == b'\t') {
-            *i += 1;
-        }
-        tokens.push(Token {
-            kind: TokenKind::Whitespace,
-            start,
-            len: *i - start,
-        });
-    }
-}
-
 /// In common INI dialects a `;`/`#` only opens an inline comment when it is
 /// the first non-whitespace byte on the line or is preceded by whitespace.
 /// A `;`/`#` glued to a preceding value byte (e.g. `pass#word`,
@@ -79,7 +63,7 @@ fn tokenize_value(line: &str, tokens: &mut Vec<Token>, i: &mut usize) {
 
         // Whitespace.
         if b == b' ' || b == b'\t' {
-            push_ws(tokens, bytes, i);
+            scan_ws(tokens, bytes, i);
             continue;
         }
 
@@ -164,7 +148,7 @@ fn tokenize(line: &str) -> Vec<Token> {
     let mut i = 0;
 
     // Leading whitespace.
-    push_ws(&mut tokens, bytes, &mut i);
+    scan_ws(&mut tokens, bytes, &mut i);
     if i >= len {
         return tokens;
     }

@@ -4,7 +4,7 @@
 use super::keywords::{builtin_types_set, keywords_set};
 use super::strings::{scan_raw_str_body, scan_str_body, str_carry};
 use super::*;
-use crate::code_editor::lang::{LineState, scan_block_comment};
+use crate::code_editor::lang::{LineState, scan_block_comment, scan_ws};
 
 pub(in crate::code_editor::lang) fn tokenize(
     line: &str,
@@ -75,15 +75,7 @@ pub(in crate::code_editor::lang) fn tokenize(
 
         // ── Whitespace ───────────────────────────────────────────────────
         if b == b' ' || b == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            tokens.push(Token {
-                kind: TokenKind::Whitespace,
-                start,
-                len: i - start,
-            });
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 

@@ -21,15 +21,7 @@ pub(in crate::code_editor::lang) fn tokenize(line: &str) -> Vec<Token> {
 
         // ── Whitespace ───────────────────────────────────────────────────
         if b == b' ' || b == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            tokens.push(Token {
-                kind: TokenKind::Whitespace,
-                start,
-                len: i - start,
-            });
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 
@@ -47,16 +39,7 @@ pub(in crate::code_editor::lang) fn tokenize(line: &str) -> Vec<Token> {
         if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
             let start = i;
             i += 2;
-            loop {
-                if i >= len {
-                    break;
-                }
-                if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    break;
-                }
-                i += 1;
-            }
+            scan_until(bytes, &mut i, b"*/");
             tokens.push(Token {
                 kind: TokenKind::Comment,
                 start,

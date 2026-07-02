@@ -11,7 +11,7 @@
 //! The public entry point is [`YamlLang`], a unit struct implementing
 //! [`SyntaxDefinition`]; the dispatcher in [`super`] matches on it.
 
-use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
+use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start, scan_ws};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 

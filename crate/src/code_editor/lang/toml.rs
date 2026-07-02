@@ -1,6 +1,9 @@
 //! TOML configuration file tokenizer.
 
-use super::{NumberOpts, consume_number, is_ident_continue, is_ident_start};
+use super::{
+    NumberOpts, consume_number, is_ident_continue, is_ident_start, scan_ws,
+    signed_special_float_len,
+};
 use crate::code_editor::config::{LineState, SyntaxDefinition};
 use crate::code_editor::token::{Token, TokenKind};
 
@@ -78,11 +81,7 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
 
         // Whitespace
         if b == b' ' || b == b'\t' {
-            let start = i;
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                i += 1;
-            }
-            push(&mut tokens, TokenKind::Whitespace, start, i - start);
+            scan_ws(&mut tokens, bytes, &mut i);
             continue;
         }
 
@@ -153,7 +152,7 @@ fn tokenize(line: &str, state: LineState) -> (Vec<Token>, LineState) {
         }
 
         // Signed special floats: +inf / -inf / +nan / -nan.
-        if let Some(n) = signed_special_float_len(bytes, i) {
+        if let Some(n) = signed_special_float_len(bytes, i, b"nan") {
             push(&mut tokens, TokenKind::Number, i, n);
             i += n;
             continue;
@@ -343,16 +342,6 @@ fn key_path_reaches_eq(bytes: &[u8], mut j: usize) -> bool {
             _ => return false,
         }
     }
-}
-
-/// Byte length of a signed special float (`+inf`/`-inf`/`+nan`/`-nan`) at `i`.
-fn signed_special_float_len(bytes: &[u8], i: usize) -> Option<usize> {
-    if !matches!(bytes.get(i), Some(&b'+') | Some(&b'-')) || i + 4 > bytes.len() {
-        return None;
-    }
-    let seg = &bytes[i + 1..i + 4];
-    ((seg == b"inf" || seg == b"nan") && (i + 4 == bytes.len() || !is_ident_continue(bytes[i + 4])))
-        .then_some(4)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
