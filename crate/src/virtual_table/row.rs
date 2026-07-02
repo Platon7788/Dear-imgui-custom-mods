@@ -232,6 +232,10 @@ mod selection_tests {
     #[test]
     fn bg_transparent_default_suppresses_paint() {
         assert_eq!(resolve_selection_bg(None, [0.2, 0.45, 0.85, 0.0]), None);
+        // A row-level override with alpha==0 also suppresses, even if the table
+        // default is opaque.
+        let s = style(Some([1.0, 0.0, 0.0, 0.0]), None, None);
+        assert_eq!(resolve_selection_bg(Some(&s), [0.2, 0.45, 0.85, 1.0]), None);
     }
 
     #[test]
@@ -247,6 +251,15 @@ mod selection_tests {
         assert_eq!(
             resolve_selection_text_color(Some(&s2), None),
             Some([0.4, 0.4, 0.4, 1.0])
+        );
+        // Middle rung: no per-row selection_text_color, table default present,
+        // AND a per-row text_color present → table default must win over the
+        // per-row text_color fallback (the rung VirtualTree previously skipped).
+        let s3 = style(None, None, Some([0.4, 0.4, 0.4, 1.0]));
+        assert_eq!(
+            resolve_selection_text_color(Some(&s3), Some([0.7, 0.7, 0.7, 1.0])),
+            Some([0.7, 0.7, 0.7, 1.0]),
+            "table default outranks per-row text_color fallback"
         );
     }
 }
