@@ -48,14 +48,14 @@ pub(in crate::code_editor::lang) fn tokenize(line: &str) -> Vec<Token> {
             let start = i;
             i += 2;
             loop {
+                if i >= len {
+                    break;
+                }
                 if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
                     i += 2;
                     break;
                 }
                 i += 1;
-                if i >= len {
-                    break;
-                }
             }
             tokens.push(Token {
                 kind: TokenKind::Comment,

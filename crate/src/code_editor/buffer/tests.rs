@@ -12,6 +12,16 @@ fn buf(text: &str) -> TextBuffer {
 }
 
 #[test]
+fn byte_to_char_snaps_non_boundary_offset() {
+    // An offset landing inside a multi-byte char must snap to the char
+    // start instead of panicking. 'é' occupies bytes 3..5 of "café".
+    assert_eq!(byte_to_char("café", 4), 3); // inside 'é' → snaps to 3
+    assert_eq!(byte_to_char("café", 3), 3); // boundary before 'é'
+    assert_eq!(byte_to_char("café", 5), 4); // end of string
+    assert_eq!(byte_to_char("café", 99), 4); // past end clamps
+}
+
+#[test]
 fn test_set_text() {
     let b = buf("hello\nworld");
     assert_eq!(b.line_count(), 2);

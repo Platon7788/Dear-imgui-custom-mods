@@ -73,15 +73,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         if in_block_comment {
             let start = i;
             loop {
+                if i >= len {
+                    break;
+                }
                 if i + 2 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' && bytes[i + 2] == b'>' {
                     i += 3;
                     in_block_comment = false;
                     break;
                 }
                 i += 1;
-                if i >= len {
-                    break;
-                }
             }
             tokens.push(Token {
                 kind: TokenKind::Comment,
@@ -118,15 +118,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             i += 4;
             in_block_comment = true;
             loop {
+                if i >= len {
+                    break;
+                }
                 if i + 2 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' && bytes[i + 2] == b'>' {
                     i += 3;
                     in_block_comment = false;
                     break;
                 }
                 i += 1;
-                if i >= len {
-                    break;
-                }
             }
             tokens.push(Token {
                 kind: TokenKind::Comment,
@@ -144,14 +144,14 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             let start = i;
             i += 9;
             loop {
+                if i >= len {
+                    break;
+                }
                 if i + 2 < len && bytes[i] == b']' && bytes[i + 1] == b']' && bytes[i + 2] == b'>' {
                     i += 3;
                     break;
                 }
                 i += 1;
-                if i >= len {
-                    break;
-                }
             }
             tokens.push(Token {
                 kind: TokenKind::String,
@@ -166,14 +166,14 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             let start = i;
             i += 2;
             loop {
+                if i >= len {
+                    break;
+                }
                 if i + 1 < len && bytes[i] == b'?' && bytes[i + 1] == b'>' {
                     i += 2;
                     break;
                 }
                 i += 1;
-                if i >= len {
-                    break;
-                }
             }
             tokens.push(Token {
                 kind: TokenKind::Attribute,

@@ -409,8 +409,7 @@ impl CodeEditor {
                 self.snapshot_undo(false);
                 if self.config.insert_spaces {
                     let cur_col = self.buffer.cursor().col;
-                    let tab = self.config.tab_size as usize;
-                    let spaces = tab - (cur_col % tab);
+                    let spaces = tab_stop_spaces(self.config.tab_size, cur_col);
                     self.buffer.insert_text(&" ".repeat(spaces));
                 } else {
                     self.buffer.insert_char('\t');

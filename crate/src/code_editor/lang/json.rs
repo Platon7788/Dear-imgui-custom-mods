@@ -58,15 +58,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
         if in_block_comment {
             let start = i;
             loop {
+                if i >= len {
+                    break;
+                }
                 if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
                     i += 2;
                     in_block_comment = false;
                     break;
                 }
                 i += 1;
-                if i >= len {
-                    break;
-                }
             }
             tokens.push(Token {
                 kind: TokenKind::Comment,
@@ -108,15 +108,15 @@ fn tokenize(line: &str, mut in_block_comment: bool) -> (Vec<Token>, bool) {
             i += 2;
             in_block_comment = true;
             loop {
+                if i >= len {
+                    break;
+                }
                 if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'/' {
                     i += 2;
                     in_block_comment = false;
                     break;
                 }
                 i += 1;
-                if i >= len {
-                    break;
-                }
             }
             tokens.push(Token {
                 kind: TokenKind::Comment,

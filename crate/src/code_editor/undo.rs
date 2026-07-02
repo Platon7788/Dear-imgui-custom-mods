@@ -48,7 +48,7 @@ impl UndoStack {
     /// is O(n) per keystroke — this check turns N keystrokes into a single
     /// allocation.
     pub fn should_push(&self, version: u64, force: bool) -> bool {
-        force || version == 0 || version - self.last_push_version > self.group_threshold
+        force || version == 0 || version.saturating_sub(self.last_push_version) > self.group_threshold
     }
 
     /// Push a snapshot before an edit. Consecutive char edits are grouped.
@@ -57,7 +57,7 @@ impl UndoStack {
     pub fn push(&mut self, entry: UndoEntry, force: bool) {
         let version = entry.version;
         // Group consecutive single-char edits
-        if !force && version > 0 && version - self.last_push_version <= self.group_threshold {
+        if !force && version > 0 && version.saturating_sub(self.last_push_version) <= self.group_threshold {
             // Don't push — the previous snapshot still covers this edit
             self.last_push_version = version;
             // Still clear redo on new edits
@@ -124,6 +124,17 @@ mod tests {
             cursor: CursorPos::default(),
             version,
         }
+    }
+
+    #[test]
+    fn version_delta_does_not_underflow_on_reset() {
+        // A document reload can leave `last_push_version` high while the
+        // buffer's edit_version restarts low. `version - last_push_version`
+        // must saturate, not underflow (debug panic).
+        let mut stack = UndoStack::new(10);
+        stack.push(entry("", 50), true);
+        let _ = stack.should_push(1, false);
+        stack.push(entry("x", 1), false);
     }
 
     #[test]

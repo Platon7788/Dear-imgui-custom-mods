@@ -155,8 +155,13 @@ impl FindReplaceState {
             while let Some(pos) = search_line[start..].find(&query) {
                 let byte_start = start + pos;
                 let byte_end = byte_start + query.len();
-                let col_start = buffer::byte_to_char(line, byte_start);
-                let col_end = buffer::byte_to_char(line, byte_end);
+                // Offsets index `search_line` (the lowercase cache when
+                // case-insensitive), so map them through `search_line`, NOT
+                // the original `line`. When a fold changes a char's UTF-8
+                // byte length (ẞ→ß, İ→i̇) the two disagree, and indexing
+                // `line` slices mid-char → panic / wrong column.
+                let col_start = buffer::byte_to_char(search_line, byte_start);
+                let col_end = buffer::byte_to_char(search_line, byte_end);
 
                 // Per-match bounds filter for start/end lines of the selection.
                 if let Some((s, e)) = bounds {
@@ -175,11 +180,11 @@ impl FindReplaceState {
                     // ASCII-only `is_ascii_alphanumeric` treated é/ж/你 as
                     // non-word chars, so "ana" inside "mañana" or "рад"
                     // inside "радуга" leaked through the whole-word filter.
-                    let before_ok = match line[..byte_start].chars().next_back() {
+                    let before_ok = match search_line[..byte_start].chars().next_back() {
                         Some(c) => !buffer::is_word_char(c),
                         None => true,
                     };
-                    let after_ok = match line[byte_end..].chars().next() {
+                    let after_ok = match search_line[byte_end..].chars().next() {
                         Some(c) => !buffer::is_word_char(c),
                         None => true,
                     };
@@ -273,5 +278,33 @@ mod tests {
         for s in &["Σ", "Ж", "ÉÈÊË", "你好"] {
             assert_eq!(lowercase_with_ascii_fast_path(s), s.to_lowercase());
         }
+    }
+
+    /// Regression: case-insensitive find whose lowercase folding changes the
+    /// UTF-8 byte length of a char (ẞ U+1E9E is 3 bytes → ß is 2 bytes) must
+    /// map match offsets through the lowercase string, not the original, or
+    /// `byte_to_char(line, …)` slices mid-ẞ and panics. ẞ→ß is char-count-
+    /// preserving, so the reported columns must still be exact.
+    #[test]
+    fn find_case_insensitive_byte_len_changing_fold_no_panic() {
+        let mut state = FindReplaceState::default();
+        state.query = "12".to_string();
+        state.case_sensitive = false;
+        let lines = vec!["ẞ12".to_string()];
+        state.update_matches(&lines, 1);
+        assert_eq!(state.matches, vec![(0, 1, 3)]);
+    }
+
+    /// Same fold hazard on the whole-word boundary slices (`line[..byte_start]`
+    /// / `line[byte_end..]`), which must also index the searched string.
+    #[test]
+    fn find_whole_word_byte_len_changing_fold_no_panic() {
+        let mut state = FindReplaceState::default();
+        state.query = "12".to_string();
+        state.case_sensitive = false;
+        state.whole_word = true;
+        let lines = vec!["ẞ 12 ẞ".to_string()];
+        state.update_matches(&lines, 1);
+        assert_eq!(state.matches, vec![(0, 2, 4)]);
     }
 }

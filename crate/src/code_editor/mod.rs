@@ -75,7 +75,7 @@ use fold::{FoldRegion, detect_fold_regions};
 use helpers::{
     calc_char_advance, closing_bracket, closing_quote, col_to_x, col32, digit_count, get_clipboard,
     hash_line, hex_auto_space_needed, is_closing_bracket, is_closing_quote, parse_hex_color,
-    read_input_chars, set_clipboard, title_case, x_to_col,
+    read_input_chars, set_clipboard, tab_stop_spaces, title_case, x_to_col,
 };
 use wrap::compute_wrap_points;
 

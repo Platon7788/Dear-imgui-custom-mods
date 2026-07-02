@@ -388,9 +388,16 @@ pub fn char_to_byte(s: &str, char_col: usize) -> usize {
         .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
-/// Convert byte offset to char column.
+/// Convert byte offset to char column. An offset that lands inside a
+/// multi-byte char snaps down to that char's start rather than panicking,
+/// so this stays total for any `byte_offset` (a `pub fn` — callers must
+/// not be able to crash it with an unaligned offset).
 pub fn byte_to_char(s: &str, byte_offset: usize) -> usize {
-    s[..byte_offset.min(s.len())].chars().count()
+    let mut off = byte_offset.min(s.len());
+    while off > 0 && !s.is_char_boundary(off) {
+        off -= 1;
+    }
+    s[..off].chars().count()
 }
 
 /// Unicode-aware word-char test — matches `\w` semantics: alphanumeric

@@ -19,6 +19,15 @@ pub(super) fn col32(c: [f32; 4]) -> u32 {
     rgba_f32(c[0], c[1], c[2], c[3])
 }
 
+/// Number of spaces to emit for a soft Tab pressed at char column `col`,
+/// aligning to the next multiple of `tab_size`. A `tab_size` of 0 is
+/// treated as 1 so a misconfigured zero-width tab can never divide-by-zero.
+#[inline]
+pub(super) fn tab_stop_spaces(tab_size: u8, col: usize) -> usize {
+    let tab = (tab_size as usize).max(1);
+    tab - (col % tab)
+}
+
 /// Parse a hex color literal into `[r, g, b, a]` (all 0.0–1.0).
 ///
 /// Supports: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, `0xRRGGBB`, `0xAARRGGBB`.
@@ -305,6 +314,17 @@ pub(super) fn hash_line(s: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_stop_spaces_aligns_and_guards_zero() {
+        assert_eq!(tab_stop_spaces(4, 0), 4);
+        assert_eq!(tab_stop_spaces(4, 1), 3);
+        assert_eq!(tab_stop_spaces(4, 4), 4);
+        assert_eq!(tab_stop_spaces(4, 5), 3);
+        // tab_size 0 must not divide-by-zero; behaves like width 1.
+        assert_eq!(tab_stop_spaces(0, 3), 1);
+        assert_eq!(tab_stop_spaces(0, 0), 1);
+    }
 
     #[test]
     fn test_digit_count() {

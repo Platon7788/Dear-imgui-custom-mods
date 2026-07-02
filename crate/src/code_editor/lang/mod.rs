@@ -409,6 +409,14 @@ mod tests {
             "#![attr(unclosed",
             "<!-- xml unclosed",
             "<![CDATA[ unclosed",
+            // Opening markers that terminate the line exactly — regression
+            // guard for the block-comment/CDATA/PI scanners that used to
+            // over-run the line by one byte (span past EOL → tiling break).
+            "/*",
+            "x /*",
+            "<!--",
+            "<![CDATA[",
+            "<?",
             "key: value # comment",
             "DE AD BE EF GG",
             "&amp; <b>x</b>",
