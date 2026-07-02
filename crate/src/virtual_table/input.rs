@@ -49,7 +49,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         if let Some(target) = self.pending_scroll_to.take()
             && row_count > 0
         {
-            let frac = target as f32 / (row_count - 1).max(1) as f32;
+            let frac = scroll_fraction(target, row_count);
             ui.set_scroll_y(frac * ui.scroll_max_y());
         }
         if self.config.auto_scroll {
