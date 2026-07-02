@@ -192,9 +192,22 @@ pub(super) fn x_to_col(line: &str, x: f32, char_advance: f32, tab_size: u8) -> u
 
 // ── Clipboard + input-queue ─────────────────────────────────────────────────
 
+/// Replace interior NUL bytes so clipboard text containing an embedded `\0`
+/// (occasionally present in hex / binary content) isn't silently dropped:
+/// `CString::new` fails on the first NUL, which used to clear the clipboard
+/// entirely instead of copying the text.
+fn clipboard_sanitize(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.contains('\0') {
+        std::borrow::Cow::Owned(text.replace('\0', "\u{FFFD}"))
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
+}
+
 /// Set clipboard text via ImGui sys API.
 pub(super) fn set_clipboard(text: &str) {
-    let c_str = std::ffi::CString::new(text).unwrap_or_default();
+    let sanitized = clipboard_sanitize(text);
+    let c_str = std::ffi::CString::new(sanitized.as_ref()).unwrap_or_default();
     // SAFETY: igSetClipboardText takes a null-terminated C string, which CString provides.
     unsafe {
         dear_imgui_rs::sys::igSetClipboardText(c_str.as_ptr());
@@ -314,6 +327,13 @@ pub(super) fn hash_line(s: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clipboard_sanitize_replaces_interior_nul() {
+        assert_eq!(clipboard_sanitize("ab\0cd"), "ab\u{FFFD}cd");
+        // No NUL → borrowed through unchanged.
+        assert_eq!(clipboard_sanitize("plain"), "plain");
+    }
 
     #[test]
     fn tab_stop_spaces_aligns_and_guards_zero() {

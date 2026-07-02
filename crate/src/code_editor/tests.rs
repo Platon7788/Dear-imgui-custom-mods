@@ -24,6 +24,16 @@ fn test_set_get_text() {
 }
 
 #[test]
+fn config_ron_colors_match_dark_default_theme() {
+    // config.ron inlines the full dark palette; guard against it drifting from
+    // EditorTheme::DarkDefault so a fresh editor's colours match set_theme().
+    assert_eq!(
+        EditorConfig::default().colors,
+        EditorTheme::DarkDefault.colors()
+    );
+}
+
+#[test]
 fn default_locale_is_english() {
     assert_eq!(EditorConfig::default().locale, crate::i18n::Locale::En);
     let ed = CodeEditor::new("t");

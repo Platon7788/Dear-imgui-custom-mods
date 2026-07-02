@@ -94,7 +94,7 @@ impl EditorTheme {
 /// All fields are `[r, g, b, a]` with values in `0.0..=1.0`.
 /// Use [`EditorConfig::set_theme`] to apply a full preset, or modify
 /// individual fields for custom overrides.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SyntaxColors {
     pub keyword: [f32; 4],
     pub type_name: [f32; 4],
