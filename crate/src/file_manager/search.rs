@@ -30,6 +30,14 @@ impl FileManager {
         if ui.is_any_item_active() {
             return;
         }
+        // Skip chorded shortcuts: Ctrl+A/L/H (and any modifier combo) must not
+        // feed the search buffer — they share the same `!is_any_item_active`
+        // guard as the shortcut handlers and would otherwise both fire, jumping
+        // the selection and polluting `search_buf`.
+        let io = ui.io();
+        if io.key_ctrl() || io.key_alt() || io.key_super() {
+            return;
+        }
 
         let dt = ui.io().delta_time();
         let timeout = self.config.search_timeout;
