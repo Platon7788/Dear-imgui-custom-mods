@@ -161,7 +161,7 @@ For a third language, set `config.strings` directly to your own
 `&'static FmStrings` (a `static` with all fields filled). That bypasses
 the locale match entirely. Use `STRINGS_EN` as the field template — the
 actual field names are `open_file`, `save_file`, `open`, `save`,
-`cancel`, `col_name`, etc. (see `config.rs`).
+`cancel`, `col_name`, etc. (see `crate::i18n::file_manager`).
 
 ## Architecture
 
@@ -177,7 +177,8 @@ file_manager/
   view.rs       per-frame render() driver
   search.rs     type-to-search incremental matching
   actions.rs    deferred Action enum + apply_action / try_navigate
-  config.rs     DialogMode, FileFilter, FmStrings, FileManagerConfig (schema)
+  config.rs     DialogMode, FileFilter, FileManagerConfig (schema);
+                FmStrings/STRINGS_EN/STRINGS_RU re-export shims
   config.ron    default config values
   entry.rs      FsEntry with pre-computed display strings, sorting
   util.rs       breadcrumb segments, filename validation, drive-letter
@@ -242,10 +243,12 @@ deferred [`Action`] which is applied once after the frame.
 schema in `src/file_manager/config.rs`, default values in
 `src/file_manager/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
 
-`FmStrings` carries the catalogue (toolbar buttons, footer labels,
-column headers, error messages, modal titles, sidebar headers,
-context menu entries). `STRINGS_EN` / `STRINGS_RU` are static
-constants; `strings_for_locale(Locale)` resolves them. Switch with
+`FmStrings` (an alias of `crate::i18n::file_manager::Strings`) carries
+the catalogue (toolbar buttons, footer labels, column headers, error
+messages, modal titles, sidebar headers, context menu entries).
+`STRINGS_EN` / `STRINGS_RU` are the `EN` / `RU` constants from
+`crate::i18n::file_manager`, re-exported here for compatibility;
+`strings_for_locale(Locale)` resolves them. Switch with
 `FileManager::new().with_locale(Locale::Ru)` — the builder
 auto-refreshes `config.strings` so the whole UI flips with one call.
 See [`docs/i18n.md`](./i18n.md).

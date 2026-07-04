@@ -9,25 +9,39 @@ use crate::file_manager::actions::Action;
 use crate::file_manager::config::{DialogMode, FileFilter, FileManagerConfig, FmStrings};
 use crate::file_manager::entry::FsEntry;
 
+/// Borrow-bundle for [`render_footer`] — replaces the 10-argument signature
+/// with a single context struct (mirrors [`TableCtx`](super::table::TableCtx)).
+pub(crate) struct FooterCtx<'a> {
+    pub strings: &'a FmStrings,
+    pub mode: DialogMode,
+    pub entries: &'a [FsEntry],
+    pub selected_indices: &'a [usize],
+    pub filename_buf: &'a mut String,
+    pub filters: &'a [FileFilter],
+    pub active_filter: usize,
+    pub config: &'a FileManagerConfig,
+    pub buf: &'a mut String,
+}
+
 /// Render the footer.
 ///
 /// In SaveFile mode the filename input and buttons share a single row:
 /// `[Filename: ___________] [Save] [Cancel]`
 ///
 /// Returns `(confirmed, cancelled, filter_action)`.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn render_footer(
-    ui: &Ui,
-    strings: &FmStrings,
-    mode: DialogMode,
-    entries: &[FsEntry],
-    selected_indices: &[usize],
-    filename_buf: &mut String,
-    filters: &[FileFilter],
-    active_filter: usize,
-    config: &FileManagerConfig,
-    buf: &mut String,
-) -> (bool, bool, Option<Action>) {
+pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<Action>) {
+    let FooterCtx {
+        strings,
+        mode,
+        entries,
+        selected_indices,
+        filename_buf,
+        filters,
+        active_filter,
+        config,
+        buf,
+    } = ctx;
+
     let mut confirmed = false;
     let mut cancelled = false;
     let mut action = None;

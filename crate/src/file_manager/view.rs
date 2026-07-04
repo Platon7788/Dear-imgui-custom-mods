@@ -35,7 +35,11 @@ impl FileManager {
             DialogMode::SaveFile => strings.save_file,
         });
 
-        // Set window size before opening popup
+        // Set window size before opening popup.
+        // SAFETY: FFI into Dear ImGui. Both calls take POD `ImVec2` values by
+        // copy; `igSetNextWindowSizeConstraints` gets `None`/null for its
+        // optional custom-callback + user-data. No Rust reference is handed to
+        // C, and the calls run inside a live ImGui frame — so this is sound.
         unsafe {
             #[allow(clippy::unnecessary_cast)]
             // ImGuiCond_Appearing is u32 on Linux, i32 on Windows
@@ -94,17 +98,19 @@ impl FileManager {
             if deferred.is_none()
                 && let Some(a) = render::render_toolbar(
                     ui,
-                    strings,
-                    self.has_parent(),
-                    self.history.can_go_back(),
-                    self.history.can_go_forward(),
-                    &mut self.show_new_folder,
-                    &mut self.new_folder_buf,
-                    &mut self.show_new_file,
-                    &mut self.new_file_buf,
-                    self.show_hidden,
-                    &self.config,
-                    &mut self.fmt_buf,
+                    render::ToolbarCtx {
+                        strings,
+                        has_parent: self.has_parent(),
+                        can_back: self.history.can_go_back(),
+                        can_forward: self.history.can_go_forward(),
+                        show_new_folder: &mut self.show_new_folder,
+                        new_folder_buf: &mut self.new_folder_buf,
+                        show_new_file: &mut self.show_new_file,
+                        new_file_buf: &mut self.new_file_buf,
+                        show_hidden: self.show_hidden,
+                        config: &self.config,
+                        buf: &mut self.fmt_buf,
+                    },
                 )
             {
                 deferred = Some(a);
@@ -262,15 +268,17 @@ impl FileManager {
             // ── Footer (filename input for SaveFile + buttons) ──
             let (foot_confirmed, foot_cancelled, foot_action) = render::render_footer(
                 ui,
-                strings,
-                self.mode,
-                &self.entries,
-                &self.selected_indices,
-                &mut self.filename_buf,
-                &self.filters,
-                self.active_filter,
-                &self.config,
-                &mut self.fmt_buf,
+                render::FooterCtx {
+                    strings,
+                    mode: self.mode,
+                    entries: &self.entries,
+                    selected_indices: &self.selected_indices,
+                    filename_buf: &mut self.filename_buf,
+                    filters: &self.filters,
+                    active_filter: self.active_filter,
+                    config: &self.config,
+                    buf: &mut self.fmt_buf,
+                },
             );
             if foot_confirmed {
                 do_confirm_selection = true;

@@ -29,12 +29,13 @@ mod icon_map;
 mod modals;
 mod style;
 mod table;
+mod table_keyboard;
 mod toolbar;
 
 pub(crate) use breadcrumb::render_breadcrumb_bar;
 pub(crate) use drive_bar::render_drive_bar;
 pub(crate) use favorites::render_favorites_panel;
-pub(crate) use footer::render_footer;
+pub(crate) use footer::{FooterCtx, render_footer};
 pub(crate) use modals::{render_delete_confirm, render_overwrite_confirm};
 pub(crate) use table::{TableCtx, render_file_table};
-pub(crate) use toolbar::render_toolbar;
+pub(crate) use toolbar::{ToolbarCtx, render_toolbar};

@@ -1,9 +1,7 @@
 //! Render the main file listing as a 4-column ImGui Table with virtualization,
 //! sortable headers, click/double-click selection, and keyboard navigation.
 
-use dear_imgui_rs::{
-    Key, ListClipper, MouseButton, SelectableFlags, TableColumnFlags, TableFlags, Ui,
-};
+use dear_imgui_rs::{ListClipper, MouseButton, SelectableFlags, TableColumnFlags, TableFlags, Ui};
 
 use crate::{icons, theme};
 
@@ -12,11 +10,6 @@ use super::style::{CLR_FOLDER_TEXT, icon_label};
 use crate::file_manager::actions::Action;
 use crate::file_manager::config::{DialogMode, FileManagerConfig, FmStrings};
 use crate::file_manager::entry::{FsEntry, SortColumn, SortOrder};
-
-/// Default approximate visible row count for PageUp/PageDown when window
-/// height isn't reliably available (P3-1: render normally derives this from
-/// `window_size().y / line_height`, this is the fallback).
-pub(super) const PAGE_SIZE_FALLBACK: usize = 20;
 
 /// Combined result from [`render_file_table`]: a deferred action and/or a delete request.
 pub(crate) struct FileTableResult {
@@ -429,75 +422,13 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
         }
     }
 
-    // Keyboard navigation (disabled when any text input is active)
-    if !ui.is_any_item_active()
-        && ui.is_window_focused_with_flags(
-            dear_imgui_rs::FocusedFlags::ROOT_WINDOW | dear_imgui_rs::FocusedFlags::CHILD_WINDOWS,
-        )
+    // Keyboard navigation (extracted to `table_keyboard` to keep this file
+    // within the 500-line budget). Overwrites any row-loop action only when a
+    // navigation key actually fired — identical to the previous in-place logic.
+    if let Some(a) =
+        super::table_keyboard::handle_table_keyboard(ui, entries, selected_indices, scroll_to_index)
     {
-        if ui.is_key_pressed(Key::UpArrow) && !entries.is_empty() {
-            let current = selected_indices.first().copied().unwrap_or(0);
-            let new_idx = current.saturating_sub(1);
-            selected_indices.clear();
-            selected_indices.push(new_idx);
-            *scroll_to_index = Some(new_idx);
-        }
-        if ui.is_key_pressed(Key::DownArrow) && !entries.is_empty() {
-            let current = selected_indices.first().copied().unwrap_or(0);
-            let new_idx = (current + 1).min(entries.len() - 1);
-            selected_indices.clear();
-            selected_indices.push(new_idx);
-            *scroll_to_index = Some(new_idx);
-        }
-        if ui.is_key_pressed(Key::Enter)
-            && let Some(&idx) = selected_indices.first()
-            && let Some(e) = entries.get(idx)
-        {
-            if e.is_dir {
-                result.action = Some(Action::NavigateTo(e.path.clone()));
-            } else {
-                result.action = Some(Action::ConfirmSelection);
-            }
-        }
-        if ui.is_key_pressed(Key::Backspace) {
-            result.action = Some(Action::GoParent);
-        }
-
-        // Page Up / Page Down — derive page_size from the actual visible row count
-        // (P3-1). Falls back to the constant when window height is invalid.
-        let row_h = ui.text_line_height_with_spacing().max(1.0);
-        let win_h = ui.window_size()[1].max(0.0);
-        let page_size = if win_h > 0.0 && row_h > 0.0 {
-            ((win_h / row_h) as usize).max(1)
-        } else {
-            PAGE_SIZE_FALLBACK
-        };
-        if ui.is_key_pressed(Key::PageUp) && !entries.is_empty() {
-            let current = selected_indices.first().copied().unwrap_or(0);
-            let new_idx = current.saturating_sub(page_size);
-            selected_indices.clear();
-            selected_indices.push(new_idx);
-            *scroll_to_index = Some(new_idx);
-        }
-        if ui.is_key_pressed(Key::PageDown) && !entries.is_empty() {
-            let current = selected_indices.first().copied().unwrap_or(0);
-            let new_idx = (current + page_size).min(entries.len() - 1);
-            selected_indices.clear();
-            selected_indices.push(new_idx);
-            *scroll_to_index = Some(new_idx);
-        }
-        // Home / End
-        if ui.is_key_pressed(Key::Home) && !entries.is_empty() {
-            selected_indices.clear();
-            selected_indices.push(0);
-            *scroll_to_index = Some(0);
-        }
-        if ui.is_key_pressed(Key::End) && !entries.is_empty() {
-            let last = entries.len() - 1;
-            selected_indices.clear();
-            selected_indices.push(last);
-            *scroll_to_index = Some(last);
-        }
+        result.action = Some(a);
     }
 
     result

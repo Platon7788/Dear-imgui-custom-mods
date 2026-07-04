@@ -12,26 +12,42 @@ use super::style::{
 use crate::file_manager::actions::Action;
 use crate::file_manager::config::{FileManagerConfig, FmStrings};
 
+/// Borrow-bundle for [`render_toolbar`] — replaces the 11-argument signature
+/// with a single context struct (mirrors [`TableCtx`](super::table::TableCtx)).
+pub(crate) struct ToolbarCtx<'a> {
+    pub strings: &'a FmStrings,
+    pub has_parent: bool,
+    pub can_back: bool,
+    pub can_forward: bool,
+    pub show_new_folder: &'a mut bool,
+    pub new_folder_buf: &'a mut String,
+    pub show_new_file: &'a mut bool,
+    pub new_file_buf: &'a mut String,
+    pub show_hidden: bool,
+    pub config: &'a FileManagerConfig,
+    pub buf: &'a mut String,
+}
+
 /// Render the navigation toolbar.
 ///
 /// Disabled buttons are shown as grayed-out text. The "New Folder" / "New File"
 /// buttons toggle inline input fields with Create/Cancel buttons.
 /// Only one inline input can be open at a time.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn render_toolbar(
-    ui: &Ui,
-    strings: &FmStrings,
-    has_parent: bool,
-    can_back: bool,
-    can_forward: bool,
-    show_new_folder: &mut bool,
-    new_folder_buf: &mut String,
-    show_new_file: &mut bool,
-    new_file_buf: &mut String,
-    show_hidden: bool,
-    config: &FileManagerConfig,
-    buf: &mut String,
-) -> Option<Action> {
+pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
+    let ToolbarCtx {
+        strings,
+        has_parent,
+        can_back,
+        can_forward,
+        show_new_folder,
+        new_folder_buf,
+        show_new_file,
+        new_file_buf,
+        show_hidden,
+        config,
+        buf,
+    } = ctx;
+
     let mut action = None;
     let _spacing = ui.push_style_var(StyleVar::ItemSpacing([6.0, 4.0]));
 
