@@ -29,10 +29,10 @@ pub(crate) struct FooterCtx<'a> {
 /// Render the footer.
 ///
 /// Layout mirrors `fldr.svg`: Cancel is flush to the left edge, the primary
-/// confirm button flush to the right edge, and the mode-specific middle content
-/// (filename input for SaveFile, filter dropdown for OpenFile) sits between
-/// them. The primary button is dimmed (but keeps its slot) when the current
-/// selection can't be confirmed.
+/// confirm button flush to the right edge. The mode-specific middle content
+/// sits between them — the SaveFile filename input *fills* the gap, the
+/// OpenFile filter dropdown is *centered* in it. The primary button is dimmed
+/// and inert (keeps its slot) when the current selection can't be confirmed.
 ///
 /// Returns `(confirmed, cancelled, filter_action)`.
 pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<Action>) {
@@ -97,8 +97,12 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
         ui.set_cursor_pos_x(mid_start);
         ui.text_colored(theme::TEXT_SECONDARY, strings.filename);
         ui.same_line();
+        // The `same_line()` after the label advances by ItemSpacing.x, so use
+        // the real spacing (not `gap`) to land the input's right edge exactly
+        // `gap` before the primary button.
+        let sp_x = ui.clone_style().item_spacing()[0];
         let lbl_w = calc_text_size(strings.filename)[0];
-        let input_w = ((right_x - gap) - (mid_start + lbl_w + gap)).max(80.0);
+        let input_w = ((right_x - gap) - (mid_start + lbl_w + sp_x)).max(80.0);
         ui.set_next_item_width(input_w);
         let enter = ui
             .input_text("##filename", filename_buf)
@@ -108,8 +112,11 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
             confirmed = true;
         }
     } else if mode != DialogMode::SelectFolder && filters.len() > 1 {
+        // Centre the fixed-width filter dropdown within the middle region.
+        let mid_w = ((right_x - gap) - mid_start).max(filter_w);
+        let filter_x = mid_start + (mid_w - filter_w).max(0.0) * 0.5;
         ui.same_line();
-        ui.set_cursor_pos_x(mid_start);
+        ui.set_cursor_pos_x(filter_x);
         ui.set_next_item_width(filter_w);
         let preview = if filters[active_filter].extensions.is_empty() {
             strings.all_files
@@ -135,8 +142,16 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
     ui.same_line();
     ui.set_cursor_pos_x(right_x);
     let label = icon_label(buf, confirm_icon, confirm_label);
+    // When it can't confirm: dim + freeze hover/active to the base so the
+    // button reads as inert; the `&& can_confirm` guard swallows the click.
+    let colors = if can_confirm {
+        confirm_btn()
+    } else {
+        let base = confirm_btn()[0];
+        [base, base, base]
+    };
     let _dim = (!can_confirm).then(|| ui.push_style_var(StyleVar::Alpha(0.4)));
-    with_btn_style(ui, confirm_btn(), || {
+    with_btn_style(ui, colors, || {
         if ui.button_with_size(label, [btn_w, btn_h]) && can_confirm {
             confirmed = true;
         }

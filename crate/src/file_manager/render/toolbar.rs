@@ -30,10 +30,6 @@ pub(crate) struct ToolbarCtx<'a> {
     pub buf: &'a mut String,
 }
 
-/// Approximate per-button horizontal padding (frame padding both sides) used
-/// only to right-align the nav cluster. A few pixels of slack here just nudges
-/// the cluster's left edge; it never clips.
-const NAV_BTN_PAD: f32 = 8.0;
 /// Horizontal spacing between toolbar items (matches the pushed `ItemSpacing`).
 const TOOLBAR_SPACING_X: f32 = 6.0;
 
@@ -119,9 +115,14 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
             icons::ARROW_LEFT,
             icons::ARROW_RIGHT,
         ];
+        // Exact button width = glyph width + 2×FramePadding.x (read live, since
+        // the toolbar never pushes its own FramePadding and the host theme's
+        // value drives it). An estimate here would clip the last button off the
+        // right edge on themes with larger padding.
+        let fp_x = ui.clone_style().frame_padding()[0];
         let mut cluster_w = TOOLBAR_SPACING_X * (nav_icons.len() as f32 - 1.0);
         for ic in nav_icons {
-            cluster_w += calc_text_size(ic)[0] + NAV_BTN_PAD;
+            cluster_w += calc_text_size(ic)[0] + fp_x * 2.0;
         }
 
         ui.same_line();
@@ -132,12 +133,24 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
         let mut nav = |icon: &str, id: &str, tip: &str, enabled: bool, act: Action| {
             buf.clear();
             let _ = write!(buf, "{icon}##{id}");
-            let _dim = (!enabled).then(|| ui.push_style_var(StyleVar::Alpha(0.4)));
-            with_btn_style(ui, nav_btn(), || {
-                if ui.button(buf.as_str()) && enabled {
-                    action = Some(act);
-                }
-            });
+            // Disabled: dim + freeze hover/active to the base color so the
+            // button doesn't light up under the cursor (the `&& enabled` guard
+            // already swallows the click). The Alpha guard is scoped to the
+            // button block so it doesn't also fade the tooltip below.
+            let colors = if enabled {
+                nav_btn()
+            } else {
+                let base = nav_btn()[0];
+                [base, base, base]
+            };
+            {
+                let _dim = (!enabled).then(|| ui.push_style_var(StyleVar::Alpha(0.4)));
+                with_btn_style(ui, colors, || {
+                    if ui.button(buf.as_str()) && enabled {
+                        action = Some(act);
+                    }
+                });
+            }
             if ui.is_item_hovered() {
                 crate::utils::themed_tooltip(ui, || ui.text(tip));
             }

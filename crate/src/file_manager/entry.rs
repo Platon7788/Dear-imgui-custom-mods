@@ -215,7 +215,8 @@ pub(super) fn format_size(bytes: u64) -> String {
     }
 }
 
-/// Format a `SystemTime` as "YYYY-MM-DD HH:MM" (local time approximation).
+/// Format a `SystemTime` as "YYYY-MM-DD HH:MM" (UTC — no timezone offset is
+/// applied; a file dialog display doesn't warrant a `chrono` dependency).
 fn format_system_time(time: SystemTime) -> String {
     // Use duration since UNIX_EPOCH and manual UTC calculation.
     // For a file dialog display, UTC is acceptable (no chrono dependency).

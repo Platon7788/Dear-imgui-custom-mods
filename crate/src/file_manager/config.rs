@@ -149,9 +149,9 @@ pub struct FileManagerConfig {
     /// Skipped by serde — restored to [`STRINGS_EN`] on deserialization.
     #[serde(skip, default = "default_strings")]
     pub strings: &'static FmStrings,
-    /// Initial window size `[width, height]` in pixels. Default: `[750, 520]`.
+    /// Initial window size `[width, height]` in pixels. Default: `[760, 600]`.
     pub initial_size: [f32; 2],
-    /// Minimum window size `[width, height]` in pixels. Default: `[500, 350]`.
+    /// Minimum window size `[width, height]` in pixels. Default: `[650, 500]`.
     pub min_size: [f32; 2],
     /// Show the favorites sidebar (Desktop, Documents, Downloads). Default: `true`.
     pub show_favorites: bool,
