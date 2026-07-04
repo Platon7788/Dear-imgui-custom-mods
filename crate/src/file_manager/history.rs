@@ -59,6 +59,19 @@ impl NavigationHistory {
         Some(next)
     }
 
+    /// Peek the path a [`go_back`](Self::go_back) would navigate to, without
+    /// mutating either stack. Lets the caller validate the target (e.g. try to
+    /// list it) and only commit the stack move on success.
+    pub(super) fn peek_back(&self) -> Option<&Path> {
+        self.back_stack.back().map(PathBuf::as_path)
+    }
+
+    /// Peek the path a [`go_forward`](Self::go_forward) would navigate to,
+    /// without mutating either stack.
+    pub(super) fn peek_forward(&self) -> Option<&Path> {
+        self.forward_stack.back().map(PathBuf::as_path)
+    }
+
     /// Returns `true` if there is at least one entry in the back stack.
     pub(super) fn can_go_back(&self) -> bool {
         !self.back_stack.is_empty()
@@ -79,5 +92,54 @@ impl NavigationHistory {
 impl Default for NavigationHistory {
     fn default() -> Self {
         Self::new(DEFAULT_MAX_HISTORY)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn back_forward_round_trip() {
+        let mut h = NavigationHistory::new(10);
+        assert!(!h.can_go_back());
+        h.push(Path::new("/a"));
+        assert!(h.can_go_back());
+        assert_eq!(h.go_back(Path::new("/b")).unwrap(), Path::new("/a"));
+        assert!(h.can_go_forward());
+        assert_eq!(h.go_forward(Path::new("/a")).unwrap(), Path::new("/b"));
+    }
+
+    #[test]
+    fn push_clears_forward_branch() {
+        let mut h = NavigationHistory::new(10);
+        h.push(Path::new("/a"));
+        let _ = h.go_back(Path::new("/b"));
+        assert!(h.can_go_forward());
+        h.push(Path::new("/c"));
+        assert!(
+            !h.can_go_forward(),
+            "a new navigation branch clears forward"
+        );
+    }
+
+    #[test]
+    fn back_stack_respects_cap() {
+        let mut h = NavigationHistory::new(2);
+        h.push(Path::new("/1"));
+        h.push(Path::new("/2"));
+        h.push(Path::new("/3"));
+        assert_eq!(h.go_back(Path::new("/x")).unwrap(), Path::new("/3"));
+        assert_eq!(h.go_back(Path::new("/3")).unwrap(), Path::new("/2"));
+        assert!(!h.can_go_back(), "oldest entry evicted at cap 2");
+    }
+
+    #[test]
+    fn peek_does_not_consume() {
+        let mut h = NavigationHistory::new(10);
+        h.push(Path::new("/a"));
+        assert_eq!(h.peek_back(), Some(Path::new("/a")));
+        assert!(h.can_go_back(), "peek must not mutate the stack");
+        assert_eq!(h.peek_forward(), None);
     }
 }

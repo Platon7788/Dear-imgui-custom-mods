@@ -17,7 +17,10 @@ Native-style file/folder picker dialog for Dear ImGui.
 - **Breadcrumb navigation** with double-click-to-edit path bar
 - **Back/forward history** (browser-style)
 - **Favorites sidebar** (Desktop, Documents, Downloads + custom bookmarks)
-- **Drive selector** (Windows drive letters / Unix mount points)
+- **Drive selector** (Windows drive letters / Unix mount points) with dividers
+- **Toolbar**: file actions **New Folder / New File / Hidden** on the left;
+  **Up / Refresh / Back / Forward** navigation on the right (icon-only, with
+  hover tooltips; disabled buttons are dimmed and inert)
 - **File table** with sortable columns: Name, Size, Date Modified, Type
 - **File filters** (`*.rs`, `*.png`, etc.) with dropdown
 - **Multi-select** (Ctrl+Click) in OpenFile mode
@@ -94,8 +97,8 @@ let config = FileManagerConfig {
     dirs_first: true,               // directories before files (default: true)
 
     // Window
-    initial_size: [750.0, 520.0],   // dialog size in pixels
-    min_size: [500.0, 350.0],       // minimum dialog size
+    initial_size: [760.0, 600.0],   // dialog size in pixels
+    min_size: [650.0, 500.0],       // minimum dialog size
     custom_title: None,             // override mode-specific title (default: None)
 
     // Layout

@@ -19,7 +19,24 @@ pub(crate) fn render_drive_bar(
     let _spacing = ui.push_style_var(StyleVar::ItemSpacing([4.0, 4.0]));
     let _rounding = ui.push_style_var(StyleVar::FrameRounding(4.0));
 
-    for drive in drives {
+    // Muted vertical rule drawn between adjacent drives (mockup shows `│`
+    // separators). `btn_h` tracks the measured drive-button height so the rule
+    // spans exactly the button; seeded with a line-height estimate for the
+    // (never-drawn) divider before the first drive.
+    let divider_col = crate::utils::color::col32(theme::BORDER);
+    let mut btn_h = ui.text_line_height() + 6.0;
+
+    for (i, drive) in drives.iter().enumerate() {
+        if i > 0 {
+            let p = ui.cursor_screen_pos();
+            let x = p[0] + 4.0;
+            ui.get_window_draw_list()
+                .add_line([x, p[1] + 2.0], [x, p[1] + btn_h - 2.0], divider_col)
+                .build();
+            ui.dummy([8.0, btn_h]);
+            ui.same_line();
+        }
+
         let drive_letter = drive.chars().next().unwrap_or('?');
         let is_current = current_drive == Some(drive_letter);
 
@@ -40,6 +57,7 @@ pub(crate) fn render_drive_bar(
                 action = Some(Action::NavigateTo(std::path::PathBuf::from(drive.as_str())));
             }
         });
+        btn_h = ui.item_rect_size()[1];
         ui.same_line();
     }
     ui.new_line();

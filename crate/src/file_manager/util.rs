@@ -116,8 +116,12 @@ pub(super) fn is_valid_filename(name: &str) -> bool {
     ) {
         return false;
     }
-    // Invalid characters across platforms
+    // Invalid characters across platforms. `is_control` also covers NUL and the
+    // 0x01–0x1F / 0x7F range (newline, tab, ESC, …), which are invalid in
+    // Windows filenames and better rejected cleanly at the boundary than left
+    // to fail deep in the OS call.
     !name.contains(['<', '>', ':', '"', '/', '\\', '|', '?', '*', '\0'])
+        && !name.chars().any(char::is_control)
         && !name.ends_with('.')
         && !name.ends_with(' ')
 }
@@ -233,6 +237,16 @@ mod tests {
                 "rejected for {ch:?}"
             );
         }
+    }
+
+    #[test]
+    fn rejects_control_chars() {
+        // L4: control characters (newline / tab / ESC / bell / …) are invalid
+        // in Windows filenames and rejected cleanly at the boundary.
+        assert!(!is_valid_filename("bad\nname"));
+        assert!(!is_valid_filename("bad\tname"));
+        assert!(!is_valid_filename("bell\u{07}"));
+        assert!(is_valid_filename("normal name.txt"));
     }
 
     #[test]

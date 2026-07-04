@@ -30,6 +30,8 @@ pub struct Strings {
     pub back: &'static str,
     /// Tooltip for the "go forward" button.
     pub forward: &'static str,
+    /// Tooltip for the "refresh directory" button.
+    pub refresh: &'static str,
     /// Label for "New Folder" toolbar button.
     pub new_folder: &'static str,
     /// Label for "New File" toolbar button.
@@ -60,6 +62,10 @@ pub struct Strings {
     pub create_file_failed: &'static str,
     /// Prefix for "path not found" errors.
     pub path_not_found: &'static str,
+    /// Detail for a rejected filename (create / rename / save).
+    pub invalid_name: &'static str,
+    /// Detail for a rename whose destination name already exists.
+    pub target_exists: &'static str,
 
     // ── Overwrite confirmation ──
     /// Title for the overwrite confirmation modal.
@@ -122,6 +128,7 @@ pub const EN: Strings = Strings {
     up: "Up",
     back: "Back",
     forward: "Forward",
+    refresh: "Refresh",
     new_folder: "New Folder",
     new_file: "New File",
     create: "Create",
@@ -135,6 +142,8 @@ pub const EN: Strings = Strings {
     create_folder_failed: "Failed to create folder",
     create_file_failed: "Failed to create file",
     path_not_found: "Path not found",
+    invalid_name: "Invalid name",
+    target_exists: "Target already exists",
     overwrite_title: "Confirm Overwrite",
     overwrite_message: "File already exists. Overwrite?",
     yes: "Yes",
@@ -168,6 +177,7 @@ pub const RU: Strings = Strings {
     up: "Вверх",
     back: "Назад",
     forward: "Вперёд",
+    refresh: "Обновить",
     new_folder: "Новая папка",
     new_file: "Новый файл",
     create: "Создать",
@@ -181,6 +191,8 @@ pub const RU: Strings = Strings {
     create_folder_failed: "Не удалось создать папку",
     create_file_failed: "Не удалось создать файл",
     path_not_found: "Путь не найден",
+    invalid_name: "Недопустимое имя",
+    target_exists: "Цель уже существует",
     overwrite_title: "Подтверждение перезаписи",
     overwrite_message: "Файл уже существует. Перезаписать?",
     yes: "Да",

@@ -110,6 +110,9 @@ fn file_manager_strings_resolve() {
     assert_ne!(en.cancel, ru.cancel);
     assert_ne!(en.save, ru.save);
     assert_ne!(en.col_name, ru.col_name);
+    // The nav-cluster Refresh tooltip added with the toolbar redesign.
+    assert_eq!(en.refresh, "Refresh");
+    assert_ne!(en.refresh, ru.refresh);
 }
 
 #[test]

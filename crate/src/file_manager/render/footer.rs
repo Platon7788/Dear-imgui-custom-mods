@@ -1,7 +1,10 @@
-//! Render the footer bar: filter dropdown, filename input (SaveFile), Confirm/Cancel buttons.
+//! Render the footer bar: Cancel (flush-left) and the primary confirm button
+//! (flush-right), with the filter dropdown (OpenFile) or filename input
+//! (SaveFile) centered between them.
 
 use dear_imgui_rs::{StyleVar, Ui};
 
+use crate::utils::text::calc_text_size;
 use crate::{icons, theme};
 
 use super::style::{cancel_btn, confirm_btn, icon_label, with_btn_style};
@@ -25,8 +28,11 @@ pub(crate) struct FooterCtx<'a> {
 
 /// Render the footer.
 ///
-/// In SaveFile mode the filename input and buttons share a single row:
-/// `[Filename: ___________] [Save] [Cancel]`
+/// Layout mirrors `fldr.svg`: Cancel is flush to the left edge, the primary
+/// confirm button flush to the right edge. The mode-specific middle content
+/// sits between them — the SaveFile filename input *fills* the gap, the
+/// OpenFile filter dropdown is *centered* in it. The primary button is dimmed
+/// and inert (keeps its slot) when the current selection can't be confirmed.
 ///
 /// Returns `(confirmed, cancelled, filter_action)`.
 pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<Action>) {
@@ -63,35 +69,40 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
 
     let btn_w = config.button_width;
     let btn_h = config.button_height;
-    let gap = 6.0_f32;
     let filter_w = config.filter_width;
+    let gap = 6.0_f32;
 
     let _rounding = ui.push_style_var(StyleVar::FrameRounding(4.0));
 
-    // ── Footer layout ──
-    //
-    //   SelectFolder / OpenFile (no filter):
-    //     |       [Confirm]       |        [Cancel]       |
-    //     ^---- half ----^                ^---- half ----^
-    //     compact buttons centred in their half of the row
-    //
-    //   OpenFile + filter:
-    //     [Filter ▼]   [Confirm]   [Cancel]
-    //     compact buttons after the filter combo
-    //
-    //   SaveFile:
-    //     [Filename: ____________]  [Confirm]  [Cancel]
-    //     filename input flexes; buttons compact at the trailing edge
-    //
-    let has_filter = mode != DialogMode::SelectFolder && filters.len() > 1;
+    // The row spans the full content width: Cancel flush-left, primary
+    // flush-right, mode-specific middle content centered between.
+    let row_x = ui.cursor_pos()[0];
+    let avail = ui.content_region_avail()[0];
+    let right_x = row_x + avail - btn_w;
+    let mid_start = row_x + btn_w + gap;
 
+    // ── Cancel (flush-left) ──
+    {
+        let label = icon_label(buf, icons::CLOSE, strings.cancel);
+        with_btn_style(ui, cancel_btn(), || {
+            if ui.button_with_size(label, [btn_w, btn_h]) {
+                cancelled = true;
+            }
+        });
+    }
+
+    // ── Middle: filename (SaveFile) or filter dropdown (OpenFile) ──
     if mode == DialogMode::SaveFile {
+        ui.same_line();
+        ui.set_cursor_pos_x(mid_start);
         ui.text_colored(theme::TEXT_SECONDARY, strings.filename);
         ui.same_line();
-
-        let avail = ui.content_region_avail()[0];
-        let reserved = btn_w * 2.0 + gap * 3.0;
-        let input_w = (avail - reserved).max(120.0);
+        // The `same_line()` after the label advances by ItemSpacing.x, so use
+        // the real spacing (not `gap`) to land the input's right edge exactly
+        // `gap` before the primary button.
+        let sp_x = ui.clone_style().item_spacing()[0];
+        let lbl_w = calc_text_size(strings.filename)[0];
+        let input_w = ((right_x - gap) - (mid_start + lbl_w + sp_x)).max(80.0);
         ui.set_next_item_width(input_w);
         let enter = ui
             .input_text("##filename", filename_buf)
@@ -100,23 +111,12 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
         if enter {
             confirmed = true;
         }
-        ui.same_line_with_spacing(0.0, gap);
-        render_btn_pair(
-            ui,
-            buf,
-            &mut Pair {
-                confirm_label,
-                confirm_icon,
-                can_confirm,
-                cancel_text: strings.cancel,
-                btn_w,
-                btn_h,
-                gap,
-                confirmed: &mut confirmed,
-                cancelled: &mut cancelled,
-            },
-        );
-    } else if has_filter {
+    } else if mode != DialogMode::SelectFolder && filters.len() > 1 {
+        // Centre the fixed-width filter dropdown within the middle region.
+        let mid_w = ((right_x - gap) - mid_start).max(filter_w);
+        let filter_x = mid_start + (mid_w - filter_w).max(0.0) * 0.5;
+        ui.same_line();
+        ui.set_cursor_pos_x(filter_x);
         ui.set_next_item_width(filter_w);
         let preview = if filters[active_filter].extensions.is_empty() {
             strings.all_files
@@ -136,101 +136,26 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
                 }
             }
         }
-        ui.same_line_with_spacing(0.0, gap);
-        render_btn_pair(
-            ui,
-            buf,
-            &mut Pair {
-                confirm_label,
-                confirm_icon,
-                can_confirm,
-                cancel_text: strings.cancel,
-                btn_w,
-                btn_h,
-                gap,
-                confirmed: &mut confirmed,
-                cancelled: &mut cancelled,
-            },
-        );
-    } else {
-        // SelectFolder / OpenFile-without-filter: compact buttons centred in
-        // their half of the footer row.
-        let cursor_start = ui.cursor_pos();
-        let avail = ui.content_region_avail()[0];
-        let half_w = avail * 0.5;
-        let pad_in_half = ((half_w - btn_w) * 0.5).max(0.0);
-
-        // Confirm button — centred in left half.
-        ui.set_cursor_pos([cursor_start[0] + pad_in_half, cursor_start[1]]);
-        if can_confirm {
-            let label = icon_label(buf, confirm_icon, confirm_label);
-            with_btn_style(ui, confirm_btn(), || {
-                if ui.button_with_size(label, [btn_w, btn_h]) {
-                    confirmed = true;
-                }
-            });
-        } else {
-            let label = icon_label(buf, confirm_icon, confirm_label);
-            let _disabled = ui.push_style_var(StyleVar::Alpha(0.4));
-            with_btn_style(ui, confirm_btn(), || {
-                ui.button_with_size(label, [btn_w, btn_h]);
-            });
-        }
-
-        // Cancel button — centred in right half.
-        ui.same_line();
-        ui.set_cursor_pos([cursor_start[0] + half_w + pad_in_half, cursor_start[1]]);
-        let label = icon_label(buf, icons::CLOSE, strings.cancel);
-        with_btn_style(ui, cancel_btn(), || {
-            if ui.button_with_size(label, [btn_w, btn_h]) {
-                cancelled = true;
-            }
-        });
     }
+
+    // ── Primary confirm (flush-right) ──
+    ui.same_line();
+    ui.set_cursor_pos_x(right_x);
+    let label = icon_label(buf, confirm_icon, confirm_label);
+    // When it can't confirm: dim + freeze hover/active to the base so the
+    // button reads as inert; the `&& can_confirm` guard swallows the click.
+    let colors = if can_confirm {
+        confirm_btn()
+    } else {
+        let base = confirm_btn()[0];
+        [base, base, base]
+    };
+    let _dim = (!can_confirm).then(|| ui.push_style_var(StyleVar::Alpha(0.4)));
+    with_btn_style(ui, colors, || {
+        if ui.button_with_size(label, [btn_w, btn_h]) && can_confirm {
+            confirmed = true;
+        }
+    });
 
     (confirmed, cancelled, action)
-}
-
-/// Render the trailing `[Confirm] [Cancel]` button pair as a compact group
-/// (used by SaveFile and OpenFile+filter layouts where a leading element has
-/// already consumed the left side of the row).
-struct Pair<'a> {
-    confirm_label: &'a str,
-    confirm_icon: &'a str,
-    can_confirm: bool,
-    cancel_text: &'a str,
-    btn_w: f32,
-    btn_h: f32,
-    gap: f32,
-    confirmed: &'a mut bool,
-    cancelled: &'a mut bool,
-}
-
-fn render_btn_pair(ui: &Ui, buf: &mut String, p: &mut Pair<'_>) {
-    if p.can_confirm {
-        let label = icon_label(buf, p.confirm_icon, p.confirm_label);
-        let mut clicked = false;
-        with_btn_style(ui, confirm_btn(), || {
-            clicked = ui.button_with_size(label, [p.btn_w, p.btn_h]);
-        });
-        if clicked {
-            *p.confirmed = true;
-        }
-    } else {
-        let label = icon_label(buf, p.confirm_icon, p.confirm_label);
-        let _disabled = ui.push_style_var(StyleVar::Alpha(0.4));
-        with_btn_style(ui, confirm_btn(), || {
-            ui.button_with_size(label, [p.btn_w, p.btn_h]);
-        });
-    }
-
-    ui.same_line_with_spacing(0.0, p.gap);
-    let label = icon_label(buf, icons::CLOSE, p.cancel_text);
-    let mut clicked = false;
-    with_btn_style(ui, cancel_btn(), || {
-        clicked = ui.button_with_size(label, [p.btn_w, p.btn_h]);
-    });
-    if clicked {
-        *p.cancelled = true;
-    }
 }

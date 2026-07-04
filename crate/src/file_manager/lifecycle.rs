@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use dear_imgui_rs::Ui;
 
+use super::util::is_valid_filename;
 use super::{
     DialogMode, FavoritesPanel, FileFilter, FileManager, FmError, FsEntry,
     rebuild_breadcrumb_segments, sort_entries,
@@ -159,7 +160,12 @@ impl FileManager {
         rebuild_breadcrumb_segments(&self.current_path, &mut self.breadcrumb_segments);
 
         let show_files = self.mode != DialogMode::SelectFolder;
-        let filter = &self.filters[self.active_filter.min(self.filters.len().saturating_sub(1))];
+        // `.get()` instead of indexing: `open_*`/`new()` always seed at least
+        // one filter, but this avoids a panic-on-empty if that invariant ever
+        // breaks. An absent filter matches all files.
+        let filter = self
+            .filters
+            .get(self.active_filter.min(self.filters.len().saturating_sub(1)));
 
         match std::fs::read_dir(&self.current_path) {
             Ok(read_dir) => {
@@ -169,7 +175,10 @@ impl FileManager {
                         if entry.is_hidden && !self.show_hidden {
                             continue;
                         }
-                        if entry.is_dir || (show_files && filter.matches_ext(&entry.extension)) {
+                        if entry.is_dir
+                            || (show_files
+                                && filter.is_none_or(|f| f.matches_ext(&entry.extension)))
+                        {
                             self.entries.push(entry);
                         }
                     }
@@ -224,11 +233,19 @@ impl FileManager {
                 true
             }
             DialogMode::SaveFile => {
-                let fname = self.filename_buf.trim();
+                let fname = self.filename_buf.trim().to_string();
                 if fname.is_empty() {
                     return false;
                 }
-                let target = self.current_path.join(fname);
+                // Validate like create/rename do — otherwise a Save filename of
+                // `../secret.cfg` or `C:\Windows\x` would return a target
+                // *outside* the browsed directory (path-escape gap).
+                if !is_valid_filename(&fname) {
+                    let inv = self.config.strings.invalid_name;
+                    self.error = Some(FmError::CreateFileFailed(format!("{inv}: \"{fname}\"")));
+                    return false;
+                }
+                let target = self.current_path.join(&fname);
                 if target.exists() {
                     // Show overwrite confirmation
                     self.show_overwrite_confirm = true;

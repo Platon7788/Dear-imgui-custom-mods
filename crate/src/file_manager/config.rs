@@ -149,9 +149,9 @@ pub struct FileManagerConfig {
     /// Skipped by serde — restored to [`STRINGS_EN`] on deserialization.
     #[serde(skip, default = "default_strings")]
     pub strings: &'static FmStrings,
-    /// Initial window size `[width, height]` in pixels. Default: `[750, 520]`.
+    /// Initial window size `[width, height]` in pixels. Default: `[760, 600]`.
     pub initial_size: [f32; 2],
-    /// Minimum window size `[width, height]` in pixels. Default: `[500, 350]`.
+    /// Minimum window size `[width, height]` in pixels. Default: `[650, 500]`.
     pub min_size: [f32; 2],
     /// Show the favorites sidebar (Desktop, Documents, Downloads). Default: `true`.
     pub show_favorites: bool,
@@ -276,5 +276,27 @@ mod tests {
         )
         .expect("file_manager config without `locale` field must still parse");
         assert_eq!(cfg.locale, Locale::En);
+    }
+
+    #[test]
+    fn file_filter_matches_case_insensitively() {
+        let f = FileFilter::new("Rust", ["RS", "Toml"]);
+        assert!(f.matches_ext("rs"));
+        assert!(f.matches_ext("toml"));
+        assert!(!f.matches_ext("txt"));
+    }
+
+    #[test]
+    fn file_filter_all_matches_everything() {
+        let f = FileFilter::all();
+        assert!(f.matches_ext("png"));
+        assert!(f.matches_ext(""), "empty extension set matches all files");
+    }
+
+    #[test]
+    fn file_filter_with_extension_lowercases() {
+        let f = FileFilter::new("X", ["a"]).with_extension("PNG");
+        assert!(f.matches_ext("a"));
+        assert!(f.matches_ext("png"));
     }
 }
