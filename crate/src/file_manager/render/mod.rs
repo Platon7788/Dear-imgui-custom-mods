@@ -29,6 +29,7 @@ mod icon_map;
 mod modals;
 mod style;
 mod table;
+mod table_keyboard;
 mod toolbar;
 
 pub(crate) use breadcrumb::render_breadcrumb_bar;
