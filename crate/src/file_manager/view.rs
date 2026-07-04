@@ -35,7 +35,11 @@ impl FileManager {
             DialogMode::SaveFile => strings.save_file,
         });
 
-        // Set window size before opening popup
+        // Set window size before opening popup.
+        // SAFETY: FFI into Dear ImGui. Both calls take POD `ImVec2` values by
+        // copy; `igSetNextWindowSizeConstraints` gets `None`/null for its
+        // optional custom-callback + user-data. No Rust reference is handed to
+        // C, and the calls run inside a live ImGui frame — so this is sound.
         unsafe {
             #[allow(clippy::unnecessary_cast)]
             // ImGuiCond_Appearing is u32 on Linux, i32 on Windows

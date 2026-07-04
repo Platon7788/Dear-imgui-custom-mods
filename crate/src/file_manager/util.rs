@@ -158,6 +158,8 @@ pub(super) fn ui_set_clipboard(_ui: &Ui, text: &str) {
         text
     };
     if let Ok(c_str) = std::ffi::CString::new(sanitized) {
+        // SAFETY: `c_str` is a valid NUL-terminated C string that outlives the
+        // call; ImGui copies the text into its own buffer and keeps no pointer.
         unsafe {
             dear_imgui_rs::sys::igSetClipboardText(c_str.as_ptr());
         }
@@ -171,6 +173,8 @@ pub(super) fn ui_set_clipboard(_ui: &Ui, text: &str) {
 pub(super) fn enumerate_drives() -> Vec<String> {
     use windows_sys::Win32::Storage::FileSystem::GetLogicalDrives;
     let mut drives = Vec::new();
+    // SAFETY: `GetLogicalDrives` is a parameterless Win32 call returning a
+    // bitmask of present drive letters; it touches no caller-owned memory.
     unsafe {
         let mask = GetLogicalDrives();
         for i in 0..26u32 {
