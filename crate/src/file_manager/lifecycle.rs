@@ -12,11 +12,11 @@ use std::path::PathBuf;
 
 use dear_imgui_rs::Ui;
 
+use super::util::is_valid_filename;
 use super::{
     DialogMode, FavoritesPanel, FileFilter, FileManager, FmError, FsEntry,
     rebuild_breadcrumb_segments, sort_entries,
 };
-use super::util::is_valid_filename;
 
 impl FileManager {
     // ─── Public open methods ─────────────────────────────────────────
@@ -160,7 +160,12 @@ impl FileManager {
         rebuild_breadcrumb_segments(&self.current_path, &mut self.breadcrumb_segments);
 
         let show_files = self.mode != DialogMode::SelectFolder;
-        let filter = &self.filters[self.active_filter.min(self.filters.len().saturating_sub(1))];
+        // `.get()` instead of indexing: `open_*`/`new()` always seed at least
+        // one filter, but this avoids a panic-on-empty if that invariant ever
+        // breaks. An absent filter matches all files.
+        let filter = self
+            .filters
+            .get(self.active_filter.min(self.filters.len().saturating_sub(1)));
 
         match std::fs::read_dir(&self.current_path) {
             Ok(read_dir) => {
@@ -170,7 +175,10 @@ impl FileManager {
                         if entry.is_hidden && !self.show_hidden {
                             continue;
                         }
-                        if entry.is_dir || (show_files && filter.matches_ext(&entry.extension)) {
+                        if entry.is_dir
+                            || (show_files
+                                && filter.is_none_or(|f| f.matches_ext(&entry.extension)))
+                        {
                             self.entries.push(entry);
                         }
                     }
