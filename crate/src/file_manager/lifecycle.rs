@@ -16,6 +16,7 @@ use super::{
     DialogMode, FavoritesPanel, FileFilter, FileManager, FmError, FsEntry,
     rebuild_breadcrumb_segments, sort_entries,
 };
+use super::util::is_valid_filename;
 
 impl FileManager {
     // ─── Public open methods ─────────────────────────────────────────
@@ -224,11 +225,19 @@ impl FileManager {
                 true
             }
             DialogMode::SaveFile => {
-                let fname = self.filename_buf.trim();
+                let fname = self.filename_buf.trim().to_string();
                 if fname.is_empty() {
                     return false;
                 }
-                let target = self.current_path.join(fname);
+                // Validate like create/rename do — otherwise a Save filename of
+                // `../secret.cfg` or `C:\Windows\x` would return a target
+                // *outside* the browsed directory (path-escape gap).
+                if !is_valid_filename(&fname) {
+                    let inv = self.config.strings.invalid_name;
+                    self.error = Some(FmError::CreateFileFailed(format!("{inv}: \"{fname}\"")));
+                    return false;
+                }
+                let target = self.current_path.join(&fname);
                 if target.exists() {
                     // Show overwrite confirmation
                     self.show_overwrite_confirm = true;

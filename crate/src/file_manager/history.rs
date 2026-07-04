@@ -59,6 +59,19 @@ impl NavigationHistory {
         Some(next)
     }
 
+    /// Peek the path a [`go_back`](Self::go_back) would navigate to, without
+    /// mutating either stack. Lets the caller validate the target (e.g. try to
+    /// list it) and only commit the stack move on success.
+    pub(super) fn peek_back(&self) -> Option<&Path> {
+        self.back_stack.back().map(PathBuf::as_path)
+    }
+
+    /// Peek the path a [`go_forward`](Self::go_forward) would navigate to,
+    /// without mutating either stack.
+    pub(super) fn peek_forward(&self) -> Option<&Path> {
+        self.forward_stack.back().map(PathBuf::as_path)
+    }
+
     /// Returns `true` if there is at least one entry in the back stack.
     pub(super) fn can_go_back(&self) -> bool {
         !self.back_stack.is_empty()
