@@ -1,9 +1,11 @@
-//! Render the navigation toolbar: Back / Forward / Up / New Folder / New File / Refresh / Hidden.
+//! Render the navigation toolbar: New Folder / New File / Hidden (left) and the
+//! Up / Refresh / Back / Forward navigation cluster (right-aligned, icon-only).
 
 use std::fmt::Write;
 
 use dear_imgui_rs::{StyleVar, Ui};
 
+use crate::utils::text::calc_text_size;
 use crate::{icons, theme};
 
 use super::style::{
@@ -28,11 +30,20 @@ pub(crate) struct ToolbarCtx<'a> {
     pub buf: &'a mut String,
 }
 
+/// Approximate per-button horizontal padding (frame padding both sides) used
+/// only to right-align the nav cluster. A few pixels of slack here just nudges
+/// the cluster's left edge; it never clips.
+const NAV_BTN_PAD: f32 = 8.0;
+/// Horizontal spacing between toolbar items (matches the pushed `ItemSpacing`).
+const TOOLBAR_SPACING_X: f32 = 6.0;
+
 /// Render the navigation toolbar.
 ///
-/// Disabled buttons are shown as grayed-out text. The "New Folder" / "New File"
-/// buttons toggle inline input fields with Create/Cancel buttons.
-/// Only one inline input can be open at a time.
+/// Layout mirrors `fldr.svg`: the file-action buttons (New Folder, New File,
+/// Hidden) sit on the left; the navigation cluster (Up, Refresh, Back, Forward)
+/// is icon-only, right-aligned, with hover tooltips. Disabled nav buttons keep
+/// their footprint (dimmed via `Alpha`) so the right-alignment stays stable.
+/// The inline New Folder / New File name inputs open on their own line below.
 pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
     let ToolbarCtx {
         strings,
@@ -49,55 +60,12 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
     } = ctx;
 
     let mut action = None;
-    let _spacing = ui.push_style_var(StyleVar::ItemSpacing([6.0, 4.0]));
+    let _spacing = ui.push_style_var(StyleVar::ItemSpacing([TOOLBAR_SPACING_X, 4.0]));
 
-    // Back button
-    if can_back {
-        let label = icon_label(buf, icons::ARROW_LEFT, strings.back);
-        with_btn_style(ui, nav_btn(), || {
-            if ui.button(label) {
-                action = Some(Action::GoBack);
-            }
-        });
-    } else {
-        let label = icon_label(buf, icons::ARROW_LEFT, strings.back);
-        ui.text_disabled(label);
-    }
-    ui.same_line();
-
-    // Forward button
-    if can_forward {
-        let label = icon_label(buf, icons::ARROW_RIGHT, strings.forward);
-        with_btn_style(ui, nav_btn(), || {
-            if ui.button(label) {
-                action = Some(Action::GoForward);
-            }
-        });
-    } else {
-        let label = icon_label(buf, icons::ARROW_RIGHT, strings.forward);
-        ui.text_disabled(label);
-    }
-    ui.same_line();
-
-    // Up button
-    if has_parent {
-        let label = icon_label(buf, icons::ARROW_UP, strings.up);
-        with_btn_style(ui, nav_btn(), || {
-            if ui.button(label) {
-                action = Some(Action::GoParent);
-            }
-        });
-    } else {
-        let label = icon_label(buf, icons::ARROW_UP, strings.up);
-        ui.text_disabled(label);
-    }
-    ui.same_line();
-
-    // New folder button
+    // ── Left: file-action buttons ───────────────────────────────────────
     {
-        let nf_colors = confirm_btn();
         let label = icon_label(buf, icons::FOLDER_PLUS, strings.new_folder);
-        with_btn_style(ui, nf_colors, || {
+        with_btn_style(ui, confirm_btn(), || {
             if ui.button(label) {
                 let opening = !*show_new_folder;
                 *show_new_folder = opening;
@@ -109,12 +77,10 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
         });
     }
     ui.same_line();
-
-    // New file button
     {
-        let nf_colors = btn_colors(theme::ACCENT, theme::ACCENT_HOVER, theme::ACCENT_ACTIVE);
         let label = icon_label(buf, icons::FILE_PLUS, strings.new_file);
-        with_btn_style(ui, nf_colors, || {
+        let colors = btn_colors(theme::ACCENT, theme::ACCENT_HOVER, theme::ACCENT_ACTIVE);
+        with_btn_style(ui, colors, || {
             if ui.button(label) {
                 let opening = !*show_new_file;
                 *show_new_file = opening;
@@ -126,20 +92,6 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
         });
     }
     ui.same_line();
-
-    // Refresh button
-    {
-        buf.clear();
-        let _ = write!(buf, "{}##refresh", icons::REFRESH);
-        with_btn_style(ui, nav_btn(), || {
-            if ui.button(buf.as_str()) {
-                action = Some(Action::Refresh);
-            }
-        });
-    }
-    ui.same_line();
-
-    // Hidden files toggle
     {
         let icon = if show_hidden {
             icons::EYE
@@ -159,7 +111,72 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
         });
     }
 
-    // New folder inline input
+    // ── Right: navigation cluster (icon-only, right-aligned) ─────────────
+    {
+        let nav_icons = [
+            icons::ARROW_UP,
+            icons::REFRESH,
+            icons::ARROW_LEFT,
+            icons::ARROW_RIGHT,
+        ];
+        let mut cluster_w = TOOLBAR_SPACING_X * (nav_icons.len() as f32 - 1.0);
+        for ic in nav_icons {
+            cluster_w += calc_text_size(ic)[0] + NAV_BTN_PAD;
+        }
+
+        ui.same_line();
+        let cur_x = ui.cursor_pos()[0];
+        let avail = ui.content_region_avail()[0];
+        ui.set_cursor_pos_x((cur_x + avail - cluster_w).max(cur_x));
+
+        let mut nav = |icon: &str, id: &str, tip: &str, enabled: bool, act: Action| {
+            buf.clear();
+            let _ = write!(buf, "{icon}##{id}");
+            let _dim = (!enabled).then(|| ui.push_style_var(StyleVar::Alpha(0.4)));
+            with_btn_style(ui, nav_btn(), || {
+                if ui.button(buf.as_str()) && enabled {
+                    action = Some(act);
+                }
+            });
+            if ui.is_item_hovered() {
+                crate::utils::themed_tooltip(ui, || ui.text(tip));
+            }
+        };
+
+        nav(
+            icons::ARROW_UP,
+            "fm_up",
+            strings.up,
+            has_parent,
+            Action::GoParent,
+        );
+        ui.same_line();
+        nav(
+            icons::REFRESH,
+            "fm_refresh",
+            strings.refresh,
+            true,
+            Action::Refresh,
+        );
+        ui.same_line();
+        nav(
+            icons::ARROW_LEFT,
+            "fm_back",
+            strings.back,
+            can_back,
+            Action::GoBack,
+        );
+        ui.same_line();
+        nav(
+            icons::ARROW_RIGHT,
+            "fm_forward",
+            strings.forward,
+            can_forward,
+            Action::GoForward,
+        );
+    }
+
+    // ── Inline New Folder / New File inputs (own line, below the row) ────
     if *show_new_folder {
         let input_w = if config.inline_input_width > 0.0 {
             config.inline_input_width
@@ -175,7 +192,6 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
             .enter_returns_true(true)
             .build();
         ui.same_line();
-
         with_btn_style(ui, confirm_btn(), || {
             let lbl = label_with_id(buf, strings.create, "nf_create");
             if (ui.button(lbl) || enter) && !new_folder_buf.is_empty() {
@@ -192,7 +208,6 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
         });
     }
 
-    // New file inline input
     if *show_new_file {
         let input_w = if config.inline_input_width > 0.0 {
             config.inline_input_width
@@ -208,7 +223,6 @@ pub(crate) fn render_toolbar(ui: &Ui, ctx: ToolbarCtx<'_>) -> Option<Action> {
             .enter_returns_true(true)
             .build();
         ui.same_line();
-
         with_btn_style(ui, confirm_btn(), || {
             let lbl = label_with_id(buf, strings.create, "nfile_create");
             if (ui.button(lbl) || enter) && !new_file_buf.is_empty() {

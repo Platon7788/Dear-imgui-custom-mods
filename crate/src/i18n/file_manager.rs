@@ -30,6 +30,8 @@ pub struct Strings {
     pub back: &'static str,
     /// Tooltip for the "go forward" button.
     pub forward: &'static str,
+    /// Tooltip for the "refresh directory" button.
+    pub refresh: &'static str,
     /// Label for "New Folder" toolbar button.
     pub new_folder: &'static str,
     /// Label for "New File" toolbar button.
@@ -122,6 +124,7 @@ pub const EN: Strings = Strings {
     up: "Up",
     back: "Back",
     forward: "Forward",
+    refresh: "Refresh",
     new_folder: "New Folder",
     new_file: "New File",
     create: "Create",
@@ -168,6 +171,7 @@ pub const RU: Strings = Strings {
     up: "Вверх",
     back: "Назад",
     forward: "Вперёд",
+    refresh: "Обновить",
     new_folder: "Новая папка",
     new_file: "Новый файл",
     create: "Создать",
