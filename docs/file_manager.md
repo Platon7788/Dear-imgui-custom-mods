@@ -94,8 +94,8 @@ let config = FileManagerConfig {
     dirs_first: true,               // directories before files (default: true)
 
     // Window
-    initial_size: [750.0, 520.0],   // dialog size in pixels
-    min_size: [500.0, 350.0],       // minimum dialog size
+    initial_size: [760.0, 600.0],   // dialog size in pixels
+    min_size: [650.0, 500.0],       // minimum dialog size
     custom_title: None,             // override mode-specific title (default: None)
 
     // Layout
