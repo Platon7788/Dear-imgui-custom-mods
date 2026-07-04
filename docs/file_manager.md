@@ -17,7 +17,10 @@ Native-style file/folder picker dialog for Dear ImGui.
 - **Breadcrumb navigation** with double-click-to-edit path bar
 - **Back/forward history** (browser-style)
 - **Favorites sidebar** (Desktop, Documents, Downloads + custom bookmarks)
-- **Drive selector** (Windows drive letters / Unix mount points)
+- **Drive selector** (Windows drive letters / Unix mount points) with dividers
+- **Toolbar**: file actions **New Folder / New File / Hidden** on the left;
+  **Up / Refresh / Back / Forward** navigation on the right (icon-only, with
+  hover tooltips; disabled buttons are dimmed and inert)
 - **File table** with sortable columns: Name, Size, Date Modified, Type
 - **File filters** (`*.rs`, `*.png`, etc.) with dropdown
 - **Multi-select** (Ctrl+Click) in OpenFile mode
