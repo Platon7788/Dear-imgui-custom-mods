@@ -1,9 +1,7 @@
 //! Render the main file listing as a 4-column ImGui Table with virtualization,
 //! sortable headers, click/double-click selection, and keyboard navigation.
 
-use dear_imgui_rs::{
-    ListClipper, MouseButton, SelectableFlags, TableColumnFlags, TableFlags, Ui,
-};
+use dear_imgui_rs::{ListClipper, MouseButton, SelectableFlags, TableColumnFlags, TableFlags, Ui};
 
 use crate::{icons, theme};
 
