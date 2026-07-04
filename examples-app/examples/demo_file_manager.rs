@@ -157,7 +157,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_inner_size(LogicalSize::new(700.0, 400.0))
+                        .with_inner_size(LogicalSize::new(820.0, 680.0))
                         .with_title("FileManager v2 Demo"),
                 )
                 .expect("window"),
