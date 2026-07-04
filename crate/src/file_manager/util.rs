@@ -240,6 +240,16 @@ mod tests {
     }
 
     #[test]
+    fn rejects_control_chars() {
+        // L4: control characters (newline / tab / ESC / bell / …) are invalid
+        // in Windows filenames and rejected cleanly at the boundary.
+        assert!(!is_valid_filename("bad\nname"));
+        assert!(!is_valid_filename("bad\tname"));
+        assert!(!is_valid_filename("bell\u{07}"));
+        assert!(is_valid_filename("normal name.txt"));
+    }
+
+    #[test]
     fn rejects_trailing_dot_or_space() {
         assert!(!is_valid_filename("file."));
         assert!(!is_valid_filename("file "));
