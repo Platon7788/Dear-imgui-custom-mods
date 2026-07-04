@@ -102,6 +102,17 @@ fn code_editor_strings_resolve() {
 }
 
 #[test]
+fn file_manager_strings_resolve() {
+    let en = file_manager::strings(Locale::En);
+    let ru = file_manager::strings(Locale::Ru);
+    assert_eq!(en.cancel, "Cancel");
+    assert_eq!(ru.cancel, "Отмена");
+    assert_ne!(en.cancel, ru.cancel);
+    assert_ne!(en.save, ru.save);
+    assert_ne!(en.col_name, ru.col_name);
+}
+
+#[test]
 fn code_editor_cursor_info_localises() {
     let en = code_editor::cursor_info(Locale::En, 12, 5, 100);
     let ru = code_editor::cursor_info(Locale::Ru, 12, 5, 100);
@@ -244,6 +255,20 @@ fn code_editor_parity_key_fields_nonempty() {
     }
     assert_ne!(en.menu_cut, ru.menu_cut);
     assert_ne!(en.btn_replace, ru.btn_replace);
+}
+
+#[test]
+fn file_manager_parity_key_fields_nonempty() {
+    let en = file_manager::strings(Locale::En);
+    let ru = file_manager::strings(Locale::Ru);
+    for s in [en.select_folder, en.open, en.save, en.col_name] {
+        assert!(!s.is_empty());
+    }
+    for s in [ru.select_folder, ru.open, ru.save, ru.col_name] {
+        assert!(!s.is_empty());
+    }
+    assert_ne!(en.select_folder, ru.select_folder);
+    assert_ne!(en.col_date, ru.col_date);
 }
 
 #[test]
