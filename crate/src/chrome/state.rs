@@ -255,8 +255,21 @@ impl Chrome {
         use dear_imgui_rs::{Condition, StyleVar, WindowFlags};
 
         let display = ui.io().display_size();
+
+        // Capture the host's real style BEFORE pushing chrome's
+        // flush-titlebar overrides. `content` must see these actual
+        // values restored, not the zeroed titlebar ones — otherwise every
+        // same_line()'d widget and bordered child window inside the host
+        // content collapses to zero spacing/border (PushStyleVar is a
+        // global stack, not scoped to `##chrome_root` alone, so it still
+        // applies to every window opened from inside the `content`
+        // closure, docked or not).
+        let default_style = ui.clone_style();
+        let default_wp = default_style.window_padding();
+        let default_is = default_style.item_spacing();
+        let default_bs = default_style.window_border_size();
+
         let _np = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
-        let _ns = ui.push_style_var(StyleVar::ItemSpacing([0.0, 0.0]));
         let _bs = ui.push_style_var(StyleVar::WindowBorderSize(0.0));
 
         let h = self.config.height;
@@ -282,18 +295,30 @@ impl Chrome {
             .size(display, Condition::Always)
             .flags(root_flags)
             .build(|| {
-                tb_result = render_titlebar(
-                    ui,
-                    &self.config,
-                    &self.title,
-                    &self.palette,
-                    maximized,
-                    self.resize_zone,
-                    os_resizable,
-                );
+                // Zero spacing scoped tightly to just the titlebar strip —
+                // popped before `content` runs, unlike the old blanket
+                // push that lived for the whole closure.
+                {
+                    let _ns = ui.push_style_var(StyleVar::ItemSpacing([0.0, 0.0]));
+                    tb_result = render_titlebar(
+                        ui,
+                        &self.config,
+                        &self.title,
+                        &self.palette,
+                        maximized,
+                        self.resize_zone,
+                        os_resizable,
+                    );
+                }
 
                 ui.set_cursor_pos([0.0, h]);
                 ui.dummy([0.0, 0.0]);
+
+                // Restore the host's real style for its own content — see
+                // the capture above.
+                let _wp_restore = ui.push_style_var(StyleVar::WindowPadding(default_wp));
+                let _is_restore = ui.push_style_var(StyleVar::ItemSpacing(default_is));
+                let _bs_restore = ui.push_style_var(StyleVar::WindowBorderSize(default_bs));
 
                 content(ui, area);
             });
