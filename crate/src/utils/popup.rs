@@ -250,8 +250,11 @@ pub fn action_row_labeled(
     let primary_x = row_origin_x + body_w - ACTION_BTN_WIDTH - EDGE_GAP;
 
     ui.set_cursor_pos_x(cancel_x);
+    // Alt is excluded: Alt+Escape is a legacy Windows window-switch shortcut
+    // (like Alt+Tab), and the still-focused dialog must not swallow it as a
+    // Cancel click while the OS is trying to switch windows.
     let cancel_clicked = ui.button_with_size(cancel_label, [ACTION_BTN_WIDTH, ACTION_BTN_HEIGHT])
-        || ui.is_key_pressed(dear_imgui_rs::Key::Escape);
+        || (!ui.io().key_alt() && ui.is_key_pressed(dear_imgui_rs::Key::Escape));
 
     ui.same_line();
     ui.set_cursor_pos_x(primary_x);

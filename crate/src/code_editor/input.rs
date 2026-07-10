@@ -214,8 +214,10 @@ impl CodeEditor {
             return;
         }
 
-        // Escape closes find panel
-        if ui.is_key_pressed(Key::Escape) && self.find_replace.open {
+        // Escape closes find panel. Alt is excluded — same reasoning as the
+        // Tab guard above: Alt+Escape is a legacy Windows window-switch
+        // shortcut and must not be swallowed as "close the find bar".
+        if !alt && ui.is_key_pressed(Key::Escape) && self.find_replace.open {
             self.find_replace.open = false;
             return;
         }
@@ -333,8 +335,9 @@ impl CodeEditor {
                 return;
             }
 
-            // Escape: clear extra cursors (if any) before other Escape behavior
-            if ui.is_key_pressed(Key::Escape) && self.buffer.has_extra_cursors() {
+            // Escape: clear extra cursors (if any) before other Escape
+            // behavior. Alt excluded for the same Alt+Escape reason as above.
+            if !alt && ui.is_key_pressed(Key::Escape) && self.buffer.has_extra_cursors() {
                 self.buffer.clear_extra_cursors();
                 return;
             }
@@ -391,7 +394,15 @@ impl CodeEditor {
                 return;
             }
 
-            if ui.is_key_pressed(Key::Tab) {
+            // Alt is excluded: Windows delivers WM_SYSKEYDOWN(VK_TAB) to the
+            // still-focused window *before* the OS task-switcher actually
+            // moves focus away, so for at least one frame `io.key_alt()` and
+            // "Tab just pressed" are both true here even though the user is
+            // invoking Alt+Tab, not asking for an indent. Let it fall
+            // through unhandled so the OS shortcut isn't shadowed by a
+            // spurious tab/space insertion (mirrors the `alt` guard already
+            // used above for Alt+Up/Down and below for Ctrl+Alt+L).
+            if !alt && ui.is_key_pressed(Key::Tab) {
                 if let Some(sel) = self.buffer.selection() {
                     let (start, end) = sel.ordered();
                     if start.line != end.line {

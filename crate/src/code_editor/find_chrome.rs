@@ -377,7 +377,9 @@ impl CodeEditor {
                     // Escape closes the bar even while the query field owns
                     // focus (its default state after Ctrl+F) — handle_keyboard
                     // only runs when the editor child is focused, so it can't.
-                    if ui.is_key_pressed(Key::Escape) {
+                    // Alt excluded: Alt+Escape is a legacy Windows window-switch
+                    // shortcut and must not be swallowed as "close the find bar".
+                    if !io.key_alt() && ui.is_key_pressed(Key::Escape) {
                         self.find_replace.open = false;
                     }
                     if ui.is_key_pressed(Key::Enter) || ui.is_key_pressed(Key::DownArrow) {
