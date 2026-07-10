@@ -327,6 +327,16 @@ impl CodeEditor {
             row_h
         };
 
+        // Fixed 20px control height for the whole bar. The input box's
+        // height follows FramePadding.y (font_size + 2*pad_y); every
+        // icon-button gets the same explicit height via `button_with_size`
+        // so tops/bottoms line up instead of the old mismatch (input taller
+        // than `small_button`, which always renders at FramePadding.y = 0).
+        const CONTROL_H: f32 = 20.0;
+        let font_size = unsafe { dear_imgui_rs::sys::igGetFontSize() };
+        let pad_y = ((CONTROL_H - font_size) * 0.5).max(0.0);
+        let _frame_pad = ui.push_style_var(StyleVar::FramePadding([6.0, pad_y]));
+
         // Toolbar background from the theme gutter panel colour (was a
         // hardcoded dark box that clashed on light themes).
         let _bg = ui.push_style_color(StyleColor::ChildBg, self.config.colors.gutter_bg);
@@ -347,6 +357,7 @@ impl CodeEditor {
                 }
 
                 // Search icon + input
+                ui.align_text_to_frame_padding();
                 ui.text_disabled(icons::MAGNIFY);
                 ui.same_line();
                 let query_w = (avail_w * 0.38).clamp(140.0, 360.0);
@@ -382,6 +393,7 @@ impl CodeEditor {
                 ui.same_line();
 
                 // Match counter  "3 / 17"  or "No matches" in red
+                ui.align_text_to_frame_padding();
                 if self.find_replace.query.is_empty() {
                     ui.text_disabled("…");
                 } else if self.find_replace.matches.is_empty() {
@@ -401,7 +413,7 @@ impl CodeEditor {
 
                 // Prev / Next buttons
                 let prev_lbl = format!("{}##fp", icons::ARROW_UP_BOLD);
-                if ui.small_button(&prev_lbl) {
+                if ui.button_with_size(&prev_lbl, [0.0, CONTROL_H]) {
                     self.find_prev();
                 }
                 if ui.is_item_hovered() {
@@ -409,7 +421,7 @@ impl CodeEditor {
                 }
                 ui.same_line();
                 let next_lbl = format!("{}##fn", icons::ARROW_DOWN_BOLD);
-                if ui.small_button(&next_lbl) {
+                if ui.button_with_size(&next_lbl, [0.0, CONTROL_H]) {
                     self.find_next();
                 }
                 if ui.is_item_hovered() {
@@ -426,7 +438,7 @@ impl CodeEditor {
                 };
                 let _c = ui.push_style_color(StyleColor::Button, cs_col);
                 let cs_lbl = format!("{}##fcs", icons::FORMAT_LETTER_CASE);
-                if ui.small_button(&cs_lbl) {
+                if ui.button_with_size(&cs_lbl, [0.0, CONTROL_H]) {
                     self.find_replace.case_sensitive = !self.find_replace.case_sensitive;
                     // Lowercase cache becomes meaningless in case-sensitive
                     // mode; invalidate so we don't hand out stale strings the
@@ -449,7 +461,7 @@ impl CodeEditor {
                 };
                 let _w = ui.push_style_color(StyleColor::Button, ww_col);
                 let ww_lbl = format!("{}##fww", icons::FORMAT_LETTER_MATCHES);
-                if ui.small_button(&ww_lbl) {
+                if ui.button_with_size(&ww_lbl, [0.0, CONTROL_H]) {
                     self.find_replace.whole_word = !self.find_replace.whole_word;
                     self.update_find_matches();
                 }
@@ -462,7 +474,7 @@ impl CodeEditor {
                     ui.same_line();
                     // Toggle replace row
                     let rep_lbl = format!("{}##frep", icons::FIND_REPLACE);
-                    if ui.small_button(&rep_lbl) {
+                    if ui.button_with_size(&rep_lbl, [0.0, CONTROL_H]) {
                         self.find_replace.show_replace = !self.find_replace.show_replace;
                     }
                     if ui.is_item_hovered() {
@@ -474,7 +486,7 @@ impl CodeEditor {
 
                 // Close button
                 let close_lbl = format!("{}##fc", icons::CLOSE_THICK);
-                if ui.small_button(&close_lbl) {
+                if ui.button_with_size(&close_lbl, [0.0, CONTROL_H]) {
                     self.find_replace.open = false;
                 }
                 if ui.is_item_hovered() {
@@ -483,6 +495,7 @@ impl CodeEditor {
 
                 // ── Row 2: Replace (only in writable editors) ────────────
                 if self.find_replace.show_replace && !self.config.read_only {
+                    ui.align_text_to_frame_padding();
                     ui.text_disabled(icons::FIND_REPLACE);
                     ui.same_line();
                     let rep_w = (avail_w * 0.38).clamp(140.0, 360.0);
@@ -492,12 +505,12 @@ impl CodeEditor {
                         .build();
                     ui.same_line();
                     let replace_lbl = format!("{}##r1", s.btn_replace);
-                    if ui.small_button(&replace_lbl) {
+                    if ui.button_with_size(&replace_lbl, [0.0, CONTROL_H]) {
                         self.replace_current();
                     }
                     ui.same_line();
                     let all_lbl = format!("{}##ra", s.btn_replace_all);
-                    if ui.small_button(&all_lbl) {
+                    if ui.button_with_size(&all_lbl, [0.0, CONTROL_H]) {
                         self.replace_all();
                     }
                 }
