@@ -4,6 +4,7 @@
 //! submodule so it reaches the editor's private fields and methods.
 
 use super::*;
+use dear_imgui_rs::{BackendFlags, Context};
 
 #[test]
 fn test_new_editor() {
@@ -670,6 +671,88 @@ fn test_default_config_loads_from_ron() {
     assert!(cfg.insert_spaces);
     assert!(cfg.show_line_numbers);
     assert_eq!(cfg.language, Language::Rust); // set in EditorConfig::default()
+}
+
+// ── Keyboard input regression (Alt+Tab) ──────────────────────────────
+//
+// Dear ImGui allows at most one active `Context` per process, and `cargo
+// test` runs tests on multiple threads by default. This mutex serializes
+// the handful of tests below that create a live headless context — it
+// mirrors the (crate-private, not exported) `lock_context()` guard
+// `dear-imgui-winit`'s own test suite uses for the same reason.
+static IMGUI_CTX_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Prepare a freshly-created headless `Context` so `Context::frame()` can be
+/// called: set a valid display size, advertise texture-request support (so
+/// `NewFrame()` doesn't require a real renderer backend), and build the font
+/// atlas once up front. Also disables ini persistence — otherwise a stray
+/// `imgui.ini` gets written into the working tree on every test run.
+fn prepare_headless_context(ctx: &mut Context) {
+    let _ = ctx.set_ini_filename::<std::path::PathBuf>(None);
+    let io = ctx.io_mut();
+    io.set_display_size([800.0, 600.0]);
+    io.set_backend_flags(io.backend_flags() | BackendFlags::RENDERER_HAS_TEXTURES);
+    ctx.fonts().build();
+}
+
+#[test]
+fn alt_tab_does_not_insert_indent() {
+    // Regression test for the Alt+Tab bug: Windows delivers
+    // WM_SYSKEYDOWN(VK_TAB) to the still-focused window *before* the OS
+    // task-switcher moves focus away, so Dear ImGui's `io` can report
+    // `key_alt() == true` and "Tab just pressed" simultaneously.
+    // `handle_keyboard`'s Tab branch must treat that as the OS shortcut,
+    // not an indent request — see the `!alt` guard in input.rs.
+    let _guard = IMGUI_CTX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut ctx = Context::create();
+    prepare_headless_context(&mut ctx);
+
+    let mut editor = CodeEditor::new("alt_tab_test");
+    editor.set_text("hello");
+
+    {
+        let io = ctx.io_mut();
+        // Alt held (both the synthetic ImGui modifier key and the physical
+        // left-Alt key, mirroring how real backends report it) plus Tab
+        // pressed this frame — the exact `io` state during an Alt+Tab.
+        io.add_key_event(Key::ModAlt, true);
+        io.add_key_event(Key::LeftAlt, true);
+        io.add_key_event(Key::Tab, true);
+    }
+    let ui = ctx.frame();
+    editor.handle_keyboard(ui);
+
+    assert_eq!(
+        editor.get_text(),
+        "hello",
+        "Tab pressed while Alt is held must not insert a tab/space indent"
+    );
+}
+
+#[test]
+fn tab_without_alt_still_indents() {
+    // Control case for the fix above: plain Tab (no Alt) must still
+    // insert an indent — guards against the `!alt` guard accidentally
+    // disabling Tab-indent altogether.
+    let _guard = IMGUI_CTX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut ctx = Context::create();
+    prepare_headless_context(&mut ctx);
+
+    let mut editor = CodeEditor::new("tab_test");
+    editor.set_text("hello");
+
+    {
+        let io = ctx.io_mut();
+        io.add_key_event(Key::Tab, true);
+    }
+    let ui = ctx.frame();
+    editor.handle_keyboard(ui);
+
+    assert_eq!(
+        editor.get_text(),
+        "    hello",
+        "Plain Tab (no Alt) must still insert its normal indent"
+    );
 }
 
 // ── Property-based tests ─────────────────────────────────────────────
