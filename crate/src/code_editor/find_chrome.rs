@@ -327,12 +327,12 @@ impl CodeEditor {
             row_h
         };
 
-        // Fixed 20px control height for the whole bar. The input box's
+        // Fixed 18px control height for the whole bar. The input box's
         // height follows FramePadding.y (font_size + 2*pad_y); every
         // icon-button gets the same explicit height via `button_with_size`
         // so tops/bottoms line up instead of the old mismatch (input taller
         // than `small_button`, which always renders at FramePadding.y = 0).
-        const CONTROL_H: f32 = 20.0;
+        const CONTROL_H: f32 = 18.0;
         let font_size = unsafe { dear_imgui_rs::sys::igGetFontSize() };
         let pad_y = ((CONTROL_H - font_size) * 0.5).max(0.0);
         let _frame_pad = ui.push_style_var(StyleVar::FramePadding([6.0, pad_y]));
