@@ -187,8 +187,65 @@ pub fn inject_ime_commit(io: &mut Io, text: &str) {
 
 // ── Ctrl/Alt shortcut injection (non-Latin layout fix) ────────────────────────
 
-/// If a modifier (Ctrl or Alt) is held AND the physical key maps to a Dear ImGui
-/// [`Key`], inject the key event directly on the physical code.
+/// Returns `true` if `code` is a letter (`KeyA`..`KeyZ`) or top-row digit
+/// (`Digit0`..`Digit9`) — the only physical keys whose *logical* key
+/// changes on a non-Latin/non-US layout (Cyrillic letters, AZERTY's
+/// shifted digit row, …) and therefore need the physical-scan-code
+/// workaround in [`try_inject_ctrl_alt_shortcut`].
+///
+/// Navigation/control keys (Tab, Escape, Enter, arrows, F-keys, numpad, …)
+/// are layout-independent — winit reports the same logical key for them on
+/// every layout — so they must NOT be routed through this override. Doing
+/// so would needlessly bypass the normal, platform-forwarded path for keys
+/// where the workaround provides no benefit, and would silently re-inject
+/// Tab/Escape whenever Ctrl or Alt happens to be held (e.g. during an
+/// Alt+Tab or Alt+Escape window-switch gesture), duplicating a class of bug
+/// that must instead be fixed at the point where those keys are consumed
+/// (see the `alt` guards in `code_editor::input`).
+fn is_layout_sensitive_key(code: KeyCode) -> bool {
+    matches!(
+        code,
+        KeyCode::KeyA
+            | KeyCode::KeyB
+            | KeyCode::KeyC
+            | KeyCode::KeyD
+            | KeyCode::KeyE
+            | KeyCode::KeyF
+            | KeyCode::KeyG
+            | KeyCode::KeyH
+            | KeyCode::KeyI
+            | KeyCode::KeyJ
+            | KeyCode::KeyK
+            | KeyCode::KeyL
+            | KeyCode::KeyM
+            | KeyCode::KeyN
+            | KeyCode::KeyO
+            | KeyCode::KeyP
+            | KeyCode::KeyQ
+            | KeyCode::KeyR
+            | KeyCode::KeyS
+            | KeyCode::KeyT
+            | KeyCode::KeyU
+            | KeyCode::KeyV
+            | KeyCode::KeyW
+            | KeyCode::KeyX
+            | KeyCode::KeyY
+            | KeyCode::KeyZ
+            | KeyCode::Digit0
+            | KeyCode::Digit1
+            | KeyCode::Digit2
+            | KeyCode::Digit3
+            | KeyCode::Digit4
+            | KeyCode::Digit5
+            | KeyCode::Digit6
+            | KeyCode::Digit7
+            | KeyCode::Digit8
+            | KeyCode::Digit9
+    )
+}
+
+/// If a modifier (Ctrl or Alt) is held AND the physical key is a letter or
+/// top-row digit, inject the key event directly on the physical code.
 ///
 /// Solves the non-Latin-layout shortcut problem: on a Russian layout
 /// `dear-imgui-winit` sees the Cyrillic character "с" for the physical `C` key
@@ -197,10 +254,20 @@ pub fn inject_ime_commit(io: &mut Io, text: &str) {
 /// This function injects `Key::C` based on the physical scan code so
 /// `Ctrl+C` (and friends) work on any layout.
 ///
+/// Deliberately scoped to letters/digits only (see
+/// [`is_layout_sensitive_key`]) — navigation/control keys are layout-independent
+/// and must fall through to the normal platform-forwarded path instead.
+///
 /// Call BEFORE forwarding the event to `platform.handle_event(...)`.
 /// Returns `true` if the shortcut was injected; caller must then skip the
 /// platform forward to avoid duplicating the raw character into input fields.
 pub fn try_inject_ctrl_alt_shortcut(io: &mut Io, event: &KeyEvent) -> bool {
+    let PhysicalKey::Code(code) = event.physical_key else {
+        return false;
+    };
+    if !is_layout_sensitive_key(code) {
+        return false;
+    }
     let Some(imgui_key) = physical_key_to_imgui(event.physical_key) else {
         return false;
     };

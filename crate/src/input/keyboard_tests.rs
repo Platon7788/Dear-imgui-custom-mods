@@ -221,6 +221,55 @@ fn unidentified_returns_none() {
     );
 }
 
+/// Letters and top-row digits are the only keys the Ctrl/Alt shortcut
+/// override should touch — everything else must fall through to the
+/// normal platform-forwarded path (see `try_inject_ctrl_alt_shortcut`).
+#[test]
+fn layout_sensitive_key_scoped_to_letters_and_digits() {
+    for code in [
+        KeyCode::KeyA,
+        KeyCode::KeyC,
+        KeyCode::KeyF,
+        KeyCode::KeyZ,
+        KeyCode::Digit0,
+        KeyCode::Digit5,
+        KeyCode::Digit9,
+    ] {
+        assert!(
+            is_layout_sensitive_key(code),
+            "{code:?} should be layout-sensitive"
+        );
+    }
+    for code in [
+        KeyCode::Tab,
+        KeyCode::Escape,
+        KeyCode::Enter,
+        KeyCode::Space,
+        KeyCode::Backspace,
+        KeyCode::ArrowUp,
+        KeyCode::ArrowDown,
+        KeyCode::ArrowLeft,
+        KeyCode::ArrowRight,
+        KeyCode::Home,
+        KeyCode::End,
+        KeyCode::PageUp,
+        KeyCode::PageDown,
+        KeyCode::Insert,
+        KeyCode::Delete,
+        KeyCode::F1,
+        KeyCode::F4,
+        KeyCode::F12,
+        KeyCode::Numpad5,
+        KeyCode::NumpadAdd,
+    ] {
+        assert!(
+            !is_layout_sensitive_key(code),
+            "{code:?} is layout-independent and must not be intercepted \
+             (e.g. Alt+Tab / Alt+Escape / Alt+F4 must reach the OS unhijacked)"
+        );
+    }
+}
+
 #[test]
 fn numpad_control_key_detection() {
     use winit::keyboard::Key as WKey;
