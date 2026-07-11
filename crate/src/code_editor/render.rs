@@ -29,7 +29,16 @@ impl CodeEditor {
         // / selection positions to drift away from rendered glyph positions.
         // Using CalcTextSizeA gives the raw floating-point advance.
         self.char_advance = calc_char_advance(scaled_font_size);
-        self.line_height = unsafe { dear_imgui_rs::sys::igGetTextLineHeight() } + 2.0;
+        // Base line height, plus optional annotation strip (Above/Below).
+        // The strip's px count is added to EVERY line so wrap / scroll /
+        // visual_row math stays linear in `line_height`.
+        let strip = self.config.annotation_strip;
+        self.text_line_height = unsafe { dear_imgui_rs::sys::igGetTextLineHeight() } + 2.0;
+        self.line_height = self.text_line_height + strip.extra_px();
+        // For `Above` we push the token baseline down by the strip px so
+        // the top band is free for captions. For `Off`/`Below` the shift
+        // is zero and the text keeps its normal top position.
+        self.text_baseline_dy = strip.baseline_dy();
 
         // Recompute caches if text changed. Fold regions are only needed
         // when the gutter actually draws the fold markers — skip the full
@@ -292,13 +301,79 @@ impl CodeEditor {
 
                 // ── Error marker tooltips ───────────────────────────────
                 if ui.is_window_hovered() {
-                    let [_mx, my] = ui.io().mouse_pos();
+                    let [mx, my] = ui.io().mouse_pos();
                     let hover_vrow = ((my - win_y) / self.line_height).max(0.0) as usize;
-                    let (hover_line, _) = self.visual_row_to_line(hover_vrow);
+                    let (hover_line, hover_sub) = self.visual_row_to_line(hover_vrow);
+                    let mut shown = false;
                     for marker in &self.error_markers {
                         if marker.line == hover_line {
                             crate::utils::themed_tooltip(ui, || ui.text(&marker.message));
+                            shown = true;
                             break;
+                        }
+                    }
+                    // ── Decoration hover tooltips ───────────────────────
+                    // Only look for a decoration tip when no error tip
+                    // fired — line-level error messages take precedence
+                    // over per-column decoration hovers.
+                    if !shown && self.annotated_lines.contains(&hover_line) {
+                        let (sub_col_start, _) = self.sub_row_col_range(hover_line, hover_sub);
+                        let line_str = self.buffer.line(hover_line);
+                        let base_x = helpers::col_to_x(
+                            line_str,
+                            sub_col_start,
+                            self.char_advance,
+                            self.config.tab_size,
+                        );
+                        // Mouse X relative to the start of this sub-row's text.
+                        let rel_x = mx - text_start_x + base_x;
+                        let hover_col = helpers::x_to_col(
+                            line_str,
+                            rel_x.max(0.0),
+                            self.char_advance,
+                            self.config.tab_size,
+                        );
+                        if let Some(ann) =
+                            self.line_annotations.iter().find(|a| a.line == hover_line)
+                            && let Some(msg) =
+                                decoration::find_hovered_decoration(&ann.decorations, hover_col)
+                        {
+                            // Chrome-aware tooltip:
+                            //   - `tooltip_reserved_bottom` tells us how much
+                            //     bottom-of-viewport the host's statusbar
+                            //     covers (Dear ImGui doesn't know about it).
+                            //   - Width capped at 2/3 of the viewport.
+                            //   - Height cap derived automatically from the
+                            //     side (above / below) the tooltip flips into,
+                            //     so a big packet dump still fits.
+                            //   - Content wrapped in a scrollable child so
+                            //     oversized structures scroll inside the
+                            //     tooltip instead of clipping.
+                            let disp = ui.io().display_size();
+                            let max_w = (disp[0] * 0.66).clamp(360.0, 900.0);
+                            crate::utils::smart_positioned_tooltip(
+                                ui,
+                                [320.0, 0.0],
+                                max_w,
+                                self.config.tooltip_reserved_bottom,
+                                220.0, // min_flip_up_px — below this, flip up
+                                || {
+                                    // The editor's outer `render()` pushes
+                                    // `ChildBg = editor_bg` (opaque) so the
+                                    // main text child paints that colour.
+                                    // Inside the tooltip we want the popup's
+                                    // translucent `PopupBg` to show through
+                                    // uniformly — override `ChildBg` back to
+                                    // fully transparent for this scoped child
+                                    // only. Scoped `_cbg` restores editor_bg
+                                    // when the closure returns.
+                                    let _cbg = ui
+                                        .push_style_color(StyleColor::ChildBg, [0.0, 0.0, 0.0, 0.0]);
+                                    ui.child_window("##deco_tooltip_body")
+                                        .size([0.0, 0.0])
+                                        .build(ui, || ui.text(msg.as_str()));
+                                },
+                            );
                         }
                     }
                 }

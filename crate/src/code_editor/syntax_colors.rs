@@ -138,6 +138,25 @@ pub struct SyntaxColors {
     pub cursor: [f32; 4],
     /// Whitespace marker glyph (mid-dot for spaces, arrow for tabs).
     pub whitespace_marker: [f32; 4],
+    /// Eight semantic slots for line decorations (Wash / Rule / Ghost /
+    /// EndPill). Hosts map their own domain roles onto slots, e.g.
+    /// `S1 = opcode`, `S2 = subop`, `S3 = int`, etc. Each theme paints
+    /// the eight harmoniously; hosts pick by role, not by hex.
+    ///
+    /// `#[serde(default)]` so older serialized `SyntaxColors` still
+    /// deserialize (they get the theme's `default_decoration_slots`).
+    #[serde(default = "SyntaxColors::default_decoration_slots")]
+    pub decoration_slots: [[f32; 4]; 8],
+}
+
+impl SyntaxColors {
+    /// Fallback for older RON configs missing `decoration_slots`. Neutral
+    /// palette — hosts that care about theme fit should pick a preset with
+    /// [`crate::code_editor::EditorConfig::set_theme`] which overwrites
+    /// this field with theme-specific values.
+    pub fn default_decoration_slots() -> [[f32; 4]; 8] {
+        [[0.5, 0.5, 0.5, 1.0]; 8]
+    }
 }
 
 impl Default for SyntaxColors {
@@ -189,6 +208,19 @@ impl SyntaxColors {
             gutter_separator: [0.22, 0.25, 0.30, 1.0],  // SEPARATOR
             cursor: [0.88, 0.90, 0.92, 1.0],            // TEXT_PRIMARY
             whitespace_marker: [0.40, 0.42, 0.48, 1.0], // TEXT_MUTED
+            // 8 harmonious rainbow slots — red / orange / yellow / green /
+            // cyan / blue / purple / pink. Reuse existing NxT palette
+            // values where they already sit at the right hue.
+            decoration_slots: [
+                [0.95, 0.42, 0.47, 1.0], // S1 red    (hex_null)
+                [0.95, 0.65, 0.32, 1.0], // S2 orange
+                [1.00, 0.78, 0.30, 1.0], // S3 yellow (hex_ff)
+                [0.56, 0.84, 0.62, 1.0], // S4 green  (type_name)
+                [0.55, 0.85, 0.90, 1.0], // S5 cyan
+                [0.36, 0.61, 0.84, 1.0], // S6 blue   (keyword)
+                [0.78, 0.58, 0.95, 1.0], // S7 purple (number)
+                [0.90, 0.55, 0.82, 1.0], // S8 pink
+            ],
         }
     }
 
@@ -229,6 +261,18 @@ impl SyntaxColors {
             gutter_separator: [0.243, 0.239, 0.196, 1.0], // #3E3D32
             cursor: [0.973, 0.973, 0.949, 1.0],     // near-white
             whitespace_marker: [0.459, 0.443, 0.369, 1.0], // warm grey
+            // Monokai canonical palette — F92672 / FD971F / E6DB74 /
+            // A6E22E / 66D9EF / softer-blue / AE81FF / plus a pink accent.
+            decoration_slots: [
+                [0.976, 0.149, 0.447, 1.0], // S1 #F92672 magenta-red
+                [0.992, 0.592, 0.122, 1.0], // S2 #FD971F orange
+                [0.902, 0.859, 0.455, 1.0], // S3 #E6DB74 yellow
+                [0.651, 0.886, 0.180, 1.0], // S4 #A6E22E green
+                [0.400, 0.851, 0.937, 1.0], // S5 #66D9EF cyan
+                [0.44, 0.62, 0.82, 1.0],    // S6 softer blue
+                [0.682, 0.506, 1.000, 1.0], // S7 #AE81FF purple
+                [1.000, 0.620, 0.831, 1.0], // S8 pink
+            ],
         }
     }
 
@@ -269,6 +313,18 @@ impl SyntaxColors {
             gutter_separator: [0.220, 0.243, 0.286, 1.0],
             cursor: [0.671, 0.698, 0.749, 1.0], // #ABB2BF
             whitespace_marker: [0.361, 0.388, 0.439, 1.0], // muted grey
+            // Atom One Dark palette — e06c75 / d19a66 / e5c07b / 98c379 /
+            // 56b6c2 / 61afef / c678dd / be5046.
+            decoration_slots: [
+                [0.878, 0.424, 0.459, 1.0], // S1 #e06c75 red
+                [0.820, 0.604, 0.400, 1.0], // S2 #d19a66 orange
+                [0.898, 0.753, 0.482, 1.0], // S3 #e5c07b yellow
+                [0.596, 0.765, 0.475, 1.0], // S4 #98c379 green
+                [0.337, 0.714, 0.761, 1.0], // S5 #56b6c2 cyan
+                [0.380, 0.686, 0.937, 1.0], // S6 #61afef blue
+                [0.776, 0.471, 0.867, 1.0], // S7 #c678dd purple
+                [0.745, 0.314, 0.271, 1.0], // S8 #be5046 dark red
+            ],
         }
     }
 
@@ -309,6 +365,18 @@ impl SyntaxColors {
             gutter_separator: [0.027, 0.212, 0.259, 1.0], // base02
             cursor: [0.514, 0.580, 0.588, 1.0],     // base0
             whitespace_marker: [0.345, 0.431, 0.459, 1.0], // base01
+            // Solarized aurora palette — dc322f / cb4b16 / b58900 / 859900 /
+            // 2aa198 / 268bd2 / 6c71c4 / d33682.
+            decoration_slots: [
+                [0.863, 0.196, 0.184, 1.0], // S1 #dc322f red
+                [0.796, 0.294, 0.086, 1.0], // S2 #cb4b16 orange
+                [0.710, 0.537, 0.000, 1.0], // S3 #b58900 yellow
+                [0.522, 0.600, 0.000, 1.0], // S4 #859900 green
+                [0.165, 0.631, 0.596, 1.0], // S5 #2aa198 cyan
+                [0.149, 0.545, 0.824, 1.0], // S6 #268bd2 blue
+                [0.424, 0.443, 0.769, 1.0], // S7 #6c71c4 violet
+                [0.827, 0.212, 0.510, 1.0], // S8 #d33682 magenta
+            ],
         }
     }
 
@@ -349,6 +417,18 @@ impl SyntaxColors {
             gutter_separator: [0.808, 0.808, 0.694, 1.0],
             cursor: [0.396, 0.482, 0.514, 1.0], // base00
             whitespace_marker: [0.576, 0.631, 0.631, 1.0], // base1
+            // Solarized aurora, slightly darker than the Dark variant so
+            // the colours pop against the light base3 backdrop.
+            decoration_slots: [
+                [0.720, 0.150, 0.130, 1.0], // S1 red   darker
+                [0.660, 0.240, 0.050, 1.0], // S2 orange darker
+                [0.580, 0.440, 0.000, 1.0], // S3 yellow darker
+                [0.420, 0.490, 0.000, 1.0], // S4 green darker
+                [0.110, 0.510, 0.480, 1.0], // S5 cyan  darker
+                [0.110, 0.440, 0.680, 1.0], // S6 blue  darker
+                [0.340, 0.350, 0.620, 1.0], // S7 violet darker
+                [0.680, 0.170, 0.420, 1.0], // S8 magenta darker
+            ],
         }
     }
 
@@ -389,6 +469,18 @@ impl SyntaxColors {
             gutter_separator: [0.882, 0.890, 0.902, 1.0],
             cursor: [0.141, 0.161, 0.180, 1.0], // near-black
             whitespace_marker: [0.729, 0.733, 0.741, 1.0], // #BABBBD
+            // GitHub Light palette — cf222e / c14b13 / a37100 / 1a7f37 /
+            // 0e737b / 0853ad / 7e3cad / be2f8a. Saturated for light bg.
+            decoration_slots: [
+                [0.812, 0.133, 0.180, 1.0], // S1 #cf222e red
+                [0.757, 0.294, 0.075, 1.0], // S2 #c14b13 orange
+                [0.639, 0.443, 0.000, 1.0], // S3 #a37100 yellow
+                [0.102, 0.498, 0.216, 1.0], // S4 #1a7f37 green
+                [0.055, 0.451, 0.482, 1.0], // S5 #0e737b cyan
+                [0.031, 0.325, 0.678, 1.0], // S6 #0853ad blue
+                [0.494, 0.235, 0.678, 1.0], // S7 #7e3cad purple
+                [0.745, 0.184, 0.541, 1.0], // S8 #be2f8a magenta
+            ],
         }
     }
 
@@ -431,6 +523,18 @@ impl SyntaxColors {
             gutter_separator: [0.196, 0.196, 0.275, 1.0],
             cursor: [0.804, 0.839, 0.957, 1.0],
             whitespace_marker: [0.486, 0.510, 0.612, 1.0],
+            // Catppuccin Mocha palette — pink / peach / yellow / green /
+            // teal / blue / mauve / red. Pastel harmony over base #1E1E2E.
+            decoration_slots: [
+                [0.953, 0.545, 0.659, 1.0], // S1 #f38ba8 pink
+                [0.980, 0.702, 0.529, 1.0], // S2 #fab387 peach
+                [0.976, 0.886, 0.686, 1.0], // S3 #f9e2af yellow
+                [0.651, 0.890, 0.631, 1.0], // S4 #a6e3a1 green
+                [0.580, 0.886, 0.835, 1.0], // S5 #94e2d5 teal
+                [0.537, 0.706, 0.980, 1.0], // S6 #89b4fa blue
+                [0.796, 0.651, 0.969, 1.0], // S7 #cba6f7 mauve
+                [0.929, 0.510, 0.647, 1.0], // S8 #eba0ac maroon-pink
+            ],
         }
     }
 
@@ -472,6 +576,18 @@ impl SyntaxColors {
             gutter_separator: [0.298, 0.337, 0.416, 1.0],
             cursor: [0.925, 0.937, 0.957, 1.0],
             whitespace_marker: [0.392, 0.439, 0.522, 1.0],
+            // Nord aurora + frost palette — bf616a / d08770 / ebcb8b /
+            // a3be8c / 88c0d0 / 5e81ac / b48ead / 81a1c1.
+            decoration_slots: [
+                [0.749, 0.380, 0.416, 1.0], // S1 #bf616a red    (aurora)
+                [0.816, 0.529, 0.439, 1.0], // S2 #d08770 orange (aurora)
+                [0.922, 0.796, 0.545, 1.0], // S3 #ebcb8b yellow (aurora)
+                [0.639, 0.745, 0.549, 1.0], // S4 #a3be8c green  (aurora)
+                [0.533, 0.753, 0.816, 1.0], // S5 #88c0d0 cyan   (frost)
+                [0.369, 0.506, 0.675, 1.0], // S6 #5e81ac blue   (frost)
+                [0.706, 0.557, 0.678, 1.0], // S7 #b48ead purple (aurora)
+                [0.506, 0.631, 0.757, 1.0], // S8 #81a1c1 slate  (frost)
+            ],
         }
     }
 }

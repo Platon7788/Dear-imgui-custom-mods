@@ -166,7 +166,14 @@ impl CodeEditor {
                         };
                         let num_x = origin_x + gutter_width
                             - (self.gutter_buf.len() as f32 + right_pad) * self.char_advance;
-                        draw_list.add_text([num_x, y], col32(num_color), self.gutter_buf.as_str());
+                        // Nudge line-number down by the annotation-strip offset
+                        // so it aligns with its line's tokens, not floats up in
+                        // the caption band when Above() is active.
+                        draw_list.add_text(
+                            [num_x, y + self.text_baseline_dy],
+                            col32(num_color),
+                            self.gutter_buf.as_str(),
+                        );
                     }
                 }
 
@@ -229,6 +236,19 @@ impl CodeEditor {
                     col_end,
                 );
 
+                // ── Wash pass (behind tokens) ─────────────────────────
+                // Line-decoration Wash overlays go BEHIND the token text
+                // so the glyphs stay readable on top of the tinted rect.
+                self.draw_wash_pass(
+                    draw_list,
+                    line_idx,
+                    line_str,
+                    text_start_x,
+                    y,
+                    col_start,
+                    col_end,
+                );
+
                 // Gutter separator line (every sub-row)
                 draw_list
                     .add_line(
@@ -264,6 +284,49 @@ impl CodeEditor {
                     self.draw_hex_color_swatches(draw_list, line_str, text_start_x, y);
                 }
 
+                // ── Rule / Ghost / EndPill / Captions ─────────────────
+                // Painted ON TOP of tokens so the semantic hints stay
+                // visible over highlighted syntax. EndPill only on the
+                // last sub-row of the logical line. Captions only when
+                // AnnotationStrip is enabled — early-out inside.
+                self.draw_rule_pass(
+                    draw_list,
+                    line_idx,
+                    line_str,
+                    text_start_x,
+                    y,
+                    col_start,
+                    col_end,
+                );
+                self.draw_ghost_pass(
+                    draw_list,
+                    line_idx,
+                    line_str,
+                    text_start_x,
+                    y,
+                    col_start,
+                    col_end,
+                );
+                if sub_row == sub_row_count - 1 {
+                    self.draw_end_pill_pass(
+                        draw_list,
+                        line_idx,
+                        line_str,
+                        text_start_x,
+                        y,
+                        col_start,
+                    );
+                }
+                self.draw_captions_pass(
+                    draw_list,
+                    line_idx,
+                    line_str,
+                    text_start_x,
+                    y,
+                    col_start,
+                    col_end,
+                );
+
                 // Bracket match highlight (check all sub-rows)
                 if let Some(match_pos) = matching_bracket {
                     let col_start_x =
@@ -283,7 +346,7 @@ impl CodeEditor {
                             - col_start_x;
                         draw_list
                             .add_rect(
-                                [bx, y],
+                                [bx, y + self.text_baseline_dy],
                                 [bx + self.char_advance, y + self.line_height],
                                 col32(self.config.colors.bracket_match_bg),
                             )
@@ -305,7 +368,7 @@ impl CodeEditor {
                             - col_start_x;
                         draw_list
                             .add_rect(
-                                [bx, y],
+                                [bx, y + self.text_baseline_dy],
                                 [bx + self.char_advance, y + self.line_height],
                                 col32(self.config.colors.bracket_match_bg),
                             )
@@ -353,9 +416,12 @@ impl CodeEditor {
                 )
                 - 1.0;
             let cy = win_y + cursor_vrow as f32 * self.line_height;
+            // Cursor spans the text portion of the row — starts below the
+            // annotation strip when Above() is active so it doesn't reach
+            // into the caption band.
             draw_list
                 .add_line(
-                    [cx, cy],
+                    [cx, cy + self.text_baseline_dy],
                     [cx, cy + self.line_height],
                     col32(self.config.colors.cursor),
                 )
@@ -395,7 +461,11 @@ impl CodeEditor {
                 let ey = win_y + ev as f32 * self.line_height;
                 if ey >= origin_y - self.line_height && ey <= origin_y + inner_size[1] {
                     draw_list
-                        .add_line([ex, ey], [ex, ey + self.line_height], extra_cursor_col)
+                        .add_line(
+                            [ex, ey + self.text_baseline_dy],
+                            [ex, ey + self.line_height],
+                            extra_cursor_col,
+                        )
                         .thickness(1.5)
                         .build();
                 }

@@ -136,6 +136,25 @@ pub struct EditorConfig {
     /// `#[serde(default)]` so older `config.ron` files still parse.
     #[serde(default)]
     pub locale: crate::i18n::Locale,
+
+    /// Fixed vertical space reserved on every line for
+    /// [`crate::code_editor::Decoration`] captions.
+    /// [`crate::code_editor::AnnotationStrip::Off`] (default) is a
+    /// zero-cost no-op; setting `Above(px)` or `Below(px)` grows every
+    /// line's height by `px` even for lines without decorations, which
+    /// keeps scroll math and word-wrap invariants constant-time.
+    /// `#[serde(default)]` so pre-existing `config.ron` files still parse.
+    #[serde(default)]
+    pub annotation_strip: crate::code_editor::decoration::AnnotationStrip,
+
+    /// Height (in px) of host chrome pinned below the ImGui viewport
+    /// that Dear ImGui doesn't know about — most commonly the app's
+    /// statusbar. Decoration-hover tooltips subtract this from their
+    /// available-below-cursor space so they never render underneath
+    /// the chrome and get clipped. Default 0 = no reserved band.
+    /// `#[serde(default)]` so older `config.ron` files still parse.
+    #[serde(default)]
+    pub tooltip_reserved_bottom: f32,
 }
 
 impl Default for EditorConfig {

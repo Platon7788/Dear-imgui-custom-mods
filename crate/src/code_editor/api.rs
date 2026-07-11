@@ -113,6 +113,66 @@ impl CodeEditor {
         self.error_markers = markers;
     }
 
+    // ── Line decorations ────────────────────────────────────────────
+
+    /// Replace every line annotation with the supplied set.
+    ///
+    /// Same replace-all semantics as [`Self::set_error_markers`]. Entries
+    /// with an out-of-range [`line`](decoration::LineAnnotation::line)
+    /// are kept in the vec — they simply skip drawing until the buffer
+    /// grows to include them.
+    pub fn set_line_annotations(&mut self, annotations: Vec<decoration::LineAnnotation>) {
+        self.annotated_lines = annotations.iter().map(|a| a.line).collect();
+        self.line_annotations = annotations;
+    }
+
+    /// Update annotations for one line without touching the others.
+    ///
+    /// - `decos` non-empty: upsert an entry for `line`. If one already
+    ///   exists it is replaced; otherwise a new one is appended.
+    /// - `decos` empty: remove the entry for `line` entirely, if any.
+    ///
+    /// This is the hot path for typing feedback — call it from the host's
+    /// preview loop after debouncing keystrokes.
+    pub fn set_line_annotations_for(&mut self, line: usize, decos: Vec<decoration::Decoration>) {
+        if decos.is_empty() {
+            self.line_annotations.retain(|a| a.line != line);
+            self.annotated_lines.remove(&line);
+            return;
+        }
+        if let Some(existing) = self.line_annotations.iter_mut().find(|a| a.line == line) {
+            existing.decorations = decos;
+        } else {
+            self.line_annotations
+                .push(decoration::LineAnnotation::new(line, decos));
+        }
+        self.annotated_lines.insert(line);
+    }
+
+    /// Remove every line annotation. Cheap — clears the vec and the fast
+    /// lookup set.
+    pub fn clear_line_annotations(&mut self) {
+        self.line_annotations.clear();
+        self.annotated_lines.clear();
+    }
+
+    /// Read-only view of every currently-attached annotation. Useful for
+    /// diffing before pushing new state, or for driving a paired
+    /// side-panel view (e.g. a Structure tree).
+    pub fn line_annotations(&self) -> &[decoration::LineAnnotation] {
+        &self.line_annotations
+    }
+
+    /// Move the cursor to the supplied position. Out-of-range values are
+    /// clamped to the buffer's actual line/column extents — never panics.
+    ///
+    /// The matching companion to [`Self::cursor`]. Needed for external
+    /// tools (e.g. a Structure panel) that want to jump the caret onto a
+    /// specific decoration without simulating input.
+    pub fn set_cursor(&mut self, pos: CursorPos) {
+        self.buffer.set_cursor(pos);
+    }
+
     /// Set breakpoints.
     pub fn set_breakpoints(&mut self, bps: Vec<Breakpoint>) {
         self.breakpoint_lines = bps

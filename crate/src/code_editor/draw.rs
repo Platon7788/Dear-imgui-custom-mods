@@ -41,7 +41,11 @@ impl CodeEditor {
             if tok.kind == TokenKind::Whitespace {
                 // Flush current batch before whitespace
                 if !batch_text.is_empty() {
-                    draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
+                    draw_list.add_text(
+                        [batch_start_x, y + self.text_baseline_dy],
+                        col32(batch_color),
+                        &batch_text,
+                    );
                     batch_text.clear();
                 }
 
@@ -54,7 +58,7 @@ impl CodeEditor {
                         };
                         if ch == ' ' {
                             let cx = x + ch_w * 0.5;
-                            let cy = y + self.line_height * 0.5;
+                            let cy = y + self.text_baseline_dy + self.text_line_height * 0.5;
                             draw_list
                                 .add_circle(
                                     [cx, cy],
@@ -64,7 +68,7 @@ impl CodeEditor {
                                 .filled(true)
                                 .build();
                         } else if ch == '\t' {
-                            let arrow_y = y + self.line_height * 0.5;
+                            let arrow_y = y + self.text_baseline_dy + self.text_line_height * 0.5;
                             draw_list
                                 .add_line(
                                     [x + 2.0, arrow_y],
@@ -101,7 +105,11 @@ impl CodeEditor {
 
             // Different color → flush and start new batch
             if !batch_text.is_empty() {
-                draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
+                draw_list.add_text(
+                    [batch_start_x, y + self.text_baseline_dy],
+                    col32(batch_color),
+                    &batch_text,
+                );
             }
 
             batch_text.clear();
@@ -113,7 +121,11 @@ impl CodeEditor {
 
         // Flush final batch
         if !batch_text.is_empty() {
-            draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
+            draw_list.add_text(
+                [batch_start_x, y + self.text_baseline_dy],
+                col32(batch_color),
+                &batch_text,
+            );
         }
     }
 
@@ -164,7 +176,11 @@ impl CodeEditor {
 
             if tok.kind == TokenKind::Whitespace {
                 if !batch_text.is_empty() {
-                    draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
+                    draw_list.add_text(
+                        [batch_start_x, y + self.text_baseline_dy],
+                        col32(batch_color),
+                        &batch_text,
+                    );
                     batch_text.clear();
                 }
                 for ch in text.chars() {
@@ -186,7 +202,11 @@ impl CodeEditor {
             }
 
             if !batch_text.is_empty() {
-                draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
+                draw_list.add_text(
+                    [batch_start_x, y + self.text_baseline_dy],
+                    col32(batch_color),
+                    &batch_text,
+                );
             }
             batch_text.clear();
             batch_text.push_str(text);
@@ -196,7 +216,11 @@ impl CodeEditor {
             x += text.chars().count() as f32 * self.char_advance;
         }
         if !batch_text.is_empty() {
-            draw_list.add_text([batch_start_x, y], col32(batch_color), &batch_text);
+            draw_list.add_text(
+                [batch_start_x, y + self.text_baseline_dy],
+                col32(batch_color),
+                &batch_text,
+            );
         }
     }
 
@@ -210,8 +234,10 @@ impl CodeEditor {
         text_start_x: f32,
         y: f32,
     ) {
-        let swatch = (self.line_height - 4.0).max(6.0);
-        let sy_off = (self.line_height - swatch) / 2.0;
+        let swatch = (self.text_line_height - 4.0).max(6.0);
+        // Centre against the text portion, not the full row, so an annotation
+        // strip doesn't push the swatch off-baseline from the token it refers to.
+        let sy_off = self.text_baseline_dy + (self.text_line_height - swatch) / 2.0;
         let bytes = line_str.as_bytes();
         let len = bytes.len();
         let mut i = 0usize;

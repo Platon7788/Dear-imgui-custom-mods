@@ -15,4 +15,4 @@ pub use popup::{
     action_row, button_with_color, compact_popup_body, danger_button, selected_button,
     success_button, themed_popup_style,
 };
-pub use tooltip::themed_tooltip;
+pub use tooltip::{sized_tooltip, smart_positioned_tooltip, themed_tooltip};

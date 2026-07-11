@@ -703,7 +703,9 @@ fn alt_tab_does_not_insert_indent() {
     // `key_alt() == true` and "Tab just pressed" simultaneously.
     // `handle_keyboard`'s Tab branch must treat that as the OS shortcut,
     // not an indent request — see the `!alt` guard in input.rs.
-    let _guard = IMGUI_CTX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = IMGUI_CTX_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ctx = Context::create();
     prepare_headless_context(&mut ctx);
 
@@ -734,7 +736,9 @@ fn tab_without_alt_still_indents() {
     // Control case for the fix above: plain Tab (no Alt) must still
     // insert an indent — guards against the `!alt` guard accidentally
     // disabling Tab-indent altogether.
-    let _guard = IMGUI_CTX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = IMGUI_CTX_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ctx = Context::create();
     prepare_headless_context(&mut ctx);
 

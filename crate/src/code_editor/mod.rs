@@ -53,6 +53,7 @@
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
 pub mod buffer;
 pub mod config;
+pub mod decoration;
 pub mod font_setup;
 pub mod lang;
 pub mod syntax_colors;
@@ -66,6 +67,9 @@ pub use config::{
     LineState, MDI_FONT_DATA, SyntaxColors, SyntaxDefinition, code_editor_font_ptr,
     install_code_editor_font, install_code_editor_font_ex, install_custom_code_editor_font,
     merge_mdi_icons,
+};
+pub use decoration::{
+    AnnotationStrip, ColorSlot, Decoration, DecorationColor, LineAnnotation, SemanticSlot,
 };
 
 mod find_replace;
@@ -149,8 +153,19 @@ pub struct CodeEditor {
     last_set_scroll_y: f32,
     /// Computed character advance width (monospace).
     char_advance: f32,
-    /// Computed line height.
+    /// Computed line height. Includes `annotation_strip.extra_px()` when
+    /// the strip is enabled — every row is guaranteed the same height.
     line_height: f32,
+    /// Height of just the text portion of a row — excludes the annotation
+    /// strip. Equal to `line_height` when the strip is `Off`.
+    /// Used to position whitespace markers and glyph-sized decorations
+    /// so they still centre on the text, not on the row.
+    text_line_height: f32,
+    /// Vertical offset added to text-baseline Y coordinates (tokens,
+    /// cursor, selection). Non-zero only when
+    /// [`crate::code_editor::AnnotationStrip::Above`] is active — pushes
+    /// text below the caption band so captions have room to render.
+    text_baseline_dy: f32,
     /// Cached visible height of the editor window.
     visible_height: f32,
     /// Cached widest line in pixels (tab-aware) for the horizontal scroll
@@ -194,6 +209,15 @@ pub struct CodeEditor {
     error_lines: HashSet<usize>,
     breakpoints: Vec<Breakpoint>,
     breakpoint_lines: HashSet<usize>,
+
+    // ── Line decorations ─────────────────────────────────────────────
+    /// Semantic annotations attached to specific buffer lines. Passive
+    /// data — hosts push, editor reads during draw.
+    line_annotations: Vec<decoration::LineAnnotation>,
+    /// Fast per-line lookup mirror of `line_annotations` — checked
+    /// during draw to skip lines with no decorations without scanning
+    /// the whole vec.
+    annotated_lines: HashSet<usize>,
 
     // ── Find/Replace ─────────────────────────────────────────────────
     find_replace: FindReplaceState,
@@ -279,6 +303,8 @@ impl CodeEditor {
             last_set_scroll_y: 0.0,
             char_advance: 7.0,
             line_height: 16.0,
+            text_line_height: 16.0,
+            text_baseline_dy: 0.0,
             visible_height: 300.0,
             max_line_width: 0.0,
             max_line_width_version: u64::MAX,
@@ -300,6 +326,9 @@ impl CodeEditor {
             error_lines: HashSet::new(),
             breakpoints: Vec::new(),
             breakpoint_lines: HashSet::new(),
+
+            line_annotations: Vec::new(),
+            annotated_lines: HashSet::new(),
 
             find_replace: FindReplaceState::default(),
 
@@ -330,6 +359,7 @@ impl CodeEditor {
 mod api;
 mod cache;
 mod draw;
+mod draw_decorations;
 mod draw_lines;
 mod find_chrome;
 mod find_glue;
