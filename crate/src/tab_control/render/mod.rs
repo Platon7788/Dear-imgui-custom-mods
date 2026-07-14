@@ -13,7 +13,7 @@
 //! - [`keyboard`] — focus-gated keyboard navigation.
 //! - [`buttons`] — scroll arrows, overflow `…` dropdown, add `+` button and
 //!   the close-confirmation modal.
-//! - [`draw`] — per-tab visual styles (pill / underline / square), tab content
+//! - [`draw`] — per-tab visual styles (sheet / segment / square), tab content
 //!   (icon / title / dot / badge / close) and the parametric close glyph.
 
 mod body;
@@ -55,6 +55,8 @@ pub(super) fn rgba(c: [u8; 3], a: f32) -> [f32; 4] {
 pub(super) const TAB_CLOSE_ANIMATION_SECS: f32 = 0.15;
 /// Duration of the tab open animation, seconds.
 pub(super) const TAB_OPEN_ANIMATION_SECS: f32 = 0.12;
+/// Duration of the inactive-tab hover fade, seconds (each direction).
+pub(super) const HOVER_ANIMATION_SECS: f32 = 0.10;
 /// Maximum time between two clicks to count as a double-click, seconds.
 pub(super) const DOUBLE_CLICK_THRESHOLD_SECS: f64 = 0.35;
 /// Pixels of horizontal mouse movement before a tab drag begins.
@@ -87,6 +89,10 @@ pub(super) struct TabDraw<'a, T: TabItem> {
     pub(super) cfg: &'a TabControlConfig,
     pub(super) is_active: bool,
     pub(super) hovered: bool,
+    /// Hover-fade progress (0..1) for the smooth inactive-background lerp.
+    /// Equals the tab's `hover_anim`; the draw path falls back to the
+    /// `hovered` boolean when `config.animate_hover` is off.
+    pub(super) hover_anim: f32,
     pub(super) close_hovered: bool,
     /// Combined animation alpha (0..1) — fades tab content during open/close.
     pub(super) anim_alpha: u8,
@@ -169,6 +175,23 @@ fn tick_animations<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
         for tab in &mut pc.tabs {
             if tab.open_anim < 1.0 {
                 tab.open_anim = (tab.open_anim + step).min(1.0);
+            }
+        }
+    }
+
+    // Hover fade: ease each tab's `hover_anim` toward its last-hit-test
+    // `hovered` flag. Purely cosmetic — never invalidates layout. Drawing only
+    // consults `hover_anim` when `animate_hover` is on (otherwise it snaps to
+    // the boolean), so gating the tick here keeps idle strips allocation- and
+    // work-free.
+    if pc.config.animate_hover {
+        let step = dt / HOVER_ANIMATION_SECS;
+        for tab in &mut pc.tabs {
+            let target = if tab.hovered { 1.0 } else { 0.0 };
+            if tab.hover_anim < target {
+                tab.hover_anim = (tab.hover_anim + step).min(target);
+            } else if tab.hover_anim > target {
+                tab.hover_anim = (tab.hover_anim - step).max(target);
             }
         }
     }

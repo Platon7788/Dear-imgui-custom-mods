@@ -200,6 +200,13 @@ pub(crate) struct TabEntry<T> {
     pub(crate) request_focus: bool,
     /// Open animation progress: `0.0` → `1.0`. Drives width and alpha.
     pub(crate) open_anim: f32,
+    /// Hover-fade progress: `0.0` (idle) → `1.0` (fully hovered). Eased each
+    /// frame toward [`Self::hovered`] when `config.animate_hover` is on; drives
+    /// the smooth inactive-background lerp in the draw path.
+    pub(crate) hover_anim: f32,
+    /// This tab's hovered state as of the last hit-test pass. Written by
+    /// `fill_hit_scratch`, read by the next frame's `hover_anim` tick.
+    pub(crate) hovered: bool,
 }
 
 // ─── TabControl ─────────────────────────────────────────────────────────────

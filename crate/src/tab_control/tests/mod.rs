@@ -129,5 +129,7 @@ pub(super) fn push_raw(pc: &mut TabControl<Spy>, id: TabId, item: Spy) {
         open: true,
         request_focus: false,
         open_anim: 1.0,
+        hover_anim: 0.0,
+        hovered: false,
     });
 }

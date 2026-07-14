@@ -5,7 +5,7 @@
 //! Demonstrates:
 //!   - Outer TabControl with mixed tab types
 //!   - Nested TabControl inside one of the outer tabs
-//!   - All four styles (Card / Pill / Underline / Square) selectable live
+//!   - All three styles (Sheet / Segment / Square) selectable live
 //!   - Status indicators (Active / Warning / Error / Dirty), badges, icons
 //!   - Drag-reorder, scroll, overflow dropdown, close confirmation
 //!   - Add (+) button hooked up to spawn new tabs
@@ -243,7 +243,7 @@ impl TabItem for SettingsTab {
         ui.spacing();
         ui.text("Tab style (applies to outer & nested):");
         ui.spacing();
-        let labels = ["Pill", "Underline", "Square"];
+        let labels = ["Sheet", "Segment", "Square"];
         for (i, name) in labels.iter().enumerate() {
             if ui.radio_button_bool(name, self.style_idx == i) {
                 self.style_idx = i;
@@ -291,7 +291,7 @@ impl NestedTab {
             "##nested_tabs",
             TabControlConfig {
                 show_add_button: true,
-                tab_style: TabStyle::Underline, // visually distinct from outer
+                tab_style: TabStyle::Segment, // visually distinct from outer Sheet
                 // Disable the inner frame inset — outer already
                 // paints its own frame; cascading another inset on
                 // top steals 4×2 px on each axis from the editor's
@@ -420,7 +420,7 @@ impl Default for DemoApp {
             "##outer_tabs",
             TabControlConfig {
                 show_add_button: true,
-                tab_style: TabStyle::Pill,
+                tab_style: TabStyle::Sheet,
                 // Don't auto-switch on hover — only on click / keyboard.
                 hover_activate_ms: None,
                 // Show a Windows-taskbar-peek-style preview after 450 ms hover.
@@ -505,13 +505,13 @@ fn current_style(tc: &TabControl<OuterTab>) -> TabStyle {
     for (_, item) in tc.iter() {
         if let OuterTab::Settings(s) = item {
             return match s.style_idx {
-                1 => TabStyle::Underline,
+                1 => TabStyle::Segment,
                 2 => TabStyle::Square,
-                _ => TabStyle::Pill,
+                _ => TabStyle::Sheet,
             };
         }
     }
-    TabStyle::Pill
+    TabStyle::Sheet
 }
 
 /// Snapshot of the SettingsTab's frame controls so the host can
@@ -559,9 +559,9 @@ fn propagate_style_to_nested(tc: &mut TabControl<OuterTab>, style: TabStyle) {
             // Keep nested visually distinct from outer if they happen to match.
             n.inner.config.tab_style = if n.inner.config.tab_style == style {
                 match style {
-                    TabStyle::Pill => TabStyle::Underline,
-                    TabStyle::Underline => TabStyle::Square,
-                    TabStyle::Square => TabStyle::Pill,
+                    TabStyle::Sheet => TabStyle::Segment,
+                    TabStyle::Segment => TabStyle::Square,
+                    TabStyle::Square => TabStyle::Sheet,
                 }
             } else {
                 n.inner.config.tab_style

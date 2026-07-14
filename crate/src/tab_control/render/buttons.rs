@@ -52,16 +52,21 @@ pub(super) fn render_scroll_buttons(
     )
     .filled(true)
     .build();
-    let arrow = icons::CHEVRON_LEFT;
-    let asz = calc_text_size(arrow);
-    draw.add_text(
-        [
-            lx + (btn_w - asz[0]) * 0.5,
-            strip_y + (strip_h - asz[1]) * 0.5,
-        ],
-        c32(colors.text, if lhover { 255 } else { 160 }),
-        arrow,
-    );
+    let lcol = c32(colors.text, if lhover { 255 } else { 160 });
+    if cfg.icons_available {
+        let arrow = icons::CHEVRON_LEFT;
+        let asz = calc_text_size(arrow);
+        draw.add_text(
+            [
+                lx + (btn_w - asz[0]) * 0.5,
+                strip_y + (strip_h - asz[1]) * 0.5,
+            ],
+            lcol,
+            arrow,
+        );
+    } else {
+        draw_chevron(&draw, lx + btn_w * 0.5, strip_y + strip_h * 0.5, true, lcol);
+    }
     if accept_clicks && lhover && ui.is_mouse_down(MouseButton::Left) {
         *scroll_offset -= cfg.scroll_speed * ui.io().delta_time();
     }
@@ -85,16 +90,21 @@ pub(super) fn render_scroll_buttons(
     )
     .filled(true)
     .build();
-    let arrow_r = icons::CHEVRON_RIGHT;
-    let arsz = calc_text_size(arrow_r);
-    draw.add_text(
-        [
-            rx + (btn_w - arsz[0]) * 0.5,
-            strip_y + (strip_h - arsz[1]) * 0.5,
-        ],
-        c32(colors.text, if rhover { 255 } else { 160 }),
-        arrow_r,
-    );
+    let rcol = c32(colors.text, if rhover { 255 } else { 160 });
+    if cfg.icons_available {
+        let arrow_r = icons::CHEVRON_RIGHT;
+        let arsz = calc_text_size(arrow_r);
+        draw.add_text(
+            [
+                rx + (btn_w - arsz[0]) * 0.5,
+                strip_y + (strip_h - arsz[1]) * 0.5,
+            ],
+            rcol,
+            arrow_r,
+        );
+    } else {
+        draw_chevron(&draw, rx + btn_w * 0.5, strip_y + strip_h * 0.5, false, rcol);
+    }
     if accept_clicks && rhover && ui.is_mouse_down(MouseButton::Left) {
         *scroll_offset += cfg.scroll_speed * ui.io().delta_time();
     }
@@ -128,13 +138,18 @@ pub(super) fn render_overflow_button(
         .rounding(cfg.tab_rounding * 0.5)
         .filled(true)
         .build();
-    let dots = icons::DOTS_HORIZONTAL;
-    let dsz = calc_text_size(dots);
-    draw.add_text(
-        [x + (w - dsz[0]) * 0.5, y0 + (cfg.tab_height - dsz[1]) * 0.5],
-        c32(colors.text, if hovered { 255 } else { 170 }),
-        dots,
-    );
+    let dcol = c32(colors.text, if hovered { 255 } else { 170 });
+    if cfg.icons_available {
+        let dots = icons::DOTS_HORIZONTAL;
+        let dsz = calc_text_size(dots);
+        draw.add_text(
+            [x + (w - dsz[0]) * 0.5, y0 + (cfg.tab_height - dsz[1]) * 0.5],
+            dcol,
+            dots,
+        );
+    } else {
+        draw_dots(&draw, x + w * 0.5, y0 + cfg.tab_height * 0.5, dcol);
+    }
 
     if hovered
         && !ui.is_mouse_clicked(MouseButton::Left)
@@ -207,13 +222,18 @@ pub(super) fn render_add_button(
         .rounding(cfg.tab_rounding * 0.5)
         .filled(true)
         .build();
-    let plus = icons::PLUS;
-    let psz = calc_text_size(plus);
-    draw.add_text(
-        [x + (w - psz[0]) * 0.5, y0 + (cfg.tab_height - psz[1]) * 0.5],
-        c32(colors.text, if hovered { 255 } else { 170 }),
-        plus,
-    );
+    let pcol = c32(colors.text, if hovered { 255 } else { 170 });
+    if cfg.icons_available {
+        let plus = icons::PLUS;
+        let psz = calc_text_size(plus);
+        draw.add_text(
+            [x + (w - psz[0]) * 0.5, y0 + (cfg.tab_height - psz[1]) * 0.5],
+            pcol,
+            plus,
+        );
+    } else {
+        draw_plus(&draw, x + w * 0.5, y0 + cfg.tab_height * 0.5, 4.0, pcol);
+    }
     if hovered && !ui.is_mouse_clicked(MouseButton::Left) {
         crate::utils::themed_tooltip(ui, || ui.text(&cfg.strings.add_tab));
     }
@@ -244,7 +264,12 @@ pub(super) fn render_close_popup<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
         let is_dirty = pending.is_some_and(|t| t.item.status() == TabStatus::Dirty);
 
         pc.fmt_buf.clear();
-        let _ = write!(pc.fmt_buf, "{} {}", icons::ALERT, &strings.close);
+        // Gate the MDI alert glyph on the icon font — it renders as a tofu box
+        // otherwise, mirroring the strip's own icon gating. The label always shows.
+        if pc.config.icons_available {
+            let _ = write!(pc.fmt_buf, "{} ", icons::ALERT);
+        }
+        let _ = write!(pc.fmt_buf, "{}", strings.close);
         ui.text(&pc.fmt_buf);
         ui.spacing();
         ui.text_colored(rgba(pc.config.colors.text, 1.0), name);
@@ -295,4 +320,47 @@ pub(super) fn render_close_popup<T: TabItem>(pc: &mut TabControl<T>, ui: &Ui) {
     if should_clear {
         pc.pending_close = None;
     }
+}
+
+// ─── Vector side-button glyphs (font-free fallback) ─────────────────────────
+//
+// Drawn purely through the draw list when the MDI icon font isn't registered
+// (`icons_available == false`), so the scroll arrows, overflow `…` and add `+`
+// never render as tofu boxes. Mirrors `draw::draw_close_glyph`, which already
+// renders the close cross without a font.
+
+/// Chevron (`‹` / `›`) centered at `(cx, cy)`.
+fn draw_chevron(draw: &dear_imgui_rs::DrawListMut<'_>, cx: f32, cy: f32, left: bool, col: u32) {
+    let half = 4.0; // half-height of the chevron
+    let w = 3.0; // horizontal spread
+    let x_far = if left { cx + w * 0.5 } else { cx - w * 0.5 };
+    let x_near = if left { cx - w * 0.5 } else { cx + w * 0.5 };
+    draw.add_line([x_far, cy - half], [x_near, cy], col)
+        .thickness(1.6)
+        .build();
+    draw.add_line([x_near, cy], [x_far, cy + half], col)
+        .thickness(1.6)
+        .build();
+}
+
+/// Three horizontal dots (`…`) centered at `(cx, cy)`.
+fn draw_dots(draw: &dear_imgui_rs::DrawListMut<'_>, cx: f32, cy: f32, col: u32) {
+    let r = 1.4;
+    for dx in [-4.0_f32, 0.0, 4.0] {
+        let x = cx + dx;
+        draw.add_rect([x - r, cy - r], [x + r, cy + r], col)
+            .rounding(r)
+            .filled(true)
+            .build();
+    }
+}
+
+/// Plus sign (`+`) centered at `(cx, cy)`, arms of half-length `half`.
+fn draw_plus(draw: &dear_imgui_rs::DrawListMut<'_>, cx: f32, cy: f32, half: f32, col: u32) {
+    draw.add_line([cx, cy - half], [cx, cy + half], col)
+        .thickness(1.6)
+        .build();
+    draw.add_line([cx - half, cy], [cx + half, cy], col)
+        .thickness(1.6)
+        .build();
 }

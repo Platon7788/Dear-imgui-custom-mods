@@ -98,12 +98,18 @@ pub enum CloseGlyph {
     Default, Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub enum TabStyle {
-    /// Fully rounded pill (default).
+    /// **Default.** Top-rounded tile with a thin accent bar along the top
+    /// edge. The active tab drops its bottom border and extends down over
+    /// the strip's separator so it visually merges into the body — the
+    /// browser / IDE "this pane is selected" cue. Inactive tabs sit as
+    /// flat top-rounded chips above the separator.
     #[default]
-    Pill,
-    /// Flat with a thick accent bar at the bottom (Material-style).
-    Underline,
-    /// Rectangular with small top rounding.
+    Sheet,
+    /// Segmented-control look: every tab sits in a continuous recessed
+    /// rounded track; the active tab is a raised, filled segment with a
+    /// soft accent outline. Best for compact strips with a handful of tabs.
+    Segment,
+    /// Rectangular with small top rounding and a bottom accent underline.
     Square,
 }
 

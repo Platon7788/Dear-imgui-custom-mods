@@ -40,6 +40,8 @@ impl<T: TabItem> TabControl<T> {
             open: true,
             request_focus: false,
             open_anim,
+            hover_anim: 0.0,
+            hovered: false,
         };
 
         // Maintain "pinned tabs occupy a contiguous prefix" invariant.

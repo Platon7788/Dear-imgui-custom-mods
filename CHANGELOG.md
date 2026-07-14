@@ -4,6 +4,14 @@
 
 ### Removed (BREAKING)
 
+- **`tab_control`: `TabStyle::Pill` and `TabStyle::Underline` removed.** The
+  fully-rounded stadium `Pill` read as a row of lozenges rather than tabs, and
+  `Underline` was redundant. `TabStyle` is now `{ Sheet (default), Segment,
+  Square }`. Migrate `Pill`/`Underline` references to `Sheet` (top-rounded tile
+  that merges into the body), `Segment` (recessed track), or `Square`. The RON
+  default flipped from `tab_style: Pill` to `tab_style: Sheet`, so saved configs
+  naming `Pill` or `Underline` must be updated.
+
 - **Theme palette set reduced to `Dark` + `Light`.** The global `Theme` enum
   dropped `Midnight`, `Solarized`, `Monokai`, `Catppuccin`, and `Nord` (and
   their palette files). `Theme::ALL` is now `[Dark, Light]`; all `*_colors()`
@@ -36,6 +44,15 @@
   unaffected; only code that named these fields explicitly needs editing.
 
 ### Added
+
+- **`tab_control`: two new tab styles — `TabStyle::Sheet` (default) and
+  `TabStyle::Segment`.** `Sheet` is a top-rounded tile with a thin top accent
+  bar whose active tab drops its bottom border and merges into the body pane
+  (browser / IDE cue). `Segment` renders the tabs inside a continuous recessed
+  track with the active tab as a raised, accent-outlined segment. Both draw
+  purely through the draw list, so they work with `icons_available = false`.
+  Together with `Square` they are the full style set after `Pill` and `Underline`
+  were retired. `demo_tab_control` switches between all three live.
 
 - **`Chrome::theme()` getter** — symmetric with `set_theme`/`with_theme`;
   lets hosts query the active titlebar theme (the field was previously

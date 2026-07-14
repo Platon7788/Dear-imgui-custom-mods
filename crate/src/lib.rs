@@ -15,7 +15,7 @@
 //! - [`virtual_tree`] — Virtualized tree-table for 500k+ nodes with drag-drop, filter,
 //!   tree lines, keyboard navigation
 //! - [`tab_control`] — Modern tab controller (DevExpress XtraTabControl-inspired). Pure
-//!   tab strip with 3 styles (Pill, Underline, Square), pinned tabs, drag-reorder, scroll,
+//!   tab strip with 3 styles (Sheet, Segment, Square), pinned tabs, drag-reorder, scroll,
 //!   overflow dropdown, hover-preview thumbnail, badges, status indicators, dirty state,
 //!   keyboard shortcuts (Ctrl+T/W/Tab/1..9), single-pass hit-test, zero per-frame allocs
 //! - [`node_graph`] — Visual node graph editor with pan/zoom, bezier wires, pin shapes,

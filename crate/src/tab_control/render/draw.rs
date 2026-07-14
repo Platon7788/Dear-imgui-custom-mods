@@ -1,4 +1,4 @@
-//! Per-tab visual rendering: style dispatch (pill / underline / square), tab
+//! Per-tab visual rendering: style dispatch (sheet / segment / square), tab
 //! content (icon / title / status dot / badge / close button) and the
 //! parametric close glyph.
 //!
@@ -21,21 +21,77 @@ use super::{CLOSE_HIT_PAD, TabDraw};
 
 pub(super) fn draw_tab<T: TabItem>(ctx: &TabDraw<'_, T>) {
     match ctx.cfg.tab_style {
-        TabStyle::Pill => draw_tab_pill(ctx),
-        TabStyle::Underline => draw_tab_underline(ctx),
+        TabStyle::Sheet => draw_tab_sheet(ctx),
+        TabStyle::Segment => draw_tab_segment(ctx),
         TabStyle::Square => draw_tab_square(ctx),
     }
     draw_tab_content(ctx);
 }
 
-// ─── Pill style ────────────────────────────────────────────────────────────
+/// Scale an RGB triple toward black by `f` (0..1). Used for the recessed
+/// Segment track, which reads as "sunk below the strip surface".
+#[inline]
+fn darken(c: [u8; 3], f: f32) -> [u8; 3] {
+    [
+        (c[0] as f32 * f) as u8,
+        (c[1] as f32 * f) as u8,
+        (c[2] as f32 * f) as u8,
+    ]
+}
 
-fn draw_tab_pill<T: TabItem>(ctx: &TabDraw<'_, T>) {
+/// Pick near-black or white badge text for legibility against `bg`, by
+/// perceived luminance (Rec. 601 weights). The old fixed light `colors.text`
+/// was near-invisible on a light badge fill.
+#[inline]
+fn badge_text_color(bg: [u8; 3]) -> [u8; 3] {
+    let lum = 0.299 * bg[0] as f32 + 0.587 * bg[1] as f32 + 0.114 * bg[2] as f32;
+    if lum > 150.0 {
+        [0x1a, 0x1d, 0x23]
+    } else {
+        [0xff, 0xff, 0xff]
+    }
+}
+
+/// Linear RGB interpolation, `t = 0` → `a`, `t = 1` → `b`.
+#[inline]
+fn lerp_rgb(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
+    let t = t.clamp(0.0, 1.0);
+    [
+        (a[0] as f32 + (b[0] as f32 - a[0] as f32) * t) as u8,
+        (a[1] as f32 + (b[1] as f32 - a[1] as f32) * t) as u8,
+        (a[2] as f32 + (b[2] as f32 - a[2] as f32) * t) as u8,
+    ]
+}
+
+/// Resolve the hover-blend factor for a tab: the eased `hover_anim` when
+/// `animate_hover` is on, else a hard 0/1 from the boolean `hovered` (legacy
+/// instant swap).
+#[inline]
+fn hover_factor(cfg: &TabControlConfig, hovered: bool, hover_anim: f32) -> f32 {
+    if cfg.animate_hover {
+        hover_anim.clamp(0.0, 1.0)
+    } else if hovered {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+// ─── Sheet style (default) ──────────────────────────────────────────────────
+//
+// Top-rounded tile. The active tab is filled with `body_bg` and extends down
+// past its own bottom edge to the strip separator (which sits `strip_padding_v`
+// below), painting over the separator so the tab reads as merged into the body
+// pane. A thin accent bar rides the flat part of the top edge. Inactive tabs
+// are flat top-rounded chips in `tab_bg` / `tab_hover`, floating above the rule.
+
+fn draw_tab_sheet<T: TabItem>(ctx: &TabDraw<'_, T>) {
     let TabDraw {
         draw,
         cfg,
         is_active,
         hovered,
+        hover_anim,
         accent,
         x0,
         y0,
@@ -44,57 +100,97 @@ fn draw_tab_pill<T: TabItem>(ctx: &TabDraw<'_, T>) {
         ..
     } = *ctx;
     let colors = &cfg.colors;
-    let r = (y1 - y0) * 0.5; // fully rounded
+    let r = cfg.tab_rounding.min((y1 - y0) * 0.5).max(0.0);
 
-    let bg = if is_active {
-        colors.tab_active
-    } else if hovered {
-        colors.tab_hover
+    // Active tab merges into the body: fill it with `body_bg` and drop the
+    // bottom edge down to the strip separator (= y1 + strip_padding_v), over-
+    // painting the rule so no line separates the tab from the pane below.
+    let bottom = if is_active {
+        y1 + cfg.strip_padding_v
     } else {
-        colors.tab_bg
+        y1
     };
-    draw.add_rect([x0, y0], [x1, y1], c32(bg, 255))
+    let bg = if is_active {
+        colors.body_bg
+    } else {
+        lerp_rgb(
+            colors.tab_bg,
+            colors.tab_hover,
+            hover_factor(cfg, hovered, hover_anim),
+        )
+    };
+
+    // Top-rounded body: a rounded rect, then a square rect overpainting the
+    // lower half so only the top corners keep their radius.
+    draw.add_rect([x0, y0], [x1, bottom], c32(bg, 255))
+        .rounding(r)
+        .filled(true)
+        .build();
+    draw.add_rect([x0, y0 + r], [x1, bottom], c32(bg, 255))
+        .filled(true)
+        .build();
+
+    // Thin accent bar on the flat part of the top edge (inset past the rounded
+    // corners so it never pokes outside them).
+    if is_active {
+        let inset = r.min((x1 - x0) * 0.5 - 1.0).max(0.0);
+        draw.add_rect([x0 + inset, y0], [x1 - inset, y0 + 2.0], c32(accent, 255))
+            .filled(true)
+            .build();
+    }
+}
+
+// ─── Segment style ──────────────────────────────────────────────────────────
+//
+// Segmented-control look. Every tab paints a recessed track cell that extends
+// `tab_gap / 2` into the gaps on both sides, so adjacent cells meet and read as
+// one continuous sunken track. The active tab draws a raised `tab_active` fill
+// with a soft accent outline on top.
+
+fn draw_tab_segment<T: TabItem>(ctx: &TabDraw<'_, T>) {
+    let TabDraw {
+        draw,
+        cfg,
+        is_active,
+        hovered,
+        hover_anim,
+        accent,
+        x0,
+        y0,
+        x1,
+        y1,
+        ..
+    } = *ctx;
+    let colors = &cfg.colors;
+    let r = cfg.tab_rounding.min((y1 - y0) * 0.5).max(0.0);
+    let ext = cfg.tab_gap * 0.5;
+
+    // Continuous recessed track (extends into the inter-tab gaps).
+    let track = darken(colors.strip_bg, 0.72);
+    draw.add_rect([x0 - ext, y0], [x1 + ext, y1], c32(track, 255))
         .rounding(r)
         .filled(true)
         .build();
 
     if is_active {
-        draw.add_rect([x0, y0], [x1, y1], c32(accent, 200))
+        draw.add_rect([x0, y0], [x1, y1], c32(colors.tab_active, 255))
+            .rounding(r)
+            .filled(true)
+            .build();
+        draw.add_rect([x0, y0], [x1, y1], c32(accent, 160))
             .rounding(r)
             .filled(false)
-            .thickness(1.5)
+            .thickness(1.0)
             .build();
-    }
-}
-
-// ─── Underline style ───────────────────────────────────────────────────────
-
-fn draw_tab_underline<T: TabItem>(ctx: &TabDraw<'_, T>) {
-    let TabDraw {
-        draw,
-        cfg,
-        is_active,
-        hovered,
-        accent,
-        x0,
-        y0,
-        x1,
-        y1,
-        ..
-    } = *ctx;
-    let colors = &cfg.colors;
-
-    if hovered && !is_active {
-        draw.add_rect([x0, y0 + 1.0], [x1, y1 - 1.0], c32(colors.tab_hover, 130))
-            .rounding(2.0)
-            .filled(true)
-            .build();
-    }
-    if is_active {
-        draw.add_rect([x0 + 2.0, y1 - 3.0], [x1 - 2.0, y1], c32(accent, 255))
-            .rounding(1.5)
-            .filled(true)
-            .build();
+    } else {
+        // Hover overlay fades in with the hover factor.
+        let hf = hover_factor(cfg, hovered, hover_anim);
+        if hf > 0.0 {
+            draw.add_rect([x0, y0], [x1, y1], c32(colors.tab_hover, (150.0 * hf) as u8))
+                .rounding(r)
+                .filled(true)
+                .build();
+        }
     }
 }
 
@@ -106,6 +202,7 @@ fn draw_tab_square<T: TabItem>(ctx: &TabDraw<'_, T>) {
         cfg,
         is_active,
         hovered,
+        hover_anim,
         accent,
         x0,
         y0,
@@ -116,10 +213,12 @@ fn draw_tab_square<T: TabItem>(ctx: &TabDraw<'_, T>) {
     let colors = &cfg.colors;
     let bg = if is_active {
         colors.tab_active
-    } else if hovered {
-        colors.tab_hover
     } else {
-        colors.tab_bg
+        lerp_rgb(
+            colors.tab_bg,
+            colors.tab_hover,
+            hover_factor(cfg, hovered, hover_anim),
+        )
     };
     draw.add_rect([x0, y0], [x1, y1 - 2.0], c32(bg, 255))
         .rounding(3.0)
@@ -294,9 +393,11 @@ fn draw_tab_content<T: TabItem>(ctx: &TabDraw<'_, T>) {
             .rounding(4.0)
             .filled(true)
             .build();
+        // Badge text picks black or white by the fill's luminance — the
+        // fixed light `colors.text` was near-invisible on light badges.
         draw.add_text(
             [bx + BADGE_INNER_PAD_X, by + BADGE_INNER_PAD_Y],
-            c32(colors.text, a(255)),
+            c32(badge_text_color(badge.color), a(255)),
             &badge.text,
         );
     }

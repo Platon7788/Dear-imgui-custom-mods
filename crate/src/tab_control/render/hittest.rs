@@ -99,6 +99,14 @@ pub(super) fn fill_hit_scratch<T: TabItem>(
         pc.hit_scratch.push((i, x0, x1, tw, hovered, close_hit));
         tx += tw + cfg.tab_gap;
     }
+
+    // Publish each tab's hovered state (from this frame's geometry) back onto
+    // the entry so the next frame's `hover_anim` tick has a target to ease
+    // toward. `hit_scratch` and `tabs` are disjoint fields, so this write-back
+    // doesn't conflict with the `&pc.config`/`&pc.tabs` reads above.
+    for &(idx, _, _, _, hovered, _) in &pc.hit_scratch {
+        pc.tabs[idx].hovered = hovered;
+    }
 }
 
 #[inline]

@@ -20,7 +20,7 @@
     preview_font_scale: 0.85,
     close_glyph: Cross,
     pinned_tab_width: 36.0,
-    tab_style: Pill,
+    tab_style: Sheet,
     show_tab_underline: true,
     tab_height: 26.0,
     tab_rounding: 6.0,
@@ -36,6 +36,7 @@
     smooth_scroll: true,
     animate_open: true,
     animate_close: true,
+    animate_hover: true,
     show_empty_placeholder: true,
     show_status_dot: true,
     colors: (

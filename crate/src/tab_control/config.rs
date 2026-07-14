@@ -122,6 +122,13 @@ pub struct TabControlConfig {
     pub animate_open: bool,
     /// Animate closing tabs (shrink to 0 then remove).
     pub animate_close: bool,
+    /// Smoothly fade an inactive tab's background between its idle and
+    /// hovered colours instead of switching instantly. When `false`, hover
+    /// is an immediate swap (legacy behaviour). Newer field — defaults to
+    /// `false` for saved RON configs that predate it; the shipped
+    /// `config.ron` sets it `true`.
+    #[serde(default)]
+    pub animate_hover: bool,
     /// Show a centered placeholder when there are no tabs.
     pub show_empty_placeholder: bool,
     /// Show the small per-tab status indicator dot. When `false`, the dot
