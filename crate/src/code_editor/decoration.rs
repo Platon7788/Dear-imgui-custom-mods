@@ -267,6 +267,130 @@ pub enum Decoration {
         col_len: usize,
         hover: String,
     },
+    /// Same footprint as [`HoverZone`] (invisible, column-scoped), but
+    /// the tooltip content is a structured [`RichHoverPayload`] rendered
+    /// with real ImGui widgets — separators, a table, per-cell colors —
+    /// instead of a flat `String`. Use this when a host wants a rich
+    /// tooltip whose typography benefits from real widgets (e.g. NxT's
+    /// packet-detail tooltip).
+    HoverZoneRich {
+        col_start: usize,
+        col_len: usize,
+        payload: RichHoverPayload,
+    },
+}
+
+// ─── Rich hover payload ─────────────────────────────────────────────────────
+
+/// Column alignment for [`RichHoverStructure`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RichHoverAlign {
+    Left,
+    Right,
+}
+
+/// Header of a [`RichHoverPayload`]: `[title]  [chips]  [trailing]`
+/// laid out horizontally with the chips as inline `key · value` pairs
+/// between the title and the trailing note. All strings are rendered
+/// with the current mono font.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RichHoverHeader {
+    /// Left-side title. Rendered with the default text color.
+    pub title: String,
+    /// Inline `(label, value)` chips shown between title and trailing.
+    /// Rendered as `label · value` with the label dim and the value in
+    /// the default text color.
+    pub chips: Vec<(String, String)>,
+    /// Right-aligned trailing note (e.g. size in bytes). Rendered dim.
+    pub trailing: String,
+}
+
+/// Middle section of a [`RichHoverPayload`]: a labeled block of
+/// key-value rows. Rendered with a colored arrow prefix, the label in
+/// bold-ish default color, and the rows indented as a two-column grid.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RichHoverFocus {
+    /// Focus block label (e.g. the currently-focused field name).
+    pub label: String,
+    /// `(key, value)` rows shown under the label.
+    pub rows: Vec<(String, String)>,
+}
+
+/// A single cell in [`RichHoverStructure`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RichHoverCell {
+    pub text: String,
+    /// Optional per-cell text color override. `None` uses the default.
+    pub color: Option<[f32; 4]>,
+}
+
+impl RichHoverCell {
+    /// Plain cell with default color.
+    pub fn plain(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            color: None,
+        }
+    }
+    /// Cell with an explicit color.
+    pub fn colored(text: impl Into<String>, color: [f32; 4]) -> Self {
+        Self {
+            text: text.into(),
+            color: Some(color),
+        }
+    }
+}
+
+/// A single row in [`RichHoverStructure`]. `cells.len()` must equal
+/// `structure.columns.len()`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RichHoverRow {
+    pub cells: Vec<RichHoverCell>,
+    /// When `true`, dim the whole row (e.g. for `unknown` trailing bytes).
+    pub muted: bool,
+}
+
+/// One column header + alignment in [`RichHoverStructure`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct RichHoverColumn {
+    pub name: String,
+    pub align: RichHoverAlign,
+}
+
+/// Bottom section of a [`RichHoverPayload`]: a titled table with a
+/// header row, N columns, and per-row `focused_row` highlight.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RichHoverStructure {
+    /// Table title (e.g. "Full structure"). Empty string = no title row.
+    pub title: String,
+    pub columns: Vec<RichHoverColumn>,
+    pub rows: Vec<RichHoverRow>,
+    /// Index of the row that matches the currently-hovered decoration.
+    /// The renderer highlights that row with a subtle background tint.
+    pub focused_row: Option<usize>,
+}
+
+/// Structured payload carried by [`Decoration::HoverZoneRich`]. Each
+/// section is optional-by-emptiness: a payload with an empty focus
+/// simply skips the middle section, an empty `structure.rows` skips the
+/// table, and so on. The renderer draws one `ui.separator()` between
+/// non-empty sections.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RichHoverPayload {
+    pub header: RichHoverHeader,
+    pub focus: RichHoverFocus,
+    pub structure: RichHoverStructure,
+}
+
+/// Result of resolving a hovered decoration to its tooltip content.
+///
+/// The editor's hover pass returns this so the renderer can dispatch
+/// on payload kind — plain text for [`Decoration::HoverZone`] / `Wash` /
+/// `Rule`, structured widgets for [`Decoration::HoverZoneRich`].
+#[derive(Debug, PartialEq)]
+pub enum HoverContent<'a> {
+    Text(&'a str),
+    Rich(&'a RichHoverPayload),
 }
 
 // ─── Geometry helpers ───────────────────────────────────────────────────────
@@ -300,20 +424,21 @@ pub(super) fn clip_range_to_sub_row(
     Some((visible_start, visible_end - visible_start))
 }
 
-/// Find the first `Wash` / `Rule` / `HoverZone` decoration whose column
-/// range covers `hover_col` AND carries hover text. Returns a reference
-/// to the tooltip string, or `None` if nothing matches.
+/// Find the first `Wash` / `Rule` / `HoverZone` / `HoverZoneRich`
+/// decoration whose column range covers `hover_col` AND carries hover
+/// content. Returns a [`HoverContent`] borrow, or `None` if nothing
+/// matches.
 ///
-/// Vec-order wins on overlaps — first entry with hover text takes the
-/// tip. Ghost and EndPill are intentionally skipped: Ghost has no hover
-/// field by design, and EndPill uses pixel hit-testing (its position
-/// depends on `line_str`, not on column ranges).
+/// Vec-order wins on overlaps — first entry with hover content takes
+/// the tip. Ghost and EndPill are intentionally skipped: Ghost has no
+/// hover field by design, and EndPill uses pixel hit-testing (its
+/// position depends on `line_str`, not on column ranges).
 pub(super) fn find_hovered_decoration(
     decorations: &[Decoration],
     hover_col: usize,
-) -> Option<&String> {
+) -> Option<HoverContent<'_>> {
     for deco in decorations {
-        let (dc, dlen, hover) = match deco {
+        let (dc, dlen, content) = match deco {
             Decoration::Wash {
                 col_start,
                 col_len,
@@ -325,19 +450,24 @@ pub(super) fn find_hovered_decoration(
                 col_len,
                 hover: Some(h),
                 ..
-            } => (*col_start, *col_len, h),
+            } => (*col_start, *col_len, HoverContent::Text(h.as_str())),
             Decoration::HoverZone {
                 col_start,
                 col_len,
                 hover,
-            } => (*col_start, *col_len, hover),
+            } => (*col_start, *col_len, HoverContent::Text(hover.as_str())),
+            Decoration::HoverZoneRich {
+                col_start,
+                col_len,
+                payload,
+            } => (*col_start, *col_len, HoverContent::Rich(payload)),
             _ => continue,
         };
         if dlen == 0 {
             continue;
         }
         if hover_col >= dc && hover_col < dc + dlen {
-            return Some(hover);
+            return Some(content);
         }
     }
     None
@@ -533,8 +663,8 @@ mod tests {
     fn hover_returns_matching_wash_text() {
         let decos = vec![wash_hover(0, 2, "op = 0x1F")];
         assert_eq!(
-            find_hovered_decoration(&decos, 1).map(String::as_str),
-            Some("op = 0x1F")
+            find_hovered_decoration(&decos, 1),
+            Some(HoverContent::Text("op = 0x1F"))
         );
     }
 
@@ -545,8 +675,8 @@ mod tests {
         // per-field vs per-group hovers.
         let decos = vec![wash_hover(0, 10, "outer"), wash_hover(2, 4, "inner")];
         assert_eq!(
-            find_hovered_decoration(&decos, 3).map(String::as_str),
-            Some("outer")
+            find_hovered_decoration(&decos, 3),
+            Some(HoverContent::Text("outer"))
         );
     }
 
@@ -570,8 +700,8 @@ mod tests {
         let with_hover = wash_hover(0, 5, "field");
         let decos = vec![no_hover, with_hover];
         assert_eq!(
-            find_hovered_decoration(&decos, 2).map(String::as_str),
-            Some("field")
+            find_hovered_decoration(&decos, 2),
+            Some(HoverContent::Text("field"))
         );
     }
 
@@ -594,6 +724,39 @@ mod tests {
             },
         ];
         assert_eq!(find_hovered_decoration(&decos, 3), None);
+    }
+
+    #[test]
+    fn hover_returns_rich_payload_for_hover_zone_rich() {
+        // HoverZoneRich carries a structured payload — the lookup must
+        // return the Rich variant (borrowing the payload in place), not
+        // fall through to a Text tooltip.
+        let payload = RichHoverPayload {
+            header: RichHoverHeader {
+                title: "Packet".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let decos = vec![Decoration::HoverZoneRich {
+            col_start: 0,
+            col_len: 4,
+            payload: payload.clone(),
+        }];
+        assert_eq!(
+            find_hovered_decoration(&decos, 2),
+            Some(HoverContent::Rich(&payload))
+        );
+    }
+
+    #[test]
+    fn hover_rich_zone_outside_range_is_none() {
+        let decos = vec![Decoration::HoverZoneRich {
+            col_start: 0,
+            col_len: 3,
+            payload: RichHoverPayload::default(),
+        }];
+        assert_eq!(find_hovered_decoration(&decos, 5), None);
     }
 
     // ── last_non_whitespace_col — EndPill anchor ─────────────────────

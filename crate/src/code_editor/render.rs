@@ -335,7 +335,7 @@ impl CodeEditor {
                         );
                         if let Some(ann) =
                             self.line_annotations.iter().find(|a| a.line == hover_line)
-                            && let Some(msg) =
+                            && let Some(content) =
                                 decoration::find_hovered_decoration(&ann.decorations, hover_col)
                         {
                             // Chrome-aware tooltip:
@@ -343,37 +343,42 @@ impl CodeEditor {
                             //     bottom-of-viewport the host's statusbar
                             //     covers (Dear ImGui doesn't know about it).
                             //   - Width capped at 2/3 of the viewport.
-                            //   - Height cap derived automatically from the
-                            //     side (above / below) the tooltip flips into,
-                            //     so a big packet dump still fits.
-                            //   - Content wrapped in a scrollable child so
-                            //     oversized structures scroll inside the
-                            //     tooltip instead of clipping.
+                            //   - Content height is pre-measured so the
+                            //     tooltip picks a side (above / below) that
+                            //     fits the full body without a scrollbar,
+                            //     and sizes itself to exactly the content.
                             let disp = ui.io().display_size();
                             let max_w = (disp[0] * 0.66).clamp(360.0, 900.0);
-                            crate::utils::smart_positioned_tooltip(
-                                ui,
-                                [320.0, 0.0],
-                                max_w,
-                                self.config.tooltip_reserved_bottom,
-                                220.0, // min_flip_up_px — below this, flip up
-                                || {
-                                    // The editor's outer `render()` pushes
-                                    // `ChildBg = editor_bg` (opaque) so the
-                                    // main text child paints that colour.
-                                    // Inside the tooltip we want the popup's
-                                    // translucent `PopupBg` to show through
-                                    // uniformly — override `ChildBg` back to
-                                    // fully transparent for this scoped child
-                                    // only. Scoped `_cbg` restores editor_bg
-                                    // when the closure returns.
-                                    let _cbg = ui
-                                        .push_style_color(StyleColor::ChildBg, [0.0, 0.0, 0.0, 0.0]);
-                                    ui.child_window("##deco_tooltip_body")
-                                        .size([0.0, 0.0])
-                                        .build(ui, || ui.text(msg.as_str()));
-                                },
-                            );
+                            match content {
+                                decoration::HoverContent::Text(msg) => {
+                                    // Measure the message using ImGui's own
+                                    // text metrics — `igCalcTextSize` walks
+                                    // newlines the same way `ui.text()`
+                                    // renders them.
+                                    let content_h = crate::utils::text::calc_text_size(msg)[1];
+                                    crate::utils::smart_positioned_tooltip(
+                                        ui,
+                                        [320.0, 0.0],
+                                        max_w,
+                                        self.config.tooltip_reserved_bottom,
+                                        content_h,
+                                        || ui.text(msg),
+                                    );
+                                }
+                                decoration::HoverContent::Rich(payload) => {
+                                    let (content_h, min_w) =
+                                        rich_hover::measure_rich_payload(ui, payload);
+                                    let min_w = min_w.max(360.0).min(max_w);
+                                    crate::utils::smart_positioned_tooltip(
+                                        ui,
+                                        [min_w, 0.0],
+                                        max_w,
+                                        self.config.tooltip_reserved_bottom,
+                                        content_h,
+                                        || rich_hover::draw_rich_payload(ui, payload),
+                                    );
+                                }
+                            }
                         }
                     }
                 }

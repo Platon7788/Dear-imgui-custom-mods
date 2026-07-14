@@ -69,12 +69,15 @@ pub use config::{
     merge_mdi_icons,
 };
 pub use decoration::{
-    AnnotationStrip, ColorSlot, Decoration, DecorationColor, LineAnnotation, SemanticSlot,
+    AnnotationStrip, ColorSlot, Decoration, DecorationColor, HoverContent, LineAnnotation,
+    RichHoverAlign, RichHoverCell, RichHoverColumn, RichHoverFocus, RichHoverHeader,
+    RichHoverPayload, RichHoverRow, RichHoverStructure, SemanticSlot,
 };
 
 mod find_replace;
 mod fold;
 mod helpers;
+mod rich_hover;
 mod wrap;
 use fold::{FoldRegion, detect_fold_regions};
 use helpers::{
