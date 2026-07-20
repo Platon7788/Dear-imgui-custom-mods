@@ -22,6 +22,7 @@
     animate: true,
     animation_speed: 6.0,
     show_tooltips: true,
+    reposition_menu: true,
     submenu_min_width: 160.0,
     submenu_item_height: 26.0,
     content_offset_y: 0.0,

@@ -61,6 +61,7 @@ pub mod enums;
 pub mod state;
 pub mod theme;
 
+mod context_menu;
 mod render;
 mod render_chrome;
 mod submenu;
@@ -90,6 +91,16 @@ pub enum NavEvent {
     SubMenuClicked(Cow<'static, str>, Cow<'static, str>),
     /// Toggle button was clicked. `visible` is the new visibility state.
     ToggleClicked(bool),
+    /// The user picked a new dock position from the right-click reposition
+    /// menu. The panel config is immutable during render (the host owns it),
+    /// so the new position is delivered as an event — apply it by rebuilding
+    /// the config with [`NavPanelConfig::position`] set to `pos` (mirrors the
+    /// theme-cycle bridge pattern). Fires only when
+    /// [`NavPanelConfig::reposition_menu`] is enabled.
+    ///
+    /// [`NavPanelConfig::position`]: config::NavPanelConfig::position
+    /// [`NavPanelConfig::reposition_menu`]: config::NavPanelConfig::reposition_menu
+    PositionChangeRequested(DockPosition),
 }
 
 /// Result of rendering the nav panel for one frame.

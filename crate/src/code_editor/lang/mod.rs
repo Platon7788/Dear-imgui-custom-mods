@@ -195,7 +195,10 @@ pub enum Language {
     Sql,
     /// Unified diff / patch — whole-line colouring by leading prefix.
     Diff,
-    /// INI / config files — `[section]`, `key = value`, `;`/`#` comments.
+    /// INI / config files — `[section]` (incl. git-config `[core "sub"]`),
+    /// `key = value` / `key : value`, `;`/`#` comments, quoted strings with
+    /// escapes, `${VAR}` / `$VAR` / `%VAR%` interpolation, boolean/null
+    /// keywords, signed/float/radix numbers, and `\` line continuation.
     Ini,
     /// Dockerfile — instruction keywords, `$VAR` variables, `--flag` options.
     Dockerfile,
@@ -326,7 +329,8 @@ impl Language {
             "hex" => Language::Hex,
             "sql" => Language::Sql,
             "diff" | "patch" => Language::Diff,
-            "ini" | "cfg" | "conf" => Language::Ini,
+            "ini" | "cfg" | "conf" | "properties" | "editorconfig" | "gitconfig" | "desktop"
+            | "service" | "inf" => Language::Ini,
             "dockerfile" => Language::Dockerfile,
             "md" | "markdown" | "mdown" | "mkd" => Language::Markdown,
             _ => return None,

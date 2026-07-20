@@ -128,6 +128,12 @@ fn from_extension_mapping() {
     assert_eq!(Language::from_extension("diff"), Some(Language::Diff));
     assert_eq!(Language::from_extension("cfg"), Some(Language::Ini));
     assert_eq!(Language::from_extension("conf"), Some(Language::Ini));
+    assert_eq!(Language::from_extension("properties"), Some(Language::Ini));
+    assert_eq!(
+        Language::from_extension("editorconfig"),
+        Some(Language::Ini)
+    );
+    assert_eq!(Language::from_extension("desktop"), Some(Language::Ini));
     assert_eq!(
         Language::from_extension("dockerfile"),
         Some(Language::Dockerfile)

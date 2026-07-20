@@ -91,6 +91,16 @@ fn diff_viewer_strings_resolve() {
 fn nav_panel_strings_resolve() {
     assert_eq!(nav_panel::strings(Locale::En).show_panel, "Show panel");
     assert_eq!(nav_panel::strings(Locale::Ru).show_panel, "Показать панель");
+    // Right-click reposition menu strings (added with the reposition menu).
+    let en = nav_panel::strings(Locale::En);
+    let ru = nav_panel::strings(Locale::Ru);
+    assert_eq!(en.dock_left, "Dock left");
+    assert_ne!(en.position_title, ru.position_title);
+    assert_ne!(en.dock_top, ru.dock_top);
+    assert_ne!(en.dock_left_hint, ru.dock_left_hint);
+    for s in [en.dock_left, en.dock_right, en.dock_top, en.position_title] {
+        assert!(!s.is_empty());
+    }
 }
 
 #[test]

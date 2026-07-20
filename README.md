@@ -19,11 +19,11 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 | Component | Description | Docs |
 |-----------|-------------|------|
-| **`code_editor`** | Full-featured code editor — 10 languages (Rust, TOML, RON, Rhai, JSON, YAML, XML, ASM, Hex, Custom), 6 themes, 3 built-in fonts (Hack, JetBrains Mono), code folding, word wrap, find/replace, multi-cursor, undo/redo, breakpoints, error markers, smooth scrolling | [docs/code_editor.md](docs/code_editor.md) |
+| **`code_editor`** | Full-featured code editor — 14 languages (Rust, TOML, RON, Rhai, JSON, YAML, XML, ASM, Hex, SQL, Diff, INI, Dockerfile, Markdown) + plain text + custom grammars via `SyntaxDefinition`, 8 syntax themes, 3 built-in fonts (Hack, JetBrains Mono), code folding, word wrap, find/replace, multi-cursor, undo/redo, breakpoints, error markers, smooth scrolling | [docs/code_editor.md](docs/code_editor.md) |
 | **`file_manager`** | Universal file/folder picker dialog — SelectFolder, OpenFile, SaveFile modes. Breadcrumb navigation, favorites sidebar, back/forward history, type-to-search, file filters, overwrite confirmation | [docs/file_manager.md](docs/file_manager.md) |
 | **`virtual_table`** | Virtualized table for up to 10M rows — ListClipper, sortable columns (single + multi), inline editing (text, checkbox, combo, slider, color, custom, button), selection with vivid highlight + white text, keyboard navigation (Up/Down/Home/End/PageUp/PageDown), scroll-to-row, clip tooltips, freeze cols/rows, `copy_to_clipboard`, `snap_last_row`, `RingBuffer<T>` FIFO eviction, `MAX_TABLE_ROWS` (10,000,000) capacity | [docs/virtual_table.md](docs/virtual_table.md) |
 | **`virtual_tree`** | Virtualized tree-table for up to 10M nodes — slab/arena with generational `NodeId`, flat view cache, multi-column, inline editing, sibling-scoped sorting, drag-and-drop, filter/search, tree lines, striped rows, icons, badges, lazy children loading, configurable per-instance capacity with optional FIFO eviction | [docs/virtual_tree.md](docs/virtual_tree.md) |
-| **`tab_control`** | Modern tab controller (DevExpress XtraTabControl-inspired) — 3 styles (Pill, Underline, Square), pinned tabs, drag-reorder, scroll, overflow dropdown, hover-preview thumbnail, badges, status indicators (Active/Inactive/Warning/Error/Dirty/None), per-tab dot color, keyboard shortcuts (Ctrl+T/W/Tab/1..9), single-pass hit-test, zero per-frame allocations | [docs/tab_control.md](docs/tab_control.md) |
+| **`tab_control`** | Modern tab controller (DevExpress XtraTabControl-inspired) — 3 styles (Sheet, Segment, Square), pinned tabs, drag-reorder, scroll, overflow dropdown, hover-preview thumbnail, badges, status indicators (Active/Inactive/Warning/Error/Dirty/None), per-tab dot color, keyboard shortcuts (Ctrl+T/W/Tab/1..9), single-pass hit-test, zero per-frame allocations | [docs/tab_control.md](docs/tab_control.md) |
 | **`node_graph`** | Visual node graph editor — pan/zoom, bezier/straight/orthogonal wires, 4 pin shapes, multi-select, rectangle selection, mini-map, snap-to-grid, wire yanking, frustum culling, stats overlay, context menus, node shadow, wire flow animation, LOD, smooth zoom | [docs/node_graph.md](docs/node_graph.md) |
 | **`force_graph`** | Obsidian-style force-directed knowledge graph — Barnes-Hut O(N log N) physics, pan/zoom/box-select, sidebar (search, tag filter, depth focus, time-travel slider), minimap overlay, 6 node shapes, color modes (static/tag/community/PageRank/betweenness), SVG/DOT/Mermaid export, Louvain community detection, drag/pin, context menus | [docs/force_graph.md](docs/force_graph.md) |
 | **`hex_viewer`** | Binary hex dump viewer — offset/hex/ASCII columns, color regions, data inspector, goto address, pattern search, selection, diff highlighting, hover byte tooltips with binary/octal/decimal display, configurable bytes-per-row, endianness control | [docs/hex_viewer.md](docs/hex_viewer.md) |
@@ -39,7 +39,7 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 ## Stack
 
-- **Rust 1.95** — edition 2024, let-chains, `is_some_and`, `AtomicU32`
+- **Rust 1.97** — edition 2024, let-chains, `is_some_and`, `AtomicU32`
 - **dear-imgui-rs 0.11.0** — Dear ImGui v1.92.6 (docking branch)
 - **dear-imgui-wgpu 0.11.0** / **dear-imgui-winit 0.11.0** — wgpu + winit integration
 - **wgpu 29.0.1** — GPU rendering backend
@@ -122,7 +122,7 @@ src/
     token.rs                        Token + TokenKind types
     tokenizer.rs                    Legacy tokenizer (Rust/TOML/RON/Hex)
     undo.rs                         UndoStack
-    lang/                           Per-language tokenizer modules (9 languages)
+    lang/                           Per-language tokenizer modules (14 languages)
   disasm_view/
     mod.rs                          DisasmView widget — virtual list, keyboard nav, bookmarks
     config.rs                       DisasmViewConfig, ColumnWidths (serde+ron, + config.ron)

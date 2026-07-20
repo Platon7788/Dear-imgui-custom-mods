@@ -208,6 +208,42 @@ fn dock_positions() {
     assert_ne!(DockPosition::Left, DockPosition::Right);
 }
 
+// ── Reposition menu ──────────────────────────────────────────────────────
+
+#[test]
+fn reposition_menu_enabled_by_default() {
+    assert!(NavPanelConfig::default().reposition_menu);
+}
+
+#[test]
+fn reposition_menu_builder_toggles() {
+    let off = NavPanelConfig::default().with_reposition_menu(false);
+    assert!(!off.reposition_menu);
+    let on = off.with_reposition_menu(true);
+    assert!(on.reposition_menu);
+}
+
+#[test]
+fn position_change_event_equality() {
+    // The reposition menu delivers the new dock position via this event —
+    // pin equality so a host matching on it can trust variant + payload.
+    assert_eq!(
+        NavEvent::PositionChangeRequested(DockPosition::Right),
+        NavEvent::PositionChangeRequested(DockPosition::Right),
+    );
+    assert_ne!(
+        NavEvent::PositionChangeRequested(DockPosition::Left),
+        NavEvent::PositionChangeRequested(DockPosition::Top),
+    );
+}
+
+#[test]
+fn reposition_anchor_starts_closed() {
+    // The flyout is closed until a right-click captures an anchor.
+    let s = NavPanelState::new();
+    assert!(s.reposition_anchor.is_none());
+}
+
 #[test]
 fn button_styles() {
     assert_eq!(ButtonStyle::default(), ButtonStyle::IconOnly);
@@ -270,6 +306,9 @@ fn locale_field_optional_in_ron() {
     )
     .expect("config without locale field must parse");
     assert_eq!(cfg.locale, crate::i18n::Locale::En);
+    // The same legacy ron predates `reposition_menu` too — it must default
+    // to the enabled state, not `false`.
+    assert!(cfg.reposition_menu);
 }
 
 #[test]
@@ -286,6 +325,7 @@ fn config_ron_round_trips() {
     assert_eq!(back.active_ring_color, cfg.active_ring_color);
     assert_eq!(back.show_button_separators, cfg.show_button_separators);
     assert_eq!(back.locale, cfg.locale);
+    assert_eq!(back.reposition_menu, cfg.reposition_menu);
 }
 
 // ── Flyout-alignment layout math (regression for the off-by-spacing bug) ──

@@ -119,6 +119,17 @@ pub struct NavPanelConfig {
     /// Show tooltips on hover globally. Default: `true`.
     pub show_tooltips: bool,
 
+    // ── Reposition menu ──────────────────────────────────────────────────
+    /// Enable the **right-click reposition menu**: right-clicking anywhere
+    /// on the panel opens a small context menu (Dock left / right / top)
+    /// whose selection is delivered as
+    /// [`NavEvent::PositionChangeRequested`](super::NavEvent::PositionChangeRequested).
+    /// Default: `true`. `#[serde(default)]` so older `config.ron` files
+    /// (written before this field existed) still parse — falling back to the
+    /// enabled default via [`default_reposition_menu`].
+    #[serde(default = "default_reposition_menu")]
+    pub reposition_menu: bool,
+
     // ── Submenu ──────────────────────────────────────────────────────────
     /// Submenu flyout min width (px). Default: `160.0`.
     pub submenu_min_width: f32,
@@ -144,6 +155,12 @@ pub struct NavPanelConfig {
     /// `#[serde(default)]` so older `config.ron` files still parse.
     #[serde(default)]
     pub locale: crate::i18n::Locale,
+}
+
+/// Serde fallback for [`NavPanelConfig::reposition_menu`] — the reposition
+/// menu ships **on**, so a `config.ron` predating the field defaults to `true`.
+fn default_reposition_menu() -> bool {
+    true
 }
 
 impl Default for NavPanelConfig {
@@ -310,6 +327,13 @@ impl NavPanelConfig {
     }
     pub fn without_tooltips(mut self) -> Self {
         self.show_tooltips = false;
+        self
+    }
+    /// Enable or disable the right-click reposition menu. Enabled by
+    /// default; call with `false` on panels whose position is fixed by the
+    /// host (so a stray right-click can't offer to move it).
+    pub fn with_reposition_menu(mut self, v: bool) -> Self {
+        self.reposition_menu = v;
         self
     }
     pub fn with_content_offset_y(mut self, y: f32) -> Self {

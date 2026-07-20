@@ -12,6 +12,7 @@ Modern navigation panel (activity bar) for Rust + Dear ImGui.
 - **Left/Right**: vertical icon strip with active indicator bar
 - **Top**: horizontal bar with `IconOnly`, `IconWithLabel`, or `LabelOnly` modes
 - **Flyout submenu** on any button with icons, shortcuts, separators
+- **Right-click reposition menu** — re-dock the panel (Left/Right/Top) from a themed context menu with per-entry tooltips and a dock-position diagram glyph; selection is delivered as `NavEvent::PositionChangeRequested`
 - **Auto-hide** with slide animation + auto-show on edge hover
 - **Toggle arrow** button (double chevron, direction-aware)
 - **Active indicator bar** — vertical for sides, underline for top
@@ -20,7 +21,7 @@ Modern navigation panel (activity bar) for Rust + Dear ImGui.
 - **Button separators** — optional thin lines between buttons
 - **Per-button tooltip control** + global tooltip toggle
 - **Custom icon colors** per button
-- **5 built-in themes** via the unified [`Theme`](theme.md) enum + per-instance custom palette via `colors_override`
+- **2 built-in themes** (Dark, Light) via the unified [`Theme`](theme.md) enum + per-instance custom palette via `colors_override`
 - **content_offset_y** for correct edge detection with borderless titlebar
 - **Overlay variants** — `render_nav_panel_overlay` (background draw list, below popups) and `render_nav_panel_overlay_foreground` (foreground draw list, above popups) draw without a host ImGui window
 
@@ -54,6 +55,7 @@ state.set_active("home");
 //         NavEvent::ButtonClicked(id) => { /* navigate */ }
 //         NavEvent::SubMenuClicked(btn_id, item_id) => { /* handle */ }
 //         NavEvent::ToggleClicked(visible) => { /* panel toggled */ }
+//         NavEvent::PositionChangeRequested(pos) => { /* rebuild cfg at pos */ }
 //     }
 // }
 // // Offset content by result.occupied_size
@@ -84,6 +86,7 @@ and submenu selections reach you.
 | `animate` | `bool` | `true` | Enable slide animation |
 | `animation_speed` | `f32` | `6.0` | Animation speed (progress/sec) |
 | `show_tooltips` | `bool` | `true` | Global tooltip toggle |
+| `reposition_menu` | `bool` | `true` | Enable the right-click reposition menu (`.with_reposition_menu(false)` to disable) |
 | `submenu_min_width` | `f32` | `160.0` | Flyout submenu minimum width (px) |
 | `submenu_item_height` | `f32` | `26.0` | Flyout submenu item row height (px) |
 | `edge_zone` | `f32` | `6.0` | Edge detection zone width for auto-show (px) |
@@ -108,6 +111,32 @@ palette that does not fit any built-in theme, use `.with_colors(NavColors)`
 | `NavEvent::ButtonClicked(id)` | Action button clicked |
 | `NavEvent::SubMenuClicked(btn_id, item_id)` | Submenu item clicked |
 | `NavEvent::ToggleClicked(visible)` | Toggle arrow clicked |
+| `NavEvent::PositionChangeRequested(DockPosition)` | New dock position picked from the right-click reposition menu |
+
+## Right-click reposition menu
+
+Right-clicking anywhere on the panel opens a small themed flyout that
+re-docks it (**Dock left / Dock right / Dock top**). Each entry carries a
+localised tooltip (via the crate-wide `crate::utils::themed_tooltip` helper)
+and a tiny dock-position diagram glyph; the row for the current position is
+accented.
+
+Because `NavPanelConfig` is immutable during render (the host owns it), the
+choice is delivered as `NavEvent::PositionChangeRequested(DockPosition)` — the
+host applies it by rebuilding the config with the new `position` (the same
+event-bridge pattern the demos use for theme switching):
+
+```rust
+// NavEvent::PositionChangeRequested(pos) => {
+//     self.nav_position = *pos;              // remember it
+//     // next frame: NavPanelConfig::new(self.nav_position)...
+// }
+```
+
+The menu is on by default; disable it with
+`NavPanelConfig::with_reposition_menu(false)` (or `reposition_menu: false` in
+RON) on panels whose position is fixed by the host. Its labels and tooltips
+are localised through `crate::i18n::nav_panel`.
 
 ## Rendering variants
 
@@ -222,8 +251,9 @@ let _sub = NavButton::submenu("id", "icon", "tooltip")    // opens flyout
 in `src/nav_panel/config.rs`, default values in
 `src/nav_panel/config.ron`. See [`docs/config_pattern.md`](./config_pattern.md).
 
-The panel-toggle tooltips ("Show panel" / "Toggle panel") are
-localised through `crate::i18n::nav_panel`. Set
+The panel-toggle tooltips ("Show panel" / "Toggle panel") and the
+right-click reposition menu (title, "Dock left/right/top" labels, and
+their tooltips) are localised through `crate::i18n::nav_panel`. Set
 `NavPanelConfig.locale = Locale::Ru` directly (functional API — no
 struct-level builder). The nav buttons themselves carry host-supplied
 labels via `NavItem::label` and stay host-driven. See

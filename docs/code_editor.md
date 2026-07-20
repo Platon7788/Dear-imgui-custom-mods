@@ -10,8 +10,8 @@ Built entirely on ImGui's DrawList API (no `InputTextMultiline`), giving full co
 
 ## Features
 
-- **Syntax highlighting**: Rust, TOML, RON, Rhai, JSON, YAML, XML, ASM (x86/ARM/RISC-V), Hex, and custom languages via `SyntaxDefinition` trait
-- **6 built-in themes**: Dark Default, Monokai, One Dark, Solarized Dark, Solarized Light, GitHub Light
+- **Syntax highlighting**: Rust, TOML, RON, Rhai, JSON, YAML, XML, ASM (x86/ARM/RISC-V), Hex, SQL, Diff, INI, Dockerfile, Markdown, and custom languages via `SyntaxDefinition` trait
+- **8 built-in themes**: Dark Default, Monokai, One Dark, Solarized Dark, Solarized Light, GitHub Light, Catppuccin, Nord
 - **3 built-in monospace fonts**: Hack (default), JetBrains Mono NL, JetBrains Mono — embedded via `include_bytes!`, zero-config
 - **MDI icons**: Material Design Icons merged into font atlas for crisp UI icons
 - **Line numbers** with active-line highlighting
@@ -322,38 +322,75 @@ All fields are `[f32; 4]` RGBA in `0.0..=1.0`.
 ```rust
 use dear_imgui_custom_mod::code_editor::Language;
 
-editor.set_language(Language::Rust);  // Rust (default)
-editor.set_language(Language::Toml);  // TOML
-editor.set_language(Language::Ron);   // RON
-editor.set_language(Language::Rhai);  // Rhai scripting language
-editor.set_language(Language::Json);  // JSON
-editor.set_language(Language::Yaml);  // YAML
-editor.set_language(Language::Xml);   // XML / HTML
-editor.set_language(Language::Asm);   // Assembly (x86/ARM/RISC-V, AT&T + Intel + NASM)
-editor.set_language(Language::Hex);   // Hex byte editor
-editor.set_language(Language::None);  // Plain text
+editor.set_language(Language::Rust);       // Rust (default)
+editor.set_language(Language::Toml);       // TOML
+editor.set_language(Language::Ron);        // RON
+editor.set_language(Language::Rhai);       // Rhai scripting language
+editor.set_language(Language::Json);       // JSON
+editor.set_language(Language::Yaml);       // YAML
+editor.set_language(Language::Xml);        // XML / HTML
+editor.set_language(Language::Asm);        // Assembly (x86/ARM/RISC-V, AT&T + Intel + NASM)
+editor.set_language(Language::Hex);        // Hex byte editor
+editor.set_language(Language::Sql);        // SQL (case-insensitive keywords)
+editor.set_language(Language::Diff);       // Unified diff / patch
+editor.set_language(Language::Ini);        // INI / config (see below)
+editor.set_language(Language::Dockerfile); // Dockerfile
+editor.set_language(Language::Markdown);   // Markdown (fenced code blocks)
+editor.set_language(Language::None);       // Plain text
 ```
+
+The language can also be resolved from a file name/extension via
+`Language::from_path(path)` / `Language::from_extension(ext)`.
+
+### INI / config files
+
+`Language::Ini` is a full-featured config highlighter, not just
+`key = value`:
+
+- **Section headers** `[section]`, dotted `[tool.black]`, and git-config
+  `[core "sub"]` (the quoted sub-section renders as a string).
+- **Keys** left of `=` / `:` are attributes; the separator is an operator.
+- **Values**: quoted strings with `\`-escape highlighting, `${VAR}` /
+  `$VAR` / `%VAR%` interpolation, boolean & null keywords
+  (`true`/`false`/`yes`/`no`/`on`/`off`/`none`/`null`, case-insensitive),
+  and signed / float / radix (`0x`/`0b`/`0o`) numbers.
+- **Comments** open with `;` or `#` at region start or after whitespace; a
+  marker glued to a value (`pass#word`) stays part of the value.
+- **Line continuation** — a value line ending in a lone trailing `\`
+  carries onto the next line.
+
+Extensions mapped to `Ini`: `ini`, `cfg`, `conf`, `properties`,
+`editorconfig`, `gitconfig`, `desktop`, `service`, `inf`.
 
 ### Custom Syntax
 
 Implement the `SyntaxDefinition` trait:
 
 ```rust
-use dear_imgui_custom_mod::code_editor::{SyntaxDefinition, token::{Token, TokenKind}};
+use dear_imgui_custom_mod::code_editor::{LineState, SyntaxDefinition, token::{Token, TokenKind}};
 use std::sync::Arc;
 
 struct MySyntax;
 impl SyntaxDefinition for MySyntax {
     fn name(&self) -> &str { "MyLang" }
-    fn tokenize_line(&self, line: &str, in_block_comment: bool) -> (Vec<Token>, bool) {
-        // tokenize line, return (tokens, still_in_block_comment)
-        (vec![], false)
+    fn tokenize_line(&self, line: &str, _state: LineState) -> (Vec<Token>, LineState) {
+        // Tokenize `line`. The returned `LineState` is the multi-line carry
+        // fed as `state` into the next line (`LineState::Code` = nothing open;
+        // other variants track block comments / multi-line strings / fences).
+        // Tokens MUST contiguously tile the line (no gaps/overlaps, on char
+        // boundaries) — the renderer slices the line by them.
+        (vec![], LineState::Code)
     }
     fn line_comment_prefix(&self) -> Option<&str> { Some("//") }
 }
 
 editor.set_language(Language::Custom(Arc::new(MySyntax)));
 ```
+
+> **Signature note:** the carry parameter/return became `LineState` in the
+> 0.11 refactor (it was a `bool` "still in a block comment" flag before).
+> `LineState` also encodes multi-line strings, Markdown fences, HTML raw
+> text, and YAML block scalars.
 
 ## Dedicated Font
 

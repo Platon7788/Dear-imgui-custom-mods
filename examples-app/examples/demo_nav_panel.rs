@@ -313,6 +313,7 @@ impl DemoApp {
                                         self.push_log(format!("Position: {label}"));
                                     }
                                 }
+                                ui.text_disabled("Tip: right-click the panel to re-dock it");
 
                                 ui.spacing();
                                 ui.separator();
@@ -507,6 +508,17 @@ impl DemoApp {
                 }
                 NavEvent::ToggleClicked(v) => {
                     self.push_log(format!("Toggle: {v}"));
+                }
+                NavEvent::PositionChangeRequested(pos) => {
+                    // Right-click reposition menu → rebuild the config next
+                    // frame with the chosen dock position. The demo owns the
+                    // position via `position_idx`, so just remap it.
+                    self.position_idx = match pos {
+                        DockPosition::Left => 0,
+                        DockPosition::Right => 1,
+                        DockPosition::Top => 2,
+                    };
+                    self.push_log(format!("Reposition: {pos:?}"));
                 }
             }
         }

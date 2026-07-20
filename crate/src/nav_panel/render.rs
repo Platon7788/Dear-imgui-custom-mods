@@ -33,6 +33,7 @@ use crate::utils::text::calc_text_size;
 
 use super::buttons::NavItem;
 use super::config::NavPanelConfig;
+use super::context_menu::render_reposition_menu;
 use super::enums::{ActiveStyle, ButtonStyle, DockPosition};
 use super::render_chrome::{draw_icon, draw_toggle_button, render_hidden_tab};
 use super::state::NavPanelState;
@@ -140,6 +141,7 @@ pub(super) fn render_nav_panel_impl(
     // ── Geometry ─────────────────────────────────────────────────────────────
     let [avail_w, avail_h] = size;
     let clicked = ui.is_mouse_clicked(MouseButton::Left);
+    let right_clicked = ui.is_mouse_clicked(MouseButton::Right);
 
     let panel_w = if is_vertical {
         cfg.width * prog
@@ -432,6 +434,16 @@ pub(super) fn render_nav_panel_impl(
         }
     } // draw_list dropped here
 
+    // ── Right-click reposition menu ─────────────────────────────────────────
+    // A right-click anywhere on the panel opens the reposition flyout at the
+    // cursor. It supersedes any open submenu (a submenu + context menu at once
+    // would fight for the popup layer). Anchor is captured here and consumed
+    // by `render_reposition_menu` below until the user picks or clicks away.
+    if cfg.reposition_menu && panel_hovered && right_clicked {
+        state.reposition_anchor = Some([mx, my]);
+        state.open_submenu = None;
+    }
+
     // ── Submenu flyout (after the draw_list scope) ──────────────────────────
     // Borrow the open id as `&str` so we don't move the cow out of `state`
     // — `render_submenu` may want to *clear* `state.open_submenu` when an
@@ -478,8 +490,20 @@ pub(super) fn render_nav_panel_impl(
         }
     }
 
+    // ── Reposition flyout (after the submenu, so it wins the popup layer) ──
+    if let Some(anchor) = state.reposition_anchor {
+        render_reposition_menu(ui, cfg, anchor, &colors, state, &mut events);
+    }
+
     // ── Auto-hide ────────────────────────────────────────────────────────────
-    if cfg.auto_hide && !panel_hovered && state.was_hovered && state.open_submenu.is_none() {
+    // Keep the panel alive while a submenu OR the reposition menu is open —
+    // otherwise the panel would slide away out from under its own flyout.
+    if cfg.auto_hide
+        && !panel_hovered
+        && state.was_hovered
+        && state.open_submenu.is_none()
+        && state.reposition_anchor.is_none()
+    {
         state.visible = false;
     }
     state.was_hovered = panel_hovered;

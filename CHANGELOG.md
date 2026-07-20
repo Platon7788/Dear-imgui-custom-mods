@@ -45,6 +45,31 @@
 
 ### Added
 
+- **`nav_panel`: right-click reposition menu.** Right-clicking anywhere on the
+  panel opens a small themed context menu (Dock left / right / top) whose
+  selection is delivered as the new `NavEvent::PositionChangeRequested(DockPosition)`
+  (the panel config is immutable during render, so the host applies it by
+  rebuilding the config — same bridge pattern the demos use for theme
+  switching). Each entry carries a localised tooltip via
+  `crate::utils::themed_tooltip` and a font-independent dock-position diagram
+  glyph; the current position is accented. Gated by the new
+  `NavPanelConfig::reposition_menu` field (default `true`, `#[serde(default)]`
+  so older `config.ron` still parses) with a `.with_reposition_menu(bool)`
+  builder. EN/RU strings added to `crate::i18n::nav_panel`; `demo_nav_panel`
+  wires the event live.
+
+- **`code_editor`: full-featured INI / config highlighting.** `Language::Ini`
+  was rebuilt (now the `lang/ini/` directory module) from a basic
+  `key = value` tokenizer into a complete config highlighter: git-config
+  `[core "sub"]` sections (quoted sub-section as a string), boolean/null
+  keywords (`true`/`false`/`yes`/`no`/`on`/`off`/`none`/`null`,
+  case-insensitive, value position only), signed/float/radix (`0x`/`0b`/`0o`)
+  numbers, `${VAR}` / `$VAR` / `%VAR%` interpolation, `\`-escape highlighting
+  inside double-quoted strings, and backslash line-continuation carried across
+  lines (via a repurposed `LineState` sentinel — no public enum change). New
+  extensions map to `Ini`: `properties`, `editorconfig`, `gitconfig`,
+  `desktop`, `service`, `inf`. Span-tiling invariant preserved; 28 new tests.
+
 - **`tab_control`: two new tab styles — `TabStyle::Sheet` (default) and
   `TabStyle::Segment`.** `Sheet` is a top-rounded tile with a thin top accent
   bar whose active tab drops its bottom border and merges into the body pane

@@ -18,6 +18,12 @@ pub struct NavPanelState {
     pub animation_progress: f32,
     /// Currently open submenu button ID (if any).
     pub open_submenu: Option<Cow<'static, str>>,
+    /// Screen-space anchor `[x, y]` of the open right-click reposition menu,
+    /// or `None` when it's closed. Set to the cursor position on right-click
+    /// (see `nav_panel::render`), cleared when the user picks an item or
+    /// clicks away. `pub(super)` — only the render/context-menu modules touch
+    /// it, so hosts never manage menu lifecycle by hand.
+    pub(super) reposition_anchor: Option<[f32; 2]>,
     /// Whether the cursor was over the panel last frame. Tightened from
     /// `pub(crate)` to `pub(super)` — only the `nav_panel::render` module
     /// touches this flag.
@@ -31,6 +37,7 @@ impl Default for NavPanelState {
             visible: true,
             animation_progress: 1.0,
             open_submenu: None,
+            reposition_anchor: None,
             was_hovered: false,
         }
     }
