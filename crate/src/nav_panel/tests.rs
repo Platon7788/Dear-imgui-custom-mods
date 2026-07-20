@@ -238,10 +238,12 @@ fn position_change_event_equality() {
 }
 
 #[test]
-fn reposition_anchor_starts_closed() {
-    // The flyout is closed until a right-click captures an anchor.
+fn reposition_menu_starts_closed() {
+    // No open request pending and the popup mirror reads closed until a
+    // right-click captures a position.
     let s = NavPanelState::new();
-    assert!(s.reposition_anchor.is_none());
+    assert!(s.reposition_open_request.is_none());
+    assert!(!s.reposition_menu_open);
 }
 
 #[test]

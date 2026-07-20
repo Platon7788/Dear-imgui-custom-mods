@@ -440,7 +440,7 @@ pub(super) fn render_nav_panel_impl(
     // would fight for the popup layer). Anchor is captured here and consumed
     // by `render_reposition_menu` below until the user picks or clicks away.
     if cfg.reposition_menu && panel_hovered && right_clicked {
-        state.reposition_anchor = Some([mx, my]);
+        state.reposition_open_request = Some([mx, my]);
         state.open_submenu = None;
     }
 
@@ -490,9 +490,11 @@ pub(super) fn render_nav_panel_impl(
         }
     }
 
-    // ── Reposition flyout (after the submenu, so it wins the popup layer) ──
-    if let Some(anchor) = state.reposition_anchor {
-        render_reposition_menu(ui, cfg, anchor, &colors, state, &mut events);
+    // ── Reposition menu (ImGui popup — owns its own placement/lifetime) ─────
+    // Called every frame so the popup stays alive across frames; it no-ops
+    // when nothing is open and no request is pending.
+    if cfg.reposition_menu {
+        render_reposition_menu(ui, cfg, state, &mut events);
     }
 
     // ── Auto-hide ────────────────────────────────────────────────────────────
@@ -502,7 +504,7 @@ pub(super) fn render_nav_panel_impl(
         && !panel_hovered
         && state.was_hovered
         && state.open_submenu.is_none()
-        && state.reposition_anchor.is_none()
+        && !state.reposition_menu_open
     {
         state.visible = false;
     }

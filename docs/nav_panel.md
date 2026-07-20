@@ -12,7 +12,7 @@ Modern navigation panel (activity bar) for Rust + Dear ImGui.
 - **Left/Right**: vertical icon strip with active indicator bar
 - **Top**: horizontal bar with `IconOnly`, `IconWithLabel`, or `LabelOnly` modes
 - **Flyout submenu** on any button with icons, shortcuts, separators
-- **Right-click reposition menu** — re-dock the panel (Left/Right/Top) from a themed context menu with per-entry tooltips and a dock-position diagram glyph; selection is delivered as `NavEvent::PositionChangeRequested`
+- **Right-click reposition menu** — re-dock the panel (Left/Right/Top) from a real ImGui popup (`menu_item` rows, checkmark on the current position) with a themed tooltip per entry; selection is delivered as `NavEvent::PositionChangeRequested`
 - **Auto-hide** with slide animation + auto-show on edge hover
 - **Toggle arrow** button (double chevron, direction-aware)
 - **Active indicator bar** — vertical for sides, underline for top
@@ -115,11 +115,13 @@ palette that does not fit any built-in theme, use `.with_colors(NavColors)`
 
 ## Right-click reposition menu
 
-Right-clicking anywhere on the panel opens a small themed flyout that
-re-docks it (**Dock left / Dock right / Dock top**). Each entry carries a
-localised tooltip (via the crate-wide `crate::utils::themed_tooltip` helper)
-and a tiny dock-position diagram glyph; the row for the current position is
-accented.
+Right-clicking anywhere on the panel opens a real ImGui popup (built with
+`crate::utils::popup`) that re-docks it (**Dock left / Dock right / Dock
+top**). The rows are genuine `menu_item`s — the current position carries a
+checkmark, and each entry shows a localised tooltip (via the crate-wide
+`crate::utils::themed_tooltip` helper) on hover with the normal delay and
+placement. ImGui owns the popup's position, focus, and close-on-click-outside
+/ Escape.
 
 Because `NavPanelConfig` is immutable during render (the host owns it), the
 choice is delivered as `NavEvent::PositionChangeRequested(DockPosition)` — the

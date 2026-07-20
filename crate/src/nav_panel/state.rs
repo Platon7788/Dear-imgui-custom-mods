@@ -18,12 +18,16 @@ pub struct NavPanelState {
     pub animation_progress: f32,
     /// Currently open submenu button ID (if any).
     pub open_submenu: Option<Cow<'static, str>>,
-    /// Screen-space anchor `[x, y]` of the open right-click reposition menu,
-    /// or `None` when it's closed. Set to the cursor position on right-click
-    /// (see `nav_panel::render`), cleared when the user picks an item or
-    /// clicks away. `pub(super)` — only the render/context-menu modules touch
-    /// it, so hosts never manage menu lifecycle by hand.
-    pub(super) reposition_anchor: Option<[f32; 2]>,
+    /// One-shot open request for the right-click reposition menu: set to the
+    /// cursor position `[x, y]` on right-click, consumed on the next
+    /// `render` to call `ui.open_popup` (anchored at that position). `None`
+    /// most frames. The popup's *open/closed* lifetime is owned by ImGui
+    /// once opened, not by this field — see [`Self::reposition_menu_open`].
+    pub(super) reposition_open_request: Option<[f32; 2]>,
+    /// Mirror of ImGui's popup-open state for the reposition menu, refreshed
+    /// each frame from `begin_popup`. Used only to keep an `auto_hide` panel
+    /// from sliding away while its menu is open. `pub(super)` — internal.
+    pub(super) reposition_menu_open: bool,
     /// Whether the cursor was over the panel last frame. Tightened from
     /// `pub(crate)` to `pub(super)` — only the `nav_panel::render` module
     /// touches this flag.
@@ -37,7 +41,8 @@ impl Default for NavPanelState {
             visible: true,
             animation_progress: 1.0,
             open_submenu: None,
-            reposition_anchor: None,
+            reposition_open_request: None,
+            reposition_menu_open: false,
             was_hovered: false,
         }
     }

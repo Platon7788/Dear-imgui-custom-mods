@@ -46,13 +46,14 @@
 ### Added
 
 - **`nav_panel`: right-click reposition menu.** Right-clicking anywhere on the
-  panel opens a small themed context menu (Dock left / right / top) whose
-  selection is delivered as the new `NavEvent::PositionChangeRequested(DockPosition)`
-  (the panel config is immutable during render, so the host applies it by
-  rebuilding the config — same bridge pattern the demos use for theme
-  switching). Each entry carries a localised tooltip via
-  `crate::utils::themed_tooltip` and a font-independent dock-position diagram
-  glyph; the current position is accented. Gated by the new
+  panel opens a real ImGui popup (built with `crate::utils::popup`) to re-dock
+  it (Dock left / right / top), whose selection is delivered as the new
+  `NavEvent::PositionChangeRequested(DockPosition)` (the panel config is
+  immutable during render, so the host applies it by rebuilding the config —
+  same bridge pattern the demos use for theme switching). Rows are genuine
+  `menu_item`s (checkmark on the current position); each shows a localised
+  tooltip via `crate::utils::themed_tooltip` off `is_item_hovered`, so it has
+  the normal hover delay/placement and correct z-order. Gated by the new
   `NavPanelConfig::reposition_menu` field (default `true`, `#[serde(default)]`
   so older `config.ron` still parses) with a `.with_reposition_menu(bool)`
   builder. EN/RU strings added to `crate::i18n::nav_panel`; `demo_nav_panel`
