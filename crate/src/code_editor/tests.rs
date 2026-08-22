@@ -4,7 +4,7 @@
 //! submodule so it reaches the editor's private fields and methods.
 
 use super::*;
-use dear_imgui_rs::{BackendFlags, Context};
+use dear_imgui_rs::Context;
 
 #[test]
 fn test_new_editor() {
@@ -691,8 +691,13 @@ fn prepare_headless_context(ctx: &mut Context) {
     let _ = ctx.set_ini_filename::<std::path::PathBuf>(None);
     let io = ctx.io_mut();
     io.set_display_size([800.0, 600.0]);
-    io.set_backend_flags(io.backend_flags() | BackendFlags::RENDERER_HAS_TEXTURES);
-    ctx.fonts().build();
+    // 0.17: build the atlas through the legacy renderer claim — headless tests
+    // have no managed renderer to service texture requests. (Setting
+    // RENDERER_HAS_TEXTURES would declare a managed renderer and reject this.)
+    ctx.font_atlas()
+        .try_claim_legacy_renderer()
+        .expect("legacy font atlas")
+        .build();
 }
 
 #[test]

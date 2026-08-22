@@ -21,13 +21,21 @@
 //!   this dear-app's auto dockspace would absorb every click before chrome
 //!   sees it.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use dear_app::{AppBuilder, DockingConfig, RunnerConfig, Theme as DearAppTheme};
 use dear_imgui_custom_mod::chrome::{Chrome, CloseMode, TitlebarConfig};
 use dear_imgui_custom_mod::theme::Theme;
 use dear_imgui_rs::{StyleVar, Ui, WindowFlags};
-use winit::window::Window;
+use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
+use dear_imgui_winit::{HiDpiMode, WinitPlatform};
+use pollster::block_on;
+use winit::{
+    application::ApplicationHandler,
+    dpi::LogicalSize,
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    window::Window,
+};
 
 /// Per-app state owned by the `on_frame` closure.
 struct DemoState {
@@ -61,122 +69,268 @@ impl Default for DemoState {
 const THEMES: &[(Theme, &str)] = &[(Theme::Dark, "Dark"), (Theme::Light, "Light")];
 
 fn main() {
-    // ── Shared state — chrome wrapper plus a window handle stash ──────────
-    // Both are accessed from three dear-app callbacks (`on_gpu_init`,
-    // `on_event`, `on_frame`), so they live behind `Arc<Mutex<_>>`.
-    let chrome = Arc::new(Mutex::new(
-        Chrome::new(TitlebarConfig::default().with_close_confirm())
+    let event_loop = EventLoop::new().expect("event loop");
+    event_loop.set_control_flow(ControlFlow::Poll);
+    let mut app = App::new();
+    event_loop.run_app(&mut app).expect("run app");
+}
+
+// ─── wgpu + winit + imgui + chrome boilerplate ──────────────────────────────
+//
+// dear-app 0.17 owns the window and its `Application`/frame contexts lend only
+// `&Window` (and none in `frame()`), but `chrome` needs `&Arc<Window>` plus the
+// window every frame for `render`. So this demo drives its own winit + wgpu loop
+// (see demo_table for the base harness) and wires chrome into it directly.
+
+struct GpuState {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    window: Arc<Window>,
+    surface_cfg: wgpu::SurfaceConfiguration,
+    surface: wgpu::Surface<'static>,
+    context: dear_imgui_rs::Context,
+    platform: WinitPlatform,
+    renderer: WgpuRenderer,
+    chrome: Chrome,
+    state: DemoState,
+}
+
+struct App {
+    gpu: Option<GpuState>,
+}
+
+impl App {
+    fn new() -> Self {
+        Self { gpu: None }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.gpu.is_some() {
+            return;
+        }
+
+        let window = Arc::new(
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_inner_size(LogicalSize::new(1100.0, 720.0))
+                        .with_title("Chrome demo")
+                        .with_decorations(false),
+                )
+                .expect("window"),
+        );
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let surface = instance.create_surface(window.clone()).expect("surface");
+        let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+            apply_limit_buckets: false,
+        }))
+        .expect("adapter");
+        let (device, queue) =
+            block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("device");
+
+        let phys = window.inner_size();
+        let surface_cfg = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            width: phys.width.max(1),
+            height: phys.height.max(1),
+            present_mode: wgpu::PresentMode::Fifo,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            color_space: wgpu::SurfaceColorSpace::Auto,
+            view_formats: vec![wgpu::TextureFormat::Bgra8Unorm],
+        };
+        surface.configure(&device, &surface_cfg);
+
+        let mut context = dear_imgui_rs::Context::create();
+        let _ = context.set_ini_filename(None::<std::path::PathBuf>);
+
+        let mut platform = WinitPlatform::new(&mut context).expect("winit platform");
+        platform
+            .attach_window(window.clone(), HiDpiMode::Default, &mut context)
+            .expect("attach window");
+
+        let renderer = WgpuRenderer::new(
+            WgpuInitInfo::new(device.clone(), queue.clone(), surface_cfg.format),
+            &mut context,
+        )
+        .expect("renderer");
+
+        // Borderless chrome: strip OS decorations, apply DWM dark mode +
+        // rounded corners. Runs once, now that the window exists.
+        let mut chrome = Chrome::new(TitlebarConfig::default().with_close_confirm())
             .with_title("Chrome demo")
             .with_theme(Theme::Dark)
-            .with_corner_radius(8),
-    ));
-    let win_stash: Arc<Mutex<Option<Arc<Window>>>> = Arc::new(Mutex::new(None));
-    let state = Arc::new(Mutex::new(DemoState::default()));
+            .with_corner_radius(8);
+        chrome.on_setup(&window);
 
-    // ── dear-app runner config ────────────────────────────────────────────
-    // The two `docking` flags MUST be `false` — see module-level doc.
-    let runner_cfg = RunnerConfig {
-        window_title: "Chrome demo".to_string(),
-        window_size: (1100.0, 720.0),
-        theme: Some(DearAppTheme::Dark),
-        docking: DockingConfig {
-            enable: false,
-            auto_dockspace: false,
-            ..DockingConfig::default()
-        },
-        ..RunnerConfig::default()
-    };
+        self.gpu = Some(GpuState {
+            device,
+            queue,
+            window,
+            surface_cfg,
+            surface,
+            context,
+            platform,
+            renderer,
+            chrome,
+            state: DemoState::default(),
+        });
+    }
 
-    // ── Build & run ───────────────────────────────────────────────────────
-    AppBuilder::new()
-        .with_config(runner_cfg)
-        .on_gpu_init({
-            let chrome = chrome.clone();
-            let win_stash = win_stash.clone();
-            move |window, _device, _queue, _surface_cfg| {
-                // Strip OS chrome, apply DWM dark mode + rounded corners,
-                // shrink window if it came up at fullscreen-equivalent size.
-                chrome.lock().unwrap().on_setup(window);
-                *win_stash.lock().unwrap() = Some(window.clone());
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        let Some(gpu) = self.gpu.as_mut() else {
+            return;
+        };
+
+        // Chrome first — borderless drag / resize / maximise tracking plus its
+        // Ctrl/Alt shortcut normalisation. It expects a full winit `Event`, so
+        // wrap the `WindowEvent`; then forward to the imgui platform. This is
+        // the exact ordering dear-app applied internally.
+        let wrapped = winit::event::Event::WindowEvent {
+            window_id,
+            event: event.clone(),
+        };
+        gpu.chrome.on_event(&wrapped, &gpu.window, &mut gpu.context);
+        let _ = gpu
+            .platform
+            .handle_window_event(&mut gpu.context, &gpu.window, &event);
+
+        match event {
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
             }
-        })
-        .on_event({
-            let chrome = chrome.clone();
-            let win_stash = win_stash.clone();
-            move |event, _window, ctx| {
-                if let Some(w) = win_stash.lock().unwrap().as_ref() {
-                    chrome.lock().unwrap().on_event(event, w, ctx);
-                }
+            WindowEvent::Resized(new_size) => {
+                gpu.surface_cfg.width = new_size.width.max(1);
+                gpu.surface_cfg.height = new_size.height.max(1);
+                gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
+                gpu.window.request_redraw();
             }
-        })
-        .on_frame({
-            let chrome = chrome.clone();
-            let state = state.clone();
-            let win_stash = win_stash.clone();
-            move |ui, _addons| {
-                let Some(window) = win_stash.lock().unwrap().clone() else {
-                    return;
-                };
-
-                // Render borderless titlebar + content. `render` wraps the
-                // closure in a single full-display ImGui root — drag /
-                // resize / minimise / maximise / close all dispatch to
-                // `window` automatically. Close requests surface via
-                // `take_close_request` below.
-                {
-                    let mut c = chrome.lock().unwrap();
-                    let st = state.clone();
-                    c.render(ui, &window, |ui, _area| {
-                        let _pad = ui.push_style_var(StyleVar::WindowPadding([12.0, 12.0]));
-                        let _spc = ui.push_style_var(StyleVar::ItemSpacing([8.0, 6.0]));
-                        ui.child_window("##content")
-                            .size([0.0, 0.0])
-                            .border(false)
-                            .build(ui, || {
-                                render_content(ui, &mut st.lock().unwrap());
-                            });
-                    });
-                }
-
-                // Bridge demo state into chrome config / palette.
-                // - Theme switch: only fires when the user actually changed
-                //   the picker — `set_theme` is cheap but recreates the
-                //   palette so we gate it.
-                // - Button visibility: bool flips, free; sync every frame.
-                {
-                    let mut s = state.lock().unwrap();
-                    let mut c = chrome.lock().unwrap();
-                    if s.theme != s.last_applied_theme {
-                        c.set_theme(s.theme);
-                        s.last_applied_theme = s.theme;
+            WindowEvent::RedrawRequested => {
+                let frame = match gpu.surface.get_current_texture() {
+                    wgpu::CurrentSurfaceTexture::Success(f)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+                    wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                        gpu.surface.configure(&gpu.device, &gpu.surface_cfg);
+                        return;
                     }
-                    c.config_mut().buttons.minimize = s.show_minimize;
-                    c.config_mut().buttons.maximize = s.show_maximize;
-                }
+                    other => {
+                        eprintln!("Surface unavailable: {other:?}");
+                        return;
+                    }
+                };
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
 
-                // ── Close-request handling ────────────────────────────────
-                // CloseMode::Confirm — user clicked ×, surface a popup
-                // instead of exiting. The popup lives inside the chrome's
-                // root render area (rendered next frame).
-                if let Some(mode) = chrome.lock().unwrap().take_close_request() {
+                gpu.platform
+                    .prepare_frame(&mut gpu.context, &gpu.window)
+                    .expect("prepare_frame");
+
+                let ui = gpu.context.frame();
+
+                // Borderless titlebar + host content in one full-display root.
+                gpu.chrome.render(ui, &gpu.window, |ui, _area| {
+                    let _pad = ui.push_style_var(StyleVar::WindowPadding([12.0, 12.0]));
+                    let _spc = ui.push_style_var(StyleVar::ItemSpacing([8.0, 6.0]));
+                    ui.child_window("##content")
+                        .size([0.0, 0.0])
+                        .border(false)
+                        .build(ui, || {
+                            render_content(ui, &mut gpu.state);
+                        });
+                });
+
+                // Bridge demo state → chrome config / palette (theme switch is
+                // gated so `set_theme`'s palette rebuild only fires on change).
+                if gpu.state.theme != gpu.state.last_applied_theme {
+                    gpu.chrome.set_theme(gpu.state.theme);
+                    gpu.state.last_applied_theme = gpu.state.theme;
+                }
+                gpu.chrome.config_mut().buttons.minimize = gpu.state.show_minimize;
+                gpu.chrome.config_mut().buttons.maximize = gpu.state.show_maximize;
+
+                // CloseMode::Confirm — surface an in-app popup instead of exiting.
+                if let Some(mode) = gpu.chrome.take_close_request() {
                     match mode {
                         CloseMode::Immediate => std::process::exit(0),
                         CloseMode::Confirm => {
-                            state.lock().unwrap().confirm_close_open = true;
+                            gpu.state.confirm_close_open = true;
                         }
                     }
                 }
-
-                // The popup is rendered as part of the next frame — we open
-                // it here via OpenPopup so it appears at the top Z-layer.
-                if state.lock().unwrap().confirm_close_open {
+                if gpu.state.confirm_close_open {
                     ui.open_popup("##confirm_close");
                 }
-                draw_confirm_close_popup(ui, &mut state.lock().unwrap());
+                draw_confirm_close_popup(ui, &mut gpu.state);
+
+                gpu.platform
+                    .prepare_render(ui, &gpu.window)
+                    .expect("prepare_render");
+
+                let consumer = gpu.renderer.renderer_consumer().expect("renderer consumer");
+                let pending = gpu.context.render(consumer);
+                let framebuffer_extent =
+                    dear_imgui_wgpu::FramebufferExtent::from_texture(&frame.texture);
+
+                let mut encoder =
+                    gpu.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("imgui"),
+                        });
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("imgui_pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            depth_slice: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.08,
+                                    g: 0.09,
+                                    b: 0.11,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    gpu.renderer
+                        .render(pending, &mut pass, framebuffer_extent)
+                        .expect("render");
+                }
+                gpu.queue.submit(Some(encoder.finish()));
+                gpu.queue.present(frame);
+                gpu.window.request_redraw();
             }
-        })
-        .run()
-        .expect("event loop terminated");
+            _ => {}
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(gpu) = self.gpu.as_ref() {
+            gpu.window.request_redraw();
+        }
+    }
 }
 
 /// Demo body — a single child window's worth of content.

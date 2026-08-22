@@ -3,8 +3,8 @@
 //! Borderless-window helpers — custom Dear ImGui titlebar, edge-resize
 //! detection, Win32 setup. **Stateless / explicit-state design**: the
 //! chrome doesn't own a runner; the host wires these helpers into its
-//! own event loop (typically [`dear-app`]) via the `on_gpu_init`,
-//! `on_event`, and `on_frame` callbacks.
+//! own winit + wgpu event loop via three integration points: window setup
+//! (after creation), per-event dispatch, and per-frame render.
 //!
 //! ## Architecture
 //!
@@ -19,68 +19,41 @@
 //!   — Win32-only: DWM dark mode, rounded corners, Win10 region sync,
 //!   opacity (`WS_EX_LAYERED`).
 //! - [`clamp_size_to_monitor`] — pre-window-creation guard against
-//!   Windows' borderless-fullscreen heuristic (clamp `RunnerConfig::window_size`
+//!   Windows' borderless-fullscreen heuristic (clamp the window size
 //!   strictly below monitor work-area).
 //!
-//! ## Wiring with `dear-app`
+//! ## Wiring into a winit + wgpu loop
+//!
+//! `chrome` is host-agnostic — it needs the `Arc<Window>`, the winit events,
+//! and the per-frame `&Ui`. (Note: it can't run under `dear-app`, whose 0.17
+//! frame context exposes no per-frame window handle — drive your own loop.)
+//! Call [`Chrome::on_setup`] once after the window is created, feed every
+//! `winit::event::Event` to [`Chrome::on_event`], and call [`Chrome::render`]
+//! each frame. See `examples-app/examples/demo_chrome.rs` for a complete,
+//! runnable reference.
 //!
 //! ```ignore
-//! use std::sync::{Arc, Mutex};
-//! use dear_app::{AppBuilder, DockingConfig, RunnerConfig};
+//! use std::sync::Arc;
 //! use dear_imgui_custom_mod::chrome::{Chrome, TitlebarConfig};
 //! use dear_imgui_custom_mod::theme::Theme;
 //!
-//! let chrome = Arc::new(Mutex::new(
-//!     Chrome::new(TitlebarConfig::default())
-//!         .with_title("My App")
-//!         .with_theme(Theme::Dark),
-//! ));
-//! let win_stash: Arc<Mutex<Option<Arc<winit::window::Window>>>> = Default::default();
+//! // Once, after creating the borderless `Arc<winit::window::Window>`:
+//! let mut chrome = Chrome::new(TitlebarConfig::default())
+//!     .with_title("My App")
+//!     .with_theme(Theme::Dark);
+//! chrome.on_setup(&window);
 //!
-//! AppBuilder::new()
-//!     .with_config(RunnerConfig {
-//!         window_title: "My App".into(),
-//!         window_size: (1100.0, 700.0),
-//!         // CRITICAL: dear-app's auto-dockspace would absorb every
-//!         // click before chrome / toolbars see it — disable.
-//!         docking: DockingConfig {
-//!             enable: false,
-//!             auto_dockspace: false,
-//!             ..Default::default()
-//!         },
-//!         ..Default::default()
-//!     })
-//!     .on_gpu_init({
-//!         let c = chrome.clone();
-//!         let w = win_stash.clone();
-//!         move |window, _, _, _| {
-//!             c.lock().unwrap().on_setup(window);
-//!             *w.lock().unwrap() = Some(window.clone());
-//!         }
-//!     })
-//!     .on_event({
-//!         let c = chrome.clone();
-//!         let w = win_stash.clone();
-//!         move |event, _, ctx| {
-//!             if let Some(window) = w.lock().unwrap().as_ref() {
-//!                 c.lock().unwrap().on_event(event, window, ctx);
-//!             }
-//!         }
-//!     })
-//!     .on_frame({
-//!         let c = chrome.clone();
-//!         let w = win_stash.clone();
-//!         move |ui, _| {
-//!             let Some(window) = w.lock().unwrap().clone() else { return };
-//!             c.lock().unwrap().render(ui, &window, |ui, _area| {
-//!                 ui.text("Content goes inside the chrome content area.");
-//!             });
-//!             if c.lock().unwrap().take_close_request().is_some() {
-//!                 std::process::exit(0);
-//!             }
-//!         }
-//!     })
-//!     .run().unwrap();
+//! // In `ApplicationHandler::window_event`, before your own handling:
+//! let wrapped = winit::event::Event::WindowEvent { window_id, event: event.clone() };
+//! chrome.on_event(&wrapped, &window, &mut imgui_context);
+//!
+//! // Each frame (RedrawRequested), inside the Dear ImGui frame:
+//! chrome.render(ui, &window, |ui, _area| {
+//!     ui.text("Content goes inside the chrome content area.");
+//! });
+//! if chrome.take_close_request().is_some() {
+//!     std::process::exit(0);
+//! }
 //! ```
 
 mod config;
@@ -185,8 +158,8 @@ pub struct ContentArea {
 /// crashed the desktop. Reserving an 80-logical-px buffer (covers a
 /// taskbar across DPI scales) keeps us strictly windowed.
 ///
-/// Call this **before** building [`dear_app::RunnerConfig::window_size`]
-/// when an [`ActiveEventLoop`] is in scope (e.g. from a
+/// Call this **before** creating the window, when an [`ActiveEventLoop`]
+/// is in scope (e.g. from a
 /// `winit::event_loop::EventLoopBuilder` trait impl, or by spawning a
 /// throw-away event loop just to read the primary monitor). For hosts
 /// that can't get an `ActiveEventLoop` before window creation, see
@@ -242,11 +215,11 @@ fn clamp_size_logic(
 /// titlebar actions to a `winit::Window`. Use this when you don't want to
 /// hand-roll the state tracking yourself.
 ///
-/// Wires into a `dear-app`-style runner with three callbacks:
+/// Wires into a winit + wgpu loop at three points:
 ///
-/// - [`Chrome::on_setup`] — called from `on_gpu_init`.
-/// - [`Chrome::on_event`] — called from `on_event`.
-/// - [`Chrome::render`]   — called from `on_frame`.
+/// - [`Chrome::on_setup`] — once, after the window is created.
+/// - [`Chrome::on_event`] — for every `winit::event::Event`.
+/// - [`Chrome::render`]   — each frame, inside the Dear ImGui frame.
 pub struct Chrome {
     config: TitlebarConfig,
     title: String,

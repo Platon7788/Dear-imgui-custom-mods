@@ -22,14 +22,13 @@ dear-imgui-custom-mod = { path = "../crate", features = ["full", "force_graph"] 
 # host-agnostic — it only consumes a `&Ui`). Keep the versions in
 # lock-step with `crate/Cargo.toml` so cargo doesn't pull duplicate
 # graphs.
-dear-imgui-rs = "0.15.0"
-dear-imgui-wgpu = "0.15.0"
-dear-imgui-winit = "0.15.0"
-# `demo_chrome` (and any chrome-using demo) wires through dear-app's runner
-# instead of spinning up its own winit / wgpu loop.
-dear-app = "0.15.0"
-pollster = "0.4.0"
-wgpu = "29.0.3"
+dear-imgui-rs = "0.17.0"
+dear-imgui-wgpu = "0.17.0"
+dear-imgui-winit = "0.17.0"
+# All demos (including the chrome ones) drive their own winit + wgpu loop —
+# see demo_chrome. `pollster::block_on` bridges the async adapter/device setup.
+pollster = "1.0"
+wgpu = "30"
 winit = "0.30.13"
 # `demo_disasm_view` exercises the ron-export "Save Config" button.
 ron = "0.12"

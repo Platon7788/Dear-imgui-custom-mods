@@ -2,8 +2,8 @@
 //!
 //! These functions are pure helpers — they take a winit `Window` and
 //! perform Win32 API calls. They do **not** own an event loop or a wgpu
-//! context; the host wires them into its own runner (typically through
-//! `dear-app::on_gpu_init` and `on_event` callbacks).
+//! context; the host wires them into its own winit + wgpu loop (see
+//! [`super::Chrome::on_setup`]).
 //!
 //! Provides:
 //! 1. HWND extraction from a `winit::Window`.

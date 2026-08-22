@@ -17,14 +17,19 @@
 # via `-p examples-app` or `--workspace`. Build profiles live here at
 # the workspace root so both packages share them.
 
+# `resolver = "3"` (the edition-2024 default, stable since Rust 1.84) turns on
+# MSRV-aware version selection: Cargo prefers dependency versions whose own
+# `rust-version` is satisfied by our declared MSRV (1.98) instead of always
+# grabbing the newest. Workspaces don't inherit the resolver from `edition`, so
+# it's pinned explicitly here.
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crate", "examples-app"]
 default-members = ["crate"]
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.98"
 license = "MIT"
 
 # ─── Build profiles (shared) ─────────────────────────────────────────────────

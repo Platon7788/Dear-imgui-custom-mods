@@ -315,7 +315,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                     }
 
                     if !self.cell_buf.is_empty() {
-                        let col_w = ui.current_column_width();
+                        let col_w = ui.content_region_avail_width();
                         let text_w = calc_text_size(&self.cell_buf)[0];
                         let pad = alignment_pad(cell_alignment, col_w, text_w);
                         if pad > 0.0 {
@@ -340,7 +340,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                         .clip_tooltip
                         .unwrap_or(self.config.table.default_clip_tooltip);
                     if show_clip_tooltip && !self.cell_buf.is_empty() && ui.is_item_hovered() {
-                        let col_w = ui.current_column_width();
+                        let col_w = ui.content_region_avail_width();
                         let text_w = calc_text_size(&self.cell_buf)[0];
                         if text_w > col_w {
                             crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));

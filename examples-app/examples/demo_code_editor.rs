@@ -6,9 +6,9 @@
 //! Run: cargo run --example demo_code_editor
 
 use dear_imgui_custom_mod::code_editor::{
-    CODE_EDITOR_FONT_PTR, CodeEditor, EditorTheme, Language, LineMarker, MDI_FONT_DATA,
+    CODE_EDITOR_FONT_PTR, CodeEditor, EditorTheme, Language, LineMarker,
 };
-use dear_imgui_rs::{Condition, FontConfig, StyleColor, Ui};
+use dear_imgui_rs::{Condition, StyleColor, Ui};
 use dear_imgui_wgpu::{WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
 use pollster::block_on;
@@ -196,35 +196,18 @@ const SYSTEM_MONO_FONTS: &[(&str, &str)] = &[
 /// Returns the list of loaded fonts and the index of the default one.
 fn load_all_fonts(ctx: &mut dear_imgui_rs::Context, size_pixels: f32) -> (Vec<LoadedFont>, usize) {
     let mut fonts = Vec::new();
-    let mdi_glyph_ranges: &[u32] = &[0xF0000, 0xF1FFF, 0];
 
-    // Helper: add a font from bytes, merge MDI icons, return ImFont ptr.
+    // Helper: add a font from bytes (with MDI icons merged) and return its raw
+    // ImFont ptr. `install_ui_font` adds the base font, merges the MDI icon
+    // font into it, and hands back the `*mut ImFont` — the raw pointer that
+    // `FontId` no longer exposes in 0.17. Dear ImGui 1.92 loads the MDI PUA
+    // codepoints on demand, so no explicit glyph range is needed.
     let add_font = |ctx: &mut dear_imgui_rs::Context,
                     name: &'static str,
                     data: &[u8]|
      -> Option<*mut dear_imgui_rs::sys::ImFont> {
-        let cfg = FontConfig::new()
-            .size_pixels(size_pixels)
-            .oversample_h(2)
-            .name(name);
-        let mut atlas = ctx.fonts();
-        let f = atlas.add_font_from_memory_ttf(data, size_pixels, Some(&cfg), None)?;
-        let ptr = f.raw();
-        drop(atlas);
-        // Merge MDI icons
-        let mdi_cfg = FontConfig::new()
-            .size_pixels(size_pixels)
-            .merge_mode(true)
-            .name("MDI");
-        let mut atlas2 = ctx.fonts();
-        atlas2.add_font_from_memory_ttf(
-            MDI_FONT_DATA,
-            size_pixels,
-            Some(&mdi_cfg),
-            Some(mdi_glyph_ranges),
-        );
-        drop(atlas2);
-        Some(ptr)
+        let ptr = dear_imgui_custom_mod::fonts::install_ui_font(ctx, data, size_pixels, name, true);
+        (!ptr.is_null()).then_some(ptr)
     };
 
     // 1. All built-in fonts (Hack, JetBrains Mono NL, JetBrains Mono)
@@ -575,6 +558,7 @@ impl ApplicationHandler for App {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))
         .expect("adapter");
         let (device, queue) =
@@ -589,6 +573,7 @@ impl ApplicationHandler for App {
             present_mode: wgpu::PresentMode::Fifo,
             desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             view_formats: vec![wgpu::TextureFormat::Bgra8Unorm],
         };
         surface.configure(&device, &surface_cfg);
@@ -596,12 +581,12 @@ impl ApplicationHandler for App {
         let mut context = dear_imgui_rs::Context::create();
         let _ = context.set_ini_filename(None::<std::path::PathBuf>);
 
-        let mut platform = WinitPlatform::new(&mut context);
-        platform.attach_window(&window, HiDpiMode::Default, &mut context);
+        let mut platform = WinitPlatform::new(&mut context).expect("winit platform");
+        platform
+            .attach_window(window.clone(), HiDpiMode::Default, &mut context)
+            .expect("attach window");
 
-        let hidpi = window.scale_factor() as f32;
-        let font_size = 15.0 * hidpi;
-        context.io_mut().set_font_global_scale(1.0 / hidpi);
+        let font_size = 15.0;
 
         // Load all available monospace fonts (built-in + system) into the atlas.
         let (fonts, font_idx) = load_all_fonts(&mut context, font_size);
@@ -637,7 +622,7 @@ impl ApplicationHandler for App {
             return;
         };
 
-        gpu.platform.handle_event::<()>(
+        let _ = gpu.platform.handle_event::<()>(
             &mut gpu.context,
             &gpu.window,
             &Event::WindowEvent {
@@ -674,13 +659,18 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
+                gpu.platform
+                    .prepare_frame(&mut gpu.context, &gpu.window)
+                    .expect("prepare_frame");
 
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);
-                gpu.platform.prepare_render_with_ui(ui, &gpu.window);
+                let _ = gpu.platform.prepare_render(ui, &gpu.window);
 
-                let draw_data = gpu.context.render();
+                let consumer = gpu.renderer.renderer_consumer().expect("renderer consumer");
+                let pending = gpu.context.render(consumer);
+                let framebuffer_extent =
+                    dear_imgui_wgpu::FramebufferExtent::from_texture(&frame.texture);
 
                 let mut encoder =
                     gpu.device
@@ -711,15 +701,13 @@ impl ApplicationHandler for App {
                         multiview_mask: None,
                     });
 
-                    if draw_data.total_vtx_count() > 0 {
-                        gpu.renderer
-                            .render_draw_data(draw_data, &mut pass)
-                            .expect("render");
-                    }
+                    gpu.renderer
+                        .render(pending, &mut pass, framebuffer_extent)
+                        .expect("render");
                 }
 
                 gpu.queue.submit(Some(encoder.finish()));
-                frame.present();
+                gpu.queue.present(frame);
 
                 gpu.window.request_redraw();
             }

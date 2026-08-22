@@ -152,7 +152,7 @@ fn is_numpad_control_key(key: &winit::keyboard::Key) -> bool {
 /// Returns `true` if the event was handled; the caller must then NOT forward it.
 /// Returns `false` for released keys, non-numpad keys, control keys, and events
 /// without printable text.
-pub fn try_inject_numpad_text(io: &mut Io, event: &KeyEvent) -> bool {
+pub fn try_dispatch_numpad_text(io: &mut Io, event: &KeyEvent) -> bool {
     if event.location != KeyLocation::Numpad {
         return false;
     }
@@ -179,7 +179,7 @@ pub fn try_inject_numpad_text(io: &mut Io, event: &KeyEvent) -> bool {
 /// `dear-imgui-winit` ignores `WindowEvent::Ime` events entirely, which means
 /// CJK / dead-key composition never reaches the focused input field. Call this
 /// from `WindowEvent::Ime(Ime::Commit(text))`.
-pub fn inject_ime_commit(io: &mut Io, text: &str) {
+pub fn dispatch_ime_commit(io: &mut Io, text: &str) {
     for ch in text.chars() {
         io.add_input_character(ch);
     }
@@ -191,7 +191,7 @@ pub fn inject_ime_commit(io: &mut Io, text: &str) {
 /// (`Digit0`..`Digit9`) — the only physical keys whose *logical* key
 /// changes on a non-Latin/non-US layout (Cyrillic letters, AZERTY's
 /// shifted digit row, …) and therefore need the physical-scan-code
-/// workaround in [`try_inject_ctrl_alt_shortcut`].
+/// workaround in [`try_dispatch_ctrl_alt_shortcut`].
 ///
 /// Navigation/control keys (Tab, Escape, Enter, arrows, F-keys, numpad, …)
 /// are layout-independent — winit reports the same logical key for them on
@@ -261,7 +261,7 @@ fn is_layout_sensitive_key(code: KeyCode) -> bool {
 /// Call BEFORE forwarding the event to `platform.handle_event(...)`.
 /// Returns `true` if the shortcut was injected; caller must then skip the
 /// platform forward to avoid duplicating the raw character into input fields.
-pub fn try_inject_ctrl_alt_shortcut(io: &mut Io, event: &KeyEvent) -> bool {
+pub fn try_dispatch_ctrl_alt_shortcut(io: &mut Io, event: &KeyEvent) -> bool {
     let PhysicalKey::Code(code) = event.physical_key else {
         return false;
     };
@@ -300,10 +300,10 @@ pub fn reinforce_physical_key_state(io: &mut Io, event: &KeyEvent) {
 ///
 /// Replaces the boilerplate of:
 ///
-/// 1. Calling [`try_inject_numpad_text`] / [`try_inject_ctrl_alt_shortcut`]
+/// 1. Calling [`try_dispatch_numpad_text`] / [`try_dispatch_ctrl_alt_shortcut`]
 ///    on every `WindowEvent::KeyboardInput` and skipping the platform
 ///    forward when one of them consumes the event.
-/// 2. Calling [`inject_ime_commit`] on `WindowEvent::Ime(Ime::Commit(_))`.
+/// 2. Calling [`dispatch_ime_commit`] on `WindowEvent::Ime(Ime::Commit(_))`.
 /// 3. Calling [`reinforce_physical_key_state`] **after** the platform
 ///    forward when the helpers did not consume the event.
 ///
@@ -340,29 +340,32 @@ pub fn dispatch_window_event(
     match event {
         WindowEvent::KeyboardInput { event: ke, .. } => {
             let io = context.io_mut();
-            if try_inject_numpad_text(io, ke) || try_inject_ctrl_alt_shortcut(io, ke) {
+            if try_dispatch_numpad_text(io, ke) || try_dispatch_ctrl_alt_shortcut(io, ke) {
                 return;
             }
-            platform.handle_window_event(context, window, event);
+            // 0.17: `handle_window_event` returns a `Result`; a platform error
+            // here is non-fatal for input dispatch, so it is intentionally
+            // ignored (same for the fall-through arm below).
+            let _ = platform.handle_window_event(context, window, event);
             // Reinforce only on physical-key release tracking. `add_key_event`
             // is idempotent, so this is a no-op when the platform layer
             // already injected the matching state.
             reinforce_physical_key_state(context.io_mut(), ke);
         }
         WindowEvent::Ime(Ime::Commit(text)) => {
-            inject_ime_commit(context.io_mut(), text);
+            dispatch_ime_commit(context.io_mut(), text);
         }
         _ => {
-            platform.handle_window_event(context, window, event);
+            let _ = platform.handle_window_event(context, window, event);
         }
     }
 }
 
-/// Layout-independent shortcut fix for [`dear-app`]-style hosts.
+/// Layout-independent shortcut fix for single-`Event`-callback hosts.
 ///
-/// `dear-app::AppBuilder::on_event` does not allow the callback to suppress
-/// the subsequent `platform.handle_event` call, so the [full
-/// dispatcher][`dispatch_window_event`] cannot be used there. This helper
+/// A host that forwards each `winit::event::Event` to `platform.handle_event`
+/// itself (and can't suppress that forward) cannot use the [full
+/// dispatcher][`dispatch_window_event`] there. This helper
 /// installs only the **non-destructive** half of the fix:
 ///
 /// - On `WindowEvent::KeyboardInput`, when Ctrl or Alt is held, injects
@@ -375,7 +378,7 @@ pub fn dispatch_window_event(
 /// pair, and the Cyrillic / dead-key logical key falls through
 /// `winit_key_to_imgui_key` as `None`, so there is no competing key event.
 ///
-/// `try_inject_numpad_text` is **not** called here: `dear-imgui-winit` 0.11
+/// `try_dispatch_numpad_text` is **not** called here: `dear-imgui-winit` 0.11
 /// already adds numpad digit characters via `event.text`, so calling it
 /// would double-inject the digit. Hosts who roll their own winit loop and
 /// suppress the platform forward should use [`dispatch_window_event`]
@@ -389,24 +392,19 @@ pub fn dispatch_window_event(
 /// `event.text` against `io.key_ctrl`. The shortcut fires (Ctrl+C copies,
 /// Ctrl+V pastes, etc.), but a stray Cyrillic letter may also land in the
 /// focused `InputText`. Fixing this requires either an upstream patch in
-/// `dear-imgui-winit` or a `consumed: bool` return from
-/// `dear-app::on_event`. Tracked in `_CONTEXT.md` (session 044+).
+/// `dear-imgui-winit` or a way for the host's event callback to mark the
+/// event consumed. Tracked in `_CONTEXT.md` (session 044+).
 ///
 /// ### Wiring
 ///
 /// ```rust,ignore
-/// AppBuilder::new()
-///     .on_event(move |event, _window, ctx| {
-///         dear_imgui_custom_mod::input::keyboard::dispatch_dear_app_event(ctx, event);
-///         // … your own per-event handling …
-///     })
-///     .run().unwrap();
+/// // In your winit event handler, for each `winit::event::Event`:
+/// dear_imgui_custom_mod::input::keyboard::dispatch_dear_app_event(ctx, &event);
+/// // … then forward to `platform.handle_event(...)` and your own handling …
 /// ```
 ///
 /// `chrome::Chrome::on_event` already calls this internally, so apps using
 /// the chrome wrapper do not need to wire it manually.
-///
-/// [`dear-app`]: https://crates.io/crates/dear-app
 pub fn dispatch_dear_app_event(
     context: &mut dear_imgui_rs::Context,
     event: &winit::event::Event<()>,
@@ -415,7 +413,7 @@ pub fn dispatch_dear_app_event(
         return;
     };
     if let winit::event::WindowEvent::KeyboardInput { event: ke, .. } = we {
-        let _ = try_inject_ctrl_alt_shortcut(context.io_mut(), ke);
+        let _ = try_dispatch_ctrl_alt_shortcut(context.io_mut(), ke);
     }
 }
 

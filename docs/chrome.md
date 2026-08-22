@@ -11,7 +11,7 @@ it just provides:
 - Win32 helpers (DWM dark mode, rounded corners, opacity, Win10 region sync).
 - A small `Chrome` convenience wrapper that bundles per-frame state.
 
-The host wires these helpers into its own runner — typically [`dear-app`].
+The host wires these helpers into its own `winit` + `wgpu` event loop.
 
 ## Why no runner?
 
@@ -25,8 +25,10 @@ had to be re-discovered and patched in our runner. Meanwhile `test-dear-imgui-rs
 of those bugs.
 
 The 2026-05 refactor (session 044) deletes the runner entirely and exposes
-chrome as helper functions. Hosts gain `dear-app`'s battle-tested resize /
-DPI / surface flow for free; we maintain less code.
+chrome as helper functions. Hosts drive their own `winit` + `wgpu` loop (see
+`demo_chrome`), keeping full control of window/surface lifecycle; we maintain
+less code. Note: `dear-app` 0.17 can't host chrome — its frame context no
+longer exposes a per-frame window handle.
 
 ## Architecture
 
@@ -85,66 +87,36 @@ ui.window("##my_root").build(|| {
 
 ### 2. `Chrome` wrapper (recommended)
 
-For hosts using `dear-app`. Bundles state + dispatch:
+Bundles state + dispatch. Drive it from your own `winit` + `wgpu` loop —
+`chrome` needs the `Arc<Window>` and per-frame `&Ui`, which a `winit`
+`ApplicationHandler` provides directly. (It can't run under `dear-app`,
+whose 0.17 frame context exposes no per-frame window handle.) See
+`examples-app/examples/demo_chrome.rs` for a complete, runnable reference.
 
-```rust
-use std::sync::{Arc, Mutex};
-use dear_app::{AppBuilder, DockingConfig, RunnerConfig};
+```rust,ignore
+use std::sync::Arc;
 use dear_imgui_custom_mod::chrome::{Chrome, TitlebarConfig};
 
-let chrome = Arc::new(Mutex::new(
-    Chrome::new(TitlebarConfig::default())
-        .with_title("My App")
-        .with_corner_radius(8),
-));
-let win_stash: Arc<Mutex<Option<Arc<winit::window::Window>>>> =
-    Arc::new(Mutex::new(None));
+// Once, after creating the borderless `Arc<winit::window::Window>`:
+let mut chrome = Chrome::new(TitlebarConfig::default())
+    .with_title("My App")
+    .with_corner_radius(8);
+chrome.on_setup(&window);
 
-AppBuilder::new()
-    .with_config(RunnerConfig {
-        window_title: "My App".into(),
-        window_size: (1100.0, 700.0),
-        // CRITICAL: docking + auto_dockspace must be off, otherwise
-        // dear-app's full-screen dockspace absorbs every click.
-        docking: DockingConfig {
-            enable: false,
-            auto_dockspace: false,
-            ..Default::default()
-        },
-        ..Default::default()
-    })
-    .on_gpu_init({
-        let chrome = chrome.clone();
-        let win_stash = win_stash.clone();
-        move |window, _, _, _| {
-            chrome.lock().unwrap().on_setup(window);
-            *win_stash.lock().unwrap() = Some(window.clone());
-        }
-    })
-    .on_event({
-        let chrome = chrome.clone();
-        let win_stash = win_stash.clone();
-        move |event, _w, _ctx| {
-            if let Some(w) = win_stash.lock().unwrap().as_ref() {
-                chrome.lock().unwrap().on_event(event, w);
-            }
-        }
-    })
-    .on_frame({
-        let chrome = chrome.clone();
-        let win_stash = win_stash.clone();
-        move |ui, _addons| {
-            let Some(window) = win_stash.lock().unwrap().clone() else { return };
-            chrome.lock().unwrap().render(ui, &window, |ui, area| {
-                // your UI inside the content area …
-                ui.text(format!("Content goes here, area = {:?}", area.size));
-            });
-            if chrome.lock().unwrap().take_close_request().is_some() {
-                std::process::exit(0);
-            }
-        }
-    })
-    .run().unwrap();
+// In `ApplicationHandler::window_event`, before your own handling —
+// chrome expects a full `winit::event::Event`, then forward to the platform:
+let wrapped = winit::event::Event::WindowEvent { window_id, event: event.clone() };
+chrome.on_event(&wrapped, &window, &mut imgui_context);
+let _ = platform.handle_window_event(&mut imgui_context, &window, &event);
+
+// Each frame (RedrawRequested), inside the Dear ImGui frame:
+chrome.render(ui, &window, |ui, area| {
+    // your UI inside the content area …
+    ui.text(format!("Content goes here, area = {:?}", area.size));
+});
+if chrome.take_close_request().is_some() {
+    std::process::exit(0);
+}
 ```
 
 ## Single-window architecture
@@ -172,8 +144,8 @@ layout) key. On Cyrillic / CJK / Greek layouts physical `KeyC` arrives as
 e.g. Cyrillic `с` — neither maps to `Key::C` nor reaches `InputText` as a
 shortcut, so `Ctrl+C` silently does nothing.
 
-The `crate::input::keyboard` module has the fix (`try_inject_ctrl_alt_shortcut`,
-`try_inject_numpad_text`, `inject_ime_commit`), but it requires the runner
+The `crate::input::keyboard` module has the fix (`try_dispatch_ctrl_alt_shortcut`,
+`try_dispatch_numpad_text`, `dispatch_ime_commit`), but it requires the runner
 to call `platform.handle_event` **conditionally** — when our injection
 fires, the platform handler must be skipped, otherwise both fire and the
 Cyrillic `с` gets typed into the InputText after the Ctrl+C copy.

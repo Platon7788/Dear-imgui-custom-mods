@@ -410,6 +410,7 @@ impl ApplicationHandler for App {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))
         .expect("adapter");
         let (device, queue) =
@@ -424,6 +425,7 @@ impl ApplicationHandler for App {
             present_mode: wgpu::PresentMode::Fifo,
             desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             view_formats: vec![wgpu::TextureFormat::Bgra8Unorm],
         };
         surface.configure(&device, &surface_cfg);
@@ -431,24 +433,24 @@ impl ApplicationHandler for App {
         let mut context = dear_imgui_rs::Context::create();
         let _ = context.set_ini_filename(None::<std::path::PathBuf>);
 
-        let mut platform = WinitPlatform::new(&mut context);
-        platform.attach_window(&window, HiDpiMode::Default, &mut context);
+        let mut platform = WinitPlatform::new(&mut context).expect("winit platform");
+        platform
+            .attach_window(window.clone(), HiDpiMode::Default, &mut context)
+            .expect("attach window");
 
-        let hidpi = window.scale_factor() as f32;
-        let font_size = 15.0 * hidpi;
-        context.io_mut().set_font_global_scale(1.0 / hidpi);
+        let font_size = 15.0;
 
         use dear_imgui_custom_mod::code_editor::BuiltinFont;
         let cfg = dear_imgui_rs::FontConfig::new()
             .size_pixels(font_size)
             .oversample_h(2)
             .name("Hack");
-        context.fonts().add_font_from_memory_ttf(
-            BuiltinFont::Hack.data(),
-            font_size,
-            Some(&cfg),
-            None,
-        );
+        // SAFETY: `BuiltinFont::Hack.data()` is a valid 'static TTF blob.
+        let source = unsafe {
+            dear_imgui_rs::FontSource::ttf_data_with_size(BuiltinFont::Hack.data(), font_size)
+        }
+        .with_config(cfg);
+        context.font_atlas().add_font(&[source]);
 
         apply_dark_theme(context.style_mut());
 
@@ -483,7 +485,7 @@ impl ApplicationHandler for App {
     ) {
         let Some(gpu) = self.gpu.as_mut() else { return };
 
-        gpu.platform.handle_event::<()>(
+        let _ = gpu.platform.handle_event::<()>(
             &mut gpu.context,
             &gpu.window,
             &Event::WindowEvent {
@@ -517,13 +519,20 @@ impl ApplicationHandler for App {
                 let view = frame
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
-                gpu.platform.prepare_frame(&gpu.window, &mut gpu.context);
+                gpu.platform
+                    .prepare_frame(&mut gpu.context, &gpu.window)
+                    .expect("prepare_frame");
 
                 let ui = gpu.context.frame();
                 gpu.demo.render(ui);
-                gpu.platform.prepare_render_with_ui(ui, &gpu.window);
+                gpu.platform
+                    .prepare_render(ui, &gpu.window)
+                    .expect("prepare_render");
 
-                let draw_data = gpu.context.render();
+                let consumer = gpu.renderer.renderer_consumer().expect("renderer consumer");
+                let pending = gpu.context.render(consumer);
+                let framebuffer_extent =
+                    dear_imgui_wgpu::FramebufferExtent::from_texture(&frame.texture);
 
                 let mut encoder =
                     gpu.device
@@ -554,15 +563,13 @@ impl ApplicationHandler for App {
                         multiview_mask: None,
                     });
 
-                    if draw_data.total_vtx_count() > 0 {
-                        gpu.renderer
-                            .render_draw_data(draw_data, &mut pass)
-                            .expect("render");
-                    }
+                    gpu.renderer
+                        .render(pending, &mut pass, framebuffer_extent)
+                        .expect("render");
                 }
 
                 gpu.queue.submit(Some(encoder.finish()));
-                frame.present();
+                gpu.queue.present(frame);
                 gpu.window.request_redraw();
             }
             _ => {}

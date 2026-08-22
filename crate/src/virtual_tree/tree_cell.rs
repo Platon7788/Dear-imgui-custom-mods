@@ -278,7 +278,7 @@ impl<T: VirtualTreeNode> VirtualTree<T> {
                 .clip_tooltip
                 .unwrap_or(self.config.table.default_clip_tooltip);
             if show_clip_tooltip && !self.cell_buf.is_empty() && ui.is_item_hovered() {
-                let col_w = ui.current_column_width();
+                let col_w = ui.content_region_avail_width();
                 let text_w = calc_text_size(&self.cell_buf)[0];
                 // Account for indent + arrow + icon width
                 let arrow_width = unsafe { dear_imgui_rs::sys::igGetTreeNodeToLabelSpacing() };

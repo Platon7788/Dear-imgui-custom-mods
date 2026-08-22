@@ -177,8 +177,10 @@ impl QuadNode {
                     let mut fy = 0.0_f32;
                     for child in children.iter() {
                         let f = child.traverse(pos, k, theta);
-                        fx += f[0];
-                        fy += f[1];
+                        // 1.98 `algebraic_add`: this fan-in accumulation may be
+                        // reassociated freely — child order carries no meaning.
+                        fx = fx.algebraic_add(f[0]);
+                        fy = fy.algebraic_add(f[1]);
                     }
                     [fx, fy]
                 }
@@ -204,11 +206,17 @@ impl QuadNode {
 #[inline]
 fn repulsion(a: [f32; 2], b: [f32; 2], k: f32) -> [f32; 2] {
     const EPSILON: f32 = 100.0;
-    let dx = a[0] - b[0];
-    let dy = a[1] - b[1];
-    let dist_sq = (dx * dx + dy * dy).max(EPSILON);
-    let mag = k / dist_sq;
-    [mag * dx, mag * dy]
+    // 1.98 `algebraic_*`: mirrors `spring::repulsion_force` (see that module's
+    // header). The two paths are only ever compared to a `1e-3` tolerance, so
+    // reassociation/contraction drift is irrelevant.
+    let dx = a[0].algebraic_sub(b[0]);
+    let dy = a[1].algebraic_sub(b[1]);
+    let dist_sq = dx
+        .algebraic_mul(dx)
+        .algebraic_add(dy.algebraic_mul(dy))
+        .max(EPSILON);
+    let mag = k.algebraic_div(dist_sq);
+    [mag.algebraic_mul(dx), mag.algebraic_mul(dy)]
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

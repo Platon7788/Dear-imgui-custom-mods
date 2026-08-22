@@ -1,7 +1,7 @@
 # Pin the toolchain so every clone / CI runner builds with the same
-# compiler. Matches `rust-version = "1.96"` in Cargo.toml — if you bump
+# compiler. Matches `rust-version = "1.98"` in Cargo.toml — if you bump
 # the MSRV, update both.
 [toolchain]
-channel = "1.96"
+channel = "1.98"
 components = ["rustfmt", "clippy"]
 profile = "default"

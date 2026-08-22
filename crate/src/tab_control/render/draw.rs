@@ -186,10 +186,14 @@ fn draw_tab_segment<T: TabItem>(ctx: &TabDraw<'_, T>) {
         // Hover overlay fades in with the hover factor.
         let hf = hover_factor(cfg, hovered, hover_anim);
         if hf > 0.0 {
-            draw.add_rect([x0, y0], [x1, y1], c32(colors.tab_hover, (150.0 * hf) as u8))
-                .rounding(r)
-                .filled(true)
-                .build();
+            draw.add_rect(
+                [x0, y0],
+                [x1, y1],
+                c32(colors.tab_hover, (150.0 * hf) as u8),
+            )
+            .rounding(r)
+            .filled(true)
+            .build();
         }
     }
 }

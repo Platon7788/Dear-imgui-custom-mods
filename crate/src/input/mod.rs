@@ -25,14 +25,14 @@
 //! match event {
 //!     WindowEvent::KeyboardInput { event: ref ke, .. } => {
 //!         let io = context.io_mut();
-//!         if try_inject_numpad_text(io, ke)             { return; }
-//!         if try_inject_ctrl_alt_shortcut(io, ke)       { return; }
+//!         if try_dispatch_numpad_text(io, ke)             { return; }
+//!         if try_dispatch_ctrl_alt_shortcut(io, ke)       { return; }
 //!         // forward to platform afterwards:
 //!         // platform.handle_event(...);
 //!         // reinforce_physical_key_state(io, ke);
 //!     }
 //!     WindowEvent::Ime(Ime::Commit(text)) => {
-//!         inject_ime_commit(context.io_mut(), text);
+//!         dispatch_ime_commit(context.io_mut(), text);
 //!         return;
 //!     }
 //!     _ => {}
@@ -43,6 +43,6 @@
 pub mod keyboard;
 
 pub use keyboard::{
-    dispatch_dear_app_event, dispatch_window_event, inject_ime_commit, physical_key_to_imgui,
-    reinforce_physical_key_state, try_inject_ctrl_alt_shortcut, try_inject_numpad_text,
+    dispatch_dear_app_event, dispatch_ime_commit, dispatch_window_event, physical_key_to_imgui,
+    reinforce_physical_key_state, try_dispatch_ctrl_alt_shortcut, try_dispatch_numpad_text,
 };

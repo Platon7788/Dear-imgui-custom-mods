@@ -21,7 +21,7 @@
 //! ```
 
 #![allow(missing_docs)] // TODO: per-module doc-coverage pass — see CONTRIBUTING.md
-use dear_imgui_rs::{Context, FontConfig, sys::ImFont};
+use dear_imgui_rs::{Context, FontConfig, FontSource, sys::ImFont};
 
 // ─── Bundled font data ───────────────────────────────────────────────────────
 
@@ -46,10 +46,12 @@ pub const HACK_FONT_DATA: &[u8] = include_bytes!("../../assets/fonts/Hack-Regula
 /// flag on the install helpers below. ~1.3 MB.
 pub const MDI_FONT_DATA: &[u8] = include_bytes!("../../assets/materialdesignicons-webfont.ttf");
 
-/// MDI glyph range for ImGui font merging: `[start, end, 0]` (null-terminated).
+/// MDI glyph range: `[start, end, 0]` (null-terminated), covering the Material
+/// Design Icons Private-Use Area.
 ///
-/// Pass this to `add_font_from_memory_ttf(..., Some(MDI_GLYPH_RANGES))` when
-/// merging the icon font manually.
+/// Retained for backward compatibility. With Dear ImGui 1.92+ (dear-imgui-rs
+/// 0.17) fonts load glyphs on demand, so merging the icon font no longer needs
+/// an explicit inclusive range — [`merge_mdi_icons`] omits it.
 pub const MDI_GLYPH_RANGES: &[u32] = &[0xF0000, 0xF1FFF, 0];
 
 // ─── Built-in monospace fonts ────────────────────────────────────────────────
@@ -92,6 +94,47 @@ impl BuiltinFont {
 
 // ─── Installation helpers ────────────────────────────────────────────────────
 
+// ── Raw-pointer bridge for dear-imgui-rs 0.17 ────────────────────────────────
+//
+// 0.17 replaced the raw `*mut ImFont` font model with an opaque, atlas-validated
+// `FontId` that is deliberately `!Send + !Sync` and hides its inner pointer.
+// This crate, however, stores a *process-global* raw `*mut ImFont` (see
+// `crate::code_editor::CODE_EDITOR_FONT_PTR`, a `usize` atomic) and pushes it
+// through the `igPushFont` / `ImFont_CalcTextSizeA` FFI, so it cannot use
+// `FontId` directly. These two helpers add fonts through the safe
+// `FontAtlas::add_font` API (which handles `FontConfig` cleanly) and then
+// recover the raw pointer straight from the atlas font vector.
+
+/// Raw `*mut ImFont` of the font most recently added to `ctx`'s atlas, or null
+/// if the atlas holds no fonts.
+fn last_font_ptr(ctx: &Context) -> *mut ImFont {
+    let atlas = ctx.font_atlas().raw();
+    // SAFETY: `atlas` is the live atlas owned by `ctx`; `Fonts` is a valid
+    // `ImVector<*mut ImFont>` for the atlas lifetime and its entries are the
+    // non-null `ImFont*` created by `add_font`. Merge-mode sources do not append
+    // a new entry, so the last slot is always the base font just added.
+    unsafe {
+        let fonts = &(*atlas).Fonts;
+        if fonts.Size > 0 {
+            *fonts.Data.add((fonts.Size - 1) as usize)
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Add a single, already-configured TTF font to `ctx`'s atlas and return its raw
+/// `*mut ImFont`.
+fn add_ttf_font(ctx: &Context, data: &[u8], size_pixels: f32, cfg: FontConfig) -> *mut ImFont {
+    // SAFETY: `ttf_data_with_size` is `unsafe` only because Dear ImGui's TTF
+    // parser has no guaranteed input-boundary check; the data is a valid TTF
+    // blob that lives at least as long as this call (Dear ImGui copies it into
+    // the atlas).
+    let source = unsafe { FontSource::ttf_data_with_size(data, size_pixels) }.with_config(cfg);
+    ctx.font_atlas().add_font(&[source]);
+    last_font_ptr(ctx)
+}
+
 /// Install one of the built-in monospace fonts into the Dear ImGui atlas and
 /// (optionally) merge MDI icons into the same glyph table.
 ///
@@ -109,11 +152,7 @@ pub fn install_monospace(
         .oversample_v(1)
         .pixel_snap_h(true)
         .name(font.display_name());
-    let ptr = ctx
-        .fonts()
-        .add_font_from_memory_ttf(font.data(), size_pixels, Some(&cfg), None)
-        .map(|f| f.raw())
-        .unwrap_or(std::ptr::null_mut());
+    let ptr = add_ttf_font(ctx, font.data(), size_pixels, cfg);
 
     if merge_mdi {
         merge_mdi_icons(ctx, size_pixels);
@@ -137,11 +176,7 @@ pub fn install_ui_font(
         .oversample_v(1)
         .pixel_snap_h(true)
         .name(name);
-    let ptr = ctx
-        .fonts()
-        .add_font_from_memory_ttf(data, size_pixels, Some(&cfg), None)
-        .map(|f| f.raw())
-        .unwrap_or(std::ptr::null_mut());
+    let ptr = add_ttf_font(ctx, data, size_pixels, cfg);
 
     if merge_mdi {
         merge_mdi_icons(ctx, size_pixels);
@@ -159,27 +194,22 @@ pub fn merge_mdi_icons(ctx: &mut Context, size_pixels: f32) {
         .size_pixels(size_pixels)
         .merge_mode(true)
         .name("MDI Icons");
-    ctx.fonts().add_font_from_memory_ttf(
-        MDI_FONT_DATA,
-        size_pixels,
-        Some(&mdi_cfg),
-        Some(MDI_GLYPH_RANGES),
-    );
+    // No explicit glyph range: Dear ImGui 1.92+ loads glyphs on demand, so the
+    // MDI PUA codepoints (U+F0000–U+F1FFF) are baked only when actually drawn.
+    let source =
+        unsafe { FontSource::ttf_data_with_size(MDI_FONT_DATA, size_pixels) }.with_config(mdi_cfg);
+    ctx.font_atlas().add_font(&[source]);
 }
 
 /// Returns the raw `dear_imgui_rs::FontSource` for MDI icons at the given size
 /// — useful when building a multi-source font in a single `add_font` call.
 pub fn mdi_font_source(size_pixels: f32) -> dear_imgui_rs::FontSource<'static> {
-    dear_imgui_rs::FontSource::TtfData {
-        data: MDI_FONT_DATA,
-        size_pixels: Some(size_pixels),
-        config: Some(
-            FontConfig::new()
-                .size_pixels(size_pixels)
-                .merge_mode(true)
-                .name("MDI Icons"),
-        ),
-    }
+    let config = FontConfig::new()
+        .size_pixels(size_pixels)
+        .merge_mode(true)
+        .name("MDI Icons");
+    // SAFETY: MDI_FONT_DATA is a valid 'static TTF blob embedded at build time.
+    unsafe { FontSource::ttf_data_with_size(MDI_FONT_DATA, size_pixels) }.with_config(config)
 }
 
 // ─── Unicode coverage fallback (CJK, Hebrew, Arabic, box-drawing) ────────────
@@ -221,8 +251,8 @@ pub fn merge_fallback_font(ctx: &mut Context, size_pixels: f32, data: &'static [
         .oversample_v(1)
         .pixel_snap_h(true)
         .name(name);
-    ctx.fonts()
-        .add_font_from_memory_ttf(data, size_pixels, Some(&cfg), None);
+    let source = unsafe { FontSource::ttf_data_with_size(data, size_pixels) }.with_config(cfg);
+    ctx.font_atlas().add_font(&[source]);
 }
 
 /// Merge a curated chain of fallback fonts into the **last** font added to

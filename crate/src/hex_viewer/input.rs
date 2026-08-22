@@ -50,7 +50,7 @@ impl HexViewer {
         // Shortcuts rely on ImGui's `is_key_pressed` (front-edge with
         // repeat detection). For non-Latin layouts the host application
         // is expected to wire in `crate::input::keyboard::*` helpers
-        // (`try_inject_ctrl_alt_shortcut` + `reinforce_physical_key_state`)
+        // (`try_dispatch_ctrl_alt_shortcut` + `reinforce_physical_key_state`)
         // around `platform.handle_event` — the same pattern used by
         // `app_window`. With those installed, ImGui
         // sees the physical-key-derived `Key::C` regardless of the

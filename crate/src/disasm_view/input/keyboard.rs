@@ -158,7 +158,7 @@ impl DisasmView {
         }
 
         // Ctrl+A — select all. Layout-independence is provided by
-        // `crate::input::keyboard::try_inject_ctrl_alt_shortcut` at the
+        // `crate::input::keyboard::try_dispatch_ctrl_alt_shortcut` at the
         // host level (see chrome and demo_disasm_view).
         if mods.ctrl && ui.is_key_pressed(Key::A) {
             for i in 0..count {

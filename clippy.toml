@@ -19,4 +19,4 @@ too-many-arguments-threshold = 8
 # MSRV hint so clippy disables lints that suggest features newer than our
 # declared minimum. Keep in sync with `rust-version` in Cargo.toml and the
 # channel in rust-toolchain.toml.
-msrv = "1.96"
+msrv = "1.98"

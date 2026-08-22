@@ -58,13 +58,20 @@ impl CellValue {
                 buf.push_str(if *b { "true" } else { "false" });
             }
             CellValue::Int(v) => {
-                let _ = write!(buf, "{v}");
+                // 1.98: `i64::format_into` writes the decimal digits straight
+                // into a stack `NumBuffer`, bypassing the `core::fmt` Formatter
+                // machinery on this per-visible-cell, per-frame path (the plain
+                // `{v}` case carries no width/precision flags, so it is a clean
+                // fit — unlike the padded hex/color arms below).
+                let mut nb = core::fmt::NumBuffer::new();
+                buf.push_str((*v).format_into(&mut nb));
             }
             CellValue::Float(v) => {
                 let _ = write!(buf, "{v:.2}");
             }
             CellValue::Choice(idx) => {
-                let _ = write!(buf, "{idx}");
+                let mut nb = core::fmt::NumBuffer::new();
+                buf.push_str((*idx).format_into(&mut nb));
             }
             CellValue::Color(c) => {
                 let _ = write!(

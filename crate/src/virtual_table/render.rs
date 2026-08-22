@@ -60,17 +60,14 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Column setup
         for i in 0..col_count {
             let col = &self.columns[i];
-            // dear-imgui-rs 0.14 asserts non-zero user_id when
-            // `Some(_)` is passed. Default `col.user_id == 0` + first
-            // column `i == 0` collapses to `Id::from(0)` → panic.
-            // Bumping the fallback to `i as u32 + 1` keeps id stable
-            // per column slot while staying strictly positive.
-            let user_id = dear_imgui_rs::Id::from(col.user_id.max(i as u32 + 1));
-            ui.table_setup_column(
+            // Stable per-column user id: `col.user_id`, or a slot-derived
+            // fallback (`i + 1`) when unset, so sort specs can identify the
+            // clicked column regardless of ordering/visibility.
+            ui.table_setup_column_with_user_data(
                 &col.name,
                 col.imgui_flags(),
                 Some(col.column_width()),
-                Some(user_id),
+                col.user_id.max(i as u32 + 1),
             );
             if !col.visible {
                 ui.table_set_column_enabled(i, false);
@@ -125,7 +122,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.handle_scroll(ui, row_count);
 
         // Ctrl+C — copy selected rows. Layout-independence is provided
-        // by `crate::input::keyboard::try_inject_ctrl_alt_shortcut` at
+        // by `crate::input::keyboard::try_dispatch_ctrl_alt_shortcut` at
         // the host level (see app_window / app_window), so plain
         // ImGui `is_key_pressed(Key::C)` is enough — no per-widget VK
         // probe needed.
@@ -252,14 +249,12 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         // Column setup
         for i in 0..col_count {
             let col = &self.columns[i];
-            // dear-imgui-rs 0.14 asserts non-zero user_id (see comment
-            // in the body-render branch above for context).
-            let user_id = dear_imgui_rs::Id::from(col.user_id.max(i as u32 + 1));
-            ui.table_setup_column(
+            // Stable per-column user id (see the body-render branch above).
+            ui.table_setup_column_with_user_data(
                 &col.name,
                 col.imgui_flags(),
                 Some(col.column_width()),
-                Some(user_id),
+                col.user_id.max(i as u32 + 1),
             );
             if !col.visible {
                 ui.table_set_column_enabled(i, false);
@@ -449,7 +444,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             }
 
             if !self.cell_buf.is_empty() {
-                let col_w = ui.current_column_width();
+                let col_w = ui.content_region_avail_width();
                 let text_w = calc_text_size(&self.cell_buf)[0];
                 let pad = alignment_pad(cell_alignment, col_w, text_w);
                 if pad > 0.0 {
@@ -475,7 +470,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 .clip_tooltip
                 .unwrap_or(self.config.default_clip_tooltip);
             if show_clip_tooltip && !self.cell_buf.is_empty() && ui.is_item_hovered() {
-                let col_w = ui.current_column_width();
+                let col_w = ui.content_region_avail_width();
                 let text_w = calc_text_size(&self.cell_buf)[0];
                 if text_w > col_w {
                     crate::utils::themed_tooltip(ui, || ui.text(&self.cell_buf));

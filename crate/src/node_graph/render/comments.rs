@@ -75,7 +75,7 @@ pub(super) fn render_comments<T>(
     config: &NodeGraphConfig,
     canvas_pos: [f32; 2],
     canvas_size: [f32; 2],
-    font: &dear_imgui_rs::fonts::Font,
+    font: dear_imgui_rs::FontId,
     base_font_size: f32,
 ) {
     let zoom = state.viewport.zoom;

@@ -93,7 +93,7 @@ pub(super) fn render_node_immutable<T>(
     config: &NodeGraphConfig,
     viewer: &dyn NodeGraphViewer<T>,
     node_id: NodeId,
-    font: &dear_imgui_rs::fonts::Font,
+    font: dear_imgui_rs::FontId,
     base_font_size: f32,
 ) {
     let Some(node) = graph.get_node(node_id) else {

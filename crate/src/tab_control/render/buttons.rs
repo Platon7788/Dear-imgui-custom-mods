@@ -103,7 +103,13 @@ pub(super) fn render_scroll_buttons(
             arrow_r,
         );
     } else {
-        draw_chevron(&draw, rx + btn_w * 0.5, strip_y + strip_h * 0.5, false, rcol);
+        draw_chevron(
+            &draw,
+            rx + btn_w * 0.5,
+            strip_y + strip_h * 0.5,
+            false,
+            rcol,
+        );
     }
     if accept_clicks && rhover && ui.is_mouse_down(MouseButton::Left) {
         *scroll_offset += cfg.scroll_speed * ui.io().delta_time();

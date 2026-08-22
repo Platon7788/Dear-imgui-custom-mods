@@ -203,7 +203,7 @@ fn unmapped_key_returns_none() {
     assert_eq!(map(KeyCode::PrintScreen), None);
     assert_eq!(map(KeyCode::ScrollLock), None);
     assert_eq!(map(KeyCode::Pause), None);
-    // Modifier keys are intentionally unmapped: `try_inject_ctrl_alt_shortcut`
+    // Modifier keys are intentionally unmapped: `try_dispatch_ctrl_alt_shortcut`
     // relies on these returning `None` so a bare Ctrl/Alt press is never
     // re-injected as a spurious shortcut key.
     assert_eq!(map(KeyCode::ControlLeft), None);
@@ -223,7 +223,7 @@ fn unidentified_returns_none() {
 
 /// Letters and top-row digits are the only keys the Ctrl/Alt shortcut
 /// override should touch — everything else must fall through to the
-/// normal platform-forwarded path (see `try_inject_ctrl_alt_shortcut`).
+/// normal platform-forwarded path (see `try_dispatch_ctrl_alt_shortcut`).
 #[test]
 fn layout_sensitive_key_scoped_to_letters_and_digits() {
     for code in [

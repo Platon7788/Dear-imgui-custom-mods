@@ -1,5 +1,5 @@
 //! Stateful [`Chrome`](super::Chrome) wrapper: builders, runtime setters,
-//! and the `dear-app` runner callbacks (`on_setup` / `on_event` / `render`).
+//! and the winit-loop integration points (`on_setup` / `on_event` / `render`).
 //!
 //! Split out of `mod.rs`; the `Chrome` struct itself lives in the parent so
 //! these methods (and the parent's tests) share access to its private fields.
@@ -106,7 +106,7 @@ impl Chrome {
         }
     }
 
-    /// One-shot setup — call from `on_gpu_init`. Strips OS chrome,
+    /// One-shot setup — call once after the window is created. Strips OS chrome,
     /// applies Win32 dark mode + rounded corners, and shrinks the window
     /// if it came up at a fullscreen-equivalent size (regression guard
     /// against Windows' borderless-fullscreen heuristic on small / hi-DPI
@@ -119,8 +119,8 @@ impl Chrome {
         #[cfg(windows)]
         win32::setup_window(window, self.corner_radius);
 
-        // Defensive shrink: if the dear-app `RunnerConfig::window_size`
-        // matched (or exceeded) the monitor's logical size — common
+        // Defensive shrink: if the requested window size matched (or
+        // exceeded) the monitor's logical size — common
         // when the developer's machine has a 1920×1080 monitor and the
         // user is on a 1366×768 laptop — Windows treats the borderless
         // window as fullscreen, hides the taskbar, and the chrome is
@@ -133,8 +133,8 @@ impl Chrome {
     }
 
     /// Hosts that can't call [`clamp_size_to_monitor`] before window
-    /// creation (most `dear-app` users — `RunnerConfig` is built before
-    /// the `EventLoop` exists) can rely on this post-create fallback.
+    /// creation (the window size is often chosen before the `EventLoop`
+    /// exists) can rely on this post-create fallback.
     /// Called automatically by [`Chrome::on_setup`].
     pub fn shrink_to_monitor_after_create(window: &Arc<Window>) {
         let Some(mon) = window.current_monitor() else {
@@ -227,7 +227,7 @@ impl Chrome {
         }
     }
 
-    /// Per-frame render — call from `on_frame`. Wraps the host's content
+    /// Per-frame render — call each frame. Wraps the host's content
     /// in a single full-display ImGui root window so:
     ///
     /// 1. The titlebar draws into the same window as the content (one

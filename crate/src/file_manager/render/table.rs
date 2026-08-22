@@ -121,34 +121,34 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
     const COL_ID_TYPE: u32 = 4;
 
     // Column setup — Name always present, others optional
-    ui.table_setup_column(
+    ui.table_setup_column_with_user_data(
         strings.col_name,
         TableColumnFlags::PREFER_SORT_ASCENDING,
         Some(dear_imgui_rs::TableColumnWidth::Stretch(0.0)),
-        Some(dear_imgui_rs::Id::from(COL_ID_NAME)),
+        COL_ID_NAME,
     );
     if config.show_column_size {
-        ui.table_setup_column(
+        ui.table_setup_column_with_user_data(
             strings.col_size,
             TableColumnFlags::NONE,
             Some(dear_imgui_rs::TableColumnWidth::Fixed(80.0)),
-            Some(dear_imgui_rs::Id::from(COL_ID_SIZE)),
+            COL_ID_SIZE,
         );
     }
     if config.show_column_date {
-        ui.table_setup_column(
+        ui.table_setup_column_with_user_data(
             strings.col_date,
             TableColumnFlags::NONE,
             Some(dear_imgui_rs::TableColumnWidth::Fixed(140.0)),
-            Some(dear_imgui_rs::Id::from(COL_ID_DATE)),
+            COL_ID_DATE,
         );
     }
     if config.show_column_type {
-        ui.table_setup_column(
+        ui.table_setup_column_with_user_data(
             strings.col_type,
             TableColumnFlags::NONE,
             Some(dear_imgui_rs::TableColumnWidth::Fixed(70.0)),
-            Some(dear_imgui_rs::Id::from(COL_ID_TYPE)),
+            COL_ID_TYPE,
         );
     }
     ui.table_setup_scroll_freeze(0, 1);
@@ -159,10 +159,10 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
         && specs.is_dirty()
     {
         if let Some(s) = specs.iter().next() {
-            let new_col = match s.column_user_id.map(dear_imgui_rs::Id::raw) {
-                Some(id) if id == COL_ID_SIZE => SortColumn::Size,
-                Some(id) if id == COL_ID_DATE => SortColumn::DateModified,
-                Some(id) if id == COL_ID_TYPE => SortColumn::Type,
+            let new_col = match u32::from(s.column_user_data) {
+                COL_ID_SIZE => SortColumn::Size,
+                COL_ID_DATE => SortColumn::DateModified,
+                COL_ID_TYPE => SortColumn::Type,
                 _ => SortColumn::Name,
             };
             let new_order = if s.sort_direction == dear_imgui_rs::SortDirection::Ascending {
@@ -174,7 +174,7 @@ pub(crate) fn render_file_table(ui: &Ui, ctx: TableCtx<'_>) -> FileTableResult {
             *sort_order = new_order;
             result.action = Some(Action::Resort);
         }
-        specs.clear_dirty();
+        specs.clear_dirty(ui);
     }
 
     if entries.is_empty() && !has_error {
