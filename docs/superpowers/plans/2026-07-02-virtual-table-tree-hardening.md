@@ -170,9 +170,7 @@ Expected: PASS. Also run `cargo test -p dear-imgui-custom-mod arena` — existin
 
 ```bash
 git add crate/src/virtual_tree/arena/mod.rs crate/src/virtual_tree/arena/tests.rs
-git commit -m "fix(virtual_tree/arena): preserve sibling/root order on remove (FIFO eviction)
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+git commit -m "fix(virtual_tree/arena): preserve sibling/root order on remove (FIFO eviction)"
 ```
 
 ---
@@ -301,9 +299,7 @@ git add crate/src/virtual_table/helpers.rs crate/src/virtual_table/mod.rs crate/
 git commit -m "fix(virtual_tree): scroll_to_node works for off-screen targets
 
 Extract shared scroll_fraction helper; tree now scrolls by computed
-row offset instead of SetScrollHereY inside the clipper loop.
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+row offset instead of SetScrollHereY inside the clipper loop."
 ```
 
 ---
@@ -529,9 +525,7 @@ git add crate/src/virtual_table/row.rs crate/src/virtual_table/row_render.rs cra
 git commit -m "fix(virtual_tree): honour config selection_color/selection_text_color
 
 Add shared resolve_selection_bg/text helpers; route both widgets through
-them so tree selection matches VirtualTable.
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+them so tree selection matches VirtualTable."
 ```
 
 ---
@@ -631,9 +625,7 @@ Expected: clean. (`flat_view::` is in scope in `tree_cell.rs` via `use super::*`
 
 ```bash
 git add crate/src/virtual_tree/flat_view.rs crate/src/virtual_tree/tree_cell.rs
-git commit -m "fix(virtual_tree): guard tree-line depth shift against u64 overflow (>64 deep)
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+git commit -m "fix(virtual_tree): guard tree-line depth shift against u64 overflow (>64 deep)"
 ```
 
 ---
@@ -721,9 +713,7 @@ Expected: PASS (all four `push_eviction*` tests).
 
 ```bash
 git add crate/src/virtual_table/mod.rs
-git commit -m "fix(virtual_table): shift context_row on FIFO eviction
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+git commit -m "fix(virtual_table): shift context_row on FIFO eviction"
 ```
 
 ---
@@ -810,9 +800,7 @@ Expected: all pass, no warnings.
 
 ```bash
 git add crate/src/virtual_table/row_render.rs crate/src/virtual_tree/row.rs crate/src/virtual_tree/arena/ops.rs
-git commit -m "refactor(virtual_table,virtual_tree): drop unreachable return arms; fix DFS comment
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+git commit -m "refactor(virtual_table,virtual_tree): drop unreachable return arms; fix DFS comment"
 ```
 
 ---
@@ -942,9 +930,7 @@ Expected: all pass, no warnings.
 
 ```bash
 git add crate/src/virtual_tree/config.rs crate/src/virtual_tree/config.ron crate/src/virtual_tree/row.rs crate/src/virtual_tree/tree_cell.rs
-git commit -m "refactor(virtual_tree): move striped/arrow/badge colours into config.ron (DDD)
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+git commit -m "refactor(virtual_tree): move striped/arrow/badge colours into config.ron (DDD)"
 ```
 
 ---
@@ -1436,9 +1422,7 @@ git add crate/src/virtual_table/edit_common.rs crate/src/virtual_table/mod.rs cr
 git commit -m "refactor(virtual_table,virtual_tree): unify inline editor into edit_common
 
 Single EditBuffers + render_editor_widget shared by both widgets; each
-keeps only its own key (row idx / NodeId). Removes ~150 duplicated lines.
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+keeps only its own key (row idx / NodeId). Removes ~150 duplicated lines."
 ```
 
 ---
@@ -1475,9 +1459,7 @@ Expected: builds without warnings for these items.
 
 ```bash
 git add crate/src/virtual_tree/api.rs
-git commit -m "docs(virtual_tree): document filter O(n) cost and lazy+filter limitation
-
-Co-Authored-By: claude-flow <ruv@ruv.net>"
+git commit -m "docs(virtual_tree): document filter O(n) cost and lazy+filter limitation"
 ```
 
 ---

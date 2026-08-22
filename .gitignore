@@ -25,7 +25,7 @@ desktop.ini
 # ─── Claude Code / AI tooling ────────────────────────────────────────────────
 CLAUDE.md
 .claude/
-.claude-flow/
+.xflow/
 .mcp.json
 
 # ─── Environment / Secrets ────────────────────────────────────────────────────

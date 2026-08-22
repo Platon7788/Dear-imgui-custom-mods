@@ -72,8 +72,6 @@ docs(file_manager): drop stale missing_docs suppression
 The public surface is already fully documented; the module-level
 opt-out was dead weight. Matches the virtual_table/virtual_tree
 hardening pass.
-
-Co-Authored-By: claude-flow <ruv@ruv.net>
 EOF
 )"
 ```
@@ -167,8 +165,6 @@ docs(file_manager): add SAFETY comments to unsafe FFI blocks
 
 Window-sizing, clipboard, and GetLogicalDrives calls now carry the
 crate-standard // SAFETY: rationale (lib.rs convention).
-
-Co-Authored-By: claude-flow <ruv@ruv.net>
 EOF
 )"
 ```
@@ -355,8 +351,6 @@ Moves the arrow/PageUp-Down/Home/End/Enter/Backspace handling and
 PAGE_SIZE_FALLBACK out of table.rs (504 -> ~439 lines, back under the
 500-line budget). Behaviour is unchanged: the helper returns an Option
 and the caller overwrites result.action only when nav fired.
-
-Co-Authored-By: claude-flow <ruv@ruv.net>
 EOF
 )"
 ```
@@ -548,8 +542,6 @@ Introduces ToolbarCtx/FooterCtx borrow-bundles mirroring TableCtx and
 drops both clippy::too_many_arguments suppressions. Bodies unchanged
 (destructure rebinds the same names); split-borrow rules at the call
 sites are identical to the previous argument lists.
-
-Co-Authored-By: claude-flow <ruv@ruv.net>
 EOF
 )"
 ```
@@ -917,8 +909,6 @@ file_manager_strings_resolve + parity tests to i18n/tests.rs.
 config.rs keeps backward-compatible re-export shims so the public
 API (FmStrings, STRINGS_EN, STRINGS_RU, strings_for_locale) is
 unchanged.
-
-Co-Authored-By: claude-flow <ruv@ruv.net>
 EOF
 )"
 ```
