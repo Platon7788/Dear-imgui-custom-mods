@@ -329,6 +329,42 @@ mod table_tests {
     }
 
     #[test]
+    fn restore_selection_after_rebuild_does_not_request_scroll() {
+        let mut t = table(5);
+        t.push(R(10));
+        t.push(R(20));
+        t.select_row(1);
+        assert_eq!(t.pending_scroll_to.take(), Some(1));
+
+        t.clear();
+        t.push(R(10));
+        t.push(R(20));
+        t.restore_selection(1);
+
+        assert_eq!(t.selected_row(), Some(1));
+        assert_eq!(t.selected_count(), 1);
+        assert_eq!(t.pending_scroll_to, None);
+        assert_eq!(t.get(1).map(|r| r.0), Some(20));
+    }
+
+    #[test]
+    fn restore_selection_preserves_explicit_scroll_and_select_row_retargets_it() {
+        let mut t = table(5);
+        for value in 0..3 {
+            t.push(R(value));
+        }
+        t.scroll_to_row(0);
+        t.restore_selection(2);
+        assert_eq!(t.pending_scroll_to, Some(0));
+        assert_eq!(t.selected_row(), Some(2));
+
+        t.select_row(1);
+        assert_eq!(t.pending_scroll_to, Some(1));
+        assert_eq!(t.selected_row(), Some(1));
+        assert!(!t.is_selected(2));
+    }
+
+    #[test]
     fn push_eviction_shifts_selection_to_track_data() {
         let mut t = table(3);
         for v in 0..3 {

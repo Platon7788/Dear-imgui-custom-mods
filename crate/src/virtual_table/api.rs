@@ -118,10 +118,17 @@ impl<T: VirtualTableRow> VirtualTable<T> {
     /// Programmatically select a single row (clears previous selection) and
     /// scroll to it on the next frame.
     pub fn select_row(&mut self, idx: usize) {
+        self.restore_selection(idx);
+        self.pending_scroll_to = Some(idx);
+    }
+
+    /// Highlight a row without requesting a scroll. Hosts that rebuild the
+    /// ring every frame use this to keep the previous highlight in place.
+    /// An explicitly requested scroll remains pending.
+    pub fn restore_selection(&mut self, idx: usize) {
         self.selected_rows.clear();
         self.selected_rows.insert(idx);
         self.selection_anchor = Some(idx);
-        self.pending_scroll_to = Some(idx);
     }
 
     /// Request scroll to the given row index on the next frame.

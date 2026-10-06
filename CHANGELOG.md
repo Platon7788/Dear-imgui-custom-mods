@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- `VirtualTable::restore_selection` restores a row highlight without requesting
+  scrolling. `select_row` retains its existing scroll-to-selection behavior.
+- Regression coverage for restoring selection after rebuilding the table and
+  preserving an explicitly requested scroll.
+
 ### Changed — 0.13.0 dependency migration (2026-10-06)
 
 - Dear ImGui Rust, wgpu and winit adapters now use the stable 0.18 series.
