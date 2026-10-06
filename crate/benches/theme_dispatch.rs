@@ -33,6 +33,10 @@ fn bench_dialog(c: &mut Criterion) {
 }
 
 fn bench_statusbar(c: &mut Criterion) {
+    c.bench_function("theme::statusbar_colors/Dark", |b| {
+        b.iter(|| black_box(Theme::Dark).statusbar_colors());
+    });
+    #[cfg(feature = "status_bar")]
     c.bench_function("theme::statusbar/Dark", |b| {
         b.iter(|| black_box(Theme::Dark).statusbar());
     });

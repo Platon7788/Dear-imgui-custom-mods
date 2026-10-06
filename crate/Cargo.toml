@@ -120,7 +120,7 @@ chrome = ["input"]
 # tools / IDA-style plugins / AI servers without dragging in
 # dear-imgui / wgpu / winit. Gated by `disasm_view` so non-disasm
 # downstream builds still skip the ~657 KB catalogue cost.
-disasm-knowledge = { path = "../../useful-lib/disasm-knowledge", optional = true }
+disasm-knowledge = { git = "https://github.com/Platon7788/useful-lib.git", optional = true }
 slotmap = { version = "1.1", optional = true }
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"

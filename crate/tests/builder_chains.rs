@@ -5,8 +5,11 @@
 //! through unchanged, and the `theme` / `colors_override` priority works
 //! the way the docs claim.
 
+#[cfg(feature = "confirm_dialog")]
 use dear_imgui_custom_mod::confirm_dialog::{ConfirmStyle, DialogConfig, DialogIcon};
+#[cfg(feature = "nav_panel")]
 use dear_imgui_custom_mod::nav_panel::{DockPosition, NavButton, NavPanelConfig};
+#[cfg(any(feature = "confirm_dialog", feature = "nav_panel"))]
 use dear_imgui_custom_mod::theme::Theme;
 
 // (BorderlessConfig builder tests were removed alongside the
@@ -18,6 +21,7 @@ use dear_imgui_custom_mod::theme::Theme;
 // ── DialogConfig ────────────────────────────────────────────────────────────
 
 #[test]
+#[cfg(feature = "confirm_dialog")]
 fn dialog_config_defaults() {
     let cfg = DialogConfig::new("Quit?", "Really quit?");
     assert_eq!(cfg.title, "Quit?");
@@ -26,6 +30,7 @@ fn dialog_config_defaults() {
 }
 
 #[test]
+#[cfg(feature = "confirm_dialog")]
 fn dialog_config_builder_chain() {
     let cfg = DialogConfig::new("X", "Y")
         .with_icon(DialogIcon::Error)
@@ -43,6 +48,7 @@ fn dialog_config_builder_chain() {
 // ── NavPanelConfig ──────────────────────────────────────────────────────────
 
 #[test]
+#[cfg(feature = "nav_panel")]
 fn nav_panel_builder_chain() {
     let cfg = NavPanelConfig::new(DockPosition::Left)
         .with_theme(Theme::Dark)

@@ -566,6 +566,7 @@ dependencies = [
 [[package]]
 name = "disasm-knowledge"
 version = "0.1.0"
+source = "git+https://github.com/Platon7788/useful-lib.git#001dbaf4b8c16b42fb66ffedf796c3c24250f2b8"
 dependencies = [
  "serde",
 ]

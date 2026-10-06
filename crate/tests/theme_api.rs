@@ -79,7 +79,9 @@ fn every_theme_resolves_all_sub_palettes() {
         titlebar_bgs.push(t.titlebar().bg);
         nav_bgs.push(t.nav().bg);
         dialog_bgs.push(t.dialog().bg);
-        // `statusbar()` returns a full config — just ensure it doesn't panic.
+        // Palette dispatch remains available without the optional widget.
+        let _sb_colors = t.statusbar_colors();
+        #[cfg(feature = "status_bar")]
         let _sb = t.statusbar();
     }
 

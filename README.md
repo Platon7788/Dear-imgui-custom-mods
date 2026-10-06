@@ -49,6 +49,17 @@ Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
 ## Project Structure
 
+`disasm_view` resolves its headless `disasm-knowledge` dependency from the
+published `useful-lib` Git repository. Cargo.lock records the verified source;
+`cargo ... --locked` reproduces it in a standalone checkout. Integration tests
+and palette benchmarks follow their widget feature flags, while shared Theme
+checks run with an empty feature set too.
+
+`disasm_view` получает `disasm-knowledge` из опубликованного Git-репозитория
+`useful-lib`; Cargo.lock фиксирует проверенный graph для самостоятельной сборки
+с `--locked`. Тесты и benchmarks виджетов учитывают feature flags, общие
+проверки Theme выполняются и без активных виджетов.
+
 The repo is a Cargo workspace with two packages: the publishable
 **library** (`crate/`) and a **`publish = false` demo runner**
 (`examples-app/`). Plain `cargo build` / `cargo test` / `cargo
