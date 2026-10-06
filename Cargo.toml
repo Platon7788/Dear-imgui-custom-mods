@@ -19,7 +19,7 @@
 
 # `resolver = "3"` (the edition-2024 default, stable since Rust 1.84) turns on
 # MSRV-aware version selection: Cargo prefers dependency versions whose own
-# `rust-version` is satisfied by our declared MSRV (1.98) instead of always
+# `rust-version` is satisfied by our declared MSRV (1.99) instead of always
 # grabbing the newest. Workspaces don't inherit the resolver from `edition`, so
 # it's pinned explicitly here.
 [workspace]
@@ -29,7 +29,7 @@ default-members = ["crate"]
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.98"
+rust-version = "1.99"
 license = "MIT"
 
 # ─── Build profiles (shared) ─────────────────────────────────────────────────

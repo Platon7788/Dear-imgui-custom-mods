@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed — 0.13.0 dependency migration (2026-10-06)
+
+- Dear ImGui Rust, wgpu and winit adapters now use the stable 0.18 series.
+- Rust follows the stable channel; workspace MSRV is 1.99.
+- Registry dependencies and Cargo.lock refreshed to current stable releases.
+
 ### Removed (BREAKING)
 
 - **`tab_control`: `TabStyle::Pill` and `TabStyle::Underline` removed.** The
