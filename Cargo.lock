@@ -2286,7 +2286,7 @@ checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 [[package]]
 name = "ttf-parser"
 version = "0.25.1"
-source = "git+https://github.com/Platon7788/ttf-parser.git#41e66b266b180a728fbb68e872d9074ffc06c671"
+source = "git+https://github.com/Platon7788/ttf-parser.git#e2ad643dd7cb3b3290e419f2d5db9cdbdf893e7a"
 
 [[package]]
 name = "typeid"
