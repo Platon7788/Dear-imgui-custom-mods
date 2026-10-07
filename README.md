@@ -4,6 +4,10 @@ Production-ready custom UI component library for `dear-imgui-rs`.
 
 Zero per-frame allocations, modern Rust 2024 edition, fully themeable.
 
+Builds and validation run locally. GitHub build workflows are disabled; the
+reference configuration lives in `.github/workflow-templates/ci.yml`, outside
+Actions discovery. Push and pull request events do not start repository builds.
+
 ## Components
 
 ### Window Infrastructure
