@@ -680,7 +680,7 @@ fn test_default_config_loads_from_ron() {
 // the handful of tests below that create a live headless context — it
 // mirrors the (crate-private, not exported) `lock_context()` guard
 // `dear-imgui-winit`'s own test suite uses for the same reason.
-static IMGUI_CTX_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+use crate::IMGUI_CTX_TEST_LOCK;
 
 /// Prepare a freshly-created headless `Context` so `Context::frame()` can be
 /// called: set a valid display size, advertise texture-request support (so

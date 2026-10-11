@@ -43,10 +43,10 @@ Actions discovery. Push and pull request events do not start repository builds.
 
 ## Stack
 
-- **Rust 1.97** — edition 2024, let-chains, `is_some_and`, `AtomicU32`
-- **dear-imgui-rs 0.11.0** — Dear ImGui v1.92.6 (docking branch)
-- **dear-imgui-wgpu 0.11.0** / **dear-imgui-winit 0.11.0** — wgpu + winit integration
-- **wgpu 29.0.1** — GPU rendering backend
+- **Rust 1.99** — edition 2024, let-chains, `is_some_and`, `AtomicU32`
+- **dear-imgui-rs 0.19.0** — Dear ImGui v1.92.9b (docking branch)
+- **dear-imgui-wgpu 0.19.0** / **dear-imgui-winit 0.19.0** — wgpu + winit integration
+- **wgpu 30.0.1** — GPU rendering backend
 - **winit 0.30.13** — window and event loop
 - **windows-sys 0.61.2** — drive enumeration (Windows)
 - **MDI webfont** for icons (`assets/materialdesignicons-webfont.ttf`)

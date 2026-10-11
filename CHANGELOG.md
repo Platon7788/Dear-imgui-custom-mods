@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed — UT_PT integration (2026-10-11)
+
+- Library and example runner now use Dear ImGui Rust / wgpu / winit adapters
+  0.19 (ImGui 1.92.9b); wgpu remains on stable 30.
+- Cargo.lock refreshed; the UT_PT consumer uses matching backend re-exports.
+- Validated the UT_PT feature set: 971 library unit tests passed.
+
+
 ### Added
 
 - `VirtualTable::restore_selection` restores a row highlight without requesting

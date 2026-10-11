@@ -148,6 +148,7 @@ mod helpers;
 mod input;
 mod render;
 mod row_render;
+mod selection;
 
 pub use column::{CellAlignment, CellEditor, ColumnDef, ColumnSizing};
 pub use config::{BorderStyle, EditTrigger, RowDensity, SelectionMode, SizingPolicy, TableConfig};
@@ -194,8 +195,10 @@ pub struct VirtualTable<T: VirtualTableRow> {
 
     // Selection
     selected_rows: IndexSet,
+    selection_scratch: IndexSet,
     /// Anchor row for Shift+Click range selection (last explicitly clicked row).
     selection_anchor: Option<usize>,
+    focused_row: Option<usize>,
     /// Set to `Some(idx)` when a row is double-clicked. Reset each frame.
     pub double_clicked_row: Option<usize>,
     /// Row index of the last right-click (for context menu logic).
@@ -239,7 +242,9 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             config,
             data: RingBuffer::new(capacity),
             selected_rows: IndexSet::default(),
+            selection_scratch: IndexSet::default(),
             selection_anchor: None,
+            focused_row: None,
             double_clicked_row: None,
             context_row: None,
             context_col: None,
@@ -289,6 +294,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 }
             }
         }
+        self.focused_row = self.focused_row.and_then(|i| i.checked_sub(1));
         self.selection_anchor = match self.selection_anchor {
             Some(0) | None => None,
             Some(a) => Some(a - 1),

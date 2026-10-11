@@ -35,6 +35,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.data.clear();
         self.selected_rows.clear();
         self.selection_anchor = None;
+        self.focused_row = None;
         self.edit_state.deactivate();
     }
 
@@ -51,6 +52,13 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         for r in indices {
             self.selected_rows.insert(if r > index { r - 1 } else { r });
         }
+        self.focused_row = self.focused_row.and_then(|r| {
+            if r == index {
+                None
+            } else {
+                Some(if r > index { r - 1 } else { r })
+            }
+        });
         // Adjust anchor
         if let Some(a) = self.selection_anchor {
             if a == index {
@@ -113,6 +121,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
     pub fn clear_selection(&mut self) {
         self.selected_rows.clear();
         self.selection_anchor = None;
+        self.focused_row = None;
     }
 
     /// Programmatically select a single row (clears previous selection) and
@@ -129,6 +138,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.selected_rows.clear();
         self.selected_rows.insert(idx);
         self.selection_anchor = Some(idx);
+        self.focused_row = Some(idx);
     }
 
     /// Request scroll to the given row index on the next frame.

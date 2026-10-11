@@ -24,6 +24,7 @@
     edit_trigger: DoubleClick,
     commit_on_focus_loss: true,
     auto_scroll: false,
+    pause_scroll_on_multi_select: false,
     row_density: Dense,
     default_row_height: None,
     snap_last_row: false,

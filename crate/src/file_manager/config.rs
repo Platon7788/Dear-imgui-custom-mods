@@ -159,6 +159,14 @@ pub struct FileManagerConfig {
     pub favorites_width: f32,
     /// Allow Ctrl+Click multi-select in OpenFile mode. Default: `false`.
     pub enable_multi_select: bool,
+    /// Run directory scans, save checks and filesystem mutations on a reusable worker.
+    /// Opt-in for hosts with a live rendering thread.
+    #[serde(default)]
+    pub background_listing: bool,
+    /// In SaveFile mode, keep the filename extension equal to the active filter.
+    /// Only filters containing a single extension participate.
+    #[serde(default)]
+    pub save_extension_from_filter: bool,
     /// Show clickable breadcrumb path bar (vs. plain text input). Default: `true`.
     pub enable_breadcrumbs: bool,
     /// Enable Back/Forward navigation buttons. Default: `true`.

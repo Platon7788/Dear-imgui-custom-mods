@@ -19,6 +19,7 @@ impl FileManager {
             return false;
         }
 
+        self.poll_listing();
         let strings = self.config.strings;
 
         if !self.loaded {
@@ -29,11 +30,19 @@ impl FileManager {
         let mut do_confirm_selection = false;
         let mut deferred: Option<Action> = None;
 
-        let title = self.config.custom_title.unwrap_or(match self.mode {
+        let label = self.config.custom_title.unwrap_or(match self.mode {
             DialogMode::SelectFolder => strings.select_folder,
             DialogMode::OpenFile => strings.open_file,
             DialogMode::SaveFile => strings.save_file,
         });
+
+        // A localized label is not popup identity. Keep the ID per instance
+        // and reuse the label buffer so locale changes allocate no frame work.
+        let _id = ui.push_id(self.popup_id);
+        let mut title = std::mem::take(&mut self.popup_title);
+        title.clear();
+        title.push_str(label);
+        title.push_str("###file_manager");
 
         // Set window size before opening popup.
         // SAFETY: FFI into Dear ImGui. Both calls take POD `ImVec2` values by
@@ -66,7 +75,7 @@ impl FileManager {
 
         if self.popup_needs_open {
             self.popup_needs_open = false;
-            ui.open_popup(title);
+            ui.open_popup(&title);
         }
 
         // WindowPadding pushed before `begin()` so the popup itself adopts it.
@@ -77,11 +86,13 @@ impl FileManager {
         let _padding = ui.push_style_var(dear_imgui_rs::StyleVar::WindowPadding([6.0, 6.0]));
 
         if let Some(_tok) = ui
-            .begin_modal_popup_config(title)
+            .begin_modal_popup_config(&title)
             .flags(WindowFlags::NO_COLLAPSE)
             .begin()
         {
             let _rounding = ui.push_style_var(dear_imgui_rs::StyleVar::FrameRounding(3.0));
+
+            let io_disabled = ui.begin_disabled_with_cond(self.mutation_pending());
 
             // ── Drive selector ──
             if let Some(a) = render::render_drive_bar(
@@ -162,6 +173,10 @@ impl FileManager {
                 ui.spacing();
             }
 
+            if self.listing_pending() {
+                ui.text(strings.loading);
+            }
+
             // ── Content area (favorites + file table) ──
             // Reserve space for the status row (one text line) + footer row
             // (button_height) + 3 vertical spacings (~item_spacing.y) + padding.
@@ -170,7 +185,12 @@ impl FileManager {
             // changes `button_height` or font size.
             let line_h = ui.text_line_height_with_spacing();
             let spacing_y = ui.clone_style().item_spacing()[1];
-            let reserved = self.config.button_height + line_h + spacing_y * 3.0 + 4.0;
+            let filter_h = if self.mode == DialogMode::SaveFile && self.filters.len() > 1 {
+                ui.frame_height_with_spacing()
+            } else {
+                0.0
+            };
+            let reserved = self.config.button_height + line_h + spacing_y * 3.0 + 4.0 + filter_h;
             let content_h = (ui.content_region_avail()[1] - reserved).max(100.0);
 
             let show_favorites = self.config.show_favorites && !self.favorites.entries.is_empty();
@@ -265,7 +285,10 @@ impl FileManager {
 
             ui.spacing();
 
+            drop(io_disabled);
+
             // ── Footer (filename input for SaveFile + buttons) ──
+            let busy = self.listing_pending();
             let (foot_confirmed, foot_cancelled, foot_action) = render::render_footer(
                 ui,
                 render::FooterCtx {
@@ -276,6 +299,7 @@ impl FileManager {
                     filename_buf: &mut self.filename_buf,
                     filters: &self.filters,
                     active_filter: self.active_filter,
+                    busy,
                     config: &self.config,
                     buf: &mut self.fmt_buf,
                 },
@@ -341,13 +365,18 @@ impl FileManager {
             }
 
             // ── Ctrl+H to toggle hidden files ──
-            if ui.is_key_pressed(Key::H) && ui.io().key_ctrl() && !ui.is_any_item_active() {
+            if ui.is_key_pressed(Key::H)
+                && ui.io().key_ctrl()
+                && !ui.is_any_item_active()
+                && !self.mutation_pending()
+            {
                 self.show_hidden = !self.show_hidden;
                 self.refresh_directory();
             }
 
             // ── F2 to rename ──
             if ui.is_key_pressed(Key::F2)
+                && !self.listing_pending()
                 && !ui.is_any_item_active()
                 && self.rename_index.is_none()
                 && let Some(&idx) = self.selected_indices.first()
@@ -360,6 +389,7 @@ impl FileManager {
 
             // ── Delete key ──
             if ui.is_key_pressed(Key::Delete)
+                && !self.listing_pending()
                 && !ui.is_any_item_active()
                 && self.rename_index.is_none()
                 && let Some(&idx) = self.selected_indices.first()
@@ -369,8 +399,15 @@ impl FileManager {
                 self.show_delete_confirm = true;
             }
 
+            if self.save_ready && self.is_open {
+                self.save_ready = false;
+                self.is_open = false;
+                confirmed = true;
+                ui.close_current_popup();
+            }
+
             // ── Handle confirmation ──
-            if do_confirm_selection {
+            if do_confirm_selection && self.is_open && !self.listing_pending() {
                 confirmed = self.try_confirm(ui);
             }
 
@@ -381,6 +418,7 @@ impl FileManager {
                 &mut self.show_overwrite_confirm,
                 &mut self.fmt_buf,
             ) && result
+                && self.is_open
             {
                 self.finalize_selection();
                 confirmed = true;
@@ -411,6 +449,11 @@ impl FileManager {
             self.apply_action(action, ui);
         }
 
+        self.popup_title = title;
         confirmed
     }
 }
+
+#[cfg(test)]
+#[path = "view_tests.rs"]
+mod tests;

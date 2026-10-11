@@ -90,6 +90,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
             self.edit_state.deactivate();
             self.selected_rows.clear();
             self.selection_anchor = None;
+            self.focused_row = None;
         }
     }
 
@@ -198,8 +199,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
 
         // Context menu
         if ui.is_item_hovered() && ui.is_mouse_clicked(MouseButton::Right) {
-            self.handle_selection(ui, idx, self.data.len());
-            self.context_row = Some(idx);
+            self.select_context_row(idx, self.data.len());
             self.context_col = ui.table_get_hovered_column().column().map(usize::from);
             self.open_context_menu = true;
         }

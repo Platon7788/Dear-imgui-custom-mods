@@ -22,6 +22,7 @@ pub(crate) struct FooterCtx<'a> {
     pub filename_buf: &'a mut String,
     pub filters: &'a [FileFilter],
     pub active_filter: usize,
+    pub busy: bool,
     pub config: &'a FileManagerConfig,
     pub buf: &'a mut String,
 }
@@ -44,6 +45,7 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
         filename_buf,
         filters,
         active_filter,
+        busy,
         config,
         buf,
     } = ctx;
@@ -67,12 +69,32 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
         ),
     };
 
+    let can_confirm = can_confirm && !busy;
     let btn_w = config.button_width;
     let btn_h = config.button_height;
     let filter_w = config.filter_width;
     let gap = 6.0_f32;
 
     let _rounding = ui.push_style_var(StyleVar::FrameRounding(4.0));
+
+    if mode == DialogMode::SaveFile && filters.len() > 1 {
+        let _disabled = ui.begin_disabled_with_cond(busy);
+        ui.text(strings.col_type);
+        ui.same_line();
+        ui.set_next_item_width(filter_w);
+        if let Some(_token) = ui.begin_combo("##save_filter", &filters[active_filter].label) {
+            for (i, filter) in filters.iter().enumerate() {
+                if ui
+                    .selectable_config(&filter.label)
+                    .selected(i == active_filter)
+                    .build()
+                    && i != active_filter
+                {
+                    action = Some(Action::SelectFilter(i));
+                }
+            }
+        }
+    }
 
     // The row spans the full content width: Cancel flush-left, primary
     // flush-right, mode-specific middle content centered between.
@@ -93,6 +115,7 @@ pub(crate) fn render_footer(ui: &Ui, ctx: FooterCtx<'_>) -> (bool, bool, Option<
 
     // ── Middle: filename (SaveFile) or filter dropdown (OpenFile) ──
     if mode == DialogMode::SaveFile {
+        let _disabled = ui.begin_disabled_with_cond(busy);
         ui.same_line();
         ui.set_cursor_pos_x(mid_start);
         ui.text_colored(theme::TEXT_SECONDARY, strings.filename);

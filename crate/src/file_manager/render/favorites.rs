@@ -35,7 +35,7 @@ pub(crate) fn render_favorites_panel(
         // Guard must live until after `selectable_config().build()`.
         let _bg = is_current.then(|| ui.push_style_color(StyleColor::Header, theme::ACCENT_ACTIVE));
 
-        if ui.selectable_config(label).selected(is_current).build() && fav.path.is_dir() {
+        if ui.selectable_config(label).selected(is_current).build() {
             action = Some(Action::NavigateTo(fav.path.clone()));
         }
     }

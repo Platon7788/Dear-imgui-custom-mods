@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use dear_imgui_rs::Ui;
 
+use super::background;
 use super::util::is_valid_filename;
 use super::{
     DialogMode, FavoritesPanel, FileFilter, FileManager, FmError, FsEntry,
@@ -70,6 +71,7 @@ impl FileManager {
         };
         self.active_filter = 0;
         self.open_common(initial_path);
+        self.normalize_save_extension();
     }
 
     /// Selected paths for multi-select results.
@@ -89,6 +91,9 @@ impl FileManager {
         self.is_open = true;
         self.popup_needs_open = true;
         self.selected_path = None;
+        self.overwrite_confirmed = false;
+        self.overwrite_target = None;
+        self.save_ready = false;
         self.selected_paths.clear();
         self.error = None;
         self.show_new_folder = false;
@@ -109,6 +114,13 @@ impl FileManager {
         self.search_timer = 0.0;
         self.history.clear();
 
+        if self.config.background_listing {
+            self.request_listing(
+                initial_path.unwrap_or_else(|| self.current_path.clone()),
+                background::Navigation::Refresh,
+            );
+            return;
+        }
         if let Some(path) = initial_path {
             if path.is_dir() {
                 self.current_path = path;
@@ -135,6 +147,10 @@ impl FileManager {
     /// Pre-computes all display strings (`size_display`, `date_display`, etc.)
     /// via [`FsEntry::from_dir_entry()`] so the render loop does zero allocations.
     pub(super) fn refresh_directory(&mut self) {
+        if self.config.background_listing {
+            self.request_refresh();
+            return;
+        }
         self.entries.clear();
         self.selected_indices.clear();
         // BUG-FM1: a re-listing invalidates *every* index into `entries`.
@@ -233,6 +249,7 @@ impl FileManager {
                 true
             }
             DialogMode::SaveFile => {
+                self.normalize_save_extension();
                 let fname = self.filename_buf.trim().to_string();
                 if fname.is_empty() {
                     return false;
@@ -246,7 +263,12 @@ impl FileManager {
                     return false;
                 }
                 let target = self.current_path.join(&fname);
+                if self.config.background_listing {
+                    self.request_save_check(target);
+                    return false;
+                }
                 if target.exists() {
+                    self.overwrite_target = Some(target);
                     // Show overwrite confirmation
                     self.show_overwrite_confirm = true;
                     false
@@ -263,8 +285,11 @@ impl FileManager {
     /// Finalize the selection after overwrite confirmation (SaveFile mode).
     pub(super) fn finalize_selection(&mut self) {
         if self.mode == DialogMode::SaveFile {
-            let target = self.current_path.join(self.filename_buf.trim());
-            self.selected_path = Some(target);
+            self.overwrite_confirmed = true;
+            self.selected_path = self
+                .overwrite_target
+                .take()
+                .or_else(|| Some(self.current_path.join(self.filename_buf.trim())));
         }
         self.is_open = false;
     }

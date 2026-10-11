@@ -85,11 +85,13 @@
 //! ```
 
 mod actions;
+mod background;
 pub mod config;
 mod entry;
 mod favorites;
 mod history;
 mod lifecycle;
+mod operations;
 mod render;
 mod search;
 mod util;
@@ -114,6 +116,7 @@ use util::{BreadcrumbSegment, drive_letter_of, enumerate_drives, rebuild_breadcr
 /// Internal error type for file manager operations.
 ///
 /// Displayed as colored text in the dialog using localized strings from [`FmStrings`].
+#[derive(Clone)]
 enum FmError {
     /// Failed to read directory contents (permissions, path gone, etc.).
     CannotReadDir(String),
@@ -232,12 +235,19 @@ pub struct FileManager {
     popup_needs_open: bool,
     /// The confirmed path. Set when `render()` returns `true`.
     pub selected_path: Option<PathBuf>,
+    /// True only when the overwrite confirmation was explicitly accepted.
+    pub overwrite_confirmed: bool,
+    overwrite_target: Option<PathBuf>,
+    save_ready: bool,
+    popup_id: usize,
+    popup_title: String,
     /// All confirmed paths (for multi-select in OpenFile mode).
     pub selected_paths: Vec<PathBuf>,
     /// Current error to display, if any.
     error: Option<FmError>,
     /// Whether the directory has been loaded at least once.
     loaded: bool,
+    background: Option<background::BackgroundListing>,
 
     /// Scratch buffer reused for all `write!()` formatting in render functions.
     /// Avoids per-frame allocations for icon+label strings, error messages, etc.
@@ -304,9 +314,19 @@ impl FileManager {
             is_open: false,
             popup_needs_open: false,
             selected_path: None,
+            overwrite_confirmed: false,
+            overwrite_target: None,
+            save_ready: false,
+            popup_id: {
+                static NEXT_POPUP_ID: std::sync::atomic::AtomicUsize =
+                    std::sync::atomic::AtomicUsize::new(1);
+                NEXT_POPUP_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            },
+            popup_title: String::with_capacity(96),
             selected_paths: Vec::new(),
             error: None,
             loaded: false,
+            background: None,
             fmt_buf: String::with_capacity(256),
         }
     }

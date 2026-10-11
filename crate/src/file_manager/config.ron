@@ -10,6 +10,8 @@
     show_favorites: true,
     favorites_width: 150.0,
     enable_multi_select: false,
+    background_listing: false,
+    save_extension_from_filter: false,
     enable_breadcrumbs: true,
     enable_history: true,
     enable_type_to_search: true,

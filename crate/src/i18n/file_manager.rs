@@ -51,6 +51,9 @@ pub struct Strings {
     /// Label for the "All Files" filter entry.
     pub all_files: &'static str,
     /// Shown when directory is empty.
+    /// Shown while a background directory listing is in progress.
+    pub loading: &'static str,
+    /// Shown when the directory has no entries.
     pub empty_parens: &'static str,
 
     // ── Error messages ──
@@ -64,6 +67,8 @@ pub struct Strings {
     pub path_not_found: &'static str,
     /// Detail for a rejected filename (create / rename / save).
     pub invalid_name: &'static str,
+    /// The selected save destination is a directory.
+    pub target_is_directory: &'static str,
     /// Detail for a rename whose destination name already exists.
     pub target_exists: &'static str,
 
@@ -137,12 +142,14 @@ pub const EN: Strings = Strings {
     open: "Open",
     filename: "Filename:",
     all_files: "All Files (*.*)",
+    loading: "Loading…",
     empty_parens: "(empty)",
     cannot_read_dir: "Cannot read directory",
     create_folder_failed: "Failed to create folder",
     create_file_failed: "Failed to create file",
     path_not_found: "Path not found",
     invalid_name: "Invalid name",
+    target_is_directory: "The destination is a directory",
     target_exists: "Target already exists",
     overwrite_title: "Confirm Overwrite",
     overwrite_message: "File already exists. Overwrite?",
@@ -186,12 +193,14 @@ pub const RU: Strings = Strings {
     open: "Открыть",
     filename: "Имя файла:",
     all_files: "Все файлы (*.*)",
+    loading: "Загрузка…",
     empty_parens: "(пусто)",
     cannot_read_dir: "Не удаётся прочитать каталог",
     create_folder_failed: "Не удалось создать папку",
     create_file_failed: "Не удалось создать файл",
     path_not_found: "Путь не найден",
     invalid_name: "Недопустимое имя",
+    target_is_directory: "Путь сохранения указывает на папку",
     target_exists: "Цель уже существует",
     overwrite_title: "Подтверждение перезаписи",
     overwrite_message: "Файл уже существует. Перезаписать?",

@@ -187,3 +187,6 @@ pub mod toolbar;
 pub mod virtual_table;
 #[cfg(feature = "virtual_tree")]
 pub mod virtual_tree;
+
+#[cfg(all(test, any(feature = "code_editor", feature = "file_manager")))]
+pub(crate) static IMGUI_CTX_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

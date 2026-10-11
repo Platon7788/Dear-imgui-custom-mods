@@ -222,6 +222,10 @@ pub struct TableConfig {
     /// appended; automatically cleared once the user scrolls the mouse
     /// wheel up over the table.
     pub auto_scroll: bool,
+    /// Pause tail-following on a user-created multiple selection.
+    /// Explicitly enabling auto-scroll resumes it until the next selection gesture.
+    #[serde(default)]
+    pub pause_scroll_on_multi_select: bool,
     /// Row vertical density (Normal / Compact / Dense).
     pub row_density: RowDensity,
     /// Fixed row height in pixels. `None` derives the height from

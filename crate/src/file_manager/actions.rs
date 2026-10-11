@@ -88,6 +88,17 @@ impl FileManager {
     /// The history push happens *after* `try_navigate` confirms success, so a
     /// failed navigation (deleted/unreadable target) never corrupts history.
     fn navigate_pushing_history(&mut self, path: PathBuf) {
+        if self.config.background_listing {
+            if path != self.current_path || self.listing_pending() {
+                let navigation = if path == self.current_path {
+                    super::background::Navigation::Refresh
+                } else {
+                    super::background::Navigation::Push
+                };
+                self.request_listing(path, navigation);
+            }
+            return;
+        }
         if path == self.current_path {
             return;
         }
@@ -110,17 +121,9 @@ impl FileManager {
             self.show_new_folder = false;
             return;
         }
-        let new_path = self.current_path.join(name);
-        match std::fs::create_dir(&new_path) {
-            Ok(()) => {
-                self.show_new_folder = false;
-                self.new_folder_buf.clear();
-                self.refresh_directory();
-            }
-            Err(e) => {
-                self.error = Some(FmError::CreateFolderFailed(e.to_string()));
-            }
-        }
+        self.run_operation(super::operations::Operation::CreateFolder(
+            self.current_path.join(name),
+        ));
     }
 
     /// Create a new empty file named `name` in the current directory.
@@ -135,21 +138,9 @@ impl FileManager {
             self.show_new_file = false;
             return;
         }
-        let new_path = self.current_path.join(name);
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&new_path)
-        {
-            Ok(_) => {
-                self.show_new_file = false;
-                self.new_file_buf.clear();
-                self.refresh_directory();
-            }
-            Err(e) => {
-                self.error = Some(FmError::CreateFileFailed(e.to_string()));
-            }
-        }
+        self.run_operation(super::operations::Operation::CreateFile(
+            self.current_path.join(name),
+        ));
     }
 
     /// Rename the entry at `index` to `new_name`.
@@ -172,24 +163,11 @@ impl FileManager {
             .parent()
             .unwrap_or(&self.current_path)
             .join(new_name);
-        // Refuse to clobber a different existing entry. `symlink_metadata`
-        // does not follow links, so a dangling symlink target still counts as
-        // "occupied". A no-op rename to the same path is allowed to proceed.
-        if new_path != old_path && new_path.symlink_metadata().is_ok() {
-            let exists = self.config.strings.target_exists;
-            self.error = Some(FmError::RenameFailed(format!("{exists}: \"{new_name}\"")));
-            return;
-        }
-        match std::fs::rename(&old_path, &new_path) {
-            Ok(()) => {
-                self.rename_index = None;
-                self.rename_buf.clear();
-                self.refresh_directory();
-            }
-            Err(e) => {
-                self.error = Some(FmError::RenameFailed(e.to_string()));
-            }
-        }
+        self.run_operation(super::operations::Operation::Rename {
+            old: old_path,
+            new: new_path,
+            target_exists: self.config.strings.target_exists,
+        });
     }
 
     /// Delete the entry at `index` (symlink/junction-safe).
@@ -200,37 +178,7 @@ impl FileManager {
             return;
         };
         let path = entry.path.clone();
-        // P0-3: never `remove_dir_all` on a symlink/junction — Windows would
-        // walk into the target and delete *those* files. Use `symlink_metadata`
-        // (which does NOT follow links) to detect links, then remove the link.
-        let result = match std::fs::symlink_metadata(&path) {
-            Ok(meta) if meta.file_type().is_symlink() => {
-                // Windows: directory junctions need `remove_dir` (no recurse);
-                // file symlinks need `remove_file`. Try both.
-                // Unix: `remove_file` works for any symlink.
-                #[cfg(windows)]
-                {
-                    std::fs::remove_dir(&path).or_else(|_| std::fs::remove_file(&path))
-                }
-                #[cfg(not(windows))]
-                {
-                    std::fs::remove_file(&path)
-                }
-            }
-            Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&path),
-            Ok(_) => std::fs::remove_file(&path),
-            Err(e) => Err(e),
-        };
-        match result {
-            Ok(()) => {
-                self.delete_target = None;
-                self.show_delete_confirm = false;
-                self.refresh_directory();
-            }
-            Err(e) => {
-                self.error = Some(FmError::DeleteFailed(e.to_string()));
-            }
-        }
+        self.run_operation(super::operations::Operation::Delete(path));
     }
 
     /// Re-sort `entries` after a column-header click, preserving the selection
@@ -298,6 +246,10 @@ impl FileManager {
                 // a history entry or leaves an unlistable path committed.
                 if let Some(target) = self.history.peek_back() {
                     let target = target.to_path_buf();
+                    if self.config.background_listing {
+                        self.request_listing(target, super::background::Navigation::Back);
+                        return;
+                    }
                     let prev = self.current_path.clone();
                     self.try_navigate(target);
                     if self.error.is_none() {
@@ -308,6 +260,10 @@ impl FileManager {
             Action::GoForward => {
                 if let Some(target) = self.history.peek_forward() {
                     let target = target.to_path_buf();
+                    if self.config.background_listing {
+                        self.request_listing(target, super::background::Navigation::Forward);
+                        return;
+                    }
                     let prev = self.current_path.clone();
                     self.try_navigate(target);
                     if self.error.is_none() {
@@ -320,12 +276,13 @@ impl FileManager {
             Action::SelectFilter(idx) => {
                 if idx < self.filters.len() {
                     self.active_filter = idx;
+                    self.normalize_save_extension();
                     self.refresh_directory();
                 }
             }
             Action::NavigateToInput(input) => {
                 let path = PathBuf::from(input.trim());
-                if path.is_dir() {
+                if self.config.background_listing || path.is_dir() {
                     self.navigate_pushing_history(path);
                 } else {
                     self.error = Some(FmError::PathNotFound(path.display().to_string()));
