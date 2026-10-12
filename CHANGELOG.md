@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- VirtualTable keeps a requested offscreen scroll pending while a newly opened
+  table has no ImGui scroll extent yet; the request is applied once available.
+
+- Disabled Toolbar buttons now show their supplied reason tooltip on hover while
+  remaining non-interactive. Used by UT_PT's shared command availability.
+
 ### Changed — UT_PT integration (2026-10-11)
 
 - Library and example runner now use Dear ImGui Rust / wgpu / winit adapters
@@ -11,6 +19,11 @@
 
 
 ### Added
+
+- `VirtualTable::render_projected` computes external rows on demand through the
+  existing clipped renderer, without a backing row array or persistent provider.
+  Borrowed `render_slice`/`render_lookup` paths remain available; selection,
+  context menus and tooltips share the same read-only rendering implementation.
 
 - `VirtualTable::restore_selection` restores a row highlight without requesting
   scrolling. `select_row` retains its existing scroll-to-selection behavior.

@@ -117,12 +117,17 @@ impl Toolbar {
             let text_w = text_sz[0];
             let btn_w = text_w + cfg.button_padding * 2.0;
 
-            let hovered = item.enabled
-                && window_hovered
+            let bounds_hovered = window_hovered
                 && mouse_pos[0] >= x
                 && mouse_pos[0] < x + btn_w
                 && mouse_pos[1] >= btn_y
                 && mouse_pos[1] < btn_y + btn_h;
+            let hovered = item.enabled && bounds_hovered;
+            // Disabled actions still explain their availability; hit-testing for
+            // clicks/toggles remains gated by `enabled` below.
+            if bounds_hovered && !item.enabled && !item.tooltip.is_empty() {
+                crate::utils::themed_tooltip(ui, || ui.text(&item.tooltip));
+            }
 
             let text_color = if item.enabled {
                 cfg.color_text

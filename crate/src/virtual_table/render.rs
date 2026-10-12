@@ -4,6 +4,7 @@
 //! [`VirtualTable`](super::VirtualTable) via an `impl` block.
 
 use super::*;
+use std::borrow::Borrow;
 
 impl<T: VirtualTableRow> VirtualTable<T> {
     // ─── Render (ring buffer) ───────────────────────────────────────
@@ -181,14 +182,24 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.render_external(ui, row_count, get_row);
     }
 
+    /// Render rows computed on demand. Only clipped rows (and explicitly
+    /// selected rows for clipboard actions) are projected; no backing row Vec
+    /// or persistent provider is required. Sorting/editing remain disabled.
+    pub fn render_projected<F>(&mut self, ui: &Ui, row_count: usize, get_row: F)
+    where
+        F: Fn(usize) -> Option<T>,
+    {
+        self.render_external(ui, row_count, get_row);
+    }
+
     // ─── Internal: shared external-data render ─────────────────────
 
     /// Shared implementation for `render_slice` and `render_lookup`.
     /// Read-only: no sorting, no inline editing.
-    pub(super) fn render_external<'a, F>(&mut self, ui: &Ui, row_count: usize, get_row: F)
+    pub(super) fn render_external<F, R>(&mut self, ui: &Ui, row_count: usize, get_row: F)
     where
-        F: Fn(usize) -> Option<&'a T>,
-        T: 'a,
+        F: Fn(usize) -> Option<R>,
+        R: Borrow<T>,
     {
         if self.config.card_border {
             // Same card wrapper as `render()` — see comment there.
@@ -203,10 +214,10 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         self.render_external_inner(ui, row_count, get_row);
     }
 
-    pub(super) fn render_external_inner<'a, F>(&mut self, ui: &Ui, row_count: usize, get_row: F)
+    pub(super) fn render_external_inner<F, R>(&mut self, ui: &Ui, row_count: usize, get_row: F)
     where
-        F: Fn(usize) -> Option<&'a T>,
-        T: 'a,
+        F: Fn(usize) -> Option<R>,
+        R: Borrow<T>,
     {
         self.double_clicked_row = None;
         self.button_clicked = None;
@@ -292,7 +303,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
                 None => continue,
             };
 
-            self.render_row_readonly(ui, idx, row, row_count);
+            self.render_row_readonly(ui, idx, row.borrow(), row_count);
         }
 
         self.handle_keyboard_nav(ui, row_count);
@@ -308,7 +319,7 @@ impl<T: VirtualTableRow> VirtualTable<T> {
         {
             let text = build_copy_text(&self.selected_rows, self.columns.len(), |ri, ci, buf| {
                 if let Some(row) = get_row(ri) {
-                    row.cell_display_text(ci, buf);
+                    row.borrow().cell_display_text(ci, buf);
                 }
             });
             set_clipboard(&text);

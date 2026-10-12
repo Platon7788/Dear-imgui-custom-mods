@@ -53,11 +53,17 @@ impl<T: VirtualTableRow> VirtualTable<T> {
     // ─── Internal: scroll ──────────────────────────────────────────
 
     pub(super) fn handle_scroll(&mut self, ui: &Ui, row_count: usize) {
-        if let Some(target) = self.pending_scroll_to.take()
+        if let Some(target) = self.pending_scroll_to
             && row_count > 0
         {
-            let frac = scroll_fraction(target, row_count);
-            ui.set_scroll_y(frac * ui.scroll_max_y());
+            let maximum = ui.scroll_max_y();
+            // ImGui establishes a new table's scroll extent after its first
+            // frame. Keep offscreen requests until that extent is available.
+            if maximum > 0.0 || target == 0 || row_count == 1 {
+                let frac = scroll_fraction(target.min(row_count - 1), row_count);
+                ui.set_scroll_y(frac * maximum);
+                self.pending_scroll_to = None;
+            }
         }
         if self.config.auto_scroll {
             let wheel = ui.io().mouse_wheel();
